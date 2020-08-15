@@ -23,7 +23,7 @@ import PyInstaller as pi
 from setuptools import setup
 
 setup(name='REM',
-      version='0.1.1',
+      version='0.1.2',
       packages=['REM',],
       description='',
       classifiers=[
@@ -36,7 +36,7 @@ setup(name='REM',
           'Topic :: Acounting :: Revenue & Expense :: Validation',
           'Topic :: Software Development :: Libraries :: Python Modules'
       ],
-      keywords='account transaction validation',
+      keywords='account audit transaction validation',
       url='https://github.com/cnthornton/REM/',
       download_url = 'https://github.com/cnthornton/REM/archive/v0.1.1.tar.gz',
       author='Christopher Thornton',
@@ -44,11 +44,10 @@ setup(name='REM',
       license='GPLv3',
       include_package_data=True,
       zip_safe=False,
-      install_requires=['PySimpleGUI', 'tkinter'],
-      entry_points={
+      install_requires=['PySimpleGUI', 'pyodbc'],
       entry_points={
           'console_scripts': [
-              'REM = REM.gui:main',
+              'REM = REM.main_win:main',
           ]
       }
 )
