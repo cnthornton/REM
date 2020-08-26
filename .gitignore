@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Everything in tests
+REM/tests/*.csv
+REM/tests/*.xls
+
 # C extensions
 *.so
 

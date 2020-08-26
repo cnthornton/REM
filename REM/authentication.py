@@ -43,7 +43,7 @@ class AuthenticationManager:
         """
         pass
 
-    def login(self, username:str=None, password:str=None):
+    def login(self, db, username:str=None, password:str=None):
         """
         Verify username and password exists in the database accounts table
         and obtain user permissions.
@@ -55,30 +55,17 @@ class AuthenticationManager:
         """
         pass_hash =  hash_password(password)
 
-        ### FOR TESTING PURPOSES ###
-        db_pass = hash_password('helloworld')
-        db_user = 'cthornton'
-        db_admin = True
-        ###
-#        db_user, db_pass, db_admin = db.authenticate(username, pass_hash)
+        db_group = db.authenticate(username, password)
 
-        if pass_hash != db_pass:
-            raise PasswordMismatch
+        if not db_group:
+            return(None)
 
-        if username != db_user:
-            raise UserNotFound
-
-        if db_admin:
+        if db_group == 'admin':
             user = AdminAccount(username, pass_hash)
         else:
             user = UserAccount(username, pass_hash)
 
         return(user)
-
-    def logout():
-        """
-        """
-        pass
 
 
 class UserAccount:
@@ -156,9 +143,9 @@ def hash_password(password):
     """
     password_utf = password.encode('utf-8')
 
-    sha1hash = hashlib.sha1()
-    sha1hash.update(password_utf)
+    md5hash = hashlib.md5()
+    md5hash.update(password_utf)
 
-    password_hash = sha1hash.hexdigest()
+    password_hash = md5hash.hexdigest()
 
     return(password_hash)

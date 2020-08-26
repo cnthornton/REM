@@ -2,6 +2,9 @@
 REM main program. Includes primary display.
 """
 from collections import OrderedDict
+import datetime
+import dateutil
+import gettext
 import numpy as np
 import pandas as pd
 import PySimpleGUI as sg
@@ -11,7 +14,6 @@ import REM.secondary_win as win2
 import REM.program_settings as const
 import sys
 import time
-
 
 # Classes
 class ToolBar:
@@ -70,20 +72,20 @@ class ToolBar:
         padding = const.TOOLBAR_PAD
 
         toolbar = [[sg.ButtonMenu('', menu_audit, image_data=audit_ico,
-                      tooltip='Run Audits', key='-AMENU-', 
+                      tooltip=_('Run Audits'), key='-AMENU-', 
                       pad=(padding, padding)),
                     sg.ButtonMenu('', menu_reports, image_data=report_ico,
-                      tooltip='Generate Reports & Statistics', key='-RMENU-',
+                      tooltip=_('Generate Reports & Statistics'), key='-RMENU-',
                       pad=(padding, padding)),
                     sg.Button('', image_data=db_ico,
-                      tooltip='Modify Database', key='-DBMENU-', 
-                      pad=(padding, padding), disabled=True),
-                    sg.Text('', pad=(450, 0)),
+                      tooltip=_('Modify Database'), key='-DBMENU-', 
+                      pad=(padding, padding), border_width=0, disabled=True),
+                    sg.Text('', pad=(495, 0)),
                     sg.ButtonMenu('', menu_user, image_data=user_ico,
-                      tooltip='User Settings', key='-UMENU-', 
+                      tooltip=_('User Settings'), key='-UMENU-', 
                       pad=(padding, padding)),
                     sg.ButtonMenu('', menu_menu, image_data=menu_ico,
-                      tooltip='Menu', key='-MMENU-', pad=(padding, padding))]]
+                      tooltip=_('Help and program settings'), key='-MMENU-', pad=(padding, padding))]]
 
         layout = [sg.Frame('', toolbar, relief='groove', pad=(0, 0),
                     key='-TOOLBAR-')]
@@ -149,27 +151,20 @@ class ToolBar:
 
 
 # General functions
-### Placeholder functions ###
-def initialize_table(params, filters):
-    """
-    Scan database for missing transaction numbers.
-    """
-    header = params['columns']
-    df = pd.DataFrame(np.random.randint(0, 100, size=(20, 10)), columns=header)
-
-    return(df)
-
-###
-
 def get_panels(cnfg):
     """
     """
+    # Home page action panel
     panels = [lo.action_layout(cnfg)]
 
+    # Audit rule panels
     audit_rules = cnfg.audit_rules
     for audit_rule in audit_rules:
         panels.append(audit_rule.layout())
 
+    # Database modification panel
+
+    # Layout
     pane = [sg.Col([[sg.Pane(panels, orientation='horizontal', \
               show_handle=False, border_width=0, relief='flat', \
               key='-PANELS-')]], \
@@ -201,34 +196,43 @@ def reset_to_default(window, rule):
     # Reset audit parameters. Audit specific parameters include actions
     # buttons Scan and Confirm, for instance.
 
-    # Reset control element values
-    controls = rule.controls
-    for control in controls:
-        control_key = rule.key_lookup(control.name)
-        print('Re-setting control element {} to default'.format(control.name))
-        window[control_key].update(value='')
+    # Reset parameter element values
+    params = rule.parameters
+    for param in params:
+        print('Re-setting rule parameter element {} to default'.format(param.name))
+        window[param.element_key].update(value='')
+        try:
+            window[param.element_key2].update(vaue='')
+        except AttributeError:
+            pass
+
+        param.value = None
+        try:
+            param.value2 = None
+        except AttributeError:
+            pass
 
     # Reset tab-specific element values
     for i, tab in enumerate(rule.tabs):
-        # Reset table and summary values
-        # Generate default table values
-        header = tab.db_columns
-        ncol = len(header)
-        data = lo.empty_data_table(nrow=10, ncol=ncol)
+        # Reset displays and Tab attributes
+        ## Reset Tab attributes
+        tab.reset_dynamic_attributes()
 
+        ## Reset table element
         table_key = tab.key_lookup('Table')
-        window[table_key].update(values=data)
+        window[table_key].update(values=tab.df.values.tolist())
 
-        # Reset summary element
+        ## Reset summary element
         summary_key = tab.key_lookup('Summary')
         window[summary_key].update(value='')
 
         # Reset action buttons
-        tab.toggle_action_buttons(window, 'disable')
+        tab.toggle_actions(window, 'disable')
 
         # Reset visible tabs
         visible = True if i == 0 else False
-        print('Re-setting visibility of {} tab to {}'.format(tab.name, visible))
+        print('Info: tab {TAB}, rule {RULE}: re-setting visibility to {STATUS}'\
+            .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
         window[tab.element_key].update(visible=visible)
 
     return(None)
@@ -256,6 +260,11 @@ def main():
     # Settings
     infile = '/home/cthornton/dev/configuration.yaml'  #change!!!
     cp = ConfigParameters(infile)
+
+    language = cp.language
+    translation = const.change_locale(language)
+    translation.install('base')  #bind gettext to _() in __builtins__ namespace
+
     db = cp.database
 
     toolbar = ToolBar(cp)
@@ -267,7 +276,7 @@ def main():
     cancel_keys =  [i.key_lookup('Cancel') for i in cp.audit_rules]
     start_keys = [i.key_lookup('Start') for i in cp.audit_rules]
 
-    print('Current audit rules are {}'.format(', '.join(audit_names)))
+    print('Info: current audit rules are {}'.format(', '.join(audit_names)))
     report_tx = 'Summary Report'
     stats_tx = 'Summary Statistics'
 
@@ -278,12 +287,12 @@ def main():
     summary = {}
     
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, font=('Arial', 12), size=(1170, 840))
+    window = sg.Window('REM Tila', layout, icon=cp.logo, font=('Arial', 12), size=(1260, 840))
+    print('Info: starting up')
 
     # Event Loop
     while True:
         event, values = window.read()
-        print(event, values)
 
         # Quit program
         if event == sg.WIN_CLOSED or values['-MMENU-'] == 'Quit':
@@ -291,8 +300,7 @@ def main():
 
         # User login
         if values['-UMENU-'] == 'Sign In':  #user logs on
-            print('Starting up')
-            print('Displaying user login screen')
+            print('Info: displaying user login screen')
             user = win2.login_window(cp)
 
             if user:  #logged on successfully
@@ -335,18 +343,28 @@ def main():
                     if perms != 'admin':
                         toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
                         window[rule_name].update(disabled=False)
+            else:
+                print('Unable to login to the program')
+                continue
 
         # User log-off
         if values['-UMENU-'] == 'Sign Out':  #user signs out
             # Confirm sign-out
-            msg = 'Are you sure you would like to sign-out?'
-            selection = win2.confirm_action(msg)
+            msg = _('Are you sure you would like to sign-out?')
+            selection = win2.popup_confirm(msg)
 
             if selection == 'Cancel':
                 continue
 
             audit_in_progress = False
             rule = reset_to_default(window, rule)  #reset to home screen
+
+            try:  #close the database connection
+                db.cnxn.close()
+            except Exception:
+                print('Connection to {} already closed'.format(db.dbname))
+            else:
+                db.cnxn = None
 
             # Disable sign-out and enable sign-in
             toolbar.toggle_menu(window, 'umenu', 'sign in', value='enable')
@@ -378,7 +396,7 @@ def main():
         if not debug_win and values['-MMENU-'] == 'Debug':
             debug_win = win2.debugger()
             debug_win.finalize()
-            print('Starting debugger')
+            print('Info: starting debugger')
         elif debug_win:
             debug_event, debug_value = debug_win.read(timeout=100)
 
@@ -392,9 +410,13 @@ def main():
             continue
 
         # Switch panels when audit in progress
-        if audit_in_progress and (event == '-DB-' or event in cancel_keys or values['-AMENU-'] in audit_names or values['-RMENU-'] in (report_tx, stats_tx)):
-            msg = 'Audit is currently running. Are you sure you would like to exit?'
-            selection = win2.confirm_action(msg)
+        if audit_in_progress and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or \
+            values['-AMENU-'] in audit_names or values['-RMENU-'] in \
+            (report_tx, stats_tx)):
+
+            msg = _('Audit is currently running. Are you sure you would like '\
+                    'to exit?')
+            selection = win2.popup_confirm(msg)
 
             if selection == 'OK':
                 # Reset to defaults
@@ -404,7 +426,10 @@ def main():
                 continue
 
         # Switch panels when audit not in progress
-        if rule and (event == '-DB-' or event in cancel_keys or values['-AMENU-'] in audit_names or values['-RMENU-'] in (report_tx, stats_tx)):
+        if rule and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or \
+            values['-AMENU-'] in audit_names or values['-RMENU-'] in \
+            (report_tx, stats_tx)):
+
             rule = reset_to_default(window, rule)
 
         # Activate appropriate audit panel
@@ -420,39 +445,39 @@ def main():
             tab_windows = [i.name for i in rule.tabs]
             final_index = len(tab_windows) - 1
 
-            print('Panel in view is {} with tabs {}'.format(rule.name, ', '.join(tab_windows)))
+            print('Info: the panel in view is {} with tabs {}'\
+                .format(rule.name, ', '.join(tab_windows)))
 
         # Start the selected audit
         if event in start_keys:
-            # Check if all control elements have input
-            controls = rule.controls
-            has_input = []
-            for control in controls:
-                ctrl_key = rule.key_lookup(control.name)
-                ctrl_value = values[ctrl_key]
+            # Check if all rule parameters elements have input
+            params = rule.parameters
+            inputs = []
+            for param in params:
+                param.set_value(values)
+                has_value = param.values_set()
 
-                if not ctrl_value:
-                    ctrl_desc = control.desc
-                    msg = 'Input required for the "{}" field'.format(ctrl_desc)
-                    win2.selection_reqd(msg)
+                if not has_value:
+                    param_desc = param.description
+                    msg = _('Input required for the "{}" field').format(param_desc)
+                    win2.popup_notice(msg)
 
-                    has_input.append(False)
-                else:
-                    has_input.append(True)
-
-                    # Update value in object
-                    control.value = ctrl_value
+                inputs.append(has_value)
 
             # Start Audit
-            if all(has_input):  #all controls have input
+            if all(inputs):  #all rule parameters have input
                 audit_in_progress = True
-                print('{} audit in progress with parameters {}'\
+                print('Info: {} audit in progress with parameters {}'\
                     .format(rule.name, ', '.join(['{}={}'\
-                    .format(i.name, i.value) for i in controls])))
+                    .format(i.name, i.value) for i in params])))
 
                 # Disable start key
                 start_key = rule.key_lookup('Start')
                 window[start_key].update(disabled=True)
+
+                # Prepare the filter rules to filter query results
+                rule_params = rule.parameters  #to filter data tables
+                filters = [i.filter_statement() for i in rule_params]
 
                 # Initialize audit
                 tab_keys = []  #to track tabs displayed
@@ -461,11 +486,7 @@ def main():
                     tab_keys.append(tab_key)
 
                     # Extract data from database
-                    controls = rule.controls  #for query filter parameters
-                    filters = [(control.name, control.operator, control.value) for control in controls]
-                    params = tab.fetch_db_params()
-#                    df = cp.db.query(params, filters)
-                    df = initialize_table(params, filters)
+                    df = db.query(tab.db_table, tab.db_columns, filters)
 
                     # Update tab object and elements
                     tab.df = df  #update tab data
@@ -473,7 +494,7 @@ def main():
                     tab.update_summary(window)  #summarize individual tab data
 
                     # Enable / disable action buttons
-                    schema = tab.toggle_action_buttons(window, 'enable')
+                    schema = tab.toggle_actions(window, 'enable')
 
         action_performed = False
         # Scan for missing data if applicable
@@ -483,47 +504,96 @@ def main():
 
             # Get current tab object
             tab = rule.fetch_tab(current_tab, by_key=True)
-            controls = rule.controls
+            params = rule.parameters
 
-            # Find selected rows whenever the table is interactive.
+            # Remove row from table when row is double-clicked.
             tbl_key = tab.key_lookup('Table')
             if event == tbl_key:
-                row_colors = tab.verify_row(values[tbl_key][0])
-                window[tbl_key].update(row_colors=row_colors)
-                window.Refresh()
+                try:
+                    row = values[tbl_key][0]
+                except IndexError:  #user double-clicked too quickly
+                    continue
 
-            # Run schema action
-            action_buttons = [tab.key_lookup(i) for i in tab.action_elements]
-            if event in action_buttons:
-                # Use schema action method
-                 print('Running {LAYOUT} algorithms on {NAME} data'\
-                     .format(LAYOUT=tab.type, NAME=tab.element_name))
-                 df = tab.run_action(database=db, controls=controls)
-                 action_performed = True
+                print('Info: removing row {ROW} from table element {TBL}'\
+                    .format(ROW=row, TBL=tbl_key))
 
-                 # Update information elements - most actions modify tab data 
-                 # in some way.
-                 tab.update_table(window)
-                 tab.update_summary(window)
+                tab.df.drop(row, inplace=True)
+                tab.df.reset_index(drop=True, inplace=True)
+
+                tab.update_table(window)
+                tab.update_summary(window)
+                continue
+             
+            # Add row to table based on user input
+            add_key = tab.key_lookup('Add')
+            if event == add_key:  #clicked the 'Add' button
+                input_key =  tab.key_lookup('Input')
+
+                # Extract transaction information from database
+                new_id = values[input_key]
+                all_ids = tab.row_ids()
+                if not new_id in all_ids:
+                    filters = [('{} = ?'.format(tab.db_key), (new_id,))]
+                    new_row = db.query(tab.db_table, tab.db_columns, filters)
+                else:
+                    msg = _("{} is already in the table").format(new_id)
+                    win2.popup_notice(msg)
+                    continue
+
+                if new_row.empty:  #query returned nothing
+                    msg = _("unable to find transaction {}").format(new_id)
+                    win2.popup_notice(msg)
+                    continue
+
+                # Clear user input from the Input element
+
+                # Add row information to the table
+                df = tab.df.append(new_row, ignore_index=True, sort=False)
+                tab.df = df
+
+                tab.update_table(window)
+                tab.update_summary(window)
+                continue
+
+            # Run audit
+            audit_key = tab.key_lookup('Audit')
+            if event == audit_key:
+                # Run schema action methods
+                print('Info: running audit on the {NAME} data'\
+                      .format(NAME=tab.name))
+                tab.run_audit(window, database=db, parameters=params)
+#
+                # Update information elements - most actions modify tab data 
+                # in some way.
+                tab.update_table(window)
+                tab.update_summary(window)
+#            elif event == '-THREAD_DONE-':
+#                print('Audit of {NAME} data completed'\
+#                      .format(NAME=tab.element_name))
+#                action_performed = True
+#
+#                # Update information elements - most actions modify tab data 
+#                # in some way.
+#                tab.update_table(window)
+#                tab.update_summary(window)
 
             # Enable movement to the next tab
             current_index = tab_keys.index(current_tab)
-            print('Current tab in view is {}'.format(tab_windows[current_index]))
+            print('Info: tab in view is {}'.format(tab_windows[current_index]))
             next_index = current_index + 1
-            if action_performed and not next_index > final_index:
+            if tab.audit_performed and not next_index > final_index:
                 next_key = tab_keys[next_index]
 
                 # Enable next tab
-                print('Enabling tab {}'.format(tab_windows[next_index]))
+                print('Info: enabling tab {}'.format(tab_windows[next_index]))
                 window[next_key].update(disabled=False, visible=True)
 
             # Enable the finalize button when all actions have been performed
             # on all tabs.
-            if action_performed and current_index == final_index:
-                print('Allow generation of final report')
+            if tab.audit_performed and current_index == final_index:
+                print('Info: allowing generation of final report')
                 final_key = rule.key_lookup('Finalize')
                 window[final_key].update(disabled=False)
-            
 
     window.close()
 

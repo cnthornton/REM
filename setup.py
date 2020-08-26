@@ -44,7 +44,7 @@ setup(name='REM',
       license='GPLv3',
       include_package_data=True,
       zip_safe=False,
-      install_requires=['PySimpleGUI', 'pyodbc'],
+      install_requires=['numpy', 'pandas', 'PySimpleGUI', 'pyodbc'],
       entry_points={
           'console_scripts': [
               'REM = REM.main_win:main',

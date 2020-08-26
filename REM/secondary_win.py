@@ -11,17 +11,59 @@ import textwrap
 
 
 # Popups
-def confirm_action(msg):
+def popup_confirm(msg):
     """Display popup asking user if they would like to continue without 
     completing the current action.
     """
     return(sg.popup_ok_cancel(textwrap.fill(msg, width=40), title=''))
 
-def selection_reqd(msg):
+def popup_notice(msg):
     """
-    Display popup asking user to make a required selection
+    Display popup notifying user that an action is required or couldn't
+    be undertaken.
     """
     return(sg.popup_ok(textwrap.fill(msg, width=40), title=''))
+
+def popup_error(msg):
+    """
+    Display popup notifying user that there is a fatal program error.
+    """
+    return(sg.popup_error(textwrap.fill(msg, width=40), title=''))
+
+# Functions
+def verify_row(self, row_index):
+    """
+    Add row to verified list, returning list of updated row colors.
+    """
+    tbl_bg_col = const.TBL_BG_COL
+    tbl_alt_col = const.TBL_ALT_COL
+    tbl_vfy_col = const.TBL_VFY_COL
+
+    if row_index != None and row_index not in self.verified:
+        self.verified.append(row_index)  #add row to list of verified
+
+    elif row_index != None and row_index in self.verified:
+        self.verified.remove(row_index)  #remove row from list of verified
+
+    # Get row colors for rows that have been selected
+    print('Selected orders are {}'.format(', '.join([str(i) for i in self.verified])))
+    selected = [(i, tbl_vfy_col) for i in self.verified]
+
+    # Get row colors for rows that have not been selected
+    unselected = []
+    for index in range(self.df.shape[0]):  #all rows in dataframe
+        if index not in self.verified:
+            if index % 2 == 0:
+                color = tbl_bg_col
+            else:
+                    color = tbl_alt_col
+
+            unselected.append((index, color))
+
+    # Update table row colors
+    all_row_colors = selected + unselected
+
+    return(all_row_colors)
 
 # Windows
 def debugger(win_size:tuple=(1920, 1080)):
@@ -75,38 +117,39 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
                      [sg.Frame('', [[sg.Image(data=username_icon, 
                                        background_color=input_col, 
                                        pad=((pad_el, pad_h), 0)), 
-                                     sg.Input(default_text='username', 
+                                     sg.Input(default_text=_('username'), 
                                        key='-USER-', size=(isize - 2, 1), 
                                        text_color=help_col,
                                        border_width=0, do_not_clear=True,
                                        background_color=input_col, 
                                        enable_events=True,
                                        pad=((0, 2), 0),
-                                       tooltip='Input account username')]], 
+                                       tooltip=_('Input account username'))]], 
                         background_color=input_col, pad=(pad_frame, pad_el),
                         relief='sunken')], 
                      [sg.Frame('', [[sg.Image(data=lock_icon, 
                                        background_color=input_col, 
                                        pad=((pad_el, pad_h), 0)), 
-                                     sg.Input(default_text='password', 
+                                     sg.Input(default_text=_('password'), 
                                        key='-PASSWORD-', size=(isize - 2, 1), 
                                        text_color=help_col,
                                        border_width=0, do_not_clear=True,
                                        background_color=input_col,
                                        enable_events=True,
                                        pad=((0, 2), 0), password_char='*',
-                                       tooltip='Input account password')]], 
+                                       tooltip=_('Input account password'))]], 
                         background_color=input_col, pad=(pad_frame, pad_el), 
                         relief='sunken')],
                      [sg.Text('', key='-SUCCESS-', size=(20, 2), 
                         pad=(pad_frame, pad_frame), font=small_font,
                         justification='center',
                         text_color='Red', background_color=bg_col)],
-                     [sg.Button('Sign In', size=(bsize, 1), 
+                     [sg.Button(_('Sign In'), key='-LOGIN-', size=(bsize, 1), 
                         pad=(pad_frame, pad_el), font=bold_text, 
                         button_color=(text_col, login_col))],
-                     [sg.Button('Cancel', size=(bsize, 1), 
-                        pad=(pad_frame, (pad_el, pad_frame)), font=bold_text, button_color=(text_col, cancel_col))]]
+                     [sg.Button(_('Cancel'), key='-CANCEL-', size=(bsize, 1), 
+                        pad=(pad_frame, (pad_el, pad_frame)), font=bold_text, 
+                        button_color=(text_col, cancel_col))]]
 
     layout = [[sg.Col(column_layout, element_justification='center', 
                  justification='center', background_color=bg_col)]]
@@ -114,7 +157,9 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
     auth_man = auth.AuthenticationManager()
     account = None
 
-    window = sg.Window('', layout, font=main_font, modal=True, keep_on_top=True, no_titlebar=True)
+    window = sg.Window('', layout, font=main_font, modal=True, \
+                       keep_on_top=True, no_titlebar=True, \
+                       return_keyboard_events=True)
     window.finalize()
     window['-USER-'].update(select=True)
     window.refresh()
@@ -123,9 +168,8 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
     # Event window
     while True:
         event, values = window.read()
-        print(event, values)
 
-        if event in (sg.WIN_CLOSED, 'Cancel'):  #selected close-window
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  #selected close-window
             break
 
         if event == '-USER-':
@@ -135,7 +179,6 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
         if event == '-PASSWORD-':
             window['-PASSWORD-'].update(text_color=def_text_col)
             window['-SUCCESS-'].update(value='')
-            print('password is {}'.format(values['-PASSWORD-']))
 #            value = values['-PASSWORD-']
 #            if value:
 #                if len(value) > len(pass_list):  #added character
@@ -147,26 +190,27 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
 
 #            window['-PASSWORD-'].update(value='*' * len(value), text_color=def_text_col)
 
-        if event == 'Sign In':
+        if event.split(':')[0] == 'Return':
+            window['-LOGIN-'].Click()
+
+        if event == '-LOGIN-':
             uname = values['-USER-']
 #            pwd = ''.join(pass_list)
             pwd = values['-PASSWORD-']
             # Verify values for username and password fields
             if not uname:
-                msg = 'username is required'
+                msg = _('username is required')
                 window['-SUCCESS-'].update(value=msg)
             elif not pwd:
-                msg = 'password is required'
+                msg = _('password is required')
                 window['-SUCCESS-'].update(value=msg)
             else:
                 try:
-                    account = auth_man.login(uname, pwd)
-                except auth.PasswordMismatch:
-                    msg = 'incorrect password provided'
+                    account = auth_man.login(cnfg.database, uname, pwd)
+                except Exception as e:
+                    msg = _('unknown login failure. Please try again.')
                     window['-SUCCESS-'].update(value=msg)
-                except auth.UserNotFound:
-                    msg = 'unknown username {}'.format(uname)
-                    window['-SUCCESS-'].update(value=msg)
+                    print(e)
                 else:
                     break
 
@@ -174,7 +218,7 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
 
     return(account)
 
-def import_window(df, db, db_params, win_size:tuple=(1920, 1080)):
+def import_window(df, db, table, db_key, win_size:tuple=(1920, 1080)):
     """
     Display the transaction importer window.
     """
@@ -182,11 +226,10 @@ def import_window(df, db, db_params, win_size:tuple=(1920, 1080)):
     data = df.values.tolist()
     header = df.columns.values.tolist()
 
-    db_key = db_params['key']
     key_index = header.index(db_key)
 
     # Transaction information
-    row_keys = [data[key_index] for i in data]
+    row_keys = [i[key_index] for i in data]
     all_rows = list(range(df.shape[0]))
 
     # Window and element size parameters
@@ -204,39 +247,37 @@ def import_window(df, db, db_params, win_size:tuple=(1920, 1080)):
     tbl_vfy_col = const.TBL_VFY_COL
 
     # GUI layout
-    bttn_layout = [[lo.B2('Cancel', tooltip='Cancel import', 
-                      pad=(pad_el, pad_v)), 
-                    lo.B2('Import', bind_return_key=True, key='-IMPORT-',
-                      tooltip='Import the selected transaction orders', 
-                      pad=(pad_el, pad_v))]]
+    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', 
+                      tooltip=_('Cancel import'), pad=(pad_el, 0)), 
+                    lo.B2(_('Import'), bind_return_key=True, key='-IMPORT-',
+                      tooltip=_('Import the selected transaction orders'), 
+                      pad=(pad_el, 0))]]
 
     tbl_key = lo.as_key('Import Table')
-    layout = [[sg.Col([[sg.Text('Import Missing Data', font=font_h)]], 
+    layout = [[sg.Col([[sg.Text(_('Import Missing Data'), font=font_h)]], 
                  pad=(0, pad_v), justification='center')],
-              [sg.Frame('', [[lo.create_table(data, header, tbl_key, bind=True)], 
-                         [sg.Text('Include order:', pad=(pad_el, pad_v),
-                            background_color=bg_col,
-                            tooltip='Input order number to add the order to the table'),
-                          sg.Input('', key='-INPUT-', pad=(pad_el, pad_v)),
-                          lo.B2('Add', pad=(pad_el, pad_v), 
-                            tooltip='Add order to the table', key='-ADD-')]], 
-                 background_color=bg_col, element_justification='c', pad=(pad_frame, pad_v))],
-              [sg.Col(bttn_layout, justification='right', 
-                 pad=((0, pad_frame), pad_v))]]
+              [sg.Frame('', [[lo.create_table(data, header, tbl_key, bind=True)]], 
+                 background_color=bg_col, element_justification='c', 
+                 pad=(pad_frame, pad_frame))],
+              [sg.Col(bttn_layout, justification='c', 
+                 pad=(0, (0, pad_frame)))]]
 
-    window = sg.Window('Import Data', layout, font=main_font, modal=True)
+    window = sg.Window(_('Import Data'), layout, font=main_font, modal=True)
 
     # Start event loop
     vfy_orders = []
     while True:
         event, values = window.read()
-        print(event, values)
 
-        if event in (sg.WIN_CLOSED, 'Cancel'):  #selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  #selected close-window or Cancel
             break
 
         if event == tbl_key:  #double-clicked on row in table
-            row_index = int(values[tbl_key][0])
+            try:
+                row_index = int(values[tbl_key][0])
+            except IndexError:  #empty table
+                continue
+
             print('Row selected is {}'.format(row_index))
 
             if row_index != None and row_index not in vfy_orders:
@@ -267,37 +308,17 @@ def import_window(df, db, db_params, win_size:tuple=(1920, 1080)):
             row_index = None
             continue
 
-        if event == '-ADD-':  #clicked the 'Add' button
-            # Extract order information from database
-            new_order = values['-INPUT-']
-            if not new_order in row_keys:
-                filter_rules = [(db_key, '=', new_order)]
-                order_info = db.query(db_params, filter_rules)
-            else:
-                print('Order already in table')
-                continue
-
-            if not order_info:  #query returned nothing
-                print("{} is not a valid order number".format(new_order))
-                continue
-
-            # Clear user input from Input element
-            window['-INPUT-'].update(value='')
-
-            # Add order information to table and checkbox column
-            order_nums.append(new_order)
-            data.append(order_info)
-            window[tbl_key].update(values=data)
-
         if event == '-IMPORT-':  #click 'Import' button
             if len(data) != len(vfy_orders):  #not all orders selected
-                selection = confirm_action("Not all rows have been selected "
-                    "importing. Are you sure you would like to continue?")
+                msg = _("Not all rows have been selected importing. Are "\
+                        "you sure you would like to continue?")
+                selection = popup_confirm(msg)
+
                 if selection == 'OK':  #continue anyway
                     break
                 else:  #oops, a mistake was made
                     continue
-            else:  #all orders selected already
+            else:  #all transactions selected already
                 break
 
     window.close()
