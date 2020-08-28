@@ -24,9 +24,9 @@ class Schema:
         self.element_key = as_key(element_name)
         self.data_elements = ['Table', 'Summary']
         self.action_elements = ['Audit', 'Input', 'Add']
-        self._actions = ['scan', 'cc', 'errors']
+        self._actions = ['scan', 'filter', 'errors']
 
-        self.actions = {}
+        self.actions = []
         self.id_format = []
 
         try:
@@ -61,11 +61,11 @@ class Schema:
         try:
             actions = tdict['AuditMethods']
         except KeyError:
-            self.actions = {}
+            self.actions = []
         else:
             for action in actions:
                 if action in self._actions:
-                    self.actions[action] = actions[action]
+                    self.actions.append(action)
                 else:
                     print('Configuration Warning: tab {NAME}, rule {RULE}: '\
                           'unknown audit method specified {METHOD}'\
@@ -85,6 +85,11 @@ class Schema:
             self.error_rules = tdict['ErrorRules']
         except KeyError:
             self.error_rules = {}
+
+        try:
+            self.filter_rules = tdict['FilterRules']
+        except KeyError:
+            self.filter_rules = {}
 
         try:
             self.id_format = re.findall(r'\{(.*?)\}', tdict['IDFormat'])
@@ -257,6 +262,7 @@ class Schema:
 
     def parse_operation_string(self, rule):
         """
+        Split operation string into a list.
         """
         operators = set('+-*/>=<')
 
@@ -277,6 +283,55 @@ class Schema:
         list_out.append(''.join(buff))
 
         return(list_out)
+
+    def create_eval_str(self, rule_name, conditional):
+        """
+        Create the string used in the evaluation statment.
+        """
+        operators = set('+-*/<>=')
+
+        rule_value = []
+        for component in conditional:
+            split_component = component.split('.')
+            if component in operators:  #component is an operator
+                if component == '=':
+                    rule_value.append('==')
+                else:
+                    rule_value.append(component)
+            elif len(split_component) > 1:  #component is column name
+                try:
+                    component_table, component_col = split_component
+                except ValueError:  #try including reference to another table
+                    try:
+                        component_table, reference_id, component_col = split_component
+                    except ValueError:
+                        print('Warning: tab {NAME}, rule {RULE}: invalid syntax '\
+                              'for rule {COND}'.format(NAME=self.name, \
+                                RULE=self.rule_name, COND=rule_name))
+                        continue
+                    else:
+                        pass
+                else:
+                    if component_col in headers:
+                        rule_value.append('self.df["{}"]'.format(component_col))
+                    elif component_col.lower() in headers:
+                        rule_value.append('self.df["{}"]'.format(component_col.lower()))
+                    else:
+                        print('Warning: tab {TAB}, rule {RULE}: column {COL} '\
+                              'from rule {COND} not found in column '\
+                              'headers'.format(TAB=self.name, \
+                              RULE=self.rule_name, COL=component_col, \
+                              COND=rule_name))
+                        continue
+            else:  #component is a string or integer
+                rule_value.append(component)
+
+        if len(rule_value) == 1:  #handle case where checking for existence
+            eval_str = '{VAL} != None'.format(VAL=rule_value[0])
+        else:
+            eval_str = ' '.join(rule_value)
+
+        return(eval_str)
 
     def update_summary(self, window):
         """
@@ -320,21 +375,43 @@ class Schema:
         for rule_name in summ_rules:
             rule = summ_rules[rule_name]
             rule_values = []
-            for item in self.parse_operation_string(rule):
-                if item in operators:
-                    rule_values.append(item)
-                else:
+            for component in self.parse_operation_string(rule):
+                split_component = component.split('.')
+                if component in operators:
+                    rule_values.append(component)
+                elif len(split_component) > 1:  #component is header column
                     try:
-                        rule_values.append(totals[item])
+                        table_name, component_col = split_component
+                    except ValueError:
+                        print('Warning: tab {NAME}, rule {RULE}: unsupported '\
+                              'character "{ITEM}" provided to summary rule '\
+                              '"{SUMM}"'.format(NAME=self.name, \
+                              RULE=self.rule_name, ITEM=component, \
+                              SUMM=rule_name))
+                        rule_values = [0]
+                        break
+                    try:
+                        rule_values.append(totals[component_col])
                     except KeyError:  #try lower-case
                         try:  #ODBC may be PostGreSQL
-                            rule_values.append(totals[item.lower()])
+                            rule_values.append(totals[component_col.lower()])
                         except KeyError:  #not in display columns
-                            print('Warning: tab {TAB}, rule {Rule}: summary '\
-                                  'rule item {ITEM} not in display columns'\
-                                  .format(NAME=self.name, RULE=self.rule_name, \
-                                  ITEM=item))
-                            rule_values.append(0)
+                            print('Warning: tab {NAME}, rule {RULE}: "{ITEM}" '\
+                                  'from summary rule "{SUMM}" not in display '\
+                                  'columns'.format(NAME=self.name, \
+                                  RULE=self.rule_name, ITEM=component, \
+                                  SUMM=rule_name))
+                            rule_values = [0]
+                            break
+                elif component.isnumeric():  #component is integer
+                    rule_values.append(component)
+                else:  #component is unsupported character
+                    print('Warning: tab {NAME}, rule {RULE}: unsupported '\
+                          'character "{ITEM}" provided to summary rule "{SUMM}"'\
+                          .format(NAME=self.name, RULE=self.rule_name, \
+                          ITEM=component, SUMM=rule_name))
+                    rule_values = [0]
+                    break
 
             summary_total = eval(' '.join([str(i) for i in rule_values]))
 
@@ -435,7 +512,7 @@ class Schema:
         """
         method_map = {'scan': self.scan_for_missing, 
                       'errors': self.search_for_errors,
-                      'cc': self.cross_check_reference}
+                      'filter': self.filter_transactions}
 
         for action in self.actions:
             action_function = method_map[action]
@@ -459,6 +536,7 @@ class Schema:
         # Arguments
         db = kwargs['database']
         audit_params = kwargs['parameters']
+        db_tables = kwargs['tables']
         window = args[0]
 
         # Update ID components with parameter values
@@ -496,7 +574,7 @@ class Schema:
 
         first_number_comp = int(self.get_id_component(first_id, 'variable'))
         first_date_comp = self.get_id_component(first_id, 'date')
-        print('Info: {} Audit: first transaction id {} has number {} and date {}'\
+        print('Info: {} Audit: first transaction ID {} has number {} and date {}'\
               .format(self.name, first_id, first_number_comp, first_date_comp))
 
         ## Find date of last transaction
@@ -524,8 +602,8 @@ class Schema:
             print('Info: {NAME} Audit: searching for last transaction created '\
                   'prior to {DATE}'.format(NAME=self.name, DATE=audit_date_iso))
 
-            filters = [('{DATE} = ?'.format(DATE=date_col), (prev_date.strftime(date_fmt),))]
-            last_df = db.query(self.db_table, self.db_columns, filters)
+            filters = (date_col, '= ?', (prev_date.strftime(date_fmt),))
+            last_df = db.query(self.db_table, columns=self.db_columns, filter_rules=filters)
             last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
             last_id = None
@@ -580,15 +658,15 @@ class Schema:
 
         if missing_transactions:
             filter_values = ['?' for i in missing_transactions]
-            filter_str = '{COL} IN ({VALUES})'.format(COL=pkey, VALUES=', '.join(filter_values))
-            filters = [(filter_str, tuple(missing_transactions))]
+            filter_str = 'IN ({VALUES})'.format(VALUES=', '.join(filter_values))
+            filters = (pkey, filter_str, tuple(missing_transactions))
 
-            missing_data = db.query(self.db_table, self.db_columns, filters)
+            missing_data = db.query(self.db_table, columns=self.db_columns, filter_rules=filters)
         else:
             missing_data = pd.DataFrame(columns=[i.lower() for i in self.db_columns])
 
         # Display import window with potentially missing data
-        import_data = win2.import_window(missing_data, db, self.db_table, pkey)
+        import_data = win2.import_window(missing_data)
 
         # Updata dataframe with imported data
         df = df.append(import_data, ignore_index=True, sort=False)
@@ -608,11 +686,8 @@ class Schema:
         operators = set('>=<')
         strptime = datetime.datetime.strptime
 
-        db = kwargs['database']
         audit_params = kwargs['parameters']
         window = args[0]
-
-        cursor = db.cnxn.cursor()
 
         headers = self.df.columns.values.tolist()
         pkey = self.db_key if self.db_key in headers else self.db_key.lower()
@@ -649,33 +724,43 @@ class Schema:
             error_rule = error_rules[rule_name]
             parsed_rule = self.parse_operation_string(error_rule)
 
-            rule_value = []
-            for item in parsed_rule:
-                if item in operators:
-                    if item == '=':
-                        rule_value.append('==')
-                    else:
-                        rule_value.append(item)
-                elif item in headers:
-                    rule_value.append('self.df["{}"]'.format(item))
-                elif item.lower() in headers:
-                    rule_value.append('self.df["{}"]'.format(item.lower()))
-                else:
-                    try:
-                        item_num = float(item)
-                    except ValueError:
-                        print('Warning: tab {TAB}, rule {RULE}: unsupported item '\
-                              '{ITEM} provided to error rule {ERROR}'\
-                              .format(TAB=self.name, RULE=self.rule_name, \
-                              ITEM=item, ERROR=rule_name))
-                        rule_value = ['self.df["{}"]'.format(pkey), '==', \
-                            'self.df["{}"]'.format(pkey)]
-                        break
-                    else:
-                        rule_value.append(item)
-
+            eval_str = self.create_eval_str(rule_name, parsed_rule)
+#            for component in parsed_rule:
+#                split_component = component.split('.')
+#                if component in operators:  #component is an operator
+#                    if component == '=':
+#                        rule_value.append('==')
+#                    else:
+#                        rule_value.append(component)
+#                elif len(split_component) > 1:  #component is column name
+#                    try:
+#                        component_table, component_col = split_component
+#                    except ValueError:
+#                        print('Warning: tab {TAB}, rule {RULE}: invalid syntax '\
+#                              'for error rule {ERROR}'.format(TAB=self.name, \
+#                              RULE=self.rule_name, ERROR=rule_name))
+#                        continue
+#                    
+#                    if component_col in headers:
+#                        rule_value.append('self.df["{}"]'.format(component_col))
+#                    elif component_col.lower() in headers:
+#                        rule_value.append('self.df["{}"]'.format(component_col.lower()))
+#                    else:
+#                        print('Warning: tab {TAB}, rule {RULE}: column {COL} '\
+#                              'from error rule {ERROR} not found in column '\
+#                              'headers'.format(TAB=self.name, \
+#                              RULE=self.rule_name, COL=component_col, \
+#                              ERROR=rule_name))
+#                        continue
+#                else:  #component is a string or integer
+#                    if component.isnumeric():  #component is integer
+#                        rule_value.append(float(component))
+#                    else:  #component is string (only allowed with ==)
+#                        rule_value.append(component)
+#
+#            eval_str = ' '.join(rule_value)
             try:
-                error_list = list(eval(' '.join(rule_value)))
+                error_list = list(eval(eval_str))
             except SyntaxError:
                 print('Warning: tab {TAB}, rule {RULE}: invalid syntax for '\
                       'error rule {ERROR}'.format(TAB=self.name, \
@@ -690,41 +775,71 @@ class Schema:
         # Inform main thread that sub-thread has completed its operations
 #        window.write_event_value('-THREAD_DONE-', '')
 
-    def cross_check_reference(self, *args, **kwargs):
+    def filter_transactions(self, *args, **kwargs):
         """
         """
-        # Arguments
+        operators = set('><=')
+        chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
+
+        # Method arguments
         db = kwargs['database']
         audit_params = kwargs['parameters']
         window = args[0]
 
-        # Update ID components with parameter values
-        self.update_id_components(audit_params)
-
-        # Tab attributes
-        method_rules = self.actions['cc']
-
         cursor = db.cnxn.cursor()
 
+        # Tab attributes
         df = self.df
         headers = self.df.columns.values.tolist()
-        pkey = self.db_key if self.db_key in headers else self.db_key.lower()
-        df.sort_values(by=[pkey], inplace=True, ascending=True)
+        nrow = df.shape[0]
+        filter_rules = self.filter_rules
+        if not filter_rules:
+            return(False)
 
-def transaction_date(transaction_number, number_format):
-    """
-    """
-    return(None)
+        conditions = []
+        rule_eval_list = []
+        for i, rule_name in enumerate(filter_rules):
+            if i != 0:
+                rule_eval_list.append('and')
 
-def transaction_increment(transaction_number, number_format):
-    """
-    """
-    return(None)
+            rule_str = filter_rules[rule_name]  #dictionary key is a db column name
+            rule_list = [i.strip() for i in \
+                re.split('({})'.format('|'.join([' {} '.format(i) for i in \
+                logical_operators])), rule_str)]
 
-def transaction_code(transaction_number, number_format):
-    """
-    """
-    return(None)
+            for i in rule_list:
+                if i not in chain_operators:
+                    rule_eval_list.append('{}')
+                    conditions.append(i)
+                else:
+                    rule_eval_list.append(i.lower())
+
+        rule_eval_str = ' '.join(rule_eval_list)
+
+        eval_values = []  #stores list of of lists of bools to pass into formatter string
+        for conditional in conditions:
+            parsed_conditional = self.parse_operation_string(conditional)
+
+            eval_str = self.create_eval_str(rule_name, parsed_conditional)
+
+            try:
+                filter_list = list(eval(eval_str))
+            except SyntaxError:
+                print('Warning: tab {TAB}, rule {RULE}: invalid syntax for '\
+                      'error rule {ERROR}'.format(TAB=self.name, \
+                     RULE=self.rule_name, ERROR=rule_name))
+                filter_list = [True for i in range(nrow)]
+                    
+            eval_values.append(filter_list)
+
+        failed = []
+        for row, results in enumerate(zip(*eval_values)):
+            if not all(results):
+                failed.append(row)
+
+        self.df.drop(failed, axis=0, inplace=True)
+        self.df.reset_index(drop=True, inplace=True)
+
 
 def as_key(key):
     """

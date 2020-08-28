@@ -507,7 +507,8 @@ def main():
 
                 if not has_value:
                     param_desc = param.description
-                    msg = _('Input required for the "{}" field').format(param_desc)
+                    msg = _('Correctly formatted input is required in the '\
+                            '"{}" field').format(param_desc)
                     win2.popup_notice(msg)
 
                 inputs.append(has_value)
@@ -535,7 +536,7 @@ def main():
                     tab_keys.append(tab_key)
 
                     # Extract data from database
-                    df = db.query(tab.db_table, tab.db_columns, filters)
+                    df = db.query(tab.db_table, columns=tab.db_columns, filter_rules=filters)
 
                     # Update tab object and elements
                     tab.df = df  #update tab data
@@ -551,9 +552,10 @@ def main():
             tg_key = rule.key_lookup('TG')
             current_tab = window[tg_key].Get()
 
-            # Get current tab object
+            # Get current tab object and rule parameters
             tab = rule.fetch_tab(current_tab, by_key=True)
             params = rule.parameters
+            db_tables = rule.tables
 
             # Remove row from table when row is double-clicked.
             tbl_key = tab.key_lookup('Table')
@@ -566,7 +568,7 @@ def main():
                 print('Info: removing row {ROW} from table element {TBL}'\
                     .format(ROW=row, TBL=tbl_key))
 
-                tab.df.drop(row, inplace=True)
+                tab.df.drop(row, axis=0, inplace=True)
                 tab.df.reset_index(drop=True, inplace=True)
 
                 tab.update_table(window)
@@ -582,8 +584,8 @@ def main():
                 new_id = values[input_key]
                 all_ids = tab.row_ids()
                 if not new_id in all_ids:
-                    filters = [('{} = ?'.format(tab.db_key), (new_id,))]
-                    new_row = db.query(tab.db_table, tab.db_columns, filters)
+                    filters = (tab.db_key, '= ?', (new_id,))
+                    new_row = db.query(tab.db_table, columns=tab.db_columns, filter_rules=filters)
                 else:
                     msg = _("{} is already in the table").format(new_id)
                     win2.popup_notice(msg)
@@ -610,7 +612,7 @@ def main():
                 # Run schema action methods
                 print('Info: running audit on the {NAME} data'\
                       .format(NAME=tab.name))
-                tab.run_audit(window, database=db, parameters=params)
+                tab.run_audit(window, database=db, parameters=params, tables=db_tables)
 #
                 # Update information elements - most actions modify tab data 
                 # in some way.

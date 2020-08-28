@@ -580,7 +580,7 @@ class DataBase:
             print('Connection to database {} not established'.format(self.dbname))
             return(None)
 
-        colnames = ', '.join(columns) if type(colnames) == type(list()) else columns
+        colnames = ', '.join(columns) if type(columns) == type(list()) else columns
 
         # Construct filtering rules
         if type(filter_rules) == type(list()):
@@ -590,14 +590,14 @@ class DataBase:
                 for item in param_tup:
                     params_list.append(item)
             params = tuple(params_list)
-            query_str = 'SELECT {COLS} FROM {TABLE}'.format(COLS=colnames, \
-                TABLE=table, ' AND '.join(['{COL} {OPER}'.format(COl=i[0], \
-                OPER=i[1]) for i in filter_rules]))
+            where_clause = ' AND '.join(['{} {}'.format(*i[0:2]) for i in filter_rules])
+            query_str = 'SELECT {COLS} FROM {TABLE} WHERE {FILTER}'\
+                .format(COLS=colnames, TABLE=table, FILTER=where_clause)
         elif type(filter_rules) == type(tuple()):
             col, oper, params = filter_rules
+            where_clause = '{COLNAME} {OPER}'.format(COLNAME=col, OPER=oper)
             query_str = 'SELECT {COLS} FROM {TABLE} WHERE {FILTER};'\
-                .format(COLS=colnames, TABLE=table, '{COL} {OPER}'\
-                .format(COL=col, OPER=oper))
+                .format(COLS=colnames, TABLE=table, FILTER=where_clause)
         else:
             query_str = 'SELECT {COLS} FROM {TABLE}'.format(COLS=colnames, TABLE=table)
 
