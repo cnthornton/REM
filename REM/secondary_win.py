@@ -218,18 +218,13 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
 
     return(account)
 
-def import_window(df, db, table, db_key, win_size:tuple=(1920, 1080)):
+def import_window(df, win_size:tuple=(1920, 1080)):
     """
     Display the transaction importer window.
     """
     # Format dataframe as list for input into sg
     data = df.values.tolist()
     header = df.columns.values.tolist()
-
-    key_index = header.index(db_key)
-
-    # Transaction information
-    row_keys = [i[key_index] for i in data]
     all_rows = list(range(df.shape[0]))
 
     # Window and element size parameters
@@ -278,7 +273,7 @@ def import_window(df, db, table, db_key, win_size:tuple=(1920, 1080)):
             except IndexError:  #empty table
                 continue
 
-            print('Row selected is {}'.format(row_index))
+            print('Info: Importer: row selected is {}'.format(row_index))
 
             if row_index != None and row_index not in vfy_orders:
                 vfy_orders.append(row_index)  #add row to list of verified
@@ -287,7 +282,8 @@ def import_window(df, db, table, db_key, win_size:tuple=(1920, 1080)):
                 vfy_orders.remove(row_index)  #remove row from list of verified
 
             # Get row colors for rows that have been selected
-            print('Selected orders are {}'.format(', '.join([str(i) for i in vfy_orders])))
+            print('Info: Importer: selected orders are {}'\
+                .format(', '.join([str(i) for i in vfy_orders])))
             selected = [(i, tbl_vfy_col) for i in vfy_orders]
 
             # Get row colors for rows that have not been selected
