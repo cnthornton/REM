@@ -26,7 +26,7 @@ class Schema:
         self.action_elements = ['Audit', 'Input', 'Add']
         self._actions = ['scan', 'cc', 'errors']
 
-        self.actions = []  
+        self.actions = {}
         self.id_format = []
 
         try:
@@ -61,11 +61,11 @@ class Schema:
         try:
             actions = tdict['AuditMethods']
         except KeyError:
-            self.actions = []
+            self.actions = {}
         else:
             for action in actions:
                 if action in self._actions:
-                    self.actions.append(action)
+                    self.actions[action] = actions[action]
                 else:
                     print('Configuration Warning: tab {NAME}, rule {RULE}: '\
                           'unknown audit method specified {METHOD}'\
@@ -243,6 +243,17 @@ class Schema:
                 break
 
         return(comp_value)
+
+    def get_component(self, comp_id):
+        """
+        """
+        comp_tup = None
+        for component in self.id_components:
+            comp_name, comp_value, comp_index = component
+            if comp_name == comp_id:
+                comp_tup = component
+
+        return(comp_tup)
 
     def parse_operation_string(self, rule):
         """
@@ -424,7 +435,7 @@ class Schema:
         """
         method_map = {'scan': self.scan_for_missing, 
                       'errors': self.search_for_errors,
-                      'cc': self.crosscheck_reference}
+                      'cc': self.cross_check_reference}
 
         for action in self.actions:
             action_function = method_map[action]
@@ -443,6 +454,8 @@ class Schema:
         """
         Search for missing transactions using scan.
         """
+        dparse = dateutil.parser.parse
+
         # Arguments
         db = kwargs['database']
         audit_params = kwargs['parameters']
@@ -456,7 +469,7 @@ class Schema:
         pkey = self.db_key.lower()  #for PostGreSQL only
         df = self.df
         df.sort_values(by=[pkey], inplace=True, ascending=True)
-        pkey_list = df[pkey].tolist()
+        id_list = df[pkey].tolist()
 
         # Format audit parameters
         for audit_param in audit_params:
@@ -464,8 +477,7 @@ class Schema:
                 date_col = audit_param.name
                 date_fmt = audit_param.format
                 try:
-                    audit_date = dateutil.parser.parse(audit_param.value, \
-                        dayfirst=True)
+                    audit_date = dparse(audit_param.value, dayfirst=True)
                 except dateutil.parser._parser.ParserError:
                     print('Warning: no date provided ... skipping checks for most recent ID')
                     audit_date = None
@@ -476,7 +488,7 @@ class Schema:
         missing_transactions = []
 
         try:
-            first_id = pkey_list[0]
+            first_id = id_list[0]
         except IndexError:  #no data in dataframe
             print('Warning: {NAME} Audit: no transactions for audit date {DATE}'\
                 .format(NAME=self.name, DATE=audit_date_iso))
@@ -491,7 +503,7 @@ class Schema:
         query_str = 'SELECT DISTINCT {DATE} from {TBL}'.format(DATE=date_col, TBL=self.db_table)
         cursor.execute(query_str)
 
-        unq_dates = [dateutil.parser.parse(row[0], dayfirst=True) for row in cursor.fetchall()]
+        unq_dates = [dparse(row[0], dayfirst=True) for row in cursor.fetchall()]
         unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
         unq_dates_iso.sort()
 
@@ -503,7 +515,7 @@ class Schema:
             return(False)
 
         try:
-            prev_date = dateutil.parser.parse(unq_dates_iso[current_date_index - 1])
+            prev_date = dparse(unq_dates_iso[current_date_index - 1])
         except IndexError:
             prev_date = None
 
@@ -553,7 +565,7 @@ class Schema:
 
         ## Search for skipped transaction numbers
         prev_number = first_number_comp
-        for transaction_id in pkey_list[1:]:
+        for transaction_id in id_list[1:]:
             trans_number = int(self.get_id_component(transaction_id, 'variable'))
             if (prev_number + 1) != trans_number:
                 missing_range = list(range(prev_number + 1, trans_number))
@@ -583,7 +595,7 @@ class Schema:
         df.sort_values(by=[pkey], inplace=True, ascending=True)
         df.reset_index(drop=True, inplace=True)
         self.df = df
-        print('New size of {0} dataframe is {1} rows and {2} columns'\
+        print('Info: new size of {0} dataframe is {1} rows and {2} columns'\
             .format(self.name, *df.shape))
 
         # Inform main thread that sub-thread has completed its operations
@@ -594,6 +606,7 @@ class Schema:
         Use error rules specified in configuration file to annotate rows.
         """
         operators = set('>=<')
+        strptime = datetime.datetime.strptime
 
         db = kwargs['database']
         audit_params = kwargs['parameters']
@@ -604,7 +617,31 @@ class Schema:
         headers = self.df.columns.values.tolist()
         pkey = self.db_key if self.db_key in headers else self.db_key.lower()
 
-        #Transaction ID errors
+        # Update ID components with parameter values
+        self.update_id_components(audit_params)
+
+        # Transaction ID errors
+        try:
+            date_cnfg = config.format_date_str(self.get_component('date')[1])
+        except TypeError:
+            date_cnfg = None
+
+        id_list = self.df[pkey].tolist()
+        for index, trans_id in enumerate(id_list):
+            trans_number_comp = self.get_id_component(trans_id, 'variable')
+            if date_cnfg:
+                trans_date_comp = self.get_id_component(trans_id, 'date')
+                date = strptime(trans_date_comp, date_cnfg)
+            else:
+                date = None
+
+            trans_id_fmt = self.format_id(trans_number_comp, date=date)
+            if trans_id != trans_id_fmt:
+                print('Info: {NAME} Audit: transaction ID {ID} does not comply '\
+                      'with format specified in configuration'\
+                      .format(NAME=self.name, ID=trans_id))
+                if index not in self.errors:
+                    self.errors.append(index)
 
         # Defined rule errors
         error_rules = self.error_rules
@@ -653,11 +690,26 @@ class Schema:
         # Inform main thread that sub-thread has completed its operations
 #        window.write_event_value('-THREAD_DONE-', '')
 
-    def crosscheck_reference(self, *args, **kwargs):
+    def cross_check_reference(self, *args, **kwargs):
         """
         """
-        pass
+        # Arguments
+        db = kwargs['database']
+        audit_params = kwargs['parameters']
+        window = args[0]
 
+        # Update ID components with parameter values
+        self.update_id_components(audit_params)
+
+        # Tab attributes
+        method_rules = self.actions['cc']
+
+        cursor = db.cnxn.cursor()
+
+        df = self.df
+        headers = self.df.columns.values.tolist()
+        pkey = self.db_key if self.db_key in headers else self.db_key.lower()
+        df.sort_values(by=[pkey], inplace=True, ascending=True)
 
 def transaction_date(transaction_number, number_format):
     """

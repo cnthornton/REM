@@ -195,11 +195,13 @@ def reset_to_default(window, rule):
 
     # Reset audit parameters. Audit specific parameters include actions
     # buttons Scan and Confirm, for instance.
+    rule.toggle_parameters(window, 'enable')
 
     # Reset parameter element values
     params = rule.parameters
     for param in params:
-        print('Re-setting rule parameter element {} to default'.format(param.name))
+        print('Info: resetting rule parameter element {} to default'\
+            .format(param.name))
         window[param.element_key].update(value='')
         try:
             window[param.element_key2].update(vaue='')
@@ -275,6 +277,8 @@ def main():
 
     cancel_keys =  [i.key_lookup('Cancel') for i in cp.audit_rules]
     start_keys = [i.key_lookup('Start') for i in cp.audit_rules]
+
+    date_key = None
 
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
     report_tx = 'Summary Report'
@@ -445,11 +449,55 @@ def main():
             tab_windows = [i.name for i in rule.tabs]
             final_index = len(tab_windows) - 1
 
+            # Set up variables for updating date parameter fields
+            date_param = rule.fetch_parameter('date', by_type=True)
+            try:
+                date_key = rule.key_lookup(date_param.name)
+            except AttributeError:
+                date_key = None
+
+            date_str = []
+
             print('Info: the panel in view is {} with tabs {}'\
                 .format(rule.name, ', '.join(tab_windows)))
 
+        # Format date parameter field, if used in audit rule
+        if event == date_key:
+            elem_value = values[date_key]
+            input_value = elem_value.replace('-', '')
+
+            if len(input_value) > 8:  #don't go beyond acceptible size
+                date_str_fmt = date_param.format_date_element(date_str)
+                window[date_key].update(value=date_str_fmt)
+                continue
+
+            if input_value and not input_value.isnumeric():
+                date_str_fmt = date_param.format_date_element(date_str)
+                window[date_key].update(value=date_str_fmt)
+                continue
+
+            if len(input_value) > len(date_str):  #add character
+                date_str.append(input_value[-1])
+                print('Info: added character {} to date string'.format(input_value[-1]))
+
+                date_str_fmt = date_param.format_date_element(date_str)
+                window[date_key].update(value=date_str_fmt)
+            elif len(input_value) < len(date_str):  #remove character
+                removed_char = date_str.pop()
+                print('Info: removed character {} from date string'.format(removed_char))
+
+                date_str_fmt = date_param.format_date_element(date_str)
+                window[date_key].update(value=date_str_fmt)
+            else:
+                date_str_fmt = date_param.format_date_element(date_str)
+                window[date_key].update(value=date_str_fmt)
+
         # Start the selected audit
-        if event in start_keys:
+        try:
+            start_key = rule.key_lookup('Start')
+        except AttributeError:
+            start_key = None
+        if event == start_key:
             # Check if all rule parameters elements have input
             params = rule.parameters
             inputs = []
@@ -471,9 +519,10 @@ def main():
                     .format(rule.name, ', '.join(['{}={}'\
                     .format(i.name, i.value) for i in params])))
 
-                # Disable start key
+                # Disable start button and parameter elements
                 start_key = rule.key_lookup('Start')
                 window[start_key].update(disabled=True)
+                rule.toggle_parameters(window, 'disable')
 
                 # Prepare the filter rules to filter query results
                 rule_params = rule.parameters  #to filter data tables

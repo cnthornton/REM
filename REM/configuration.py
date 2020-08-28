@@ -2,6 +2,8 @@
 REM configuration classes and functions. Includes audit rules, audit objects,
 and rule parameters.
 """
+import datetime
+import dateutil.parser
 import pandas as pd
 import pyodbc
 import PySimpleGUI as sg
@@ -107,7 +109,7 @@ class AuditRule:
             cdict = params[param]
             self.elements.append(param)
 
-            layout = cdict['Element Type']
+            layout = cdict['ElementType']
             if layout == 'dropdown':
                 self.parameters.append(AuditParameterCombo(name, param, cdict))
             elif layout == 'date':
@@ -147,22 +149,29 @@ class AuditRule:
         
         return(tab_item)
 
-    def fetch_parameter(self, name, by_key:bool=False, ):
+    def fetch_parameter(self, name, by_key:bool=False, by_type:bool=False):
         """
         """
-        if not by_key:
-            names = [i.name for i in self.parameters]
-        else:
+        if by_key and by_type:
+            print('Warning: the "by_key" and "by_type" arguments are mutually '\
+                  'exclusive. Defaulting to "by_key".')
+            by_type = False
+
+        if by_key:
             names = [i.element_key for i in self.parameters]
+        elif by_type:
+            names = [i.type for i in self.parameters]
+        else:
+            names = [i.name for i in self.parameters]
 
         try:
             index = names.index(name)
         except IndexError:
-            control_item = None
+            param = None
         else:
-            control_item = self.parameters[index]
+            param = self.parameters[index]
         
-        return(control_item)
+        return(param)
 
     def layout(self):
         """
@@ -233,6 +242,20 @@ class AuditRule:
 
         return(layout)
 
+    def toggle_parameters(self, window, value='enable'):
+        """
+        Enable / Disable audit rule parameter elements.
+        """
+        status = False if value == 'enable' else True
+
+        for parameter in self.parameters:
+            element_key = parameter.element_key
+            print('Info: parameter {NAME}, rule {RULE}: updated element to '\
+                  '"disabled={VAL}"'.format(NAME=parameter.name, \
+                  RULE=self.name, VAL=status))
+
+            window[element_key].update(disabled=status)
+
 
 class AuditParameter:
     """
@@ -241,9 +264,10 @@ class AuditParameter:
     def __init__(self, rule_name, name, cdict):
         
         self.name = name
+        self.rule_name = rule_name
         self.element_key = lo.as_key('{} {}'.format(rule_name, name))
         self.description = cdict['Description']
-        self.type = cdict['Element Type']
+        self.type = cdict['ElementType']
 
         # Dynamic attributes
         self.value = None
@@ -256,8 +280,16 @@ class AuditParameter:
 
             values: dictionary of window element values.
         """
-        elem_key = self.element_key
-        self.value = values[elem_key]
+        try:
+            elem_key = self.element_key
+        except KeyError:
+            print('Warning: parameter {PARAM}, rule {RULE}: no values set for '\
+                  'parameter'.format(PARAM=self.name, RULE=self.rule_name))
+            value = ''
+        else:
+            value = values[elem_key]
+
+        self.value = value
 
     def values_set(self):
         """
@@ -322,9 +354,11 @@ class AuditParameterDate(AuditParameter):
     def __init__(self, rule_name, name, cdict):
         super().__init__(rule_name, name, cdict)
         try:
-            self.format = format_date_str(cdict['Date Format'])
+            self.format = format_date_str(cdict['DateFormat'])
         except KeyError:
             self.format = format_date_str("DD/MM/YYYY")
+
+        self.value_raw = ''
 
     def layout(self):
         """
@@ -348,6 +382,58 @@ class AuditParameterDate(AuditParameter):
                      tooltip=_('Select date from calendar menu'))]
 
         return(layout)
+
+    def set_value(self, values):
+        """
+        Set the value of the parameter element from user input.
+
+        Arguments:
+
+            values: dictionary of window element values.
+        """
+        dparse = dateutil.parser.parse
+
+        elem_key = self.element_key
+
+        try:
+            value_raw = values[elem_key]
+        except KeyError:
+            print('Warning: parameter {PARAM}, rule {RULE}: no values set for '\
+                  'parameter'.format(PARAM=self.name, RULE=self.rule_name))
+            value_fmt = ''
+            value_raw = ''
+        else:
+            try:
+                date = dparse(value_raw, yearfirst=True)
+            except dateutil.parser._parser.ParserError:
+                value_fmt = ''
+                value_raw = ''
+            else:
+                value_fmt = date.strftime(self.format)
+
+        self.value = value_fmt
+        self.value_raw = value_raw
+
+    def format_date_element(self, date_str):
+        """
+        Forces user input to date element to be in ISO format.
+        """
+        buff = []
+        for index, char in enumerate(date_str):
+            if index == 3:
+                if len(date_str) != 4:
+                    buff.append('{}-'.format(char))
+                else:
+                    buff.append(char)
+            elif index == 5:
+                if len(date_str) != 6:
+                    buff.append('{}-'.format(char))
+                else:
+                    buff.append(char)
+            else:
+                buff.append(char)
+
+        return(''.join(buff))
 
 
 class AuditParameterDateRange(AuditParameterDate):
