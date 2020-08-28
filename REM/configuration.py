@@ -100,6 +100,7 @@ class AuditRule:
         self.name = name
         self.element_key = lo.as_key(name)
         self.permissions = adict['Permissions']
+        self.tables = adict['DatabaseTables']
         self.parameters = []
         self.tabs = []
         self.elements = ['TG', 'Cancel', 'Start', 'Finalize']
@@ -307,9 +308,9 @@ class AuditParameter:
         db_field = self.name
         value = self.value
         if value:
-            statement = ("{KEY} = ?".format(KEY=db_field), (value,))
+            statement = (db_field, '= ?', (value,))
         else:
-            statement = ""
+            statement = None
 
         return(statement)
 
@@ -369,7 +370,7 @@ class AuditParameterDate(AuditParameter):
         pad_h = const.HORZ_PAD
         date_ico = const.CALENDAR_ICON
 
-        desc = self.description
+        desc = '{}:'.format(self.description)
 
         key = self.element_key
         layout = [sg.Text(desc, pad=((0, pad_el), (0, pad_v))),
@@ -413,6 +414,19 @@ class AuditParameterDate(AuditParameter):
 
         self.value = value_fmt
         self.value_raw = value_raw
+
+    def values_set(self):
+        """
+        Check whether all values attributes have been set with correct 
+        formatting.
+        """
+        value = self.value_raw
+
+        input_date = value.replace('-', '')
+        if input_date and len(input_date) == 8:
+            return(True)
+        else:
+            return(False)
 
     def format_date_element(self, date_str):
         """
@@ -487,7 +501,7 @@ class AuditParameterDateRange(AuditParameterDate):
         db_field = self.name
 
         params = (self.value, self.value2)
-        statement = ("{KEY} BETWEEN ? AND ?".format(KEY=db_field), params)
+        statement = (db_field, 'BETWEEN ? AND ?', params)
 
         return(statement)
 
@@ -542,38 +556,52 @@ class DataBase:
         self.dbname = database
         self.cnxn = None
 
-    def query(self, table, columns, filter_rules):
+    def query(self, table, columns='*', filter_rules=None):
         """
         Query database for the given order number.
 
         Arguments:
 
-            params (dict): Tab-specific database parameters.
+            table (str): Database table to pull data from.
 
-            filter_rules (list): List of tuples, each containing three 
-                elements: column name, operator, and value.
+            columns: List or string containing the columns to select from the 
+                database table.
+
+            filter_rules: Tuple or list of tuples containing column name, 
+                operator, and value for a given filter rule.
+
+            columns ():
         """
         # Connect to database
         conn = self.cnxn
-
-        if not conn:
+        try:
+            cursor = conn.cursor()
+        except AttributeError:
             print('Connection to database {} not established'.format(self.dbname))
             return(None)
 
-        cursor = conn.cursor()
+        colnames = ', '.join(columns) if type(colnames) == type(list()) else columns
 
         # Construct filtering rules
-        where_str = ' AND '.join([i[0] for i in filter_rules])
-        params = ()
-        for j in [i[1] for i in filter_rules]:
-            params += j
+        if type(filter_rules) == type(list()):
+            params_list = []
+            for rule in filter_rules:
+                param_tup = rule[2]
+                for item in param_tup:
+                    params_list.append(item)
+            params = tuple(params_list)
+            query_str = 'SELECT {COLS} FROM {TABLE}'.format(COLS=colnames, \
+                TABLE=table, ' AND '.join(['{COL} {OPER}'.format(COl=i[0], \
+                OPER=i[1]) for i in filter_rules]))
+        elif type(filter_rules) == type(tuple()):
+            col, oper, params = filter_rules
+            query_str = 'SELECT {COLS} FROM {TABLE} WHERE {FILTER};'\
+                .format(COLS=colnames, TABLE=table, '{COL} {OPER}'\
+                .format(COL=col, OPER=oper))
+        else:
+            query_str = 'SELECT {COLS} FROM {TABLE}'.format(COLS=colnames, TABLE=table)
 
         # Query database and format results as a Pandas dataframe
-        colnames = ', '.join(columns)
-        dbname = self.dbname
-        query_str = 'SELECT {COLS} FROM {TABLE} WHERE {FILTER};'\
-            .format(COLS=colnames, TABLE=table, FILTER=where_str)
-
         df = pd.read_sql(query_str, conn, params=params)
 
         cursor.close()
@@ -582,7 +610,7 @@ class DataBase:
 
     def authenticate(self, uid, pwd):
         """
-        Query database as user to validate sign-on.
+        Query database to validate sign-on and obtain user group information.
 
         Arguments:
 
