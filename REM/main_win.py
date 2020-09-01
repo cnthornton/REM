@@ -223,6 +223,11 @@ def reset_to_default(window, rule):
         ## Reset table element
         table_key = tab.key_lookup('Table')
         window[table_key].update(values=tab.df.values.tolist())
+        headers = list(tab.display_columns.keys())
+        lengths = lo.calc_column_widths(headers, pixels=True)
+        for col_index, col_name in enumerate(headers):
+            col_width = lengths[col_index]
+            window[table_key].Widget.column(col_name, width=col_width)
 
         ## Reset summary element
         summary_key = tab.key_lookup('Summary')
@@ -408,7 +413,6 @@ def main():
                 debug_win.close()
                 debug_win = None
 
-        # Cancel action - code block must remain on top
         if not audit_in_progress and event in cancel_keys:
             rule = reset_to_default(window, rule)
             continue
@@ -497,6 +501,7 @@ def main():
             start_key = rule.key_lookup('Start')
         except AttributeError:
             start_key = None
+
         if event == start_key:
             # Check if all rule parameters elements have input
             params = rule.parameters
@@ -525,21 +530,44 @@ def main():
                 window[start_key].update(disabled=True)
                 rule.toggle_parameters(window, 'disable')
 
-                # Prepare the filter rules to filter query results
-                rule_params = rule.parameters  #to filter data tables
-                filters = [i.filter_statement() for i in rule_params]
-
                 # Initialize audit
                 tab_keys = []  #to track tabs displayed
                 for tab in rule.tabs:
                     tab_key = tab.element_key
                     tab_keys.append(tab_key)
 
+                    # Prepare the filter rules to filter query results
+                    main_table = [i for i in tab.db_tables][0]
+                    rule_params = rule.parameters  #to filter data tables
+                    filters = [i.filter_statement(table=main_table) for i in \
+                               rule_params]
+
+                    # Check for tab-specific query parameters
+                    tab_params = tab.tab_parameters
+                    if tab_params:
+                        print('Info: adding {TAB} parameters {PARAMS} to '\
+                              'current filter rules {FILT}'\
+                              .format(TAB=tab.name, PARAMS=tab_params, \
+                              FILT=filters))
+                        for tab_param in tab_params:
+                            tab_param_value = tab_params[tab_param]
+
+                            # Find corresponding column ID from TableColumns
+                            tab_param_col = tab.get_query_column(tab_param)
+                            if not tab_param_col:
+                                continue
+
+                            # Append tab filter rule to query filter rules
+                            filters.append((tab_param_col, '= ?', \
+                                (tab_param_value,)))
+
                     # Extract data from database
-                    df = db.query(tab.db_table, columns=tab.db_columns, filter_rules=filters)
+                    df = db.query(tab.db_tables, columns=tab.db_columns, \
+                        filter_rules=filters)
 
                     # Update tab object and elements
                     tab.df = df  #update tab data
+                    tab.update_id_components(rule_params)
                     tab.update_table(window)  #display tab data in table
                     tab.update_summary(window)  #summarize individual tab data
 
@@ -555,7 +583,6 @@ def main():
             # Get current tab object and rule parameters
             tab = rule.fetch_tab(current_tab, by_key=True)
             params = rule.parameters
-            db_tables = rule.tables
 
             # Remove row from table when row is double-clicked.
             tbl_key = tab.key_lookup('Table')
@@ -585,7 +612,7 @@ def main():
                 all_ids = tab.row_ids()
                 if not new_id in all_ids:
                     filters = (tab.db_key, '= ?', (new_id,))
-                    new_row = db.query(tab.db_table, columns=tab.db_columns, filter_rules=filters)
+                    new_row = db.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
                 else:
                     msg = _("{} is already in the table").format(new_id)
                     win2.popup_notice(msg)
@@ -612,7 +639,7 @@ def main():
                 # Run schema action methods
                 print('Info: running audit on the {NAME} data'\
                       .format(NAME=tab.name))
-                tab.run_audit(window, database=db, parameters=params, tables=db_tables)
+                tab.run_audit(window, database=db, parameters=params)
 #
                 # Update information elements - most actions modify tab data 
                 # in some way.
