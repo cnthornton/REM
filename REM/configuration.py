@@ -9,6 +9,7 @@ import pyodbc
 import PySimpleGUI as sg
 import REM.layouts as lo
 import REM.program_settings as const
+import REM.secondary_win as win2
 import sqlalchemy as sqla
 import yaml
 
@@ -100,12 +101,12 @@ class AuditRule:
         self.name = name
         self.element_key = lo.as_key(name)
         self.permissions = adict['Permissions']
-        self.tables = adict['DatabaseTables']
+
         self.parameters = []
         self.tabs = []
         self.elements = ['TG', 'Cancel', 'Start', 'Finalize']
 
-        params = adict['Parameters']
+        params = adict['RuleParameters']
         for param in params:
             cdict = params[param]
             self.elements.append(param)
@@ -301,11 +302,15 @@ class AuditParameter:
         else:
             return(False)
 
-    def filter_statement(self):
+    def filter_statement(self, table=None):
         """
         Generate the filter clause for SQL querying.
         """
-        db_field = self.name
+        if table:
+            db_field = '{}.{}'.format(table, self.name)
+        else:
+            db_field = self.name
+
         value = self.value
         if value:
             statement = (db_field, '= ?', (value,))
@@ -494,11 +499,14 @@ class AuditParameterDateRange(AuditParameterDate):
 
         return(layout)
 
-    def filter_statement(self):
+    def filter_statement(self, table=None):
         """
         Generate the filter clause for SQL querying.
         """
-        db_field = self.name
+        if table:
+            db_field = '{}.{}'.format(table, self.name)
+        else:
+            db_field = self.name
 
         params = (self.value, self.value2)
         statement = (db_field, 'BETWEEN ? AND ?', params)
@@ -556,13 +564,13 @@ class DataBase:
         self.dbname = database
         self.cnxn = None
 
-    def query(self, table, columns='*', filter_rules=None):
+    def query(self, tables, columns='*', filter_rules=None, order=None):
         """
         Query database for the given order number.
 
         Arguments:
 
-            table (str): Database table to pull data from.
+            tables (str): Database table to pull data from.
 
             columns: List or string containing the columns to select from the 
                 database table.
@@ -570,8 +578,13 @@ class DataBase:
             filter_rules: Tuple or list of tuples containing column name, 
                 operator, and value for a given filter rule.
 
-            columns ():
+            order: String or tuple of strings containing columns to sort 
+                results by.
         """
+        joins = ('INNER JOIN', 'JOIN', 'LEFT JOIN', 'LEFT OUTER JOIN', 
+                 'RIGHT JOIN', 'RIGHT OUTER JOIN', 'FULL JOIN', 
+                 'FULL OUTER JOIN', 'CROSS JOIN')
+
         # Connect to database
         conn = self.cnxn
         try:
@@ -580,26 +593,62 @@ class DataBase:
             print('Connection to database {} not established'.format(self.dbname))
             return(None)
 
+        # Define sorting component of query statement
+        if type(order) == type(list()):
+            order_by = ' ORDER BY {}'.format(', '.join(order))
+        elif type(order) == type(str()):
+            order_by = ' ORDER BY {}'.format(order)
+        else:
+            order_by = ''
+
+        # Deine column component of query statement
         colnames = ', '.join(columns) if type(columns) == type(list()) else columns
 
+        # Define table component of query statement
+        table_names = [i for i in tables] if type(tables) == type(dict()) or \
+            type(tables) == type(list()) else [tables]
+        first_table = table_names[0]
+        if len(table_names) > 1:
+            table_rules = [first_table]
+            for table in table_names[1:]:
+                table_rule = tables[table]
+                try:
+                    tbl1_field, tbl2_field, join_clause = table_rule
+                except ValueError:
+                    print('Error: table join rule {} requires three '\
+                        'components'.format(table_rule))
+                    continue
+                if join_clause not in joins:
+                    print('Error: unknown join type {JOIN} in {RULE} '
+                          ''.format(JOIN=join_clause, RULE=table_rule))
+                    continue
+                join_statement = '{JOIN} {TABLE} ON {F1}={F2}'\
+                    .format(JOIN=join_clause, TABLE=table, F1=tbl1_field, \
+                    F2=tbl2_field)
+                table_rules.append(join_statement)
+            table_component = ' '.join(table_rules)
+        else:
+            table_component = first_table
+
         # Construct filtering rules
-        if type(filter_rules) == type(list()):
+        if type(filter_rules) == type(list()):  #multiple filter parameters
             params_list = []
             for rule in filter_rules:
                 param_tup = rule[2]
                 for item in param_tup:
                     params_list.append(item)
             params = tuple(params_list)
-            where_clause = ' AND '.join(['{} {}'.format(*i[0:2]) for i in filter_rules])
-            query_str = 'SELECT {COLS} FROM {TABLE} WHERE {FILTER}'\
-                .format(COLS=colnames, TABLE=table, FILTER=where_clause)
-        elif type(filter_rules) == type(tuple()):
+            where_clause = 'WHERE {}'\
+                .format(' AND '.join(['{} {}'.format(*i[0:2]) for i in filter_rules]))
+        elif type(filter_rules) == type(tuple()):  #single filter parameter
             col, oper, params = filter_rules
-            where_clause = '{COLNAME} {OPER}'.format(COLNAME=col, OPER=oper)
-            query_str = 'SELECT {COLS} FROM {TABLE} WHERE {FILTER};'\
-                .format(COLS=colnames, TABLE=table, FILTER=where_clause)
-        else:
-            query_str = 'SELECT {COLS} FROM {TABLE}'.format(COLS=colnames, TABLE=table)
+            where_clause = 'WHERE {COLNAME} {OPER}'.format(COLNAME=col, OPER=oper)
+        else:  #no filters
+            where_clause = ''
+
+        query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'\
+            .format(COLS=colnames, TABLE=table_component, WHERE=where_clause, \
+            SORT=order_by)
 
         # Query database and format results as a Pandas dataframe
         df = pd.read_sql(query_str, conn, params=params)

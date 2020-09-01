@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import re
 import REM.configuration as config
+import REM.data_manipulation as dm
 import REM.program_settings as const
 import REM.secondary_win as win2
 import sys
@@ -24,39 +25,50 @@ class Schema:
         self.element_key = as_key(element_name)
         self.data_elements = ['Table', 'Summary']
         self.action_elements = ['Audit', 'Input', 'Add']
-        self._actions = ['scan', 'filter', 'errors']
+        self._actions = ['scan', 'filter']
 
         self.actions = []
         self.id_format = []
 
         try:
-            columns = tdict['DisplayColumns']
+            tables = tdict['DatabaseTables']
         except KeyError:
             msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing '\
                    'required field "DisplayColumns".')\
                    .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
-        self.db_columns = columns
-
-        db_key = tdict['PrimaryKey']
-        if db_key not in columns:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: item '\
-                    'PrimaryKey "{KEY}" must also be contained in the '\
-                    'Display Column.').format(NAME=name, RULE=rule_name, \
-                    KEY=db_key)
-            win2.popup_error(msg)
-            sys.exit(1)
-        self.db_key = db_key
+        self.db_tables = tables
 
         try:
-            self.db_table = tdict['DatabaseTable']
+            pkey = tdict['IDField']
         except KeyError:
             msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing '\
-                   'required field "DatabaseTable".')\
+                   'required field "IDField".')\
                    .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
+        self.db_key = pkey
+
+        try:
+            all_columns = tdict['TableColumns']
+        except KeyError:
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing '\
+                   'required field "DisplayColumns".')\
+                   .format(NAME=name, RULE=rule_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        self.db_columns = all_columns
+
+        try:
+            display_columns = tdict['DisplayColumns']
+        except KeyError:
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing '\
+                   'required field "DisplayColumns".')\
+                   .format(NAME=name, RULE=rule_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        self.display_columns = display_columns
 
         try:
             actions = tdict['AuditMethods']
@@ -70,6 +82,16 @@ class Schema:
                     print('Configuration Warning: tab {NAME}, rule {RULE}: '\
                           'unknown audit method specified {METHOD}'\
                           .format(Name=name, RULE=rule_name, METHOD=action))
+
+        try:
+            self.tab_parameters = tdict['TabParameters']
+        except KeyError:
+            self.tab_parameters = None
+
+        try:
+            self.aliases = tdict['Aliases']
+        except KeyError:
+            self.aliases = []
 
         try:
             self.codes = tdict['Codes']
@@ -101,8 +123,10 @@ class Schema:
             sys.exit(1)
 
         # Dynamic attributes
-        self.df = pd.DataFrame(empty_data_table(nrow=20, ncol=len(columns)), \
-                columns=columns)  #initialize with an empty table
+        display_headers = list(display_columns.keys())
+        ncol = len(display_headers)
+        self.df = pd.DataFrame(empty_data_table(nrow=20, ncol=ncol), \
+            columns=display_headers)  #initialize with an empty table
 
         self.errors = []
         self.audit_performed = False
@@ -112,9 +136,9 @@ class Schema:
         """
         Reset class dynamic attributes to default.
         """
-        headers = self.db_columns
+        headers = list(self.display_columns.keys())
         ncol = len(headers)
-        data = empty_data_table(nrow=10, ncol=ncol)
+        data = empty_data_table(nrow=20, ncol=ncol)
         self.df = pd.DataFrame(data, columns=headers)
         self.errors = []
         self.audit_performed = False
@@ -137,26 +161,162 @@ class Schema:
                       '{ELEM} not found in list of sub-elements'\
                       .format(Name=self.name, RULE=self.rule_name, ELEM=element))
 
+    def get_query_column(self, colname):
+        """
+        Find full query column (Table + Column) from the column name.
+        """
+        table_columns = self.db_columns
+
+        full_col_name = None
+        for table_column in table_columns:
+            try:
+                table_comp, col_comp = table_column.split('.')
+            except IndexError:  #use main table as table portion of full name
+                col_comp = table_column
+                table_comp = [i for i in self.db_tables][0]
+
+            if colname in (col_comp, col_comp.lower()):
+                full_col_name = '{}.{}'.format(table_comp, col_comp)
+                break
+
+        if not full_col_name:
+            print('Warning: tab {NAME}, rule {RULE}: unable to find column '\
+                '{COL} in list of table columns'\
+                .format(NAME=self.name, RULE=self.rule_name, COL=colname))
+
+        return(full_col_name)
+
+    def get_column_name(self, header):
+        """
+        """
+        headers = self.df.columns.values.tolist()
+
+        if header in headers:
+            col_name = header
+        elif header.lower() in headers:
+            col_name = header.lower()
+        else:
+            print('Warning: tab {NAME}, rule {RULE}: column {COL} not in list '\
+                'of table columns'.format(NAME=self.name, RULE=self.rule_name, \
+                COL=header))
+            col_name = None
+
+        return(col_name)
+
+    def format_display_table(self, dataframe):
+        """
+        """
+        chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
+
+        display_columns = self.display_columns
+        display_df = pd.DataFrame()
+
+        # Subset dataframe by specified columns to display
+        orig_cols = {}
+        for col_name in display_columns:
+            col_rule = display_columns[col_name]
+            col_list = [i.strip() for i in \
+                re.split('{}'.format('|'.join([' {} '.format(i) for i in \
+                chain_operators])), col_rule)]  #only return column names
+
+            if len(col_list) > 1:  #column to display is custom
+                merge_cols = []
+                agg_func = sum
+                for i, merge_col in enumerate(col_list):
+                    merge_col_fmt = self.get_column_name(merge_col)
+                    try:
+                        dataframe[merge_col_fmt] = dm.fill_na(dataframe, merge_col_fmt)
+                    except KeyError:  #column not in table
+                        continue
+
+                    merge_cols.append(merge_col_fmt)
+                    orig_cols[merge_col] = col_name
+
+                    # Determine data type of columns and aggregation function 
+                    # to use
+                    if i == 0:  #base on first column in list
+                        dtype = dataframe.dtypes[merge_col_fmt]
+                        if dtype in (np.int64, np.float64):
+                            agg_func = sum
+                        elif dtype == np.object:
+                            agg_func = ' '.join
+                    else:
+                        if dtype != dataframe.dtypes[merge_col_fmt]:
+                            print('Warning: tab {NAME}, rule {RULE}: attempting '\
+                                'to combine columns {COLS} of different types'\
+                                .format(NAME=self.name, RULE=self.rule_name, \
+                                COLS=col_list))
+                            dtype = np.object
+                            agg_func = ' '.join
+                            for item in col_list:
+                                dataframe[item].astype('object')
+
+                try:
+                    display_df[col_name] = dataframe[merge_cols].agg(agg_func, axis=1)
+                except Exception:
+                    raise Exception
+            else:  #column to display already exists in table
+                orig_cols[col_rule] = col_name
+
+                col_to_add = self.get_column_name(col_rule)
+                try:
+                    display_df[col_name] = dm.fill_na(dataframe, col_to_add)
+                except KeyError:
+                    continue
+
+        # Map column values to the aliases specified in the configuration
+        for alias_col in self.aliases:
+            alias_map = self.aliases[alias_col]  #dictionary of mapped values
+
+            try:
+                alias_col_trans = orig_cols[alias_col]
+            except KeyError:
+                print('Warning: tab {NAME}, rule {RULE}: alias {} not found '\
+                      'in the list of display columns'.format(NAME=self.name, \
+                      RULE=self.rule_name))
+                continue
+
+            print('Info: tab {NAME}, rule {RULE}: applying aliases {MAP} to {COL}'.format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col_trans))
+
+            try:
+                display_df[alias_col_trans] = display_df[alias_col_trans].map(alias_map)
+            except KeyError:
+                print('Warning: tab {NAME}, rule {RULE}: alias {} not found '\
+                      'in the list of display columns'.format(NAME=self.name, \
+                      RULE=self.rule_name))
+                continue
+            else:
+                display_df[alias_col_trans].fillna(display_df[alias_col_trans], inplace=True)
+
+        return(display_df)
+
     def update_table(self, window):
         """
         Update Table element with data
         """
         tbl_error_col = const.TBL_ERROR_COL
         tbl_key = self.key_lookup('Table')
+        headers = self.df.columns.values.tolist()
 
+        # Sort rows by ID field
+        db_key = self.get_column_name(self.db_key)
         try:
-            self.df.sort_values(by=[self.db_key], inplace=True, ascending=True)
+            self.df.sort_values(by=[db_key], inplace=True, ascending=True)
         except KeyError:
-            self.df.sort_values(by=[self.db_key.lower()], inplace=True, \
-                ascending=True)
+            print('Warning: tab {NAME}, rule {RULE}: unable to sort table '\
+                'for display'.format(NAME=self.name, RULE=self.rule_name))
 
-        data = self.df.values.tolist()
+        # Modify table for displaying
+        df = self.df
+        display_df = self.format_display_table(df)
+
+        data = display_df.values.tolist()
         window[tbl_key].update(values=data)
 
-        error_rows = self.errors
-        if error_rows:
-            error_colors = [(i, tbl_error_col) for i in error_rows]
-            window[tbl_key].update(row_colors=error_colors)
+        # Highlight rows with identified errors
+        self.search_for_errors()
+        error_colors = [(i, tbl_error_col) for i in self.errors]
+        window[tbl_key].update(row_colors=error_colors)
 
     def update_id_components(self, parameters):
         """
@@ -260,79 +420,6 @@ class Schema:
 
         return(comp_tup)
 
-    def parse_operation_string(self, rule):
-        """
-        Split operation string into a list.
-        """
-        operators = set('+-*/>=<')
-
-        # Find the column names and operators defined in the rule
-        list_out = []
-        buff = []
-        for char in rule:
-            if char in operators:  #char is operator
-                list_out.append(''.join(buff))
-
-                buff = []
-                list_out.append(char)
-            else:  #char is not operator, append to buffer
-                if char.isspace():  #skip whitespace
-                    continue
-                else:
-                    buff.append(char)
-        list_out.append(''.join(buff))
-
-        return(list_out)
-
-    def create_eval_str(self, rule_name, conditional):
-        """
-        Create the string used in the evaluation statment.
-        """
-        operators = set('+-*/<>=')
-
-        rule_value = []
-        for component in conditional:
-            split_component = component.split('.')
-            if component in operators:  #component is an operator
-                if component == '=':
-                    rule_value.append('==')
-                else:
-                    rule_value.append(component)
-            elif len(split_component) > 1:  #component is column name
-                try:
-                    component_table, component_col = split_component
-                except ValueError:  #try including reference to another table
-                    try:
-                        component_table, reference_id, component_col = split_component
-                    except ValueError:
-                        print('Warning: tab {NAME}, rule {RULE}: invalid syntax '\
-                              'for rule {COND}'.format(NAME=self.name, \
-                                RULE=self.rule_name, COND=rule_name))
-                        continue
-                    else:
-                        pass
-                else:
-                    if component_col in headers:
-                        rule_value.append('self.df["{}"]'.format(component_col))
-                    elif component_col.lower() in headers:
-                        rule_value.append('self.df["{}"]'.format(component_col.lower()))
-                    else:
-                        print('Warning: tab {TAB}, rule {RULE}: column {COL} '\
-                              'from rule {COND} not found in column '\
-                              'headers'.format(TAB=self.name, \
-                              RULE=self.rule_name, COL=component_col, \
-                              COND=rule_name))
-                        continue
-            else:  #component is a string or integer
-                rule_value.append(component)
-
-        if len(rule_value) == 1:  #handle case where checking for existence
-            eval_str = '{VAL} != None'.format(VAL=rule_value[0])
-        else:
-            eval_str = ' '.join(rule_value)
-
-        return(eval_str)
-
     def update_summary(self, window):
         """
         Update Summary element with data summary
@@ -375,34 +462,21 @@ class Schema:
         for rule_name in summ_rules:
             rule = summ_rules[rule_name]
             rule_values = []
-            for component in self.parse_operation_string(rule):
-                split_component = component.split('.')
+            for component in dm.parse_operation_string(rule):
+                component_col = self.get_column_name(component)
                 if component in operators:
                     rule_values.append(component)
-                elif len(split_component) > 1:  #component is header column
+                elif component_col:  #component is header column
                     try:
-                        table_name, component_col = split_component
-                    except ValueError:
-                        print('Warning: tab {NAME}, rule {RULE}: unsupported '\
-                              'character "{ITEM}" provided to summary rule '\
-                              '"{SUMM}"'.format(NAME=self.name, \
+                        rule_values.append(totals[component_col])
+                    except KeyError:  #try lower-case
+                        print('Warning: tab {NAME}, rule {RULE}: "{ITEM}" '\
+                              'from summary rule "{SUMM}" not in display '\
+                              'columns'.format(NAME=self.name, \
                               RULE=self.rule_name, ITEM=component, \
                               SUMM=rule_name))
                         rule_values = [0]
                         break
-                    try:
-                        rule_values.append(totals[component_col])
-                    except KeyError:  #try lower-case
-                        try:  #ODBC may be PostGreSQL
-                            rule_values.append(totals[component_col.lower()])
-                        except KeyError:  #not in display columns
-                            print('Warning: tab {NAME}, rule {RULE}: "{ITEM}" '\
-                                  'from summary rule "{SUMM}" not in display '\
-                                  'columns'.format(NAME=self.name, \
-                                  RULE=self.rule_name, ITEM=component, \
-                                  SUMM=rule_name))
-                            rule_values = [0]
-                            break
                 elif component.isnumeric():  #component is integer
                     rule_values.append(component)
                 else:  #component is unsupported character
@@ -484,7 +558,7 @@ class Schema:
                        B2(_('Add'), key=add_key, pad=((0, pad_h), 0), 
                          tooltip=_('Add order to the table'), disabled=True), 
                        B2(_('Audit'), key=audit_key, disabled=True, 
-                         tooltip=_('Run Audit methods'), pad=(0, 0))
+                         tooltip=_('Run Audit methods'), pad=((0, pad_frame), 0))
                    ]], background_color=bg_col)
                  ]]
 
@@ -507,23 +581,85 @@ class Schema:
 
         return(row_ids)
 
+    def sort_table(self, df, ascending:bool=True):
+        """
+        Sort dataframe on primary key defined in configuration.
+        """
+        pkey = self.get_column_name(self.db_key)
+
+        df.sort_values(by=[pkey], inplace=True, ascending=ascending)
+        df.reset_index(drop=True, inplace=True)
+
+        return(df)
+
+    def search_for_errors(self):
+        """
+        Use error rules specified in configuration file to annotate rows.
+        """
+        operators = set('>=<')
+        strptime = datetime.datetime.strptime
+
+        headers = self.df.columns.values.tolist()
+        pkey = self.db_key if self.db_key in headers else self.db_key.lower()
+
+        # Reset list of errors attribute
+        errors = []
+
+        # Search for errors in the transaction ID using ID format
+        try:
+            date_cnfg = config.format_date_str(self.get_component('date')[1])
+        except TypeError:
+            date_cnfg = None
+
+        id_list = self.df[pkey].tolist()
+        for index, trans_id in enumerate(id_list):
+            trans_number_comp = self.get_id_component(trans_id, 'variable')
+            if date_cnfg:
+                trans_date_comp = self.get_id_component(trans_id, 'date')
+                date = strptime(trans_date_comp, date_cnfg)
+            else:
+                date = None
+
+            trans_id_fmt = self.format_id(trans_number_comp, date=date)
+            if trans_id != trans_id_fmt:
+                print('Info: {NAME} Audit: transaction ID {ID} does not comply '\
+                      'with format specified in configuration'\
+                      .format(NAME=self.name, ID=trans_id))
+                if index not in errors:
+                    errors.append(index)
+
+        # Search for errors in the data based on the defined error rules
+        error_rules = self.error_rules
+        for rule_name in error_rules:
+            error_rule = error_rules[rule_name]
+
+            error_list = dm.evaluate_rule(self.df, error_rule)
+            for index, value in enumerate(error_list):
+                if not value:  #False: row failed the error rule test
+                    if index not in self.errors:
+                        errors.append(index)
+
+        self.errors = set(errors)
+
     def run_audit(self, *args, **kwargs):
         """
         """
         method_map = {'scan': self.scan_for_missing, 
-                      'errors': self.search_for_errors,
                       'filter': self.filter_transactions}
 
         for action in self.actions:
+            print('Info: tab {NAME}, rule {RULE}: running audit method {METHOD}'\
+                .format(NAME=self.name, RULE=self.rule_name, METHOD=action))
+            
             action_function = method_map[action]
             try:
-#                threading.Thread(target=action_function, args=args, kwargs=kwargs, daemon=True).start()
-                action_function(*args, **kwargs)
-            except AttributeError:
-                print('Warning: "Schema" class has no method named {METHOD}'\
-                    .format(TAB=self.name, RULE=self.rule_name, \
-                    METHOD=action_function.split('.', 1)[-1]))
-                continue
+                 df = action_function(*args, **kwargs)
+            except Exception as e:
+                print('Warning: tab {NAME}, rule {RULE}: method {METHOD} failed due to {E}'\
+                    .format(NAME=self.name, RULE=self.rule_name, METHOD=action, E=e))
+                raise Exception
+            else:
+                self.df = self.sort_table(df)
 
         self.audit_performed = True
 
@@ -536,23 +672,21 @@ class Schema:
         # Arguments
         db = kwargs['database']
         audit_params = kwargs['parameters']
-        db_tables = kwargs['tables']
         window = args[0]
-
-        # Update ID components with parameter values
-        self.update_id_components(audit_params)
 
         cursor = db.cnxn.cursor()
 
-        pkey = self.db_key.lower()  #for PostGreSQL only
-        df = self.df
-        df.sort_values(by=[pkey], inplace=True, ascending=True)
+        # Class attribites
+        pkey = self.get_column_name(self.db_key)
+        df = self.sort_table(self.df)
         id_list = df[pkey].tolist()
+        db_tables = self.db_tables
+        main_table = [i for i in self.db_tables][0]
 
         # Format audit parameters
         for audit_param in audit_params:
             if audit_param.type.lower() == 'date':
-                date_col = audit_param.name
+                date_col = self.get_query_column(audit_param.name)
                 date_fmt = audit_param.format
                 try:
                     audit_date = dparse(audit_param.value, dayfirst=True)
@@ -578,7 +712,7 @@ class Schema:
               .format(self.name, first_id, first_number_comp, first_date_comp))
 
         ## Find date of last transaction
-        query_str = 'SELECT DISTINCT {DATE} from {TBL}'.format(DATE=date_col, TBL=self.db_table)
+        query_str = 'SELECT DISTINCT {DATE} from {TBL}'.format(DATE=date_col, TBL=main_table)
         cursor.execute(query_str)
 
         unq_dates = [dparse(row[0], dayfirst=True) for row in cursor.fetchall()]
@@ -603,7 +737,7 @@ class Schema:
                   'prior to {DATE}'.format(NAME=self.name, DATE=audit_date_iso))
 
             filters = (date_col, '= ?', (prev_date.strftime(date_fmt),))
-            last_df = db.query(self.db_table, columns=self.db_columns, filter_rules=filters)
+            last_df = db.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
             last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
             last_id = None
@@ -656,147 +790,81 @@ class Schema:
         print('Info: {NAME} Audit: potentially missing transactions: {MISS}'\
             .format(NAME=self.name, MISS=missing_transactions))
 
+        ## Search for missed numbers at end of day
+        last_id_of_df = id_list[-1]
+        filters = (date_col, '= ?', (audit_date.strftime(date_fmt),))
+        current_df = db.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
+        current_df.sort_values(by=[pkey], inplace=True, ascending=False)
+
+        current_ids = current_df[pkey].tolist()
+        for current_id in current_ids:
+            if last_id_of_df == current_id:
+                break
+
+            current_number_comp = int(self.get_id_component(current_id, 'variable'))
+            if current_id == self.format_id(current_number_comp, date=audit_date):
+                missing_transactions.append(current_id)
+
+        # Query database for the potentially missing transactions
         if missing_transactions:
             filter_values = ['?' for i in missing_transactions]
             filter_str = 'IN ({VALUES})'.format(VALUES=', '.join(filter_values))
-            filters = (pkey, filter_str, tuple(missing_transactions))
+            pkey_fmt = self.get_query_column(pkey)
+            filters = [(pkey_fmt, filter_str, tuple(missing_transactions))]
 
-            missing_data = db.query(self.db_table, columns=self.db_columns, filter_rules=filters)
+            # Drop missing transactions if they don't meet tab parameter requirements
+            tab_params = self.tab_parameters
+            for tab_param in tab_params:
+                tab_param_value = tab_params[tab_param]
+                tab_param_col = self.get_query_column(tab_param)
+                if not tab_param_col:
+                    continue
+
+                filters.append((tab_param_col, '= ?', \
+                                (tab_param_value,)))
+
+            missing_data = db.query(self.db_tables, columns=self.db_columns, \
+                filter_rules=filters, order=pkey_fmt)
         else:
-            missing_data = pd.DataFrame(columns=[i.lower() for i in self.db_columns])
+            missing_data = pd.DataFrame(columns=self.df.columns.values.tolist())
 
         # Display import window with potentially missing data
-        import_data = win2.import_window(missing_data)
+        missing_data_fmt = self.format_display_table(self.sort_table(missing_data))
+        import_rows = win2.import_window(missing_data_fmt)
+        import_data = missing_data.iloc[import_rows]
 
         # Updata dataframe with imported data
         df = df.append(import_data, ignore_index=True, sort=False)
-        df.sort_values(by=[pkey], inplace=True, ascending=True)
-        df.reset_index(drop=True, inplace=True)
-        self.df = df
         print('Info: new size of {0} dataframe is {1} rows and {2} columns'\
             .format(self.name, *df.shape))
 
         # Inform main thread that sub-thread has completed its operations
 #        window.write_event_value('-THREAD_DONE-', '')
-
-    def search_for_errors(self, *args, **kwargs):
-        """
-        Use error rules specified in configuration file to annotate rows.
-        """
-        operators = set('>=<')
-        strptime = datetime.datetime.strptime
-
-        audit_params = kwargs['parameters']
-        window = args[0]
-
-        headers = self.df.columns.values.tolist()
-        pkey = self.db_key if self.db_key in headers else self.db_key.lower()
-
-        # Update ID components with parameter values
-        self.update_id_components(audit_params)
-
-        # Transaction ID errors
-        try:
-            date_cnfg = config.format_date_str(self.get_component('date')[1])
-        except TypeError:
-            date_cnfg = None
-
-        id_list = self.df[pkey].tolist()
-        for index, trans_id in enumerate(id_list):
-            trans_number_comp = self.get_id_component(trans_id, 'variable')
-            if date_cnfg:
-                trans_date_comp = self.get_id_component(trans_id, 'date')
-                date = strptime(trans_date_comp, date_cnfg)
-            else:
-                date = None
-
-            trans_id_fmt = self.format_id(trans_number_comp, date=date)
-            if trans_id != trans_id_fmt:
-                print('Info: {NAME} Audit: transaction ID {ID} does not comply '\
-                      'with format specified in configuration'\
-                      .format(NAME=self.name, ID=trans_id))
-                if index not in self.errors:
-                    self.errors.append(index)
-
-        # Defined rule errors
-        error_rules = self.error_rules
-        for rule_name in error_rules:
-            error_rule = error_rules[rule_name]
-            parsed_rule = self.parse_operation_string(error_rule)
-
-            eval_str = self.create_eval_str(rule_name, parsed_rule)
-#            for component in parsed_rule:
-#                split_component = component.split('.')
-#                if component in operators:  #component is an operator
-#                    if component == '=':
-#                        rule_value.append('==')
-#                    else:
-#                        rule_value.append(component)
-#                elif len(split_component) > 1:  #component is column name
-#                    try:
-#                        component_table, component_col = split_component
-#                    except ValueError:
-#                        print('Warning: tab {TAB}, rule {RULE}: invalid syntax '\
-#                              'for error rule {ERROR}'.format(TAB=self.name, \
-#                              RULE=self.rule_name, ERROR=rule_name))
-#                        continue
-#                    
-#                    if component_col in headers:
-#                        rule_value.append('self.df["{}"]'.format(component_col))
-#                    elif component_col.lower() in headers:
-#                        rule_value.append('self.df["{}"]'.format(component_col.lower()))
-#                    else:
-#                        print('Warning: tab {TAB}, rule {RULE}: column {COL} '\
-#                              'from error rule {ERROR} not found in column '\
-#                              'headers'.format(TAB=self.name, \
-#                              RULE=self.rule_name, COL=component_col, \
-#                              ERROR=rule_name))
-#                        continue
-#                else:  #component is a string or integer
-#                    if component.isnumeric():  #component is integer
-#                        rule_value.append(float(component))
-#                    else:  #component is string (only allowed with ==)
-#                        rule_value.append(component)
-#
-#            eval_str = ' '.join(rule_value)
-            try:
-                error_list = list(eval(eval_str))
-            except SyntaxError:
-                print('Warning: tab {TAB}, rule {RULE}: invalid syntax for '\
-                      'error rule {ERROR}'.format(TAB=self.name, \
-                      RULE=self.rule_name, ERROR=rule_name))
-                error_list = []
-
-            for index, value in enumerate(error_list):
-                if not value:  #False: row failed the error rule test
-                    if index not in self.errors:
-                        self.errors.append(index)
-
-        # Inform main thread that sub-thread has completed its operations
-#        window.write_event_value('-THREAD_DONE-', '')
+        return(df)
 
     def filter_transactions(self, *args, **kwargs):
         """
+        Filter pandas dataframe using filter rules specified in the 
+        configuration.
         """
         operators = set('><=')
         chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
 
         # Method arguments
-        db = kwargs['database']
-        audit_params = kwargs['parameters']
         window = args[0]
-
-        cursor = db.cnxn.cursor()
 
         # Tab attributes
         df = self.df
-        headers = self.df.columns.values.tolist()
-        nrow = df.shape[0]
         filter_rules = self.filter_rules
-        if not filter_rules:
-            return(False)
 
-        conditions = []
+        if not filter_rules:
+            return(df)
+
+        print('Info: tab {NAME}, rule {RULE}: running filter method with '\
+              'filter rules {RULES}'.format(NAME=self.name, \
+              RULE=self.rule_name, RULES=list(filter_rules.values())))
+
+        eval_values = []  #stores list of lists of bools to pass into formatter
         rule_eval_list = []
         for i, rule_name in enumerate(filter_rules):
             if i != 0:
@@ -805,40 +873,35 @@ class Schema:
             rule_str = filter_rules[rule_name]  #dictionary key is a db column name
             rule_list = [i.strip() for i in \
                 re.split('({})'.format('|'.join([' {} '.format(i) for i in \
-                logical_operators])), rule_str)]
+                chain_operators])), rule_str)]
 
-            for i in rule_list:
-                if i not in chain_operators:
+            for component in rule_list:
+                if component not in chain_operators:
                     rule_eval_list.append('{}')
-                    conditions.append(i)
-                else:
-                    rule_eval_list.append(i.lower())
+
+                    filter_list = dm.evaluate_rule(df, component)
+                    eval_values.append(filter_list)
+                else:  #item is chain operators and or or
+                    rule_eval_list.append(component.lower())
 
         rule_eval_str = ' '.join(rule_eval_list)
 
-        eval_values = []  #stores list of of lists of bools to pass into formatter string
-        for conditional in conditions:
-            parsed_conditional = self.parse_operation_string(conditional)
-
-            eval_str = self.create_eval_str(rule_name, parsed_conditional)
-
-            try:
-                filter_list = list(eval(eval_str))
-            except SyntaxError:
-                print('Warning: tab {TAB}, rule {RULE}: invalid syntax for '\
-                      'error rule {ERROR}'.format(TAB=self.name, \
-                     RULE=self.rule_name, ERROR=rule_name))
-                filter_list = [True for i in range(nrow)]
-                    
-            eval_values.append(filter_list)
-
         failed = []
-        for row, results in enumerate(zip(*eval_values)):
-            if not all(results):
+        print(df.head)
+        for row, results_tup in enumerate(zip(*eval_values)):
+            test_str = rule_eval_str.format(*results_tup)
+            print('filter rule evaluation string is {}'.format(test_str))
+            results = eval(rule_eval_str.format(*results_tup))
+            if not results:
+                print('Info: tab {NAME}, rule {RULE}: row {ROW} has failed one '\
+                    'or more filter rules'.format(NAME=self.name, \
+                    RULE=self.rule_name, ROW=row))
                 failed.append(row)
 
-        self.df.drop(failed, axis=0, inplace=True)
-        self.df.reset_index(drop=True, inplace=True)
+        df.drop(failed, axis=0, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+
+        return(df)
 
 
 def as_key(key):
@@ -889,27 +952,7 @@ def create_table(data, header, keyname, events:bool=False, bind:bool=False, \
               'selected during table creation. These parameters are mutually '\
               'exclusive.')
 
-    # Size of data
-    ncol = len(header)
-
-    # When table columns not long enough, need to adjust so that the
-    # table fills the empty space.
-    max_char_per_col = int(width / ncol)
-
-    # Each column has size == max characters per column
-    lengths = [max_char_per_col for i in header]
-
-    # Add any remainder evenly between columns
-    remainder = width - (ncol  * max_char_per_col)
-    index = 0
-    for one in [1 for i in range(remainder)]:
-        if index > ncol - 1:
-            index = 0
-        lengths[index] += one
-        index += one
-
-    new_size = sum(lengths)
-
+    lengths = calc_column_widths(header)
     layout = sg.Table(data, headings=header, pad=(pad_frame, pad_frame),
                key=keyname, row_height=height, alternating_row_color=alt_col,
                text_color=text_col, selected_row_colors=(text_col, select_col), 
@@ -919,6 +962,38 @@ def create_table(data, header, keyname, events:bool=False, bind:bool=False, \
                vertical_scroll_only=False, bind_return_key=bind)
 
     return(layout)
+
+def calc_column_widths(header, width=None, pixels=False):
+    """
+    Calculate width of table columns based on the number of columns displayed.
+    """
+    # Size of data
+    ncol = len(header)
+
+    # When table columns not long enough, need to adjust so that the
+    # table fills the empty space.
+    if pixels and not width:
+        width = const.TBL_WIDTH_PX
+    elif not width and not pixels:
+        width = const.TBL_WIDTH
+    else:
+        width = width
+
+    max_size_per_col = int(width / ncol)
+
+    # Each column has size == max characters per column
+    lengths = [max_size_per_col for i in header]
+
+    # Add any remainder evenly between columns
+    remainder = width - (ncol  * max_size_per_col)
+    index = 0
+    for one in [1 for i in range(remainder)]:
+        if index > ncol - 1:
+            index = 0
+        lengths[index] += one
+        index += one
+
+    return(lengths)
 
 # Panel layouts
 def action_layout(cnfg):

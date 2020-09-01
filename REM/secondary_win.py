@@ -319,6 +319,4 @@ def import_window(df, win_size:tuple=(1920, 1080)):
 
     window.close()
 
-    vfy_data = [data[i] for i in vfy_orders]
-
-    return(pd.DataFrame(vfy_data, columns=header))
+    return(vfy_orders)
