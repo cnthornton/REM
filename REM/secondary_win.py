@@ -3,6 +3,7 @@ REM secondary window functions, including popups, a window for importing
 missing data, the debugger, and the login window.
 """
 import pandas as pd
+import pyodbc
 import PySimpleGUI as sg
 import REM.authentication as auth
 import REM.layouts as lo
@@ -82,7 +83,7 @@ def debugger(win_size:tuple=(1920, 1080)):
 
     return(window)
 
-def login_window(cnfg, win_size:tuple=(1920, 1080)):
+def login_window(cnfg, db, win_size:tuple=(1920, 1080)):
     """
     Display the login window.
     """
@@ -140,7 +141,7 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
                                        tooltip=_('Input account password'))]], 
                         background_color=input_col, pad=(pad_frame, pad_el), 
                         relief='sunken')],
-                     [sg.Text('', key='-SUCCESS-', size=(20, 2), 
+                     [sg.Text('', key='-SUCCESS-', size=(20, 4), 
                         pad=(pad_frame, pad_frame), font=small_font,
                         justification='center',
                         text_color='Red', background_color=bg_col)],
@@ -154,8 +155,7 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
     layout = [[sg.Col(column_layout, element_justification='center', 
                  justification='center', background_color=bg_col)]]
 
-    auth_man = auth.AuthenticationManager()
-    account = None
+    account = auth.UserAccount()
 
     window = sg.Window('', layout, font=main_font, modal=True, \
                        keep_on_top=True, no_titlebar=True, \
@@ -195,8 +195,8 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
 
         if event == '-LOGIN-':
             uname = values['-USER-']
-#            pwd = ''.join(pass_list)
             pwd = values['-PASSWORD-']
+
             # Verify values for username and password fields
             if not uname:
                 msg = _('username is required')
@@ -206,11 +206,10 @@ def login_window(cnfg, win_size:tuple=(1920, 1080)):
                 window['-SUCCESS-'].update(value=msg)
             else:
                 try:
-                    account = auth_man.login(cnfg.database, uname, pwd)
-                except Exception as e:
-                    msg = _('unknown login failure. Please try again.')
-                    window['-SUCCESS-'].update(value=msg)
-                    print(e)
+                    account.login(db, uname, pwd)
+                except pyodbc.Error as ex:
+                    sqlstat = ex.args[1]
+                    window['-SUCCESS-'].update(value=sqlstat)
                 else:
                     break
 

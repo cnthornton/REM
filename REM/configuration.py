@@ -4,23 +4,21 @@ and rule parameters.
 """
 import datetime
 import dateutil.parser
-import pandas as pd
 import pyodbc
 import PySimpleGUI as sg
+import re
 import REM.layouts as lo
 import REM.program_settings as const
 import REM.secondary_win as win2
-import sqlalchemy as sqla
-import yaml
 
 
-class ConfigParameters:
+class ProgramSettings:
     """
     Class to store and manage program configuration settings.
 
     Arguments:
 
-        infile: Path to configuration file
+        cnfg: Parsed YAML file
 
     Attributes:
 
@@ -28,58 +26,38 @@ class ConfigParameters:
 
         logo (str): Logo to display on main screen.
 
-        db (Class): 
+        driver (str): ODBC driver
 
-        audit_rules (list): List of AuditRule objects.
+        server (str): Database server.
+
+        port (str): Listening port for database connections
+
+        dbname (str): Database name.
     """
 
-    def __init__(self, infile):
-
-        try:
-            fh = open(infile, 'r')
-        except FileNotFoundError:
-            print('Unable to load configuration file')
-            sys.exit(1)
-
-        cnfg = yaml.safe_load(fh)
-        fh.close()
+    def __init__(self, cnfg):
 
         # Display parameters
-        self.language = cnfg['display']['language']
-        self.logo = cnfg['display']['logo']
+        settings = cnfg['settings']
+        self.language = settings['language'] if settings['language'] else 'en'
+        self.logo = settings['logo']
 
         # Database parameters
-        dbdict = cnfg['database']
-        self.database = DataBase(dbdict['odbc_driver'], dbdict['odbc_server'],\
-                                 dbdict['odbc_port'], dbdict['database'])
-
-        # Audit parameters
-        audit_rules = cnfg['audit_rules']
-        self.audit_rules = []
-        for audit_rule in audit_rules:
-            self.audit_rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
-
-    def print_rules(self):
-        """
-        Return name of all audit rules defined in configuration file.
-        """
-        return([i.name for i in self.audit_rules])
-
-    def fetch_rule(self, name):
-        """
-        """
-        rules = self.print_rules()
+        database = settings['database']
+        self.driver = database['odbc_driver']
+        self.server = database['odbc_server']
+        self.port = database['odbc_port']
+        self.dbname = database['database']
+        self.prog_db = database['rem_database']
         try:
-            index = rules.index(name)
-        except IndexError:
-            print('Rule {NAME} not in list of configured audit rules. '\
-                  'Available rules are {ALL}'\
-                  .format(NAME=name, ALL=', '.join(self.print_rules())))
-            rule = None
-        else:
-            rule = self.audit_rules[index] 
+            self.alt_dbs = database['alternative_databases']
+        except KeyError:
+            self.alt_dbs = []
 
-        return(rule)
+    def translate(self):
+        """
+        Translate text using chosen language.
+        """
 
     def modify(self):
         """
@@ -91,6 +69,50 @@ class ConfigParameters:
         """
         pass
 
+class AuditRules(ProgramSettings):
+    """
+    Class to store and manage program configuration settings.
+
+    Arguments:
+
+        cnfg: parsed YAML file.
+
+    Attributes:
+
+        audit_rules (list): List of AuditRule objects.
+    """
+
+    def __init__(self, cnfg):
+        super().__init__(cnfg)
+
+        # Audit parameters
+        audit_rules = cnfg['audit_rules']
+        self.rules = []
+        for audit_rule in audit_rules:
+            self.rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
+
+    def print_rules(self):
+        """
+        Return name of all audit rules defined in configuration file.
+        """
+        return([i.name for i in self.rules])
+
+    def fetch_rule(self, name):
+        """
+        """
+        rule_names = self.print_rules()
+        try:
+            index = rule_names.index(name)
+        except IndexError:
+            print('Rule {NAME} not in list of configured audit rules. '\
+                  'Available rules are {ALL}'\
+                  .format(NAME=name, ALL=', '.join(self.print_rules())))
+            rule = None
+        else:
+            rule = self.rules[index] 
+
+        return(rule)
+
 
 class AuditRule:
     """
@@ -100,13 +122,23 @@ class AuditRule:
 
         self.name = name
         self.element_key = lo.as_key(name)
-        self.permissions = adict['Permissions']
+        try:
+            self.permissions = adict['Permissions']
+        except KeyError:  #default permission for an audit is 'user'
+            self.permissions = 'user'
 
         self.parameters = []
         self.tabs = []
         self.elements = ['TG', 'Cancel', 'Start', 'Finalize']
 
-        params = adict['RuleParameters']
+        try:
+            params = adict['RuleParameters']
+        except KeyError:
+            msg = 'Configuration Error: the rule parameter "RuleParameters" '\
+                  'is required for rule {}'.format(name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
         for param in params:
             cdict = params[param]
             self.elements.append(param)
@@ -119,9 +151,26 @@ class AuditRule:
             elif layout == 'date_range':
                 self.parameters.append(AuditParameterDateRange(name, param, cdict))
 
-        tdict = adict['Tabs']
+        try:
+            tdict = adict['Tabs']
+        except KeyError:
+            msg = 'Configuration Error: the rule parameter "Tabs" is required '\
+                  'for rule {}'.format(name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
         for tab_name in tdict:
-            self.tabs.append(lo.Schema(name, tab_name, tdict[tab_name]))
+            self.tabs.append(lo.TabItem(name, tab_name, tdict[tab_name]))
+
+        try:
+            summary = adict['Summary']
+        except KeyError:
+            msg = 'Configuration Error: the rule parameter "Summary" is '\
+                  'required for rule {}'.format(name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        self.summary = SummaryPanel(name, summary)
 
     def key_lookup(self, element):
         """
@@ -229,15 +278,15 @@ class AuditRule:
         cancel_key = self.key_lookup('Cancel')
         start_key = self.key_lookup('Start')
         report_key = self.key_lookup('Finalize')
-        bottom_layout = [lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)),
-                           tooltip='Cancel current action'),
-                         lo.B2('Start', key=start_key, pad=((pad_el, 0), (pad_v, 0)),
-                           tooltip='Start audit'),
+        bttn_layout = [lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)),
+                         tooltip='Cancel current action'),
+                       lo.B2('Start', key=start_key, pad=((pad_el, 0), (pad_v, 0)),
+                         tooltip='Start audit', bind_return_key=True),
                          sg.Text(' ' * 224, pad=(0, (pad_v, 0))),
-                         lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)),
-                           disabled=True,
-                           tooltip='Finalize audit and generate summary report')]
-        layout_els.append(bottom_layout)
+                       lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)),
+                         disabled=True,
+                         tooltip='Finalize audit and generate summary report')]
+        layout_els.append(bttn_layout)
 
         # Pane elements must be columns
         layout = sg.Col(layout_els, key=self.element_key, visible=False)
@@ -257,6 +306,139 @@ class AuditRule:
                   RULE=self.name, VAL=status))
 
             window[element_key].update(disabled=status)
+
+
+class SummaryPanel:
+    """
+    """
+
+    def __init__(self, rule_name, sdict):
+
+        self.rule_name = rule_name
+        self.element_key = lo.as_key('{} Summary'.format(rule_name))
+        try:
+            self.title = sdict['Title']
+        except KeyError:
+            self.title = 'Summary'
+
+        try:
+            self.table = sdict['DatabaseTable']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}: Summary missing '\
+                   'required field "DatabaseTable".').format(RULE=rule_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        try:
+            all_columns = sdict['TableColumns']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}: Summary missing '\
+                   'required field "TableColumns".').format(RULE=rule_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.db_columns = all_columns
+
+        try:
+            display_columns = sdict['DisplayColumns']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}, Summary: missing '\
+                   'required parameter "DisplayColumns".').format(RULE=rule_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.display_columns = display_columns
+
+        try:
+            map_cols = sdict['MappingColumns']
+        except KeyError:
+            map_cols = {}
+        self.mapping_columns = map_cols
+
+        try:
+            in_cols = sdict['MappingColumns'] 
+        except KeyError:
+            in_cols = []
+        self.input_columns = in_cols
+
+        if not map_cols and not in_cols:
+            msg = _('Configuration Error: rule {RULE}, Summary: one or both of '\
+                    'parameters "MappingColumns" and "InputColumns" are required.')\
+                    .format(RULE=rule_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        try:
+            self.aliases = sdict['Aliases']
+        except KeyError:
+            self.aliases = []
+
+    def layout(self, params):
+        """
+        Generate a GUI layout for the Audit Rule Summary.
+        """
+        # Layout settings
+        bg_col = const.ACTION_COL
+        pad_frame = const.FRAME_PAD
+        pad_el = const.ELEM_PAD
+        pad_v = const.VERT_PAD
+        inactive_col = const.INACTIVE_COL
+        bg_col = const.ACTION_COL
+        default_col = const.DEFAULT_COL
+        text_col = const.TEXT_COL
+        font_h = const.HEADER_FONT
+
+        audit_name = self.rule_name
+
+        # Layout elements
+        layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)),
+                         font=font_h)]], justification='c', 
+                         element_justification='c')]]
+
+        # Rule parameter elements
+        nparam = len(params)
+        param_elements = []
+        for param in params:
+            if nparam > 1:
+                pad_text = sg.Text(' ' * 4) 
+            else:
+                pad_text = sg.Text('')
+
+            param_layout = param.layout()
+            param_layout.append(pad_text)
+
+            param_elements += param_layout
+
+        layout_els.append(param_elements)
+
+        # Main screen
+        tbl_layout = []
+        summ_layout = [[sg.Col([[sg.Text(self.title, font=font_h)]],
+                          pad=(0, pad_v), justification='center', background_color=bg_col)],
+                       [sg.Frame('', [tbl_layout],
+                          background_color=bg_col, element_justification='c',
+                          pad=(pad_frame, pad_frame))],
+                       [sg.Col(bttn_layout, justification='c',
+                          pad=(0, (0, pad_frame)))]]
+
+        # Control buttons
+        b1_key = lo.as_key('{} Summary Cancel'.format(audit_name))
+        b2_key = lo.as_key('{} Summary Back'.format(audit_name))
+        b3_key = lo.as_key('{} Summary Save'.format(audit_name))
+        bttn_layout = [[lo.B2(_('Cancel'), key=b1_key,
+                          tooltip=_('Cancel save'), pad=(pad_el, 0)),
+                        lo.B2(_('Back'), key=b2_key,
+                          tooltip=_('Back to transactions'), pad=(pad_el, 0)), 
+                        sg.Text(' ' * 224, pad=(0, (pad_v, 0))),
+                        lo.B2(_('Save'), bind_return_key=True, key=b3_key,
+                            tooltip=_('Save summary'), pad=(0, (pad_v, 0))]]
+
+        layout_els.append(bttn_layout)
+
+        # Pane elements must be columns
+        layout = sg.Col(layout_els, key=self.element_key, visible=False)
+
+        return(layout)
 
 
 class AuditParameter:
@@ -313,7 +495,7 @@ class AuditParameter:
 
         value = self.value
         if value:
-            statement = (db_field, '= ?', (value,))
+            statement = ('{}= ?'.format(db_field), (value,))
         else:
             statement = None
 
@@ -509,7 +691,7 @@ class AuditParameterDateRange(AuditParameterDate):
             db_field = self.name
 
         params = (self.value, self.value2)
-        statement = (db_field, 'BETWEEN ? AND ?', params)
+        statement = ('{} BETWEEN ? AND ?'.format(db_field), params)
 
         return(statement)
 
@@ -536,126 +718,11 @@ class AuditParameterDateRange(AuditParameterDate):
             return(False)
 
 
-class DataBase:
+class DataBase(ProgramSettings):
     """
     Primary database object for querying databases and initializing 
     authentication.
     """
-
-    def __init__(self, driver, server, port, database):
-        """
-        Initialize database attributes.
-
-        Attributes:
-        
-            server (str): Name of the ODBC server.
-
-            driver (str): ODBC server driver.
-
-            port (str): Connection port to ODBC server.
-
-            dbname (str): Database name.
-
-            cnxn (obj): pyodbc connection object
-        """
-        self.driver = driver
-        self.server = server
-        self.port = port
-        self.dbname = database
-        self.cnxn = None
-
-    def query(self, tables, columns='*', filter_rules=None, order=None):
-        """
-        Query database for the given order number.
-
-        Arguments:
-
-            tables (str): Database table to pull data from.
-
-            columns: List or string containing the columns to select from the 
-                database table.
-
-            filter_rules: Tuple or list of tuples containing column name, 
-                operator, and value for a given filter rule.
-
-            order: String or tuple of strings containing columns to sort 
-                results by.
-        """
-        joins = ('INNER JOIN', 'JOIN', 'LEFT JOIN', 'LEFT OUTER JOIN', 
-                 'RIGHT JOIN', 'RIGHT OUTER JOIN', 'FULL JOIN', 
-                 'FULL OUTER JOIN', 'CROSS JOIN')
-
-        # Connect to database
-        conn = self.cnxn
-        try:
-            cursor = conn.cursor()
-        except AttributeError:
-            print('Connection to database {} not established'.format(self.dbname))
-            return(None)
-
-        # Define sorting component of query statement
-        if type(order) == type(list()):
-            order_by = ' ORDER BY {}'.format(', '.join(order))
-        elif type(order) == type(str()):
-            order_by = ' ORDER BY {}'.format(order)
-        else:
-            order_by = ''
-
-        # Deine column component of query statement
-        colnames = ', '.join(columns) if type(columns) == type(list()) else columns
-
-        # Define table component of query statement
-        table_names = [i for i in tables] if type(tables) == type(dict()) or \
-            type(tables) == type(list()) else [tables]
-        first_table = table_names[0]
-        if len(table_names) > 1:
-            table_rules = [first_table]
-            for table in table_names[1:]:
-                table_rule = tables[table]
-                try:
-                    tbl1_field, tbl2_field, join_clause = table_rule
-                except ValueError:
-                    print('Error: table join rule {} requires three '\
-                        'components'.format(table_rule))
-                    continue
-                if join_clause not in joins:
-                    print('Error: unknown join type {JOIN} in {RULE} '
-                          ''.format(JOIN=join_clause, RULE=table_rule))
-                    continue
-                join_statement = '{JOIN} {TABLE} ON {F1}={F2}'\
-                    .format(JOIN=join_clause, TABLE=table, F1=tbl1_field, \
-                    F2=tbl2_field)
-                table_rules.append(join_statement)
-            table_component = ' '.join(table_rules)
-        else:
-            table_component = first_table
-
-        # Construct filtering rules
-        if type(filter_rules) == type(list()):  #multiple filter parameters
-            params_list = []
-            for rule in filter_rules:
-                param_tup = rule[2]
-                for item in param_tup:
-                    params_list.append(item)
-            params = tuple(params_list)
-            where_clause = 'WHERE {}'\
-                .format(' AND '.join(['{} {}'.format(*i[0:2]) for i in filter_rules]))
-        elif type(filter_rules) == type(tuple()):  #single filter parameter
-            col, oper, params = filter_rules
-            where_clause = 'WHERE {COLNAME} {OPER}'.format(COLNAME=col, OPER=oper)
-        else:  #no filters
-            where_clause = ''
-
-        query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'\
-            .format(COLS=colnames, TABLE=table_component, WHERE=where_clause, \
-            SORT=order_by)
-
-        # Query database and format results as a Pandas dataframe
-        df = pd.read_sql(query_str, conn, params=params)
-
-        cursor.close()
-
-        return(df)
 
     def authenticate(self, uid, pwd):
         """
@@ -667,90 +734,58 @@ class DataBase:
 
             pwd (str): Account password.
         """
-        ugroup = 'user'
-
-        # Connect to database
-        db_settings = {'Driver': self.driver, 
-                       'Server': self.server, 
-                       'Database': self.dbname, 
-                       'Port': self.port, 
-                       'UID': uid, 
-                       'PASS': pwd}
-
-        conn_str = ';'.join(['{}={}'.format(k, db_settings[k]) for k in \
-                             db_settings if db_settings[k]])
-
-        try:
-            conn = pyodbc.connect(conn_str)
-        except pyodbc.OperationalError as e:
-            print('Authentication failed for user {UID} while attempting to '\
-                  'access databse {DB}'.format(UID=uid, DB=self.dbname))
-            print('Relevant error is: {}'.format(e))
-            return(None)
+        conn = self.db_connect(uid, pwd, self.prog_db)
 
         cursor = conn.cursor()
 
         # Priveleages
+        query_str = 'SELECT UID, PWD, UserGroup FROM Users WHERE UID = ?'
         try:
-            cursor.execute("SELECT user_name, user_group FROM users")
-        except pyodbc.ProgrammingError:
-            print('Error while accessing the users table in database {}'\
-                .format(self.dbname))
-            print('Relevant error is: {}'.format(e))
-            return(None)
+            cursor.execute(query_str, (uid,))
+        except pyodbc.Error as e:
+            print('DB Error: querying Users table from {DB} failed due to {EX}'\
+                .format(DB=self.prog_db, EX=e))
+            raise
 
-        for row in cursor.fetchall():
-            if row.user_name == uid:
-                ugroup = row.user_group
+        results = cursor.fetchall()
+        for row in results:
+            if row.uid == uid:
+                ugroup = row.usergroup
                 break
 
         cursor.close()
-
-        # Database configuration settings
-        self.cnxn = conn
+        conn.close()
 
         return(ugroup)
 
-class DatabaseREM(DataBase):
-    """
-    Database object for querying the REM database and initializing 
-    authentication.
-    """
-
-    def __init__(self, driver, server, port):
+    def db_connect(self, uid, pwd, database=None):
         """
-        Initialize database attributes.
-
-        Attributes:
-        
-            server (str): Name of the ODBC server.
-
-            driver (str): ODBC server driver.
-
-            port (str): Connection port to ODBC server.
-
-            dbname (str): Database name.
-
-            cnxn (obj): pyodbc connection object
+        Generate a pyODBC Connection object
         """
-        super().__init__(driver, server, port)
-        self.database = 'REM'
+        driver = self.driver
+        server = self.server
+        port = self.port
+        dbname = database if database else self.dbname
 
-    def layout():
-        """
-        Generate GUI layout for the DB Update panel.
-        """
-        layout = sg.Col()
+        db_settings = {'Driver': driver, 
+                       'Server': server, 
+                       'Database': dbname, 
+                       'Port': port, 
+                       'UID': uid, 
+                       'PASS': pwd,
+                       'Trusted_Connection': 'yes'}
 
-        return(layout)
+        conn_str = ';'.join(['{}={}'.format(k, db_settings[k]) for k in \
+                db_settings if db_settings[k]])
 
-    def insert(self):
-        """
-        Insert data into the daily summary table.
-        """
-        success = True
+        try:
+            conn = pyodbc.connect(conn_str)
+        except pyodbc.Error as e:
+            print('DB Error: connection to {DB} failed due to {EX}'\
+                .format(DB=dbname, EX=e))
+            raise
 
-        return(success)
+        return(conn)
 
 
 def format_date_str(date_str):
