@@ -48,6 +48,7 @@ TOOLBAR_PAD = 5
 # Element size
 B1_SIZE = 20
 B2_SIZE = 6
+B3_SIZE = 31
 IN1_SIZE = 20
 
 # Text
@@ -56,8 +57,10 @@ MAIN_FONT = ('Arial', 12)
 BOLD_FONT = ('Arial', 12, 'bold')
 IT_FONT = ('Arial', 12, 'italic')
 SMALL_FONT = ('Arial', 10)
+MID_FONT = ('Arial', 13)
+LARGE_FONT = ('Arial', 14)
 
-# TABLES
+# Tables
 TBL_WIDTH = 120
 TBL_WIDTH_PX = 1080
 TBL_HEIGHT = 30

@@ -1,35 +1,31 @@
 """
 REM main program. Includes primary display.
 """
-from collections import OrderedDict
-import datetime
-import dateutil
 import gettext
-import numpy as np
-import pandas as pd
+import os
 import PySimpleGUI as sg
-from REM.configuration import ConfigParameters
+import REM.configuration as config
 import REM.layouts as lo
 import REM.secondary_win as win2
 import REM.program_settings as const
 import sys
-import time
+import yaml
 
 # Classes
 class ToolBar:
     """
     Toolbar object.
     """
-    def __init__(self, cnfg):
+    def __init__(self, audit_rules):
         """
         Initialize toolbar parameters.
         """
-        audit_rules = cnfg.print_rules()
+        audit_names = audit_rules.print_rules()
 
         self.name = 'toolbar'
         self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
         self.audit_menu = {'name': '&Audits', 
-                           'items': [('!', i) for i in audit_rules]}
+                           'items': [('!', i) for i in audit_names]}
         self.reports_menu = {'name': '&Reports', 
                              'items': [('!', 'Summary S&tatistics'), 
                              ('!', '&Summary Reports')]}
@@ -151,18 +147,19 @@ class ToolBar:
 
 
 # General functions
-def get_panels(cnfg):
+def get_panels(audit_rules):
     """
     """
     # Home page action panel
-    panels = [lo.action_layout(cnfg)]
+    panels = [lo.action_layout(audit_rules)]
 
     # Audit rule panels
-    audit_rules = cnfg.audit_rules
-    for audit_rule in audit_rules:
+    for audit_rule in audit_rules.rules:
         panels.append(audit_rule.layout())
+        panels.append(audit_rule.summary.layout())
 
     # Database modification panel
+#    panels.append(db_layout())
 
     # Layout
     pane = [sg.Col([[sg.Pane(panels, orientation='horizontal', \
@@ -180,10 +177,12 @@ def reset_to_default(window, rule):
         return(None)
 
     current_key = rule.element_key
+    summ_panel_key = rule.summary.element_key
 
     # Disable current panel
     window['-ACTIONS-'].update(visible=True)
     window[current_key].update(visible=False)
+    window[summ_panel_key].update(visible=False)
 
     # Reset 'Start' element in case audit was in progress
     start_key = rule.key_lookup('Start')
@@ -223,11 +222,8 @@ def reset_to_default(window, rule):
         ## Reset table element
         table_key = tab.key_lookup('Table')
         window[table_key].update(values=tab.df.values.tolist())
-        headers = list(tab.display_columns.keys())
-        lengths = lo.calc_column_widths(headers, pixels=True)
-        for col_index, col_name in enumerate(headers):
-            col_width = lengths[col_index]
-            window[table_key].Widget.column(col_name, width=col_width)
+
+        tab.reset_column_widths(window)
 
         ## Reset summary element
         summary_key = tab.key_lookup('Summary')
@@ -264,26 +260,42 @@ def main():
                    input_elements_background_color=action_col, \
                    button_color=(text_col, default_col))
 
-    # Settings
-    infile = '/home/cthornton/dev/configuration.yaml'  #change!!!
-    cp = ConfigParameters(infile)
+    # Import settings from configuration file
+    dirname = os.path.dirname(os.path.realpath(__file__))
+    cnfg_name = 'settings.yaml'
+    cnfg_file = '{DIR}/{FILE}'.format(DIR=dirname, FILE=cnfg_name)
+    print(dirname, cnfg_name, cnfg_file)
 
-    language = cp.language
+    try:
+        fh = open(cnfg_file, 'r')
+    except FileNotFoundError:
+        msg = 'Unable to load configuration file'
+        win2.popup_error(msg)
+        sys.exit(1)
+    else:
+        cnfg = yaml.safe_load(fh)
+        fh.close()
+
+    settings = config.ProgramSettings(cnfg)
+
+    language = settings.language
     translation = const.change_locale(language)
     translation.install('base')  #bind gettext to _() in __builtins__ namespace
 
-    db = cp.database
-
-    toolbar = ToolBar(cp)
-    layout = [toolbar.layout(), get_panels(cp)]
+    # Configure GUI layout
+    audit_rules = config.AuditRules(cnfg)
+    toolbar = ToolBar(audit_rules)
+    layout = [toolbar.layout(), get_panels(audit_rules)]
 
     # Element keys and names
-    audit_names = cp.print_rules()
+    audit_names = audit_rules.print_rules()
 
-    cancel_keys =  [i.key_lookup('Cancel') for i in cp.audit_rules]
-    start_keys = [i.key_lookup('Start') for i in cp.audit_rules]
+    cancel_keys =  [i.key_lookup('Cancel') for i in audit_rules.rules]
+    cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
+    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
     date_key = None
+    return_key = 'Return:36'
 
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
     report_tx = 'Summary Report'
@@ -291,12 +303,14 @@ def main():
 
     # Event modifiers
     audit_in_progress = False
+    summary_panel_active = False
     rule = None
     debug_win = None
     summary = {}
     
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, icon=cp.logo, font=('Arial', 12), size=(1260, 840))
+    window = sg.Window('REM Tila', layout, icon=settings.logo, \
+        font=('Arial', 12), size=(1258, 840), return_keyboard_events=True)
     print('Info: starting up')
 
     # Event Loop
@@ -310,9 +324,9 @@ def main():
         # User login
         if values['-UMENU-'] == 'Sign In':  #user logs on
             print('Info: displaying user login screen')
-            user = win2.login_window(cp)
+            user = win2.login_window(settings)
 
-            if user:  #logged on successfully
+            if user.logged_in:  #logged on successfully
                 user_active = True
 
                 # Disable sign-in and enable sign-off
@@ -322,38 +336,43 @@ def main():
                 # Enable permission specific actions and menus
 
                 # Admin only actions and menus
-                admin = user._superuser
+                admin = user.superuser
                 if admin:
                     # Database administration
                     window['-DB-'].update(disabled=False)
                     window['-DBMENU-'].update(disabled=False)
 
                     # Reports and statistics
-                    toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='enable')
-                    toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='enable')
+                    toolbar.toggle_menu(window, 'rmenu', 'summary reports', \
+                        value='enable')
+                    toolbar.toggle_menu(window, 'rmenu', 'summary statistics', \
+                        value='enable')
                     window['-STATS-'].update(disabled=False)
                     window['-REPORTS-'].update(disabled=False)
 
                     # User
-                    toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
+                    toolbar.toggle_menu(window, 'umenu', 'manage accounts', \
+                        value='enable')
 
                     # Menu
-                    toolbar.toggle_menu(window, 'mmenu', 'configuration', value='enable')
+                    toolbar.toggle_menu(window, 'mmenu', 'configuration', \
+                        value='enable')
 
                 # Enable permissions on per audit rule basis defined in config
                 for rule_name in audit_names:
                     if admin:
-                        toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
+                        toolbar.toggle_menu(window, 'amenu', rule_name, \
+                            value='enable')
                         window[rule_name].update(disabled=False)
 
-                    rule = cp.fetch_rule(rule_name)
+                    rule = audit_rules.fetch_rule(rule_name)
 
                     perms = rule.permissions
                     if perms != 'admin':
                         toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
                         window[rule_name].update(disabled=False)
             else:
-                print('Unable to login to the program')
+                print('Error: unable to login to the program')
                 continue
 
         # User log-off
@@ -368,12 +387,8 @@ def main():
             audit_in_progress = False
             rule = reset_to_default(window, rule)  #reset to home screen
 
-            try:  #close the database connection
-                db.cnxn.close()
-            except Exception:
-                print('Connection to {} already closed'.format(db.dbname))
-            else:
-                db.cnxn = None
+            # Reset User attributes
+            user.logout()
 
             # Disable sign-out and enable sign-in
             toolbar.toggle_menu(window, 'umenu', 'sign in', value='enable')
@@ -418,9 +433,9 @@ def main():
             continue
 
         # Switch panels when audit in progress
-        if audit_in_progress and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or \
-            values['-AMENU-'] in audit_names or values['-RMENU-'] in \
-            (report_tx, stats_tx)):
+        if audit_in_progress and (event in ('-DB-', '-DBMENU-') \
+            or event in cancel_keys or values['-AMENU-'] in audit_names \
+            or values['-RMENU-'] in (report_tx, stats_tx)):
 
             msg = _('Audit is currently running. Are you sure you would like '\
                     'to exit?')
@@ -429,6 +444,7 @@ def main():
             if selection == 'OK':
                 # Reset to defaults
                 audit_in_progress = False
+                summary_panel_active = False
                 rule = reset_to_default(window, rule)
             else:
                 continue
@@ -444,7 +460,7 @@ def main():
         if values['-AMENU-'] or event in audit_names:
             # Obtain the selected audit rule object
             action_value = values['-AMENU-'] if values['-AMENU-'] else event
-            rule = cp.fetch_rule(action_value)
+            rule = audit_rules.fetch_rule(action_value)
 
             panel_key = rule.element_key
             window['-ACTIONS-'].update(visible=False)
@@ -482,13 +498,11 @@ def main():
 
             if len(input_value) > len(date_str):  #add character
                 date_str.append(input_value[-1])
-                print('Info: added character {} to date string'.format(input_value[-1]))
 
                 date_str_fmt = date_param.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
             elif len(input_value) < len(date_str):  #remove character
                 removed_char = date_str.pop()
-                print('Info: removed character {} from date string'.format(removed_char))
 
                 date_str_fmt = date_param.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
@@ -558,11 +572,11 @@ def main():
                                 continue
 
                             # Append tab filter rule to query filter rules
-                            filters.append((tab_param_col, '= ?', \
+                            filters.append(('{} = ?'.format(tab_param_col), \
                                 (tab_param_value,)))
 
                     # Extract data from database
-                    df = db.query(tab.db_tables, columns=tab.db_columns, \
+                    df = user.query(tab.db_tables, columns=tab.db_columns, \
                         filter_rules=filters)
 
                     # Update tab object and elements
@@ -611,8 +625,9 @@ def main():
                 new_id = values[input_key]
                 all_ids = tab.row_ids()
                 if not new_id in all_ids:
-                    filters = (tab.db_key, '= ?', (new_id,))
-                    new_row = db.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
+                    filters = ('{} = ?'.format(tab.db_key,), (new_id,))
+                    new_row = user.query(tab.db_tables, columns=tab.db_columns, \
+                        filter_rules=filters)
                 else:
                     msg = _("{} is already in the table").format(new_id)
                     win2.popup_notice(msg)
@@ -639,21 +654,12 @@ def main():
                 # Run schema action methods
                 print('Info: running audit on the {NAME} data'\
                       .format(NAME=tab.name))
-                tab.run_audit(window, database=db, parameters=params)
-#
+                tab.run_audit(window, account=user, parameters=params)
+
                 # Update information elements - most actions modify tab data 
                 # in some way.
                 tab.update_table(window)
                 tab.update_summary(window)
-#            elif event == '-THREAD_DONE-':
-#                print('Audit of {NAME} data completed'\
-#                      .format(NAME=tab.element_name))
-#                action_performed = True
-#
-#                # Update information elements - most actions modify tab data 
-#                # in some way.
-#                tab.update_table(window)
-#                tab.update_summary(window)
 
             # Enable movement to the next tab
             current_index = tab_keys.index(current_tab)
@@ -668,10 +674,93 @@ def main():
 
             # Enable the finalize button when all actions have been performed
             # on all tabs.
+            final_key = rule.key_lookup('Finalize')
+            summary_key = rule.summary.element_key
             if tab.audit_performed and current_index == final_index:
-                print('Info: allowing generation of final report')
-                final_key = rule.key_lookup('Finalize')
                 window[final_key].update(disabled=False)
+
+            if event == final_key:
+                summary_panel_active = True
+                rule_summ = rule.summary
+
+                # Update summary title with rule parameter values
+                new_summ_title = rule_summ.update_parameters(rule)
+                title_key = rule_summ.key_lookup('Title')
+                window[title_key].update(value=new_summ_title)
+
+                # Update input elements with mapping values
+                rule_summ = rule.summary
+                mappings = rule_summ.mapping_columns
+                totals = []
+                for mapping in mappings:
+                    map_items = mappings[mapping]
+                    element_key = map_items['element_key']
+                    mapping_value = rule_summ.update_mapping_value(rule, mapping)
+                    window[element_key].update(value=mapping_value)
+                    totals.append(mapping_value)
+
+                # Update totals element
+                total_key = rule_summ.key_lookup('Totals')
+                sum_total = sum(totals)
+                print('Info: the sum total of all values is {}'\
+                    .format(sum_total))
+                window[total_key].update(value=sum_total)
+
+                # Display summary panel
+                window[panel_key].update(visible=False)
+                window[summary_key].update(visible=True)
+
+            if summary_panel_active and event == return_key:
+                # Update totals element, including input elements
+                totals = []
+                for mapping in mappings:
+                    map_items = mappings[mapping]
+                    element_key = map_items['element_key']
+                    mapping_value = rule_summ.update_mapping_value(rule, mapping)
+                    window[element_key].update(value=mapping_value)
+                    totals.append(mapping_value)
+
+                input_cols = rule_summ.input_columns
+                for input_col in input_cols:
+                    input_key = input_cols[input_col]['element_key']
+                    try:
+                        input_col_value = values[input_key]
+                    except KeyError:
+                        print('Warning: unknown input key {}'.format(input_key))
+                        totals.append(0)
+                    else:
+                        input_value_flt = rule_summ.update_input_value(input_col_value, input_col)
+                        totals.append(input_value_flt)
+
+                sum_total = sum(totals)
+                print('Info: the sum total of all values is {}'\
+                    .format(sum_total))
+                window[total_key].update(value=sum_total)
+
+            back_key = rule.summary.key_lookup('Back')
+            if event == back_key:
+                summary_panel_active = False
+                window[summary_key].update(visible=False)
+
+                # Reset tab table column widths
+                for tab in rule.tabs:
+                    tab.reset_column_widths(window)
+
+                # Return to tab display
+                window[panel_key].update(visible=True)
+
+            save_key = rule.summary.key_lookup('Save')
+            if event == save_key:
+                success = rule_summ.save_to_database(user)
+                if not success:
+                    msg = _('Save to database failed.')
+                    win2.popup_error(msg)
+                else:
+                    # Reset audit elements
+                    audit_in_progress = False
+                    summary_panel_active = False
+                    rule_summ.reset_values()
+                    rule = reset_to_default(window, rule)
 
     window.close()
 

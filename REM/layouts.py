@@ -16,7 +16,7 @@ import threading
 
 
 # Schema Layout Classes
-class Schema:
+class TabItem:
     def __init__(self, rule_name, name, tdict):
         self.name = name
         self.rule_name = rule_name
@@ -128,7 +128,7 @@ class Schema:
         self.df = pd.DataFrame(empty_data_table(nrow=20, ncol=ncol), \
             columns=display_headers)  #initialize with an empty table
 
-        self.errors = []
+        self.nerr = 0
         self.audit_performed = False
         self.id_components =[]
 
@@ -140,9 +140,21 @@ class Schema:
         ncol = len(headers)
         data = empty_data_table(nrow=20, ncol=ncol)
         self.df = pd.DataFrame(data, columns=headers)
-        self.errors = []
+        self.nerr = 0
         self.audit_performed = False
         self.id_components =[]
+
+    def reset_column_widths(self, window):
+        """
+        Reset Table Columns widths to default when resized.
+        """
+        headers = list(self.display_columns.keys())
+        lengths = calc_column_widths(headers, pixels=True)
+        table_key = self.key_lookup('Table')
+
+        for col_index, col_name in enumerate(headers):
+            col_width = lengths[col_index]
+            window[table_key].Widget.column(col_name, width=col_width)
 
     def update(self, window, element_tup):
         """
@@ -175,7 +187,8 @@ class Schema:
                 col_comp = table_column
                 table_comp = [i for i in self.db_tables][0]
 
-            if colname in (col_comp, col_comp.lower()):
+            col_comp_alias = col_comp.split('AS')[-1]
+            if colname in (col_comp_alias, col_comp_alias.lower()):
                 full_col_name = '{}.{}'.format(table_comp, col_comp)
                 break
 
@@ -206,6 +219,7 @@ class Schema:
     def format_display_table(self, dataframe):
         """
         """
+        operators = set('+-*/')
         chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
 
         display_columns = self.display_columns
@@ -218,6 +232,7 @@ class Schema:
             col_list = [i.strip() for i in \
                 re.split('{}'.format('|'.join([' {} '.format(i) for i in \
                 chain_operators])), col_rule)]  #only return column names
+            col_oper_list = dm.parse_operation_string(col_rule)
 
             if len(col_list) > 1:  #column to display is custom
                 merge_cols = []
@@ -255,6 +270,8 @@ class Schema:
                     display_df[col_name] = dataframe[merge_cols].agg(agg_func, axis=1)
                 except Exception:
                     raise Exception
+            elif len(col_oper_list) > 1:
+                col_to_add = dm.evaluate_rule(dataframe, col_oper_list)
             else:  #column to display already exists in table
                 orig_cols[col_rule] = col_name
 
@@ -296,26 +313,20 @@ class Schema:
         """
         tbl_error_col = const.TBL_ERROR_COL
         tbl_key = self.key_lookup('Table')
-        headers = self.df.columns.values.tolist()
-
-        # Sort rows by ID field
-        db_key = self.get_column_name(self.db_key)
-        try:
-            self.df.sort_values(by=[db_key], inplace=True, ascending=True)
-        except KeyError:
-            print('Warning: tab {NAME}, rule {RULE}: unable to sort table '\
-                'for display'.format(NAME=self.name, RULE=self.rule_name))
 
         # Modify table for displaying
-        df = self.df
-        display_df = self.format_display_table(df)
+        df = self.sort_table(self.df)
+        headers = df.columns.values.tolist()
 
+        display_df = self.format_display_table(df)
         data = display_df.values.tolist()
+
         window[tbl_key].update(values=data)
 
         # Highlight rows with identified errors
-        self.search_for_errors()
-        error_colors = [(i, tbl_error_col) for i in self.errors]
+        errors = self.search_for_errors()
+        self.nerr = len(errors)
+        error_colors = [(i, tbl_error_col) for i in errors]
         window[tbl_key].update(row_colors=error_colors)
 
     def update_id_components(self, parameters):
@@ -436,7 +447,7 @@ class Schema:
         outputs.append(output)
 
         # Total number of errors identified based on specified error rules
-        output = (_('Number of errors identified'), len(self.errors))
+        output = (_('Number of errors identified'), self.nerr)
         outputs.append(output)
 
         # Summarize all headers
@@ -444,7 +455,8 @@ class Schema:
         for header in headers:
             # Determine object type of the values in each column
             dtype = df.dtypes[header]
-            if dtype in (np.int64, np.float64):
+            if np.issubdtype(dtype, np.integer) or \
+                np.issubdtype(dtype, np.floating):
                 col_summary = df[header].sum()
             elif dtype == np.object:
                 col_summary = df[header].nunique()
@@ -463,10 +475,12 @@ class Schema:
             rule = summ_rules[rule_name]
             rule_values = []
             for component in dm.parse_operation_string(rule):
-                component_col = self.get_column_name(component)
                 if component in operators:
                     rule_values.append(component)
-                elif component_col:  #component is header column
+                    continue
+
+                component_col = self.get_column_name(component)
+                if component_col:  #component is header column
                     try:
                         rule_values.append(totals[component_col])
                     except KeyError:  #try lower-case
@@ -532,6 +546,8 @@ class Schema:
         pad_el = const.ELEM_PAD
         pad_v = const.VERT_PAD
         pad_h = const.HORZ_PAD
+        font_l = const.LARGE_FONT
+        font_m = const.MID_FONT
 
         frozen = False if admin else True
 
@@ -545,14 +561,14 @@ class Schema:
         input_key = self.key_lookup('Input')
         layout = [[create_table(data, header, table_key, bind=True)],
                   [sg.Frame(_('Summary'), [[sg.Multiline('', border_width=0, 
-                        size=(60, 8), font=('Sans Serif', 10), key=summary_key, 
-                        disabled=True, background_color=bg_col)]], 
+                        size=(52, 6), font=font_m, key=summary_key, 
+                        disabled=True, background_color=bg_col)]], font=font_l,
                      pad=((pad_frame, 0), (0, pad_frame)), 
                      background_color=bg_col, element_justification='l'), 
-                   sg.Text(' ' * 62, background_color=bg_col),
+                   sg.Text(' ' * 42, background_color=bg_col),
                    sg.Col([[
-                       sg.Input('', key=input_key, size=(20, 1), 
-                         pad=(pad_el, 0), font=('Sans Serif', 10),
+                       sg.Input('', key=input_key, font=font_l,
+                         size=(20, 1), pad=(pad_el, 0), do_not_clear=False,
                          tooltip=_('Input document number to add a '\
                                    'transaction to the table'), disabled=True),
                        B2(_('Add'), key=add_key, pad=((0, pad_h), 0), 
@@ -596,10 +612,10 @@ class Schema:
         """
         Use error rules specified in configuration file to annotate rows.
         """
-        operators = set('>=<')
         strptime = datetime.datetime.strptime
 
-        headers = self.df.columns.values.tolist()
+        df = self.df
+        headers = df.columns.values.tolist()
         pkey = self.db_key if self.db_key in headers else self.db_key.lower()
 
         # Reset list of errors attribute
@@ -611,7 +627,7 @@ class Schema:
         except TypeError:
             date_cnfg = None
 
-        id_list = self.df[pkey].tolist()
+        id_list = df[pkey].tolist()
         for index, trans_id in enumerate(id_list):
             trans_number_comp = self.get_id_component(trans_id, 'variable')
             if date_cnfg:
@@ -622,9 +638,9 @@ class Schema:
 
             trans_id_fmt = self.format_id(trans_number_comp, date=date)
             if trans_id != trans_id_fmt:
-                print('Info: {NAME} Audit: transaction ID {ID} does not comply '\
-                      'with format specified in configuration'\
-                      .format(NAME=self.name, ID=trans_id))
+                print('Info: tab {NAME}, rule {RULE}: transaction ID {ID} does '\
+                      'not comply with format specified in configuration'\
+                      .format(NAME=self.name, RULE=self.rule_name, ID=trans_id))
                 if index not in errors:
                     errors.append(index)
 
@@ -633,13 +649,16 @@ class Schema:
         for rule_name in error_rules:
             error_rule = error_rules[rule_name]
 
-            error_list = dm.evaluate_rule(self.df, error_rule)
+            error_list = dm.evaluate_rule(df, error_rule)
             for index, value in enumerate(error_list):
                 if not value:  #False: row failed the error rule test
-                    if index not in self.errors:
+                    if index not in errors:
+                        print('Info: tab {NAME}, rule {RULE}: row {ROW} contains '\
+                              'error rule {ERROR}'.format(NAME=self.name, \
+                              RULE=self.rule_name, ROW=index, ERROR=rule_name))
                         errors.append(index)
 
-        self.errors = set(errors)
+        return(set(errors))
 
     def run_audit(self, *args, **kwargs):
         """
@@ -659,7 +678,7 @@ class Schema:
                     .format(NAME=self.name, RULE=self.rule_name, METHOD=action, E=e))
                 raise Exception
             else:
-                self.df = self.sort_table(df)
+                self.df = df
 
         self.audit_performed = True
 
@@ -670,11 +689,11 @@ class Schema:
         dparse = dateutil.parser.parse
 
         # Arguments
-        db = kwargs['database']
+        user = kwargs['account']
         audit_params = kwargs['parameters']
         window = args[0]
 
-        cursor = db.cnxn.cursor()
+        cursor = user.cnxn.cursor()
 
         # Class attribites
         pkey = self.get_column_name(self.db_key)
@@ -704,7 +723,7 @@ class Schema:
         except IndexError:  #no data in dataframe
             print('Warning: {NAME} Audit: no transactions for audit date {DATE}'\
                 .format(NAME=self.name, DATE=audit_date_iso))
-            return(False)
+            return(df)
 
         first_number_comp = int(self.get_id_component(first_id, 'variable'))
         first_date_comp = self.get_id_component(first_id, 'date')
@@ -736,8 +755,8 @@ class Schema:
             print('Info: {NAME} Audit: searching for last transaction created '\
                   'prior to {DATE}'.format(NAME=self.name, DATE=audit_date_iso))
 
-            filters = (date_col, '= ?', (prev_date.strftime(date_fmt),))
-            last_df = db.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
+            filters = ('{} = ?'.format(date_col), (prev_date.strftime(date_fmt),))
+            last_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
             last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
             last_id = None
@@ -792,8 +811,8 @@ class Schema:
 
         ## Search for missed numbers at end of day
         last_id_of_df = id_list[-1]
-        filters = (date_col, '= ?', (audit_date.strftime(date_fmt),))
-        current_df = db.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
+        filters = ('{} = ?'.format(date_col), (audit_date.strftime(date_fmt),))
+        current_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
         current_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
         current_ids = current_df[pkey].tolist()
@@ -807,10 +826,12 @@ class Schema:
 
         # Query database for the potentially missing transactions
         if missing_transactions:
-            filter_values = ['?' for i in missing_transactions]
-            filter_str = 'IN ({VALUES})'.format(VALUES=', '.join(filter_values))
             pkey_fmt = self.get_query_column(pkey)
-            filters = [(pkey_fmt, filter_str, tuple(missing_transactions))]
+
+            filter_values = ['?' for i in missing_transactions]
+            filter_str = '{PKEY} IN ({VALUES})'.format(PKEY=pkey_fmt, VALUES=', '.join(filter_values))
+
+            filters = [(filter_str, tuple(missing_transactions))]
 
             # Drop missing transactions if they don't meet tab parameter requirements
             tab_params = self.tab_parameters
@@ -820,13 +841,13 @@ class Schema:
                 if not tab_param_col:
                     continue
 
-                filters.append((tab_param_col, '= ?', \
+                filters.append(('{} = ?'.format(tab_param_col), \
                                 (tab_param_value,)))
 
-            missing_data = db.query(self.db_tables, columns=self.db_columns, \
+            missing_data = user.query(self.db_tables, columns=self.db_columns, \
                 filter_rules=filters, order=pkey_fmt)
         else:
-            missing_data = pd.DataFrame(columns=self.df.columns.values.tolist())
+            missing_data = pd.DataFrame(columns=df.columns)
 
         # Display import window with potentially missing data
         missing_data_fmt = self.format_display_table(self.sort_table(missing_data))
@@ -834,7 +855,9 @@ class Schema:
         import_data = missing_data.iloc[import_rows]
 
         # Updata dataframe with imported data
-        df = df.append(import_data, ignore_index=True, sort=False)
+        if not import_data.empty:
+            df = df.append(import_data, ignore_index=True, sort=False)
+
         print('Info: new size of {0} dataframe is {1} rows and {2} columns'\
             .format(self.name, *df.shape))
 
@@ -847,7 +870,6 @@ class Schema:
         Filter pandas dataframe using filter rules specified in the 
         configuration.
         """
-        operators = set('><=')
         chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
 
         # Method arguments
@@ -887,10 +909,8 @@ class Schema:
         rule_eval_str = ' '.join(rule_eval_list)
 
         failed = []
-        print(df.head)
         for row, results_tup in enumerate(zip(*eval_values)):
             test_str = rule_eval_str.format(*results_tup)
-            print('filter rule evaluation string is {}'.format(test_str))
             results = eval(rule_eval_str.format(*results_tup))
             if not results:
                 print('Info: tab {NAME}, rule {RULE}: row {ROW} has failed one '\
@@ -996,7 +1016,7 @@ def calc_column_widths(header, width=None, pixels=False):
     return(lengths)
 
 # Panel layouts
-def action_layout(cnfg):
+def action_layout(audit_rules):
     """
     """
     # Layout settings
@@ -1004,9 +1024,9 @@ def action_layout(cnfg):
     pad_frame = const.FRAME_PAD
     pad_el = const.ELEM_PAD
     pad_v = const.VERT_PAD
-    button_size = 31
+    button_size = const.B3_SIZE
 
-    rule_names = cnfg.print_rules()
+    rule_names = audit_rules.print_rules()
     nrule = len(rule_names)
     pad_screen = (266 - (nrule * button_size)) / 2
 

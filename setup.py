@@ -23,7 +23,7 @@ import PyInstaller as pi
 from setuptools import setup
 
 setup(name='REM',
-      version='0.1.2',
+      version='0.2.0',
       packages=['REM',],
       description='',
       classifiers=[

@@ -16,20 +16,23 @@ def popup_confirm(msg):
     """Display popup asking user if they would like to continue without 
     completing the current action.
     """
-    return(sg.popup_ok_cancel(textwrap.fill(msg, width=40), title=''))
+    font = const.MID_FONT
+    return(sg.popup_ok_cancel(textwrap.fill(msg, width=40), font=font, title=''))
 
 def popup_notice(msg):
     """
     Display popup notifying user that an action is required or couldn't
     be undertaken.
     """
-    return(sg.popup_ok(textwrap.fill(msg, width=40), title=''))
+    font = const.MID_FONT
+    return(sg.popup_ok(textwrap.fill(msg, width=40), font=font, title=''))
 
 def popup_error(msg):
     """
     Display popup notifying user that there is a fatal program error.
     """
-    return(sg.popup_error(textwrap.fill(msg, width=40), title=''))
+    font = const.MID_FONT
+    return(sg.popup_error(textwrap.fill(msg, width=40), font=font, title=''))
 
 # Functions
 def verify_row(self, row_index):
@@ -83,7 +86,7 @@ def debugger(win_size:tuple=(1920, 1080)):
 
     return(window)
 
-def login_window(cnfg, db, win_size:tuple=(1920, 1080)):
+def login_window(cnfg, win_size:tuple=(1920, 1080)):
     """
     Display the login window.
     """
@@ -155,6 +158,7 @@ def login_window(cnfg, db, win_size:tuple=(1920, 1080)):
     layout = [[sg.Col(column_layout, element_justification='center', 
                  justification='center', background_color=bg_col)]]
 
+    db = cnfg.db
     account = auth.UserAccount()
 
     window = sg.Window('', layout, font=main_font, modal=True, \
