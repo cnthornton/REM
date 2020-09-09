@@ -3,6 +3,8 @@ REM function for manipulating data.
 """
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_datetime64_any_dtype as is_datetime
+
 
 def fill_na(df, colname):
     """
@@ -14,11 +16,14 @@ def fill_na(df, colname):
         mod_col = df[colname].fillna(0)
     elif dtype == np.object:
         mod_col = df[colname].fillna('')
-    else:  #empty df?
-        print('Warning: unsupported data type.')
-        mod_col = None
+    elif is_datetime(dtype):
+        mod_col = df[colname].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else '')
+    else:  # empty df?
+        print('Warning: unsupported data type {}.'.format(dtype))
+        mod_col = df[colname].fillna('')
 
-    return(mod_col)
+    return (mod_col)
+
 
 def evaluate_rule(df, condition_str):
     """
@@ -34,30 +39,30 @@ def evaluate_rule(df, condition_str):
     header_value = None
     value_index = None
     for i, component in enumerate(conditional):
-        if component in operators:  #component is an operator
+        if component in operators:  # component is an operator
             rule_value.append(component)
         elif component in headers:
             header_value = component
             rule_value.append('df["{}"]'.format(component))
-            print('Info: data type of header {} is {}'\
-                .format(header_value, df.dtypes[header_value]))
+            print('Info: data type of header {} is {}'
+                  .format(header_value, df.dtypes[header_value]))
         elif component.lower() in headers:
             header_value = component.lower()
             rule_value.append('df["{}"]'.format(component.lower()))
-            print('Info: data type of header {} is {}'\
-                .format(header_value, df.dtypes[header_value]))
-        else:  #component is a string or integer
+            print('Info: data type of header {} is {}'
+                  .format(header_value, df.dtypes[header_value]))
+        else:  # component is a string or integer
             value_index = i
             rule_value.append(component)
 
-    if header_value != None and value_index != None:
+    if header_value is not None and value_index is not None:
         # Get data type of header column
         dtype = df.dtypes[header_value]
         if dtype == np.object:
             rule_value[value_index] = '"{}"'.format(rule_value[value_index])
 
-    if len(rule_value) == 1:  #handle case where checking for existence
-        eval_str = '{VAL} not in {NONE}'\
+    if len(rule_value) == 1:  # handle case where checking for existence
+        eval_str = '{VAL} not in {NONE}' \
             .format(VAL=rule_value[0], NONE=nonetypes)
     else:
         eval_str = ' '.join(rule_value)
@@ -66,13 +71,14 @@ def evaluate_rule(df, condition_str):
         row_status = list(eval(eval_str))
     except SyntaxError:
         nrow = df.shape[0]
-        print('Warning: invalid syntax for condition rule {NAME}'\
-            .format(NAME=condition_str))
+        print('Warning: invalid syntax for condition rule {NAME}'
+              .format(NAME=condition_str))
         row_status = [True for i in range(nrow)]
 
-    return(row_status)
+    return (row_status)
 
-def parse_operation_string(condition, equivalent:bool=True):
+
+def parse_operation_string(condition, equivalent: bool = True):
     """
     Split operation string into a list.
     """
@@ -83,20 +89,20 @@ def parse_operation_string(condition, equivalent:bool=True):
     buff = []
     prev_char = None
     for char in condition:
-        if char.isspace():  #skip whitespace
+        if char.isspace():  # skip whitespace
             continue
-        elif char in operators:  #character is an operator
-            if prev_char not in operators:  #flush buffer for non-operator
+        elif char in operators:  # character is an operator
+            if prev_char not in operators:  # flush buffer for non-operator
                 parsed_condition.append(''.join(buff))
 
                 buff = [char]
-            else:  #previous character was also an operator
+            else:  # previous character was also an operator
                 buff.append(char)
                 parsed_condition.append(''.join(buff))
 
                 buff = []
-        else: #character is not operator or whitespace, append to buffer
-            if prev_char in operators:  #flush buffer for single char operator
+        else:  # character is not operator or whitespace, append to buffer
+            if prev_char in operators:  # flush buffer for single char operator
                 parsed_condition.append(''.join(buff))
 
                 buff = [char]
@@ -108,9 +114,9 @@ def parse_operation_string(condition, equivalent:bool=True):
     parsed_condition.append(''.join(buff))
 
     if equivalent:
-        parsed_condition_fmt = [i.replace('=', '==') if len(i) == 1 else i for \
+        parsed_condition_fmt = [i.replace('=', '==') if len(i) == 1 else i for
                                 i in parsed_condition if i]
     else:
         parsed_condition_fmt = [i for i in parsed_condition if i]
 
-    return(parsed_condition_fmt)
+    return (parsed_condition_fmt)

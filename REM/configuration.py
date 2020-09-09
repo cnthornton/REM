@@ -2,16 +2,16 @@
 REM configuration classes and functions. Includes audit rules, audit objects,
 and rule parameters.
 """
-import datetime
 import dateutil.parser
+import dateutil.parser._parser
 import numpy as np
 import pyodbc
 import PySimpleGUI as sg
-import re
 import REM.data_manipulation as dm
 import REM.layouts as lo
 import REM.program_settings as const
 import REM.secondary_win as win2
+import sys
 
 
 class ProgramSettings:
@@ -25,24 +25,12 @@ class ProgramSettings:
     Attributes:
 
         language (str): Display language. Default: EN.
-
-        logo (str): Logo to display on main screen.
-
-        driver (str): ODBC driver
-
-        server (str): Database server.
-
-        port (str): Listening port for database connections
-
-        dbname (str): Database name.
     """
 
     def __init__(self, cnfg):
-
         # Display parameters
         settings = cnfg['settings']
         self.language = settings['language'] if settings['language'] else 'en'
-        self.logo = settings['logo']
 
         # Database parameters
         ddict = settings['database']
@@ -68,6 +56,20 @@ class DataBase:
     """
     Primary database object for querying databases and initializing
     authentication.
+
+    Attributes:
+
+        driver (str): ODBC driver
+
+        server (str): Database server.
+
+        port (str): Listening port for database connections
+
+        dbname (str): Database name.
+
+        prog_db (str): Program database name.
+
+        alt_dbs (list): Alternative databases to query if targets not found in primary database.
     """
 
     def __init__(self, ddict):
@@ -95,25 +97,27 @@ class DataBase:
 
         cursor = conn.cursor()
 
-        # Priveleages
-        query_str = 'SELECT UID, PWD, UserGroup FROM Users WHERE UID = ?'
+        # Privileges
+        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
         try:
             cursor.execute(query_str, (uid,))
         except pyodbc.Error as e:
-            print('DB Error: querying Users table from {DB} failed due to {EX}'\
-                .format(DB=self.prog_db, EX=e))
+            print('DB Error: querying Users table from {DB} failed due to {EX}'
+                  .format(DB=self.prog_db, EX=e))
             raise
 
+        ugroup = None
         results = cursor.fetchall()
         for row in results:
-            if row.uid == uid:
-                ugroup = row.usergroup
+            username, user_group = row
+            if username == uid:
+                ugroup = user_group
                 break
 
         cursor.close()
         conn.close()
 
-        return(ugroup)
+        return (ugroup)
 
     def db_connect(self, uid, pwd, database=None):
         """
@@ -129,20 +133,19 @@ class DataBase:
                        'Database': dbname,
                        'Port': port,
                        'UID': uid,
-                       'PASS': pwd,
-                       'Trusted_Connection': 'yes'}
+                       'PWD': pwd,
+                       'Trusted_Connection': 'no'}
 
-        conn_str = ';'.join(['{}={}'.format(k, db_settings[k]) for k in \
-                db_settings if db_settings[k]])
+        conn_str = ';'.join(['{}={}'.format(k, db_settings[k]) for k in db_settings if db_settings[k]])
 
         try:
             conn = pyodbc.connect(conn_str)
         except pyodbc.Error as e:
-            print('DB Error: connection to {DB} failed due to {EX}'\
-                .format(DB=dbname, EX=e))
+            print('DB Error: connection to {DB} failed due to {EX}'.format(DB=dbname, EX=e))
+            print('Connection string is: {}'.format(conn_str))
             raise
 
-        return(conn)
+        return (conn)
 
 
 class AuditRules(ProgramSettings):
@@ -155,7 +158,7 @@ class AuditRules(ProgramSettings):
 
     Attributes:
 
-        audit_rules (list): List of AuditRule objects.
+        rules (list): List of AuditRule objects.
     """
 
     def __init__(self, cnfg):
@@ -171,7 +174,7 @@ class AuditRules(ProgramSettings):
         """
         Return name of all audit rules defined in configuration file.
         """
-        return([i.name for i in self.rules])
+        return ([i.name for i in self.rules])
 
     def fetch_rule(self, name):
         """
@@ -180,14 +183,14 @@ class AuditRules(ProgramSettings):
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('Rule {NAME} not in list of configured audit rules. '\
-                  'Available rules are {ALL}'\
+            print('Rule {NAME} not in list of configured audit rules. ' \
+                  'Available rules are {ALL}' \
                   .format(NAME=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
-            rule = self.rules[index] 
+            rule = self.rules[index]
 
-        return(rule)
+        return (rule)
 
 
 class AuditRule:
@@ -200,7 +203,7 @@ class AuditRule:
         self.element_key = lo.as_key(name)
         try:
             self.permissions = adict['Permissions']
-        except KeyError:  #default permission for an audit is 'user'
+        except KeyError:  # default permission for an audit is 'user'
             self.permissions = 'user'
 
         self.parameters = []
@@ -210,7 +213,7 @@ class AuditRule:
         try:
             params = adict['RuleParameters']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "RuleParameters" '\
+            msg = 'Configuration Error: the rule parameter "RuleParameters" ' \
                   'is required for rule {}'.format(name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -230,7 +233,7 @@ class AuditRule:
         try:
             tdict = adict['Tabs']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "Tabs" is required '\
+            msg = 'Configuration Error: the rule parameter "Tabs" is required ' \
                   'for rule {}'.format(name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -241,7 +244,7 @@ class AuditRule:
         try:
             summary = adict['Summary']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "Summary" is '\
+            msg = 'Configuration Error: the rule parameter "Summary" is ' \
                   'required for rule {}'.format(name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -257,9 +260,9 @@ class AuditRule:
         else:
             key = None
 
-        return(key)
+        return (key)
 
-    def fetch_tab(self, name, by_key:bool=False):
+    def fetch_tab(self, name, by_key: bool = False):
         """
         """
         if not by_key:
@@ -270,19 +273,19 @@ class AuditRule:
         try:
             index = names.index(name)
         except ValueError:
-            print('Error: rule {RULE}: tab item {TAB} not in list of tab items'\
-                .format(RULE=self.name, TAB=name))
+            print('Error: rule {RULE}: tab item {TAB} not in list of tab items'
+                  .format(RULE=self.name, TAB=name))
             tab_item = None
         else:
             tab_item = self.tabs[index]
-        
-        return(tab_item)
 
-    def fetch_parameter(self, name, by_key:bool=False, by_type:bool=False):
+        return (tab_item)
+
+    def fetch_parameter(self, name, by_key: bool = False, by_type: bool = False):
         """
         """
         if by_key and by_type:
-            print('Warning: the "by_key" and "by_type" arguments are mutually '\
+            print('Warning: the "by_key" and "by_type" arguments are mutually '
                   'exclusive. Defaulting to "by_key".')
             by_type = False
 
@@ -299,8 +302,8 @@ class AuditRule:
             param = None
         else:
             param = self.parameters[index]
-        
-        return(param)
+
+        return (param)
 
     def layout(self):
         """
@@ -323,15 +326,15 @@ class AuditRule:
 
         # Layout elements
         layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)),
-                         font=font_h)]], justification='c', 
-                         element_justification='c')]]
+                                        font=font_h)]], justification='c',
+                              element_justification='c')]]
 
         # Control elements
         nparam = len(params)
         param_elements = []
         for param in params:
             if nparam > 1:
-                pad_text = sg.Text(' ' * 4) 
+                pad_text = sg.Text(' ' * 4)
             else:
                 pad_text = sg.Text('')
 
@@ -345,11 +348,11 @@ class AuditRule:
         # Tab elements
         tabgroub_key = self.key_lookup('TG')
         audit_layout = [sg.TabGroup([lo.tab_layout(self.tabs)],
-                          pad=(pad_v, (pad_frame, pad_v)), 
-                          tab_background_color=inactive_col,
-                          selected_title_color=text_col,
-                          selected_background_color=bg_col,
-                          background_color=default_col, key=tabgroub_key)]
+                                    pad=(pad_v, (pad_frame, pad_v)),
+                                    tab_background_color=inactive_col,
+                                    selected_title_color=text_col,
+                                    selected_background_color=bg_col,
+                                    background_color=default_col, key=tabgroub_key)]
         layout_els.append(audit_layout)
 
         # Standard elements
@@ -357,19 +360,19 @@ class AuditRule:
         start_key = self.key_lookup('Start')
         report_key = self.key_lookup('Finalize')
         bttn_layout = [lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)),
-                         tooltip='Cancel current action'),
+                             tooltip='Cancel current action'),
                        lo.B2('Start', key=start_key, pad=((pad_el, 0), (pad_v, 0)),
-                         tooltip='Start audit'),
-                         sg.Text(' ' * 224, pad=(0, (pad_v, 0))),
+                             tooltip='Start audit'),
+                       sg.Text(' ' * 238, pad=(0, (pad_v, 0))),
                        lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)),
-                         disabled=True,
-                         tooltip='Finalize audit and generate summary report')]
+                             disabled=True,
+                             tooltip='Finalize audit and generate summary report')]
         layout_els.append(bttn_layout)
 
         # Pane elements must be columns
         layout = sg.Col(layout_els, key=self.element_key, visible=False)
 
-        return(layout)
+        return (layout)
 
     def toggle_parameters(self, window, value='enable'):
         """
@@ -379,9 +382,9 @@ class AuditRule:
 
         for parameter in self.parameters:
             element_key = parameter.element_key
-            print('Info: parameter {NAME}, rule {RULE}: updated element to '\
-                  '"disabled={VAL}"'.format(NAME=parameter.name, \
-                  RULE=self.name, VAL=status))
+            print('Info: parameter {NAME}, rule {RULE}: updated element to ' \
+                  '"disabled={VAL}"'.format(NAME=parameter.name,
+                                            RULE=self.name, VAL=status))
 
             window[element_key].update(disabled=status)
 
@@ -404,16 +407,16 @@ class SummaryPanel:
         try:
             self.table = sdict['DatabaseTable']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing '\
-                   'required field "DatabaseTable".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}: Summary missing '
+                    'required field "DatabaseTable".').format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
 
         try:
             all_columns = sdict['TableColumns']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing '\
-                   'required field "TableColumns".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}: Summary missing '
+                    'required field "TableColumns".').format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
         else:
@@ -422,15 +425,15 @@ class SummaryPanel:
         try:
             parameters = sdict['Parameters']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing '\
-                   'required field "Parameters".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}: Summary missing '
+                    'required field "Parameters".').format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
         else:
             if type(parameters) != type(dict()):
-                msg = _('Configuration Error: rule {RULE}: Summary '\
-                        'parameters incorrectly configured.')\
-                        .format(RULE=rule_name)
+                msg = _('Configuration Error: rule {RULE}: Summary '
+                        'parameters incorrectly configured.') \
+                    .format(RULE=rule_name)
                 win2.popup_error(msg)
                 sys.exit(1)
             for param in parameters:
@@ -445,8 +448,8 @@ class SummaryPanel:
         try:
             display_columns = sdict['DisplayColumns']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, Summary: missing '\
-                   'required parameter "DisplayColumns".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}, Summary: missing '
+                    'required parameter "DisplayColumns".').format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
         else:
@@ -465,7 +468,7 @@ class SummaryPanel:
                                              'value': 0}
 
         try:
-            in_cols = sdict['InputColumns'] 
+            in_cols = sdict['InputColumns']
         except KeyError:
             in_cols = []
         self.input_columns = {}
@@ -475,9 +478,9 @@ class SummaryPanel:
                                            'value': 0}
 
         if not map_cols and not in_cols:
-            msg = _('Configuration Error: rule {RULE}, Summary: one or both of '\
-                    'parameters "MappingColumns" and "InputColumns" are required.')\
-                    .format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}, Summary: one or both of '
+                    'parameters "MappingColumns" and "InputColumns" are required.') \
+                .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
 
@@ -495,7 +498,7 @@ class SummaryPanel:
         else:
             key = None
 
-        return(key)
+        return (key)
 
     def reset_values(self):
         """
@@ -535,9 +538,9 @@ class SummaryPanel:
                     rule_param = rule_parameters[index]
                     value = rule_param.value
                 else:
-                    print('Error: rule {RULE}, summary: summary parameter has '\
-                        'reference {REF} not found in rule parameters'\
-                        .format(RULE=self.rule_name, REF=reference))
+                    print('Error: rule {RULE}, summary: summary parameter has ' \
+                          'reference {REF} not found in rule parameters' \
+                          .format(RULE=self.rule_name, REF=reference))
                     continue
             try:
                 title = param_keys['Title']
@@ -554,14 +557,14 @@ class SummaryPanel:
 
             self.parameters[param]['value'] = value
 
-            print('Info: value for summary parameter {PARAM} is {VAL} with '\
-                'alias {ALIAS}'.format(PARAM=param, VAL=value, ALIAS=final_val))
-            title_components.append('{NAME} {VAL}'\
-                .format(NAME=title, VAL=final_val))
+            print('Info: value for summary parameter {PARAM} is {VAL} with ' \
+                  'alias {ALIAS}'.format(PARAM=param, VAL=value, ALIAS=final_val))
+            title_components.append('{NAME} {VAL}' \
+                                    .format(NAME=title, VAL=final_val))
 
         sum_title = '{} {}'.format(self.title, ' '.join(title_components))
 
-        return(sum_title)
+        return (sum_title)
 
     def update_mapping_value(self, rule, colname):
         """
@@ -572,10 +575,10 @@ class SummaryPanel:
         try:
             mapping = self.mapping_columns[colname]
         except KeyError:
-            print('Error: rule {RULE}, summary: mapping column {COL} does not '\
+            print('Error: rule {RULE}, summary: mapping column {COL} does not ' \
                   'exist'.format(RULE=self.rule_name, COL=colname))
-            return('')
-        
+            return ('')
+
         reference = mapping['reference']
 
         rule_values = []
@@ -585,11 +588,11 @@ class SummaryPanel:
                 continue
 
             try:
-                ref_table, ref_col =  component.split('.')
+                ref_table, ref_col = component.split('.')
             except ValueError:
-                print('Error: rule {RULE}, summary: unknown reference column '\
-                    'format {COMP}'.format(RULE=self.rule_name, COMP=component))
-                return('')
+                print('Error: rule {RULE}, summary: unknown reference column ' \
+                      'format {COMP}'.format(RULE=self.rule_name, COMP=component))
+                return ('')
             else:
                 try:
                     df = rule.fetch_tab(ref_table).df
@@ -597,10 +600,10 @@ class SummaryPanel:
                     try:
                         comp_value = float(component)
                     except ValueError:
-                        print('Error: rule {RULE}, summary: tab item {TAB} not '\
-                            'in list of Tabs'.format(RULE=self.rule_name, \
-                            TAB=ref_table))
-                        return('')
+                        print('Error: rule {RULE}, summary: tab item {TAB} not ' \
+                              'in list of Tabs'.format(RULE=self.rule_name, \
+                                                       TAB=ref_table))
+                        return ('')
                     else:
                         rule_values.append(comp_value)
                         continue
@@ -614,26 +617,26 @@ class SummaryPanel:
                     dtype = df.dtypes[ref_col.lower()]
 
                 if np.issubdtype(dtype, np.integer) or \
-                    np.issubdtype(dtype, np.floating):
+                        np.issubdtype(dtype, np.floating):
                     rule_values.append(df_series.sum())
                 elif dtype == np.object:
                     rule_values.append(df_series.nunique())
                 else:
-                    print('Error: rule {RULE}, summary: unknown data type '\
-                        '{TYPE} for mapping reference {COMP}'\
-                        .format(RULE=self.rule_name, TYPE=dtype, COMP=component))
-                    return('')
+                    print('Error: rule {RULE}, summary: unknown data type ' \
+                          '{TYPE} for mapping reference {COMP}' \
+                          .format(RULE=self.rule_name, TYPE=dtype, COMP=component))
+                    return ('')
 
         try:
             summary_total = eval(' '.join([str(i) for i in rule_values]))
         except Exception as e:
-            print('Error: rule {RULE}, summary: {ERR}'\
-                .format(RULE=self.rule_name, ERR=e))
+            print('Error: rule {RULE}, summary: {ERR}' \
+                  .format(RULE=self.rule_name, ERR=e))
             summary_total = ''
 
         self.mapping_columns[colname]['value'] = summary_total
 
-        return(summary_total)
+        return (summary_total)
 
     def update_input_value(self, value, colname):
         """
@@ -643,19 +646,18 @@ class SummaryPanel:
             input_items = self.input_columns[colname]
         except KeyError:
             print('Warning: unknown input column {}'.format(colname))
-            value_fmt = 0
-        
+
         try:
             value_fmt = float(value)
         except ValueError:
-            msg = _('Input {VAL} provided to {FIELD} should be '\
+            msg = _('Input {VAL} provided to {FIELD} should be '
                     'a numeric value').format(VAL=value, FIELD=colname)
             win2.popup_error(msg)
             value_fmt = 0
 
         self.input_columns[colname]['value'] = value_fmt
 
-        return(value_fmt)
+        return (value_fmt)
 
     def save_to_database(self, user):
         """
@@ -667,7 +669,7 @@ class SummaryPanel:
         inputs = self.input_columns
 
         filters = [('{} = ?'.format(param), (parameters[param]['value'],)) for param in parameters]
-        df = user.query(self.table, filter_rules=filters)
+        df = user.query(self.table, filter_rules=filters, prog_db=True)
 
         all_cols = {**parameters, **mappings, **inputs}
 
@@ -685,8 +687,8 @@ class SummaryPanel:
             success = user.insert(self.table, columns, values)
         else:
             success = user.update(self.table, columns, values, filters)
-        
-        return(success)
+
+        return (success)
 
     def layout(self):
         """
@@ -699,7 +701,6 @@ class SummaryPanel:
 
         bg_col = const.ACTION_COL
         default_col = const.DEFAULT_COL
-        text_col = const.TEXT_COL
 
         font_h = const.HEADER_FONT
         font_main = const.LARGE_FONT
@@ -714,8 +715,8 @@ class SummaryPanel:
         # Layout elements
         ## Title
         layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)),
-                         font=font_h, background_color=default_col)]],
-                         justification='c', element_justification='c')]]
+                                        font=font_h, background_color=default_col)]],
+                              justification='c', element_justification='c')]]
 
         ## Main screen
         tbl_layout = []
@@ -725,15 +726,15 @@ class SummaryPanel:
                 input_key = mapping_columns[colname]['element_key']
 
                 row = [sg.Input(display_name, size=(30, 1), pad=(0, pad_el),
-                         font=font_main, border_width=0, background_color=bg_col, 
-                         disabled_readonly_background_color=bg_col,
-                         justification='right', readonly=True), 
+                                font=font_main, border_width=0, background_color=bg_col,
+                                disabled_readonly_background_color=bg_col,
+                                justification='right', readonly=True),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col),
-                       sg.Input('', key=input_key, size=(20, 1), 
-                         pad=(0, pad_el), font=font_main, 
-                         border_width=0, background_color=bg_col, 
-                         disabled_readonly_background_color=bg_col,
-                         justification='l', readonly=True),
+                       sg.Input('', key=input_key, size=(20, 1),
+                                pad=(0, pad_el), font=font_main,
+                                border_width=0, background_color=bg_col,
+                                disabled_readonly_background_color=bg_col,
+                                justification='l', readonly=True),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col)]
 
                 tbl_layout.append(row)
@@ -741,53 +742,54 @@ class SummaryPanel:
                 tt = _('Input {} balance').format(display_name)
                 input_key = input_columns[colname]['element_key']
 
-                row = [sg.Input(display_name, size=(30, 1), pad=(0, pad_el), 
-                         font=font_main, border_width=0, background_color=bg_col,
-                         disabled_readonly_background_color=bg_col,
-                         justification='right', readonly=True),
+                row = [sg.Input(display_name, size=(30, 1), pad=(0, pad_el),
+                                font=font_main, border_width=0, background_color=bg_col,
+                                disabled_readonly_background_color=bg_col,
+                                justification='right', readonly=True),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col),
                        sg.Input('', key=input_key, size=(20, 1), pad=(0, pad_el),
-                         font=font_main, border_width=1, background_color=bg_col,
-                         disabled_readonly_background_color=bg_col, enable_events=True,
-                         justification='l', tooltip=tt, readonly=False),
+                                font=font_main, border_width=1, background_color=bg_col,
+                                disabled_readonly_background_color=bg_col, enable_events=True,
+                                justification='l', tooltip=tt, readonly=False),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col)]
 
                 tbl_layout.append(row)
 
         ### Totals with horizontal bar
         tbl_layout.append([sg.Text(' ' * 60, font=font_main, background_color=bg_col, pad=(0, pad_el)), \
-            sg.Text('_' * 20, font=font_main, background_color=bg_col, pad=(0, pad_el))])
+                           sg.Text('_' * 20, font=font_main, background_color=bg_col, pad=(0, pad_el))])
 
         totals_key = lo.as_key('{} Summary Totals'.format(self.rule_name))
         totals_layout = [sg.Input(_('Totals'), size=(30, 1), pad=(0, pad_el),
-                           font=font_main, border_width=0, background_color=bg_col,
-                           disabled_readonly_background_color=bg_col,
-                           justification='right', readonly=True),
-                       sg.Text(' ' * 20, font=font_main, background_color=bg_col),
-                       sg.Input('', key=totals_key, size=(20, 1),
-                           pad=(0, pad_el), font=font_main,
-                           border_width=0, background_color=bg_col,
-                           disabled_readonly_background_color=bg_col,
-                           justification='l', readonly=True),
-                       sg.Text(' ' * 20, font=font_main, background_color=bg_col)]
+                                  font=font_main, border_width=0, background_color=bg_col,
+                                  disabled_readonly_background_color=bg_col,
+                                  justification='right', readonly=True),
+                         sg.Text(' ' * 20, font=font_main, background_color=bg_col),
+                         sg.Input('', key=totals_key, size=(20, 1),
+                                  pad=(0, pad_el), font=font_main,
+                                  border_width=0, background_color=bg_col,
+                                  disabled_readonly_background_color=bg_col,
+                                  justification='l', readonly=True),
+                         sg.Text(' ' * 20, font=font_main, background_color=bg_col)]
         tbl_layout.append(totals_layout)
 
         ### Main screen frame
         pad_screen = (230 - ((ndisplay + 2) * font_size)) / 2
         title_key = lo.as_key('{} Summary Title'.format(self.rule_name))
 
-        summ_layout = [sg.Frame('', 
-                        [[sg.Col([[sg.Input('', font=font_h, 
-                            key=title_key, border_width=0, readonly=True, justification='c', 
-                            background_color=bg_col, disabled_readonly_background_color=bg_col)]],
-                            pad=(0, pad_frame), element_justification='c', justification='c')],
-                         [sg.Text(' ' * 284, pad=(0, pad_screen), background_color=bg_col)],
-                         [sg.Col(tbl_layout, background_color=bg_col, 
-                            justification='c', element_justification='c',
-                            pad=(0, 0))],
-                         [sg.Text(' ' * 284, pad=(0, pad_screen), background_color=bg_col)],
-                         [sg.Text(' ' * 284, background_color=bg_col)]],
-                       background_color=bg_col, pad=(pad_frame, pad_v))]
+        summ_layout = [sg.Frame('',
+                                [[sg.Col([[sg.Input('', font=font_h,
+                                                    key=title_key, border_width=0, readonly=True, justification='c',
+                                                    background_color=bg_col,
+                                                    disabled_readonly_background_color=bg_col)]],
+                                         pad=(0, pad_frame), element_justification='c', justification='c')],
+                                 [sg.Text(' ' * 284, pad=(0, pad_screen), background_color=bg_col)],
+                                 [sg.Col(tbl_layout, background_color=bg_col,
+                                         justification='c', element_justification='c',
+                                         pad=(0, 0))],
+                                 [sg.Text(' ' * 284, pad=(0, pad_screen), background_color=bg_col)],
+                                 [sg.Text(' ' * 284, background_color=bg_col)]],
+                                background_color=bg_col, pad=(pad_frame, pad_v))]
 
         layout_els.append(summ_layout)
 
@@ -796,19 +798,19 @@ class SummaryPanel:
         b2_key = lo.as_key('{} Summary Back'.format(audit_name))
         b3_key = lo.as_key('{} Summary Save'.format(audit_name))
         bttn_layout = [lo.B2(_('Cancel'), key=b1_key,
-                          tooltip=_('Cancel save'), pad=((pad_frame, pad_el), 0)),
-                        lo.B2(_('Back'), key=b2_key,
-                          tooltip=_('Back to transactions'), pad=(pad_el, 0)), 
-                        sg.Text(' ' * 224, pad=(0, (pad_v, 0))),
-                        lo.B2(_('Save'), key=b3_key,
-                          tooltip=_('Save summary'), pad=((0, pad_frame), 0))]
+                             tooltip=_('Cancel save'), pad=((pad_frame, pad_el), 0)),
+                       lo.B2(_('Back'), key=b2_key,
+                             tooltip=_('Back to transactions'), pad=(pad_el, 0)),
+                       sg.Text(' ' * 238, pad=(0, (pad_v, 0))),
+                       lo.B2(_('Save'), key=b3_key,
+                             tooltip=_('Save summary'), pad=((0, pad_frame), 0))]
 
         layout_els.append(bttn_layout)
 
         # Pane elements must be columns
         layout = sg.Col(layout_els, key=self.element_key, visible=False)
 
-        return(layout)
+        return (layout)
 
 
 class AuditParameter:
@@ -816,7 +818,7 @@ class AuditParameter:
     """
 
     def __init__(self, rule_name, name, cdict):
-        
+
         self.name = name
         self.rule_name = rule_name
         self.element_key = lo.as_key('{} {}'.format(rule_name, name))
@@ -837,7 +839,7 @@ class AuditParameter:
         try:
             elem_key = self.element_key
         except KeyError:
-            print('Warning: parameter {PARAM}, rule {RULE}: no values set for '\
+            print('Warning: parameter {PARAM}, rule {RULE}: no values set for ' \
                   'parameter'.format(PARAM=self.name, RULE=self.rule_name))
             value = ''
         else:
@@ -850,9 +852,9 @@ class AuditParameter:
         Check whether all values attributes have been set.
         """
         if self.value:
-            return(True)
+            return (True)
         else:
-            return(False)
+            return (False)
 
     def filter_statement(self, table=None):
         """
@@ -869,7 +871,7 @@ class AuditParameter:
         else:
             statement = None
 
-        return(statement)
+        return (statement)
 
 
 class AuditParameterCombo(AuditParameter):
@@ -881,12 +883,12 @@ class AuditParameterCombo(AuditParameter):
         try:
             self.combo_values = cdict['Values']
         except KeyError:
-            print('Configuration Warning: parameter {PM}, rule {RULE}: '\
-                  'values required for parameter type "dropdown"'\
+            print('Configuration Warning: parameter {PM}, rule {RULE}: ' \
+                  'values required for parameter type "dropdown"' \
                   .format(PM=name, RULE=rule_name))
             self.combo_values = []
-        
-    def layout(self, padding:int=8):
+
+    def layout(self, padding: int = 8):
         """
         Create a layout for rule parameter element 'dropdown'.
         """
@@ -902,20 +904,23 @@ class AuditParameterCombo(AuditParameter):
 
         layout = [sg.Text(desc, font=font, pad=((0, pad_el), (0, pad_v))),
                   sg.Combo(values, font=font, key=key, enable_events=True,
-                    size=(width, 1), pad=(0, (0, pad_v)))]
+                           size=(width, 1), pad=(0, (0, pad_v)))]
 
-        return(layout)
+        return (layout)
 
 
 class AuditParameterDate(AuditParameter):
     """
     """
+
     def __init__(self, rule_name, name, cdict):
         super().__init__(rule_name, name, cdict)
         try:
             self.format = format_date_str(cdict['DateFormat'])
         except KeyError:
-            self.format = format_date_str("DD/MM/YYYY")
+            print('Warning: parameter {PARAM}, rule {RULE}: no date format specified ... defaulting to YYYY-MM-DD'
+                  .format(PARAM=name, RULE=rule_name))
+            self.format = format_date_str("YYYY-MM-DD")
 
         self.value_raw = ''
 
@@ -925,7 +930,6 @@ class AuditParameterDate(AuditParameter):
         """
         pad_el = const.ELEM_PAD
         pad_v = const.VERT_PAD
-        pad_h = const.HORZ_PAD
         date_ico = const.CALENDAR_ICON
         font = const.MID_FONT
 
@@ -934,14 +938,13 @@ class AuditParameterDate(AuditParameter):
         key = self.element_key
         layout = [sg.Text(desc, font=font, pad=((0, pad_el), (0, pad_v))),
                   sg.Input('', key=key, size=(16, 1), enable_events=True,
-                     pad=((0, pad_el), (0, pad_v)), font=font,
-                     tooltip=_('Input date as YYYY-MM-DD or use the calendar ' \
-                               'button to select the date')),
-                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
-                     border_width=0, size=(2, 1), pad=(0, (0, pad_v)), font=font,
-                     tooltip=_('Select date from calendar menu'))]
+                           pad=((0, pad_el), (0, pad_v)), font=font,
+                           tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
+                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
+                                    border_width=0, size=(2, 1), pad=(0, (0, pad_v)), font=font,
+                                    tooltip=_('Select date from calendar menu'))]
 
-        return(layout)
+        return (layout)
 
     def set_value(self, values):
         """
@@ -956,9 +959,9 @@ class AuditParameterDate(AuditParameter):
         elem_key = self.element_key
 
         try:
-            value_raw = values[elem_key]
+            value_raw: str = values[elem_key]
         except KeyError:
-            print('Warning: parameter {PARAM}, rule {RULE}: no values set for '\
+            print('Warning: parameter {PARAM}, rule {RULE}: no values set for '
                   'parameter'.format(PARAM=self.name, RULE=self.rule_name))
             value_fmt = ''
             value_raw = ''
@@ -969,7 +972,10 @@ class AuditParameterDate(AuditParameter):
                 value_fmt = ''
                 value_raw = ''
             else:
-                value_fmt = date.strftime(self.format)
+                try:
+                    value_fmt: str = date.strftime(self.format)
+                except ValueError:
+                    print('Configuration Error: invalid format string {}'.format(self.format))
 
         self.value = value_fmt
         self.value_raw = value_raw
@@ -983,36 +989,16 @@ class AuditParameterDate(AuditParameter):
 
         input_date = value.replace('-', '')
         if input_date and len(input_date) == 8:
-            return(True)
+            return (True)
         else:
-            return(False)
-
-    def format_date_element(self, date_str):
-        """
-        Forces user input to date element to be in ISO format.
-        """
-        buff = []
-        for index, char in enumerate(date_str):
-            if index == 3:
-                if len(date_str) != 4:
-                    buff.append('{}-'.format(char))
-                else:
-                    buff.append(char)
-            elif index == 5:
-                if len(date_str) != 6:
-                    buff.append('{}-'.format(char))
-                else:
-                    buff.append(char)
-            else:
-                buff.append(char)
-
-        return(''.join(buff))
+            return (False)
 
 
 class AuditParameterDateRange(AuditParameterDate):
     """
     Layout for the rule parameter element 'date_range'.
     """
+
     def __init__(self, rule_name, name, cdict):
         super().__init__(rule_name, name, cdict)
         self.element_key2 = lo.as_key('{} {} 2'.format(rule_name, name))
@@ -1037,22 +1023,22 @@ class AuditParameterDateRange(AuditParameterDate):
 
         layout = [sg.Text(desc_from, font=font, pad=((0, pad_el), (0, pad_v))),
                   sg.Input('', key=key_from, size=(16, 1), enable_events=True,
-                     pad=((0, pad_el), (0, pad_v)), font=font,
-                     tooltip=_('Input date as YYYY-MM-DD or use the calendar ' \
-                               'button to select the date')),
-                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
-                     border_width=0, size=(2, 1), pad=(0, (0, pad_v)),
-                     tooltip=_('Select date from calendar menu')),
-                   sg.Text(desc_to, font=font, pad=((pad_h, pad_el), (0, pad_v))),
-                   sg.Input('', key=key_to, size=(16, 1), enable_events=True,
-                     pad=((0, pad_el), (0, pad_v)),
-                     tooltip=_('Input date as YYYY-MM-DD or use the calendar ' \
-                               'button to select the date')),
-                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
-                     border_width=0, size=(2, 1), pad=(0, (0, pad_v)),
-                     tooltip=_('Select date from calendar menu'))]
+                           pad=((0, pad_el), (0, pad_v)), font=font,
+                           tooltip=_('Input date as YYYY-MM-DD or use the calendar ' \
+                                     'button to select the date')),
+                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
+                                    border_width=0, size=(2, 1), pad=(0, (0, pad_v)),
+                                    tooltip=_('Select date from calendar menu')),
+                  sg.Text(desc_to, font=font, pad=((pad_h, pad_el), (0, pad_v))),
+                  sg.Input('', key=key_to, size=(16, 1), enable_events=True,
+                           pad=((0, pad_el), (0, pad_v)),
+                           tooltip=_('Input date as YYYY-MM-DD or use the calendar ' \
+                                     'button to select the date')),
+                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
+                                    border_width=0, size=(2, 1), pad=(0, (0, pad_v)),
+                                    tooltip=_('Select date from calendar menu'))]
 
-        return(layout)
+        return (layout)
 
     def filter_statement(self, table=None):
         """
@@ -1066,7 +1052,7 @@ class AuditParameterDateRange(AuditParameterDate):
         params = (self.value, self.value2)
         statement = ('{} BETWEEN ? AND ?'.format(db_field), params)
 
-        return(statement)
+        return (statement)
 
     def set_value(self, values):
         """
@@ -1080,49 +1066,93 @@ class AuditParameterDateRange(AuditParameterDate):
         elem_key2 = self.element_key2
         self.value = values[elem_key]
 
-        self.value2 = values[elem_key]
+        self.value2 = values[elem_key2]
 
     def values_set(self):
         """
         Check whether all values attributes have been set.
         """
         if self.value and self.value2:
-            return(True)
+            return (True)
         else:
-            return(False)
+            return (False)
+
+
+def format_date_element(date_str):
+    """
+    Forces user input to date element to be in ISO format.
+    """
+    buff = []
+    for index, char in enumerate(date_str):
+        if index == 3:
+            if len(date_str) != 4:
+                buff.append('{}-'.format(char))
+            else:
+                buff.append(char)
+        elif index == 5:
+            if len(date_str) != 6:
+                buff.append('{}-'.format(char))
+            else:
+                buff.append(char)
+        else:
+            buff.append(char)
+
+    return (''.join(buff))
+
 
 def format_date_str(date_str):
     """
     """
-    separators = set('/- ')
+    separators = set(':/- ')
     date_fmts = {'YYYY': '%Y', 'YY': '%y',
-                 'MMMM': '%B', 'MMM': '%b', 'MM': '%m', 'M': '%-m', 
-                 'DD': '%d', 'D': '%-d'}
+                 'MMMM': '%B', 'MMM': '%b', 'MM': '%m', 'M': '%-m',
+                 'DD': '%d', 'D': '%-d',
+                 'HH': '%H', 'MI': '%M', 'SS': '%S'}
 
     strfmt = []
 
     last_char = date_str[0]
     buff = [last_char]
     for char in date_str[1:]:
-        if char == last_char:
-            buff.append(char)
+        if char not in separators:
+            if last_char != char:
+                # Check if char is first in a potential series
+                if last_char in separators:
+                    buff.append(char)
+                    last_char = char
+                    continue
+
+                # Check if component is minute
+                if ''.join(buff + [char]) == 'MI':
+                    strfmt.append(date_fmts['MI'])
+                    buff = []
+                    last_char = char
+                    continue
+
+                # Add characters in buffer to format string and reset buffer
+                component = ''.join(buff)
+                strfmt.append(date_fmts[component])
+                buff = [char]
+            else:
+                buff.append(char)
         else:
             component = ''.join(buff)
             try:
                 strfmt.append(date_fmts[component])
             except KeyError:
-                if component in separators:
-                    strfmt.append(component)
-                else:
-                    print('Warning: unknown date format {} provided in date '\
-                          'string {}'.format(component, date_str))
-            buff = [char]
+                if component:
+                    print('Warning: unknown component {} provided to date string {}.'.format(component, date_str))
+                    raise
+
+            strfmt.append(char)
+            buff = []
+
         last_char = char
 
-    try:
+    try:  #format final component remaining in buffer
         strfmt.append(date_fmts[''.join(buff)])
     except KeyError:
-        print('Warning: unsupported characters found at the end of the date '\
-              'str {}'.format(date_str))
+        print('Warning: unsupported characters {} found in date string {}'.format(''.join(buff), date_str))
+        raise
 
-    return(''.join(strfmt))
+    return ''.join(strfmt)

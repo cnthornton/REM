@@ -18,13 +18,11 @@ Copyright:
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-
-import PyInstaller as pi
 from setuptools import setup
 
 setup(name='REM',
-      version='0.2.0',
-      packages=['REM',],
+      version='0.2.1',
+      packages=['REM', ],
       description='',
       classifiers=[
           'Development Status :: 4 - Beta',
@@ -33,12 +31,12 @@ setup(name='REM',
           'Natural Language :: English',
           'Operating System :: OS Independent',
           'Programming Language :: Python :: 3.6',
-          'Topic :: Acounting :: Revenue & Expense :: Validation',
+          'Topic :: Accounting :: Revenue & Expense :: Validation',
           'Topic :: Software Development :: Libraries :: Python Modules'
       ],
       keywords='account audit transaction validation',
       url='https://github.com/cnthornton/REM/',
-      download_url = 'https://github.com/cnthornton/REM/archive/v0.1.1.tar.gz',
+      download_url='https://github.com/cnthornton/REM/archive/v0.1.1.tar.gz',
       author='Christopher Thornton',
       author_email='christopher.n.thornton@gmail.com',
       license='GPLv3',
@@ -50,4 +48,4 @@ setup(name='REM',
               'REM = REM.main_win:main',
           ]
       }
-)
+      )

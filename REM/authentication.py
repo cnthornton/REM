@@ -4,16 +4,15 @@ REM authentication and user classes.
 import hashlib
 import pandas as pd
 import pyodbc
-import PySimpleGUI as sg
-import sys
 
-# Classes
+
 class SQLStatementError(Exception):
     """A simple exception that is raised when an SQL statemet is formatted
     incorrectly
     """
-    def __init__(self,*args,**kwargs):
-        Exception.__init__(self,*args,**kwargs)
+
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
 
 
 class UserAccount:
@@ -48,6 +47,8 @@ class UserAccount:
         and obtain user permissions.
 
         Args:
+            db (DataFrame): DataBase object.
+
             uid (str): existing account username.
 
             pwd (str): password associated with the existing account.
@@ -64,7 +65,7 @@ class UserAccount:
         cnxn = db.db_connect(uid, pwd, database=db.dbname)
         self.cnxn = cnxn
 
-        cnxn_prog = db.db_connect(uid, pwd)
+        cnxn_prog = db.db_connect(uid, pwd, database=db.prog_db)
         self.cnxn_prog = cnxn_prog
 
     def logout(self):
@@ -91,7 +92,7 @@ class UserAccount:
 
         Arguments:
 
-            tables (str): database table to query.
+            tables (dict): database tables to query.
 
             columns: list or string containing the columns to select from the
                 database table.
@@ -101,6 +102,8 @@ class UserAccount:
 
             order: string or tuple of strings containing columns to sort
                 results by.
+
+           prog_db (bool): query from program database.
         """
         joins = ('INNER JOIN', 'JOIN', 'LEFT JOIN', 'LEFT OUTER JOIN',
                  'RIGHT JOIN', 'RIGHT OUTER JOIN', 'FULL JOIN',
@@ -112,7 +115,7 @@ class UserAccount:
             cursor = conn.cursor()
         except AttributeError:
             print('Query Error: connection to database cannot be established')
-            return(pd.DataFrame())
+            return (pd.DataFrame())
 
         # Define sorting component of query statement
         if type(order) in (type(list()), type(tuple())):
@@ -124,11 +127,11 @@ class UserAccount:
 
         # Define column component of query statement
         colnames = ', '.join(columns) if type(columns) in \
-            (type(list()), type(tuple())) else columns
+                                         (type(list()), type(tuple())) else columns
 
         # Define table component of query statement
-        table_names = [i for i in tables] if type(tables) in \
-            (type(dict()), type(list())) else [tables]
+        table_names = [i for i in tables] if type(tables) == \
+                                             type(dict()) else [tables]
         first_table = table_names[0]
         if len(table_names) > 1:
             table_rules = [first_table]
@@ -137,16 +140,14 @@ class UserAccount:
                 try:
                     tbl1_field, tbl2_field, join_clause = table_rule
                 except ValueError:
-                    print('Query Error: table join rule {} requires three '\
-                        'components'.format(table_rule))
+                    print('Query Error: table join rule {} requires three components'.format(table_rule))
                     continue
                 if join_clause not in joins:
                     print('Query Error: unknown join type {JOIN} in {RULE} '
                           ''.format(JOIN=join_clause, RULE=table_rule))
                     continue
-                join_statement = '{JOIN} {TABLE} ON {F1}={F2}'\
-                    .format(JOIN=join_clause, TABLE=table, F1=tbl1_field, \
-                    F2=tbl2_field)
+                join_statement = '{JOIN} {TABLE} ON {F1}={F2}'.format(JOIN=join_clause, TABLE=table, F1=tbl1_field,
+                                                                      F2=tbl2_field)
                 table_rules.append(join_statement)
             table_component = ' '.join(table_rules)
         else:
@@ -157,23 +158,23 @@ class UserAccount:
             where_clause, params = self.construct_where_clause(filter_rules)
         except SQLStatementError as e:
             print('Query Error: {}'.format(e))
-            return(pd.DataFrame())
+            return (pd.DataFrame())
 
-        query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'\
-            .format(COLS=colnames, TABLE=table_component, WHERE=where_clause, \
-            SORT=order_by)
+        query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'.format(COLS=colnames, TABLE=table_component,
+                                                                        WHERE=where_clause, SORT=order_by)
+
+        print('Query string supplied was: {} with parameters {}'.format(query_str, params))
 
         # Query database and format results as a Pandas dataframe
         try:
             df = pd.read_sql(query_str, conn, params=params)
         except pd.io.sql.DatabaseError as ex:
-            sqlstat = ex.args[1]
-            print('Query Error: {}'.format(sqlstat))
+            print('Query Error: {}'.format(ex))
             df = pd.DataFrame()
 
         cursor.close()
 
-        return(df)
+        return (df)
 
     def insert(self, table, columns, values):
         """
@@ -184,11 +185,11 @@ class UserAccount:
             cursor = conn.cursor()
         except AttributeError:
             print('Insertion Error: connection to database cannot be established')
-            return(False)
+            return (False)
 
         if len(columns) != len(values):
             print('Insertion Error: columns size is not equal to values size')
-            return(False)
+            return (False)
 
         # Format parameters
         if type(values) == type(list()):
@@ -198,27 +199,26 @@ class UserAccount:
         elif type(values) == type(str()):
             params = (values,)
         else:
-            print('Insertion Error: unknown values type {}'\
-                .format(type(values)))
-            return(False)
+            print('Insertion Error: unknown values type {}'.format(type(values)))
+            return (False)
 
         insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES ({VALS})'\
-            .format(TABLE=table, COLS=','.join(columns), \
-            VALS=','.join(['?' for i in params]))
-        print('insertion string is: {}'.format(insert_str))
-        print('with parameters: {}'.format(params))
+            .format(TABLE=table, COLS=','.join(columns), VALS=','.join(['?' for i in params]))
+        print('Info: insertion string is: {}'.format(insert_str))
+        print('Info: with parameters: {}'.format(params))
+        print('Info: ')
 
         try:
             cursor.execute(insert_str, params)
-        except pyodbc.Error as ex1:  #possible duplicate entries
+        except pyodbc.Error as ex1:  # possible duplicate entries
             print('Insertion Error: {}'.format(ex1))
-            return(False)
+            return (False)
         else:
             conn.commit()
 
         cursor.close()
 
-        return(True)
+        return (True)
 
     def update(self, table, columns, values, filters):
         """
@@ -229,11 +229,11 @@ class UserAccount:
             cursor = conn.cursor()
         except AttributeError:
             print('Update Error: connection to database cannot be established')
-            return(False)
+            return (False)
 
         if len(columns) != len(values):
             print('Update Error: columns size is not equal to values size')
-            return(False)
+            return (False)
 
         # Format parameters
         if type(values) == type(list()):
@@ -243,9 +243,9 @@ class UserAccount:
         elif type(values) == type(str()):
             params = (values,)
         else:
-            print('Update Error: unknown values type {}'\
-                .format(type(values)))
-            return(False)
+            print('Update Error: unknown values type {}' \
+                  .format(type(values)))
+            return (False)
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
 
@@ -253,7 +253,7 @@ class UserAccount:
         if type(filter_params) == type(tuple()):
             params = params + filter_params
 
-        update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}'\
+        update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}' \
             .format(TABLE=table, PAIRS=','.join(pair_list), CLAUSE=where_clause)
         print('update string is: {}'.format(update_str))
         print('with parameters: {}'.format(params))
@@ -262,24 +262,24 @@ class UserAccount:
             cursor.execute(update_str, params)
         except pyodbc.Error as ex:
             print('Update Error: {}'.format(ex))
-            return(False)
+            return (False)
         else:
             conn.commit()
 
         cursor.close()
 
-        return(True)
+        return (True)
 
     def construct_where_clause(self, filter_rules):
         """
         Construct an SQL statement where clause for querying and updating 
         database tables.
         """
-        if filter_rules is None:  #no filtering rules
-            return(('', None))
+        if filter_rules is None:  # no filtering rules
+            return (('', None))
 
         # Construct filtering rules
-        if type(filter_rules) == type(list()):  #multiple filter parameters
+        if type(filter_rules) == type(list()):  # multiple filter parameters
             all_params = []
             for rule in filter_rules:
                 try:
@@ -287,59 +287,31 @@ class UserAccount:
                 except ValueError:
                     msg = 'incorrect data type for filter rule {}'.format(rule)
                     raise SQLStatementError(msg)
-                
+
                 if type(params) in (type(tuple()), type(list())):
                     # Unpack parameters
                     for param_value in params:
-                       all_params.append(param_value)
+                        all_params.append(param_value)
                 elif type(params) in (type(str()), type(int()), type(float())):
                     all_params.append(params)
                 else:
-                    msg = 'unknown parameter type {} in rule {}'\
+                    msg = 'unknown parameter type {} in rule {}' \
                         .format(params, rule)
                     raise SQLStatementError(msg)
 
             params = tuple(all_params)
             where = 'WHERE {}'.format(' AND '.join([i[0] for i in filter_rules]))
 
-        elif type(filter_rules) == type(tuple()):  #single filter parameter
+        elif type(filter_rules) == type(tuple()):  # single filter parameter
             statement, params = filter_rules
             where = 'WHERE {COND}'.format(COND=statement)
 
-        else:  #unaccepted data type provided
-            msg = 'unaccepted data type {} provided in rule {}'\
-                .format(type(rule), rule)
+        else:  # unaccepted data type provided
+            msg = 'unaccepted data type {} provided in rule {}' \
+                .format(type(filter_rules), filter_rules)
             raise SQLStatementError(msg)
 
-        return((where, params))
-
-    def change_password(self, pwd):
-        """
-        Change the password associated with the account.
-
-        Args:
-            pwd (str): new password to be associated with the account.
-        """
-        uid = self.uid
-
-        conn = self.cnxn
-        try:
-            cursor = conn.cursor()
-        except AttributeError:
-            print('Error: connection to database cannot be established')
-            return(False)
-
-        update_str = 'UPDATE Users SET PWD = ? WHERE UID = ?'
-        try:
-            cursor.execute(update_str, (pwd, uid))
-        except pyodbc.Error as e:
-            print('DB Error: updating password of user {UID} failed due to {EX}'\
-                .format(UID=uid, EX=e))
-            return(False)
-        else:
-            self.pwd = pwd
-
-        return(True)
+        return ((where, params))
 
 
 # Functions
@@ -354,4 +326,4 @@ def hash_password(password):
 
     password_hash = md5hash.hexdigest()
 
-    return(password_hash)
+    return (password_hash)

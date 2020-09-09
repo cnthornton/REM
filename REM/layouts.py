@@ -193,9 +193,8 @@ class TabItem:
                 break
 
         if not full_col_name:
-            print('Warning: tab {NAME}, rule {RULE}: unable to find column '\
-                '{COL} in list of table columns'\
-                .format(NAME=self.name, RULE=self.rule_name, COL=colname))
+            print('Warning: tab {NAME}, rule {RULE}: unable to find column {COL} in list of table columns'
+                  .format(NAME=self.name, RULE=self.rule_name, COL=colname))
 
         return(full_col_name)
 
@@ -249,7 +248,7 @@ class TabItem:
 
                     # Determine data type of columns and aggregation function 
                     # to use
-                    if i == 0:  #base on first column in list
+                    if i == 0:  #base dtype on first column in list
                         dtype = dataframe.dtypes[merge_col_fmt]
                         if dtype in (np.int64, np.float64):
                             agg_func = sum
@@ -257,10 +256,10 @@ class TabItem:
                             agg_func = ' '.join
                     else:
                         if dtype != dataframe.dtypes[merge_col_fmt]:
-                            print('Warning: tab {NAME}, rule {RULE}: attempting '\
-                                'to combine columns {COLS} of different types'\
-                                .format(NAME=self.name, RULE=self.rule_name, \
-                                COLS=col_list))
+                            print('Warning: tab {NAME}, rule {RULE}: attempting to combine columns of different type'
+                                  .format(NAME=self.name, RULE=self.rule_name))
+                            print('... changing data type of columns {COLS} to object'
+                                  .format(COLS=col_list))
                             dtype = np.object
                             agg_func = ' '.join
                             for item in col_list:
@@ -269,6 +268,8 @@ class TabItem:
                 try:
                     display_df[col_name] = dataframe[merge_cols].agg(agg_func, axis=1)
                 except Exception:
+                    print(display_df.head)
+                    print(merge_cols, dtype, agg_func)
                     raise Exception
             elif len(col_oper_list) > 1:
                 col_to_add = dm.evaluate_rule(dataframe, col_oper_list)
@@ -288,19 +289,18 @@ class TabItem:
             try:
                 alias_col_trans = orig_cols[alias_col]
             except KeyError:
-                print('Warning: tab {NAME}, rule {RULE}: alias {} not found '\
-                      'in the list of display columns'.format(NAME=self.name, \
-                      RULE=self.rule_name))
+                print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
+                      .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
-            print('Info: tab {NAME}, rule {RULE}: applying aliases {MAP} to {COL}'.format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col_trans))
+            print('Info: tab {NAME}, rule {RULE}: applying aliases {MAP} to {COL}'
+                  .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col_trans))
 
             try:
                 display_df[alias_col_trans] = display_df[alias_col_trans].map(alias_map)
             except KeyError:
-                print('Warning: tab {NAME}, rule {RULE}: alias {} not found '\
-                      'in the list of display columns'.format(NAME=self.name, \
-                      RULE=self.rule_name))
+                print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
+                      .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
             else:
                 display_df[alias_col_trans].fillna(display_df[alias_col_trans], inplace=True)
@@ -368,14 +368,12 @@ class TabItem:
 
             last_index += component_len
 
-        print('Info: tab {NAME}, rule {RULE}: ID updated with components {COMP}'\
-            .format(NAME=self.name, RULE=self.rule_name, COMP=self.id_components))
+        print('Info: tab {NAME}, rule {RULE}: ID updated with components {COMP}'
+              .format(NAME=self.name, RULE=self.rule_name, COMP=self.id_components))
 
     def format_id(self, number, date=None):
         """
         """
-        date_items_set = set('YMD-/ ')
-
         number = str(number)
 
         id_parts = []
@@ -383,14 +381,12 @@ class TabItem:
             comp_name, comp_value, comp_index = component
 
             if comp_name == 'date':  #component is datestr
-                strfmt = config.format_date_str(comp_value)
                 if not date:
-                    print('Warning: tab {NAME}, rule {RULE}: no date provided '\
-                          'for ID number {NUM} ... reverting to todays date'\
-                          .format(NAME=self.name, RULE=self.rule_name, NUM=number))
+                    print('Warning: tab {NAME}, rule {RULE}: no date provided for ID number {NUM} ... reverting to '
+                          'today\'s date'.format(NAME=self.name, RULE=self.rule_name, NUM=number))
                     value = datetime.datetime.now().strftime(strfmt)
                 else:
-                    value = date.strftime(strfmt)
+                    value = date
             elif comp_name == 'variable':
                 value = number.zfill(comp_value)
             else:
@@ -412,9 +408,8 @@ class TabItem:
                 try:
                     comp_value = identifier[comp_index[0]: comp_index[1]]
                 except IndexError:
-                    print('Warning: ID component {COMP} cannot be found in '\
-                          'identifier {IDENT}'.format(COMP=component, \
-                          IDENT=identifier))
+                    print('Warning: ID component {COMP} cannot be found in identifier {IDENT}'
+                          .format(COMP=component, IDENT=identifier))
 
                 break
 
@@ -534,22 +529,18 @@ class TabItem:
 
         return(key)
 
-    def layout(self, admin:bool=False):
+    def layout(self):
         """
         Tab schema for layout type 'reviewable'.
         """
         # Window and element size parameters
         bg_col = const.ACTION_COL
-        default_col = const.DEFAULT_COL
 
         pad_frame = const.FRAME_PAD
         pad_el = const.ELEM_PAD
-        pad_v = const.VERT_PAD
         pad_h = const.HORZ_PAD
         font_l = const.LARGE_FONT
         font_m = const.MID_FONT
-
-        frozen = False if admin else True
 
         header = self.df.columns.values.tolist()
         data = self.df.values.tolist()
@@ -560,21 +551,15 @@ class TabItem:
         add_key = self.key_lookup('Add')
         input_key = self.key_lookup('Input')
         layout = [[create_table(data, header, table_key, bind=True)],
-                  [sg.Frame(_('Summary'), [[sg.Multiline('', border_width=0, 
-                        size=(52, 6), font=font_m, key=summary_key, 
-                        disabled=True, background_color=bg_col)]], font=font_l,
-                     pad=((pad_frame, 0), (0, pad_frame)), 
-                     background_color=bg_col, element_justification='l'), 
-                   sg.Text(' ' * 42, background_color=bg_col),
+                  [sg.Frame(_('Summary'), [[sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=summary_key,
+                                                         disabled=True, background_color=bg_col)]], font=font_l,
+                            pad=((pad_frame, 0), (0, pad_frame)), background_color=bg_col, element_justification='l'),
+                   sg.Text(' ' * 60, background_color=bg_col),
                    sg.Col([[
-                       sg.Input('', key=input_key, font=font_l,
-                         size=(20, 1), pad=(pad_el, 0), do_not_clear=False,
-                         tooltip=_('Input document number to add a '\
-                                   'transaction to the table'), disabled=True),
-                       B2(_('Add'), key=add_key, pad=((0, pad_h), 0), 
-                         tooltip=_('Add order to the table'), disabled=True), 
-                       B2(_('Audit'), key=audit_key, disabled=True, 
-                         tooltip=_('Run Audit methods'), pad=((0, pad_frame), 0))
+                       sg.Input('', key=input_key, font=font_l, size=(20, 1), pad=(pad_el, 0), do_not_clear=False,
+                         tooltip=_('Input document number to add a transaction to the table'), disabled=True),
+                       B2(_('Add'), key=add_key, pad=((0, pad_h), 0), tooltip=_('Add order to the table'), disabled=True),
+                       B2(_('Audit'), key=audit_key, disabled=True, pad=((0, pad_frame), 0), tooltip=_('Run Audit methods'))
                    ]], background_color=bg_col)
                  ]]
 
@@ -612,8 +597,6 @@ class TabItem:
         """
         Use error rules specified in configuration file to annotate rows.
         """
-        strptime = datetime.datetime.strptime
-
         df = self.df
         headers = df.columns.values.tolist()
         pkey = self.db_key if self.db_key in headers else self.db_key.lower()
@@ -632,15 +615,13 @@ class TabItem:
             trans_number_comp = self.get_id_component(trans_id, 'variable')
             if date_cnfg:
                 trans_date_comp = self.get_id_component(trans_id, 'date')
-                date = strptime(trans_date_comp, date_cnfg)
             else:
-                date = None
+                trans_date_comp = None
 
-            trans_id_fmt = self.format_id(trans_number_comp, date=date)
+            trans_id_fmt = self.format_id(trans_number_comp, date=trans_date_comp)
             if trans_id != trans_id_fmt:
-                print('Info: tab {NAME}, rule {RULE}: transaction ID {ID} does '\
-                      'not comply with format specified in configuration'\
-                      .format(NAME=self.name, RULE=self.rule_name, ID=trans_id))
+                print('Info: tab {NAME}, rule {RULE}: transaction ID {ID} does not comply with format specified in the '
+                      'configuration'.format(NAME=self.name, RULE=self.rule_name, ID=trans_id))
                 if index not in errors:
                     errors.append(index)
 
@@ -653,9 +634,8 @@ class TabItem:
             for index, value in enumerate(error_list):
                 if not value:  #False: row failed the error rule test
                     if index not in errors:
-                        print('Info: tab {NAME}, rule {RULE}: row {ROW} contains '\
-                              'error rule {ERROR}'.format(NAME=self.name, \
-                              RULE=self.rule_name, ROW=index, ERROR=rule_name))
+                        print('Info: tab {NAME}, rule {RULE}: row {ROW} contains error rule {ERROR}'
+                              .format(NAME=self.name, RULE=self.rule_name, ROW=index, ERROR=rule_name))
                         errors.append(index)
 
         return(set(errors))
@@ -667,8 +647,8 @@ class TabItem:
                       'filter': self.filter_transactions}
 
         for action in self.actions:
-            print('Info: tab {NAME}, rule {RULE}: running audit method {METHOD}'\
-                .format(NAME=self.name, RULE=self.rule_name, METHOD=action))
+            print('Info: tab {NAME}, rule {RULE}: running audit method {METHOD}'
+                  .format(NAME=self.name, RULE=self.rule_name, METHOD=action))
             
             action_function = method_map[action]
             try:
@@ -687,6 +667,7 @@ class TabItem:
         Search for missing transactions using scan.
         """
         dparse = dateutil.parser.parse
+        strptime = datetime.datetime.strptime
 
         # Arguments
         user = kwargs['account']
@@ -699,7 +680,6 @@ class TabItem:
         pkey = self.get_column_name(self.db_key)
         df = self.sort_table(self.df)
         id_list = df[pkey].tolist()
-        db_tables = self.db_tables
         main_table = [i for i in self.db_tables][0]
 
         # Format audit parameters
@@ -708,7 +688,7 @@ class TabItem:
                 date_col = self.get_query_column(audit_param.name)
                 date_fmt = audit_param.format
                 try:
-                    audit_date = dparse(audit_param.value, dayfirst=True)
+                    audit_date = strptime(audit_param.value, date_fmt)
                 except dateutil.parser._parser.ParserError:
                     print('Warning: no date provided ... skipping checks for most recent ID')
                     audit_date = None
@@ -721,8 +701,8 @@ class TabItem:
         try:
             first_id = id_list[0]
         except IndexError:  #no data in dataframe
-            print('Warning: {NAME} Audit: no transactions for audit date {DATE}'\
-                .format(NAME=self.name, DATE=audit_date_iso))
+            print('Warning: {NAME} Audit: no transactions for audit date {DATE}'
+                  .format(NAME=self.name, DATE=audit_date_iso))
             return(df)
 
         first_number_comp = int(self.get_id_component(first_id, 'variable'))
@@ -734,26 +714,34 @@ class TabItem:
         query_str = 'SELECT DISTINCT {DATE} from {TBL}'.format(DATE=date_col, TBL=main_table)
         cursor.execute(query_str)
 
-        unq_dates = [dparse(row[0], dayfirst=True) for row in cursor.fetchall()]
-        unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
+        unq_dates = [row[0] for row in cursor.fetchall()]
+        try:
+            unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
+        except TypeError:
+            print('Warning: {NAME} Audit: date {DATE} is not formatted correctly as a datetime object'
+                  .format(NAME=self.name, DATE=audit_date_iso))
+            return(False)
+
         unq_dates_iso.sort()
 
         try:
             current_date_index = unq_dates_iso.index(audit_date_iso)
-        except IndexError:
-            print('Warning: {NAME} Audit: no transactions for audit date {DATE}'\
-                  .format(NAME=self.name, DATE=audit_date_iso))
+        except ValueError:
+            print('Warning: {NAME} Audit: no transactions for audit date {DATE} found in list {DATES}'
+                  .format(NAME=self.name, DATE=audit_date_iso, DATES=unq_dates_iso))
             return(False)
 
         try:
-            prev_date = dparse(unq_dates_iso[current_date_index - 1])
+            prev_date = dparse(unq_dates_iso[current_date_index - 1], yearfirst=True)
         except IndexError:
+            print('Warning: {NAME} Audit: no date found prior to current audit date {DATE}'
+                  .format(NAME=self.name, DATE=audit_date_iso))
             prev_date = None
 
         ## Query last transaction from previous date
         if prev_date:
-            print('Info: {NAME} Audit: searching for last transaction created '\
-                  'prior to {DATE}'.format(NAME=self.name, DATE=audit_date_iso))
+            print('Info: {NAME} Audit: searching for most recent transaction created in {DATE}'
+                  .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
             filters = ('{} = ?'.format(date_col), (prev_date.strftime(date_fmt),))
             last_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
@@ -770,13 +758,13 @@ class TabItem:
 
                 # Search only for IDs with correct ID formats 
                 # (skip potential errors)
-                if prev_id == self.format_id(prev_number_comp, date=prev_date):
+                if prev_id == self.format_id(prev_number_comp, date=prev_date_comp):
                     last_id = prev_id
                     break
 
             if last_id:
                 print('Info: {NAME} Audit: last transaction ID is {ID} from {DATE}'\
-                    .format(NAME=self.name, ID=last_id, DATE=prev_date))
+                    .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 if first_date_comp != prev_date_comp:  #start of new month
                     if first_number_comp != 1:
@@ -791,7 +779,7 @@ class TabItem:
                         missing_range = []
 
                 for missing_number in missing_range:
-                    missing_id = self.format_id(missing_number, date=audit_date)
+                    missing_id = self.format_id(missing_number, date=first_date_comp)
                     missing_transactions.append(missing_id)
 
         ## Search for skipped transaction numbers
@@ -801,13 +789,13 @@ class TabItem:
             if (prev_number + 1) != trans_number:
                 missing_range = list(range(prev_number + 1, trans_number))
                 for missing_number in missing_range:
-                    missing_id = self.format_id(missing_number, date=audit_date)
+                    missing_id = self.format_id(missing_number, date=first_date_comp)
                     missing_transactions.append(missing_id)
 
             prev_number = trans_number
 
-        print('Info: {NAME} Audit: potentially missing transactions: {MISS}'\
-            .format(NAME=self.name, MISS=missing_transactions))
+        print('Info: {NAME} Audit: potentially missing transactions: {MISS}'
+              .format(NAME=self.name, MISS=missing_transactions))
 
         ## Search for missed numbers at end of day
         last_id_of_df = id_list[-1]
@@ -821,7 +809,7 @@ class TabItem:
                 break
 
             current_number_comp = int(self.get_id_component(current_id, 'variable'))
-            if current_id == self.format_id(current_number_comp, date=audit_date):
+            if current_id == self.format_id(current_number_comp, date=first_date_comp):
                 missing_transactions.append(current_id)
 
         # Query database for the potentially missing transactions
@@ -867,8 +855,7 @@ class TabItem:
 
     def filter_transactions(self, *args, **kwargs):
         """
-        Filter pandas dataframe using filter rules specified in the 
-        configuration.
+        Filter pandas dataframe using the filter rules specified in the configuration.
         """
         chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
 
@@ -882,9 +869,8 @@ class TabItem:
         if not filter_rules:
             return(df)
 
-        print('Info: tab {NAME}, rule {RULE}: running filter method with '\
-              'filter rules {RULES}'.format(NAME=self.name, \
-              RULE=self.rule_name, RULES=list(filter_rules.values())))
+        print('Info: tab {NAME}, rule {RULE}: running filter method with filter rules {RULES}'
+              .format(NAME=self.name, RULE=self.rule_name, RULES=list(filter_rules.values())))
 
         eval_values = []  #stores list of lists of bools to pass into formatter
         rule_eval_list = []
@@ -910,12 +896,10 @@ class TabItem:
 
         failed = []
         for row, results_tup in enumerate(zip(*eval_values)):
-            test_str = rule_eval_str.format(*results_tup)
             results = eval(rule_eval_str.format(*results_tup))
             if not results:
-                print('Info: tab {NAME}, rule {RULE}: row {ROW} has failed one '\
-                    'or more filter rules'.format(NAME=self.name, \
-                    RULE=self.rule_name, ROW=row))
+                print('Info: tab {NAME}, rule {RULE}: row {ROW} has failed one or more filter rules'
+                      .format(NAME=self.name, RULE=self.rule_name, ROW=row))
                 failed.append(row)
 
         df.drop(failed, axis=0, inplace=True)

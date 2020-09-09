@@ -1,7 +1,9 @@
+# -*- coding: utf-8 -*-
 """
 REM main program. Includes primary display.
 """
 import gettext
+import datetime
 import os
 import PySimpleGUI as sg
 import REM.configuration as config
@@ -119,8 +121,6 @@ class ToolBar:
             print('Selected menu {} not list of available menus'.format(menu))
             return(False)
 
-        menu_name = menu_object['name']
-
         status = '' if value == 'enable' else '!'
 
         menu_items = menus[menu]['items']
@@ -162,9 +162,9 @@ def get_panels(audit_rules):
 #    panels.append(db_layout())
 
     # Layout
-    pane = [sg.Col([[sg.Pane(panels, orientation='horizontal', \
-              show_handle=False, border_width=0, relief='flat', \
-              key='-PANELS-')]], \
+    pane = [sg.Col([[sg.Pane(panels, orientation='horizontal',
+              show_handle=False, border_width=0, relief='flat',
+              key='-PANELS-')]],
               pad=(0, 10), justification='center', element_justification='center')]
 
     return(pane)
@@ -244,36 +244,49 @@ def main():
     """
     Main function.
     """
+    strptime = datetime.datetime.strptime
+
     # Theme
     default_col = const.DEFAULT_COL
     action_col = const.ACTION_COL
     text_col = const.TEXT_COL
-    inactive_col = const.BUTTON_COL
     font = const.MAIN_FONT
 
-    sg.set_options(element_padding=(0, 0), margins=(0, 0), \
-                   auto_size_buttons=True, auto_size_text=True, \
-                   background_color=default_col, element_text_color=text_col, \
-                   element_background_color=default_col, font=font, \
-                   input_text_color=text_col, text_color=text_col, \
-                   text_element_background_color=default_col, \
-                   input_elements_background_color=action_col, \
+    sg.set_options(element_padding=(0, 0), margins=(0, 0),
+                   auto_size_buttons=True, auto_size_text=True,
+                   background_color=default_col, element_text_color=text_col,
+                   element_background_color=default_col, font=font,
+                   input_text_color=text_col, text_color=text_col,
+                   text_element_background_color=default_col,
+                   input_elements_background_color=action_col,
                    button_color=(text_col, default_col))
 
     # Import settings from configuration file
     dirname = os.path.dirname(os.path.realpath(__file__))
     cnfg_name = 'settings.yaml'
-    cnfg_file = '{DIR}/{FILE}'.format(DIR=dirname, FILE=cnfg_name)
+    cnfg_file = os.path.join(dirname, cnfg_name)
     print(dirname, cnfg_name, cnfg_file)
 
     try:
-        fh = open(cnfg_file, 'r')
+        fh = open(cnfg_file, 'r', encoding='utf-8')
     except FileNotFoundError:
         msg = 'Unable to load configuration file'
         win2.popup_error(msg)
         sys.exit(1)
     else:
         cnfg = yaml.safe_load(fh)
+        fh.close()
+
+    # Import logo image, if exists
+    logo_name = 'logo.png'
+    logo_file = os.path.join(dirname, 'docs', 'images', logo_name)
+
+    try:
+        fh = open(logo_file, 'r', encoding='utf-8')
+    except FileNotFoundError:
+        logo = None
+    else:
+        logo = logo_file
         fh.close()
 
     settings = config.ProgramSettings(cnfg)
@@ -295,7 +308,7 @@ def main():
     start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
     date_key = None
-    return_key = 'Return:36'
+    return_keys = ('Return:36', '\r')
 
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
     report_tx = 'Summary Report'
@@ -306,11 +319,9 @@ def main():
     summary_panel_active = False
     rule = None
     debug_win = None
-    summary = {}
-    
+
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, icon=settings.logo, \
-        font=('Arial', 12), size=(1258, 840), return_keyboard_events=True)
+    window = sg.Window('REM Tila', layout, icon=logo, font=('Arial', 12), size=(1258, 840), return_keyboard_events=True)
     print('Info: starting up')
 
     # Event Loop
@@ -324,11 +335,9 @@ def main():
         # User login
         if values['-UMENU-'] == 'Sign In':  #user logs on
             print('Info: displaying user login screen')
-            user = win2.login_window(settings)
+            user = win2.login_window(settings, logo=logo)
 
             if user.logged_in:  #logged on successfully
-                user_active = True
-
                 # Disable sign-in and enable sign-off
                 toolbar.toggle_menu(window, 'umenu', 'sign in', value='disable')
                 toolbar.toggle_menu(window, 'umenu', 'sign out', value='enable')
@@ -343,25 +352,25 @@ def main():
                     window['-DBMENU-'].update(disabled=False)
 
                     # Reports and statistics
-                    toolbar.toggle_menu(window, 'rmenu', 'summary reports', \
+                    toolbar.toggle_menu(window, 'rmenu', 'summary reports',
                         value='enable')
-                    toolbar.toggle_menu(window, 'rmenu', 'summary statistics', \
+                    toolbar.toggle_menu(window, 'rmenu', 'summary statistics',
                         value='enable')
                     window['-STATS-'].update(disabled=False)
                     window['-REPORTS-'].update(disabled=False)
 
                     # User
-                    toolbar.toggle_menu(window, 'umenu', 'manage accounts', \
+                    toolbar.toggle_menu(window, 'umenu', 'manage accounts',
                         value='enable')
 
                     # Menu
-                    toolbar.toggle_menu(window, 'mmenu', 'configuration', \
+                    toolbar.toggle_menu(window, 'mmenu', 'configuration',
                         value='enable')
 
                 # Enable permissions on per audit rule basis defined in config
                 for rule_name in audit_names:
                     if admin:
-                        toolbar.toggle_menu(window, 'amenu', rule_name, \
+                        toolbar.toggle_menu(window, 'amenu', rule_name,
                             value='enable')
                         window[rule_name].update(disabled=False)
 
@@ -437,7 +446,7 @@ def main():
             or event in cancel_keys or values['-AMENU-'] in audit_names \
             or values['-RMENU-'] in (report_tx, stats_tx)):
 
-            msg = _('Audit is currently running. Are you sure you would like '\
+            msg = _('Audit is currently running. Are you sure you would like '
                     'to exit?')
             selection = win2.popup_confirm(msg)
 
@@ -478,36 +487,41 @@ def main():
 
             date_str = []
 
-            print('Info: the panel in view is {} with tabs {}'\
-                .format(rule.name, ', '.join(tab_windows)))
+            print('Info: the panel in view is {} with tabs {}'.format(rule.name, ', '.join(tab_windows)))
 
         # Format date parameter field, if used in audit rule
         if event == date_key:
             elem_value = values[date_key]
-            input_value = elem_value.replace('-', '')
+            try:
+                input_value = strptime(elem_value, '%Y-%m-%d')
+            except ValueError:
+                input_value = elem_value.replace('-', '')
+            else:
+                window[date_key].update(value=input_value.strftime('%Y-%m-%d'))
+                continue
 
             if len(input_value) > 8:  #don't go beyond acceptible size
-                date_str_fmt = date_param.format_date_element(date_str)
+                date_str_fmt = config.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
                 continue
 
             if input_value and not input_value.isnumeric():
-                date_str_fmt = date_param.format_date_element(date_str)
+                date_str_fmt = config.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
                 continue
 
             if len(input_value) > len(date_str):  #add character
                 date_str.append(input_value[-1])
 
-                date_str_fmt = date_param.format_date_element(date_str)
+                date_str_fmt = config.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
             elif len(input_value) < len(date_str):  #remove character
                 removed_char = date_str.pop()
 
-                date_str_fmt = date_param.format_date_element(date_str)
+                date_str_fmt = config.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
             else:
-                date_str_fmt = date_param.format_date_element(date_str)
+                date_str_fmt = config.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
 
         # Start the selected audit
@@ -619,15 +633,25 @@ def main():
             # Add row to table based on user input
             add_key = tab.key_lookup('Add')
             if event == add_key:  #clicked the 'Add' button
-                input_key =  tab.key_lookup('Input')
+                input_key = tab.key_lookup('Input')
 
                 # Extract transaction information from database
                 new_id = values[input_key]
                 all_ids = tab.row_ids()
-                if not new_id in all_ids:
-                    filters = ('{} = ?'.format(tab.db_key,), (new_id,))
-                    new_row = user.query(tab.db_tables, columns=tab.db_columns, \
-                        filter_rules=filters)
+                if new_id not in all_ids:
+                    all_cols = tab.db_columns
+                    table = list(tab.db_tables.keys())[0]
+                    for table_item in all_cols:
+                        try:
+                            table_name, column_name = table_item.split('.')
+                        except ValueError:
+                            continue
+                        else:
+                            if tab.db_key == column_name:
+                                table = table_name
+                                break
+                    filters = ('{TABLE}.{COLUMN} = ?'.format(TABLE=table, COLUMN=tab.db_key), (new_id,))
+                    new_row = user.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
                 else:
                     msg = _("{} is already in the table").format(new_id)
                     win2.popup_notice(msg)
@@ -639,10 +663,31 @@ def main():
                     continue
 
                 # Clear user input from the Input element
+                window[input_key].update(value='')
 
                 # Add row information to the table
+                print('dtypes before adding: {}'.format(tab.df.dtypes))
+                new_row.astype(tab.df.dtypes.to_dict()).dtypes
+                print('dtypes of new row: {}'.format(new_row.dtypes))
+#                for header in new_row.columns.tolist():
+#                    new_dtype = new_row[header].dtypes
+#                    old_dtype = tab.df[header].dtypes
+#                    if new_dtype != old_dtype:
+#                        print('Warning: trying to append new row with non-matching data types')
+                        # Set value to na
+#                        new_row[header] = np.NaN
+
+                        # Set data type to df column data type
+#                        new_row[header]
+                for index, row in new_row.iterrows():
+                    print(index, row)
+                new_row.astype(tab.df.dtypes.to_dict()).dtypes
                 df = tab.df.append(new_row, ignore_index=True, sort=False)
-                tab.df = df
+                df.astype(tab.df.dtypes.to_dict()).dtypes
+
+                print('dtypes after adding: {}'.format(df.dtypes))
+                tab.df = tab.sort_table(df)
+                print(tab.df.head)
 
                 tab.update_table(window)
                 tab.update_summary(window)
@@ -710,7 +755,7 @@ def main():
                 window[panel_key].update(visible=False)
                 window[summary_key].update(visible=True)
 
-            if summary_panel_active and event == return_key:
+            if summary_panel_active and event in return_keys:
                 # Update totals element, including input elements
                 totals = []
                 for mapping in mappings:
