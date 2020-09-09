@@ -13,11 +13,13 @@ import REM.program_settings as const
 import sys
 import yaml
 
+
 # Classes
 class ToolBar:
     """
     Toolbar object.
     """
+
     def __init__(self, audit_rules):
         """
         Initialize toolbar parameters.
@@ -26,18 +28,18 @@ class ToolBar:
 
         self.name = 'toolbar'
         self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
-        self.audit_menu = {'name': '&Audits', 
+        self.audit_menu = {'name': '&Audits',
                            'items': [('!', i) for i in audit_names]}
-        self.reports_menu = {'name': '&Reports', 
-                             'items': [('!', 'Summary S&tatistics'), 
-                             ('!', '&Summary Reports')]}
-        self.user_menu = {'name': '&User', 
-                          'items': [('!', '&Manage Accounts'), ('', '---'), 
-                          ('', 'Sign &In'), ('!', 'Sign &Out')]}
-        self.menu_menu = {'name': '&Menu', 
-                          'items': [('!', '&Configuration'), ('', '&Debug'), 
-                          ('', '---'), ('', '&Help'), ('', 'About &Program'), 
-                          ('', '---'), ('', '&Quit')]}
+        self.reports_menu = {'name': '&Reports',
+                             'items': [('!', 'Summary S&tatistics'),
+                                       ('!', '&Summary Reports')]}
+        self.user_menu = {'name': '&User',
+                          'items': [('!', '&Manage Accounts'), ('', '---'),
+                                    ('', 'Sign &In'), ('!', 'Sign &Out')]}
+        self.menu_menu = {'name': '&Menu',
+                          'items': [('!', '&Configuration'), ('', '&Debug'),
+                                    ('', '---'), ('', '&Help'), ('', 'About &Program'),
+                                    ('', '---'), ('', '&Quit')]}
 
     def key_lookup(self, element):
         """
@@ -49,7 +51,7 @@ class ToolBar:
         else:
             key = None
 
-        return(key)
+        return (key)
 
     def layout(self):
         """
@@ -58,7 +60,7 @@ class ToolBar:
         # Menu items
         menu_audit = self.menu_definition('amenu')
         menu_reports = self.menu_definition('rmenu')
-        menu_user = self.menu_definition('umenu') 
+        menu_user = self.menu_definition('umenu')
         menu_menu = self.menu_definition('mmenu')
 
         # Layout settings
@@ -70,56 +72,56 @@ class ToolBar:
         padding = const.TOOLBAR_PAD
 
         toolbar = [[sg.ButtonMenu('', menu_audit, image_data=audit_ico,
-                      tooltip=_('Run Audits'), key='-AMENU-', 
-                      pad=(padding, padding)),
+                                  tooltip=_('Run Audits'), key='-AMENU-',
+                                  pad=(padding, padding)),
                     sg.ButtonMenu('', menu_reports, image_data=report_ico,
-                      tooltip=_('Generate Reports & Statistics'), key='-RMENU-',
-                      pad=(padding, padding)),
+                                  tooltip=_('Generate Reports & Statistics'), key='-RMENU-',
+                                  pad=(padding, padding)),
                     sg.Button('', image_data=db_ico,
-                      tooltip=_('Modify Database'), key='-DBMENU-', 
-                      pad=(padding, padding), border_width=0, disabled=True),
+                              tooltip=_('Modify Database'), key='-DBMENU-',
+                              pad=(padding, padding), border_width=0, disabled=True),
                     sg.Text('', pad=(495, 0)),
                     sg.ButtonMenu('', menu_user, image_data=user_ico,
-                      tooltip=_('User Settings'), key='-UMENU-', 
-                      pad=(padding, padding)),
+                                  tooltip=_('User Settings'), key='-UMENU-',
+                                  pad=(padding, padding)),
                     sg.ButtonMenu('', menu_menu, image_data=menu_ico,
-                      tooltip=_('Help and program settings'), key='-MMENU-', pad=(padding, padding))]]
+                                  tooltip=_('Help and program settings'), key='-MMENU-', pad=(padding, padding))]]
 
         layout = [sg.Frame('', toolbar, relief='groove', pad=(0, 0),
-                    key='-TOOLBAR-')]
+                           key='-TOOLBAR-')]
 
-        return(layout)
+        return (layout)
 
     def menu_definition(self, menu):
         """
         Return the menu definition for a menu.
         """
-        menus = {'amenu': self.audit_menu, 'rmenu': self.reports_menu, 
+        menus = {'amenu': self.audit_menu, 'rmenu': self.reports_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
         try:
             menu_object = menus[menu.lower()]
         except KeyError:
             print('Selected menu {} not list of available menus'.format(menu))
-            return(None)
+            return (None)
 
         menu_def = [menu_object['name'], ['{}{}'.format(*i) for i in \
-                    menu_object['items']]]
+                                          menu_object['items']]]
 
-        return(menu_def)
+        return (menu_def)
 
-    def toggle_menu(self, window, menu, menu_item, value:str='enable'):
+    def toggle_menu(self, window, menu, menu_item, value: str = 'enable'):
         """
         Enable / disable menu items.
         """
-        menus = {'amenu': self.audit_menu, 'rmenu': self.reports_menu, 
+        menus = {'amenu': self.audit_menu, 'rmenu': self.reports_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
         try:
             menu_object = menus[menu.lower()]
         except KeyError:
             print('Selected menu {} not list of available menus'.format(menu))
-            return(False)
+            return (False)
 
         status = '' if value == 'enable' else '!'
 
@@ -129,7 +131,7 @@ class ToolBar:
             index = items_clean.index(menu_item.lower())
         except IndexError:
             print('Seleted menu item {} not found in {} item list'.format(menu_item, menu))
-            return(False)
+            return (False)
 
         # Set status of menu item
         item = menu_items[index]
@@ -143,7 +145,7 @@ class ToolBar:
         element_key = self.key_lookup(menu.lower())
         window[element_key].update(self.menu_definition(menu))
 
-        return(True)
+        return (True)
 
 
 # General functions
@@ -159,22 +161,23 @@ def get_panels(audit_rules):
         panels.append(audit_rule.summary.layout())
 
     # Database modification panel
-#    panels.append(db_layout())
+    #    panels.append(db_layout())
 
     # Layout
     pane = [sg.Col([[sg.Pane(panels, orientation='horizontal',
-              show_handle=False, border_width=0, relief='flat',
-              key='-PANELS-')]],
-              pad=(0, 10), justification='center', element_justification='center')]
+                             show_handle=False, border_width=0, relief='flat',
+                             key='-PANELS-')]],
+                   pad=(0, 10), justification='center', element_justification='center')]
 
-    return(pane)
+    return (pane)
+
 
 def reset_to_default(window, rule):
     """
     Reset main window to program defaults.
     """
     if not rule:
-        return(None)
+        return (None)
 
     current_key = rule.element_key
     summ_panel_key = rule.summary.element_key
@@ -199,8 +202,8 @@ def reset_to_default(window, rule):
     # Reset parameter element values
     params = rule.parameters
     for param in params:
-        print('Info: resetting rule parameter element {} to default'\
-            .format(param.name))
+        print('Info: resetting rule parameter element {} to default' \
+              .format(param.name))
         window[param.element_key].update(value='')
         try:
             window[param.element_key2].update(vaue='')
@@ -234,11 +237,12 @@ def reset_to_default(window, rule):
 
         # Reset visible tabs
         visible = True if i == 0 else False
-        print('Info: tab {TAB}, rule {RULE}: re-setting visibility to {STATUS}'\
-            .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
+        print('Info: tab {TAB}, rule {RULE}: re-setting visibility to {STATUS}' \
+              .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
         window[tab.element_key].update(visible=visible)
 
-    return(None)
+    return (None)
+
 
 def main():
     """
@@ -293,7 +297,7 @@ def main():
 
     language = settings.language
     translation = const.change_locale(language)
-    translation.install('base')  #bind gettext to _() in __builtins__ namespace
+    translation.install('base')  # bind gettext to _() in __builtins__ namespace
 
     # Configure GUI layout
     audit_rules = config.AuditRules(cnfg)
@@ -303,7 +307,7 @@ def main():
     # Element keys and names
     audit_names = audit_rules.print_rules()
 
-    cancel_keys =  [i.key_lookup('Cancel') for i in audit_rules.rules]
+    cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
     start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
@@ -333,11 +337,11 @@ def main():
             break
 
         # User login
-        if values['-UMENU-'] == 'Sign In':  #user logs on
+        if values['-UMENU-'] == 'Sign In':  # user logs on
             print('Info: displaying user login screen')
             user = win2.login_window(settings, logo=logo)
 
-            if user.logged_in:  #logged on successfully
+            if user.logged_in:  # logged on successfully
                 # Disable sign-in and enable sign-off
                 toolbar.toggle_menu(window, 'umenu', 'sign in', value='disable')
                 toolbar.toggle_menu(window, 'umenu', 'sign out', value='enable')
@@ -353,25 +357,25 @@ def main():
 
                     # Reports and statistics
                     toolbar.toggle_menu(window, 'rmenu', 'summary reports',
-                        value='enable')
+                                        value='enable')
                     toolbar.toggle_menu(window, 'rmenu', 'summary statistics',
-                        value='enable')
+                                        value='enable')
                     window['-STATS-'].update(disabled=False)
                     window['-REPORTS-'].update(disabled=False)
 
                     # User
                     toolbar.toggle_menu(window, 'umenu', 'manage accounts',
-                        value='enable')
+                                        value='enable')
 
                     # Menu
                     toolbar.toggle_menu(window, 'mmenu', 'configuration',
-                        value='enable')
+                                        value='enable')
 
                 # Enable permissions on per audit rule basis defined in config
                 for rule_name in audit_names:
                     if admin:
                         toolbar.toggle_menu(window, 'amenu', rule_name,
-                            value='enable')
+                                            value='enable')
                         window[rule_name].update(disabled=False)
 
                     rule = audit_rules.fetch_rule(rule_name)
@@ -385,7 +389,7 @@ def main():
                 continue
 
         # User log-off
-        if values['-UMENU-'] == 'Sign Out':  #user signs out
+        if values['-UMENU-'] == 'Sign Out':  # user signs out
             # Confirm sign-out
             msg = _('Are you sure you would like to sign-out?')
             selection = win2.popup_confirm(msg)
@@ -394,7 +398,7 @@ def main():
                 continue
 
             audit_in_progress = False
-            rule = reset_to_default(window, rule)  #reset to home screen
+            rule = reset_to_default(window, rule)  # reset to home screen
 
             # Reset User attributes
             user.logout()
@@ -443,8 +447,8 @@ def main():
 
         # Switch panels when audit in progress
         if audit_in_progress and (event in ('-DB-', '-DBMENU-') \
-            or event in cancel_keys or values['-AMENU-'] in audit_names \
-            or values['-RMENU-'] in (report_tx, stats_tx)):
+                                  or event in cancel_keys or values['-AMENU-'] in audit_names \
+                                  or values['-RMENU-'] in (report_tx, stats_tx)):
 
             msg = _('Audit is currently running. Are you sure you would like '
                     'to exit?')
@@ -460,9 +464,8 @@ def main():
 
         # Switch panels when audit not in progress
         if rule and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or \
-            values['-AMENU-'] in audit_names or values['-RMENU-'] in \
-            (report_tx, stats_tx)):
-
+                     values['-AMENU-'] in audit_names or values['-RMENU-'] in \
+                     (report_tx, stats_tx)):
             rule = reset_to_default(window, rule)
 
         # Activate appropriate audit panel
@@ -500,7 +503,7 @@ def main():
                 window[date_key].update(value=input_value.strftime('%Y-%m-%d'))
                 continue
 
-            if len(input_value) > 8:  #don't go beyond acceptible size
+            if len(input_value) > 8:  # don't go beyond acceptible size
                 date_str_fmt = config.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
                 continue
@@ -510,12 +513,12 @@ def main():
                 window[date_key].update(value=date_str_fmt)
                 continue
 
-            if len(input_value) > len(date_str):  #add character
+            if len(input_value) > len(date_str):  # add character
                 date_str.append(input_value[-1])
 
                 date_str_fmt = config.format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
-            elif len(input_value) < len(date_str):  #remove character
+            elif len(input_value) < len(date_str):  # remove character
                 removed_char = date_str.pop()
 
                 date_str_fmt = config.format_date_element(date_str)
@@ -540,18 +543,18 @@ def main():
 
                 if not has_value:
                     param_desc = param.description
-                    msg = _('Correctly formatted input is required in the '\
+                    msg = _('Correctly formatted input is required in the ' \
                             '"{}" field').format(param_desc)
                     win2.popup_notice(msg)
 
                 inputs.append(has_value)
 
             # Start Audit
-            if all(inputs):  #all rule parameters have input
+            if all(inputs):  # all rule parameters have input
                 audit_in_progress = True
-                print('Info: {} audit in progress with parameters {}'\
-                    .format(rule.name, ', '.join(['{}={}'\
-                    .format(i.name, i.value) for i in params])))
+                print('Info: {} audit in progress with parameters {}' \
+                      .format(rule.name, ', '.join(['{}={}' \
+                                                   .format(i.name, i.value) for i in params])))
 
                 # Disable start button and parameter elements
                 start_key = rule.key_lookup('Start')
@@ -559,24 +562,24 @@ def main():
                 rule.toggle_parameters(window, 'disable')
 
                 # Initialize audit
-                tab_keys = []  #to track tabs displayed
+                tab_keys = []  # to track tabs displayed
                 for tab in rule.tabs:
                     tab_key = tab.element_key
                     tab_keys.append(tab_key)
 
                     # Prepare the filter rules to filter query results
                     main_table = [i for i in tab.db_tables][0]
-                    rule_params = rule.parameters  #to filter data tables
+                    rule_params = rule.parameters  # to filter data tables
                     filters = [i.filter_statement(table=main_table) for i in \
                                rule_params]
 
                     # Check for tab-specific query parameters
                     tab_params = tab.tab_parameters
                     if tab_params:
-                        print('Info: adding {TAB} parameters {PARAMS} to '\
-                              'current filter rules {FILT}'\
+                        print('Info: adding {TAB} parameters {PARAMS} to ' \
+                              'current filter rules {FILT}' \
                               .format(TAB=tab.name, PARAMS=tab_params, \
-                              FILT=filters))
+                                      FILT=filters))
                         for tab_param in tab_params:
                             tab_param_value = tab_params[tab_param]
 
@@ -587,17 +590,17 @@ def main():
 
                             # Append tab filter rule to query filter rules
                             filters.append(('{} = ?'.format(tab_param_col), \
-                                (tab_param_value,)))
+                                            (tab_param_value,)))
 
                     # Extract data from database
                     df = user.query(tab.db_tables, columns=tab.db_columns, \
-                        filter_rules=filters)
+                                    filter_rules=filters)
 
                     # Update tab object and elements
-                    tab.df = df  #update tab data
+                    tab.df = df  # update tab data
                     tab.update_id_components(rule_params)
-                    tab.update_table(window)  #display tab data in table
-                    tab.update_summary(window)  #summarize individual tab data
+                    tab.update_table(window)  # display tab data in table
+                    tab.update_summary(window)  # summarize individual tab data
 
                     # Enable / disable action buttons
                     schema = tab.toggle_actions(window, 'enable')
@@ -617,11 +620,11 @@ def main():
             if event == tbl_key:
                 try:
                     row = values[tbl_key][0]
-                except IndexError:  #user double-clicked too quickly
+                except IndexError:  # user double-clicked too quickly
                     continue
 
-                print('Info: removing row {ROW} from table element {TBL}'\
-                    .format(ROW=row, TBL=tbl_key))
+                print('Info: removing row {ROW} from table element {TBL}' \
+                      .format(ROW=row, TBL=tbl_key))
 
                 tab.df.drop(row, axis=0, inplace=True)
                 tab.df.reset_index(drop=True, inplace=True)
@@ -629,10 +632,10 @@ def main():
                 tab.update_table(window)
                 tab.update_summary(window)
                 continue
-             
+
             # Add row to table based on user input
             add_key = tab.key_lookup('Add')
-            if event == add_key:  #clicked the 'Add' button
+            if event == add_key:  # clicked the 'Add' button
                 input_key = tab.key_lookup('Input')
 
                 # Extract transaction information from database
@@ -653,42 +656,24 @@ def main():
                     filters = ('{TABLE}.{COLUMN} = ?'.format(TABLE=table, COLUMN=tab.db_key), (new_id,))
                     new_row = user.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
                 else:
-                    msg = _("{} is already in the table").format(new_id)
+                    msg = _("Warning: {} is already in the table").format(new_id)
                     win2.popup_notice(msg)
                     continue
 
-                if new_row.empty:  #query returned nothing
-                    msg = _("unable to find transaction {}").format(new_id)
+                if new_row.empty:  # query returned nothing
+                    msg = _("Warning: unable to find transaction {}").format(new_id)
                     win2.popup_notice(msg)
+                    window[input_key].update(value='')
                     continue
 
                 # Clear user input from the Input element
                 window[input_key].update(value='')
 
-                # Add row information to the table
-                print('dtypes before adding: {}'.format(tab.df.dtypes))
-                new_row.astype(tab.df.dtypes.to_dict()).dtypes
-                print('dtypes of new row: {}'.format(new_row.dtypes))
-#                for header in new_row.columns.tolist():
-#                    new_dtype = new_row[header].dtypes
-#                    old_dtype = tab.df[header].dtypes
-#                    if new_dtype != old_dtype:
-#                        print('Warning: trying to append new row with non-matching data types')
-                        # Set value to na
-#                        new_row[header] = np.NaN
+                # Append new rows to the table
+                df = tab.append_to_table(new_row)
+                tab.df = df
 
-                        # Set data type to df column data type
-#                        new_row[header]
-                for index, row in new_row.iterrows():
-                    print(index, row)
-                new_row.astype(tab.df.dtypes.to_dict()).dtypes
-                df = tab.df.append(new_row, ignore_index=True, sort=False)
-                df.astype(tab.df.dtypes.to_dict()).dtypes
-
-                print('dtypes after adding: {}'.format(df.dtypes))
-                tab.df = tab.sort_table(df)
-                print(tab.df.head)
-
+                # Update display table
                 tab.update_table(window)
                 tab.update_summary(window)
                 continue
@@ -697,7 +682,7 @@ def main():
             audit_key = tab.key_lookup('Audit')
             if event == audit_key:
                 # Run schema action methods
-                print('Info: running audit on the {NAME} data'\
+                print('Info: running audit on the {NAME} data' \
                       .format(NAME=tab.name))
                 tab.run_audit(window, account=user, parameters=params)
 
@@ -747,13 +732,17 @@ def main():
                 # Update totals element
                 total_key = rule_summ.key_lookup('Totals')
                 sum_total = sum(totals)
-                print('Info: the sum total of all values is {}'\
-                    .format(sum_total))
+                print('Info: the sum total of all values is {}' \
+                      .format(sum_total))
                 window[total_key].update(value=sum_total)
 
                 # Display summary panel
                 window[panel_key].update(visible=False)
                 window[summary_key].update(visible=True)
+
+                # Reset tab table column widths
+                for tab in rule.tabs:
+                    tab.reset_column_widths(window)
 
             if summary_panel_active and event in return_keys:
                 # Update totals element, including input elements
@@ -778,20 +767,16 @@ def main():
                         totals.append(input_value_flt)
 
                 sum_total = sum(totals)
-                print('Info: the sum total of all values is {}'\
-                    .format(sum_total))
+                print('Info: the sum total of all values is {}' \
+                      .format(sum_total))
                 window[total_key].update(value=sum_total)
 
             back_key = rule.summary.key_lookup('Back')
             if event == back_key:
                 summary_panel_active = False
-                window[summary_key].update(visible=False)
-
-                # Reset tab table column widths
-                for tab in rule.tabs:
-                    tab.reset_column_widths(window)
 
                 # Return to tab display
+                window[summary_key].update(visible=False)
                 window[panel_key].update(visible=True)
 
             save_key = rule.summary.key_lookup('Save')
@@ -808,6 +793,7 @@ def main():
                     rule = reset_to_default(window, rule)
 
     window.close()
+
 
 if __name__ == "__main__":
     main()
