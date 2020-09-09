@@ -307,6 +307,42 @@ class TabItem:
 
         return(display_df)
 
+    def append_to_table(self, add_df):
+        """
+        Append new rows to dataframe.
+        """
+
+        df = self.df
+        if add_df.empty:
+            return(df)
+
+        # Add row information to the table
+        if not add_df.dtypes.equals(df.dtypes):
+            print('Warning: appending row has some dtypes that are different from the dataframe dtypes')
+            wrong_types = []
+            for header in add_df.columns.tolist():
+                new_dtype = add_df[header].dtypes
+                tab_dtype = df[header].dtypes
+
+                print('Info: comparing data type of {COL} with dtype {TYPEN} to dtype {TYPEO}'
+                      .format(COL=header, TYPEN=new_dtype, TYPEO=tab_dtype))
+                if new_dtype != tab_dtype:
+                    print(
+                        'Warning: trying to append new row with column {COL} having a non-matching data type. '
+                        'Coercing datatype to {TYPE}'.format(COL=header, TYPE=tab_dtype))
+                    wrong_types.append(header)
+
+            # Set data type to df column data type
+            try:
+                add_df = add_df.astype(df[wrong_types].dtypes.to_dict(), errors='raise')
+            except Exception as e:
+                print('Error: unable to add new row due to: {}'.format(e))
+                add_df = None
+
+        append_df = df.append(add_df, ignore_index=True, sort=False)
+
+        return(self.sort_table(append_df))
+
     def update_table(self, window):
         """
         Update Table element with data
@@ -316,7 +352,6 @@ class TabItem:
 
         # Modify table for displaying
         df = self.sort_table(self.df)
-        headers = df.columns.values.tolist()
 
         display_df = self.format_display_table(df)
         data = display_df.values.tolist()
@@ -601,8 +636,9 @@ class TabItem:
         headers = df.columns.values.tolist()
         pkey = self.db_key if self.db_key in headers else self.db_key.lower()
 
-        # Reset list of errors attribute
-        errors = []
+        # Search for errors in the data based on the defined error rules
+        error_rules = self.error_rules
+        errors = dm.evaluate_rule_set(df, error_rules)
 
         # Search for errors in the transaction ID using ID format
         try:
@@ -624,19 +660,6 @@ class TabItem:
                       'configuration'.format(NAME=self.name, RULE=self.rule_name, ID=trans_id))
                 if index not in errors:
                     errors.append(index)
-
-        # Search for errors in the data based on the defined error rules
-        error_rules = self.error_rules
-        for rule_name in error_rules:
-            error_rule = error_rules[rule_name]
-
-            error_list = dm.evaluate_rule(df, error_rule)
-            for index, value in enumerate(error_list):
-                if not value:  #False: row failed the error rule test
-                    if index not in errors:
-                        print('Info: tab {NAME}, rule {RULE}: row {ROW} contains error rule {ERROR}'
-                              .format(NAME=self.name, RULE=self.rule_name, ROW=index, ERROR=rule_name))
-                        errors.append(index)
 
         return(set(errors))
 
@@ -756,8 +779,7 @@ class TabItem:
                 if prev_number_comp > first_number_comp:
                     continue
 
-                # Search only for IDs with correct ID formats 
-                # (skip potential errors)
+                # Search only for IDs with correct ID formats (skip potential errors)
                 if prev_id == self.format_id(prev_number_comp, date=prev_date_comp):
                     last_id = prev_id
                     break
@@ -829,36 +851,29 @@ class TabItem:
                 if not tab_param_col:
                     continue
 
-                filters.append(('{} = ?'.format(tab_param_col), \
-                                (tab_param_value,)))
+                filters.append(('{} = ?'.format(tab_param_col), (tab_param_value,)))
 
-            missing_data = user.query(self.db_tables, columns=self.db_columns, \
-                filter_rules=filters, order=pkey_fmt)
+            missing_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters, order=pkey_fmt)
         else:
-            missing_data = pd.DataFrame(columns=df.columns)
+            missing_df = pd.DataFrame(columns=df.columns)
 
         # Display import window with potentially missing data
-        missing_data_fmt = self.format_display_table(self.sort_table(missing_data))
-        import_rows = win2.import_window(missing_data_fmt)
-        import_data = missing_data.iloc[import_rows]
+        missing_df_fmt = self.format_display_table(self.sort_table(missing_df))
+        import_rows = win2.import_window(missing_df_fmt)
+        import_df = missing_df.iloc[import_rows]
 
         # Updata dataframe with imported data
-        if not import_data.empty:
-            df = df.append(import_data, ignore_index=True, sort=False)
+        df = self.append_to_table(import_df)
 
-        print('Info: new size of {0} dataframe is {1} rows and {2} columns'\
-            .format(self.name, *df.shape))
+        print('Info: new size of {0} dataframe is {1} rows and {2} columns'.format(self.name, *df.shape))
 
         # Inform main thread that sub-thread has completed its operations
-#        window.write_event_value('-THREAD_DONE-', '')
         return(df)
 
     def filter_transactions(self, *args, **kwargs):
         """
         Filter pandas dataframe using the filter rules specified in the configuration.
         """
-        chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
-
         # Method arguments
         window = args[0]
 
@@ -872,35 +887,7 @@ class TabItem:
         print('Info: tab {NAME}, rule {RULE}: running filter method with filter rules {RULES}'
               .format(NAME=self.name, RULE=self.rule_name, RULES=list(filter_rules.values())))
 
-        eval_values = []  #stores list of lists of bools to pass into formatter
-        rule_eval_list = []
-        for i, rule_name in enumerate(filter_rules):
-            if i != 0:
-                rule_eval_list.append('and')
-
-            rule_str = filter_rules[rule_name]  #dictionary key is a db column name
-            rule_list = [i.strip() for i in \
-                re.split('({})'.format('|'.join([' {} '.format(i) for i in \
-                chain_operators])), rule_str)]
-
-            for component in rule_list:
-                if component not in chain_operators:
-                    rule_eval_list.append('{}')
-
-                    filter_list = dm.evaluate_rule(df, component)
-                    eval_values.append(filter_list)
-                else:  #item is chain operators and or or
-                    rule_eval_list.append(component.lower())
-
-        rule_eval_str = ' '.join(rule_eval_list)
-
-        failed = []
-        for row, results_tup in enumerate(zip(*eval_values)):
-            results = eval(rule_eval_str.format(*results_tup))
-            if not results:
-                print('Info: tab {NAME}, rule {RULE}: row {ROW} has failed one or more filter rules'
-                      .format(NAME=self.name, RULE=self.rule_name, ROW=row))
-                failed.append(row)
+        failed = dm.evaluate_rule_set(df, filter_rules)
 
         df.drop(failed, axis=0, inplace=True)
         df.reset_index(drop=True, inplace=True)
