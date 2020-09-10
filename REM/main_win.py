@@ -11,6 +11,7 @@ import REM.layouts as lo
 import REM.secondary_win as win2
 import REM.program_settings as const
 import sys
+import tkinter as tk
 import yaml
 
 
@@ -309,7 +310,7 @@ def main():
 
     cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
-    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
+#    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
     date_key = None
     return_keys = ('Return:36', '\r')
@@ -326,7 +327,11 @@ def main():
 
     # Initialize main window and login window
     window = sg.Window('REM Tila', layout, icon=logo, font=('Arial', 12), size=(1258, 840), return_keyboard_events=True)
+    window.finalize()
     print('Info: starting up')
+
+    user_image = tk.PhotoImage(data=const.USER_ICON)
+    userin_image = tk.PhotoImage(data=const.USERIN_ICON)
 
     # Event Loop
     while True:
@@ -345,6 +350,9 @@ def main():
                 # Disable sign-in and enable sign-off
                 toolbar.toggle_menu(window, 'umenu', 'sign in', value='disable')
                 toolbar.toggle_menu(window, 'umenu', 'sign out', value='enable')
+
+                # Switch user icon
+                window['-UMENU-'].Widget.configure(image=userin_image)
 
                 # Enable permission specific actions and menus
 
@@ -402,6 +410,9 @@ def main():
 
             # Reset User attributes
             user.logout()
+
+            # Switch user icon
+            window['-UMENU-'].Widget.configure(image=user_image)
 
             # Disable sign-out and enable sign-in
             toolbar.toggle_menu(window, 'umenu', 'sign in', value='enable')
@@ -463,9 +474,8 @@ def main():
                 continue
 
         # Switch panels when audit not in progress
-        if rule and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or \
-                     values['-AMENU-'] in audit_names or values['-RMENU-'] in \
-                     (report_tx, stats_tx)):
+        if rule and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or values['-AMENU-'] in audit_names or
+                     values['-RMENU-'] in (report_tx, stats_tx)):
             rule = reset_to_default(window, rule)
 
         # Activate appropriate audit panel
@@ -543,8 +553,7 @@ def main():
 
                 if not has_value:
                     param_desc = param.description
-                    msg = _('Correctly formatted input is required in the ' \
-                            '"{}" field').format(param_desc)
+                    msg = _('Correctly formatted input is required in the "{}" field').format(param_desc)
                     win2.popup_notice(msg)
 
                 inputs.append(has_value)
@@ -552,9 +561,8 @@ def main():
             # Start Audit
             if all(inputs):  # all rule parameters have input
                 audit_in_progress = True
-                print('Info: {} audit in progress with parameters {}' \
-                      .format(rule.name, ', '.join(['{}={}' \
-                                                   .format(i.name, i.value) for i in params])))
+                print('Info: {} audit in progress with parameters {}'
+                      .format(rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
                 # Disable start button and parameter elements
                 start_key = rule.key_lookup('Start')
@@ -570,16 +578,13 @@ def main():
                     # Prepare the filter rules to filter query results
                     main_table = [i for i in tab.db_tables][0]
                     rule_params = rule.parameters  # to filter data tables
-                    filters = [i.filter_statement(table=main_table) for i in \
-                               rule_params]
+                    filters = [i.filter_statement(table=main_table) for i in rule_params]
 
                     # Check for tab-specific query parameters
                     tab_params = tab.tab_parameters
                     if tab_params:
-                        print('Info: adding {TAB} parameters {PARAMS} to ' \
-                              'current filter rules {FILT}' \
-                              .format(TAB=tab.name, PARAMS=tab_params, \
-                                      FILT=filters))
+                        print('Info: adding {TAB} parameters {PARAMS} to current filter rules {FILT}'
+                              .format(TAB=tab.name, PARAMS=tab_params, FILT=filters))
                         for tab_param in tab_params:
                             tab_param_value = tab_params[tab_param]
 
@@ -589,12 +594,10 @@ def main():
                                 continue
 
                             # Append tab filter rule to query filter rules
-                            filters.append(('{} = ?'.format(tab_param_col), \
-                                            (tab_param_value,)))
+                            filters.append(('{} = ?'.format(tab_param_col), (tab_param_value,)))
 
                     # Extract data from database
-                    df = user.query(tab.db_tables, columns=tab.db_columns, \
-                                    filter_rules=filters)
+                    df = user.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
 
                     # Update tab object and elements
                     tab.df = df  # update tab data
@@ -603,7 +606,7 @@ def main():
                     tab.update_summary(window)  # summarize individual tab data
 
                     # Enable / disable action buttons
-                    schema = tab.toggle_actions(window, 'enable')
+                    tab.toggle_actions(window, 'enable')
 
         action_performed = False
         # Scan for missing data if applicable
