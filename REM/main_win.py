@@ -5,6 +5,7 @@ REM main program. Includes primary display.
 import gettext
 import datetime
 import os
+import pandas as pd
 import PySimpleGUI as sg
 import REM.configuration as config
 import REM.layouts as lo
@@ -165,10 +166,8 @@ def get_panels(audit_rules):
     #    panels.append(db_layout())
 
     # Layout
-    pane = [sg.Col([[sg.Pane(panels, orientation='horizontal',
-                             show_handle=False, border_width=0, relief='flat',
-                             key='-PANELS-')]],
-                   pad=(0, 10), justification='center', element_justification='center')]
+    pane = [sg.Col([[sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat',
+                             key='-PANELS-')]], pad=(0, 10), justification='center', element_justification='center')]
 
     return (pane)
 
@@ -203,8 +202,7 @@ def reset_to_default(window, rule):
     # Reset parameter element values
     params = rule.parameters
     for param in params:
-        print('Info: resetting rule parameter element {} to default' \
-              .format(param.name))
+        print('Info: resetting rule parameter element {} to default'.format(param.name))
         window[param.element_key].update(value='')
         try:
             window[param.element_key2].update(vaue='')
@@ -238,7 +236,7 @@ def reset_to_default(window, rule):
 
         # Reset visible tabs
         visible = True if i == 0 else False
-        print('Info: tab {TAB}, rule {RULE}: re-setting visibility to {STATUS}' \
+        print('Info: tab {TAB}, rule {RULE}: re-setting visibility to {STATUS}'
               .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
         window[tab.element_key].update(visible=visible)
 
@@ -457,9 +455,9 @@ def main():
             continue
 
         # Switch panels when audit in progress
-        if audit_in_progress and (event in ('-DB-', '-DBMENU-') \
-                                  or event in cancel_keys or values['-AMENU-'] in audit_names \
-                                  or values['-RMENU-'] in (report_tx, stats_tx)):
+        if audit_in_progress and (event in ('-DB-', '-DBMENU-') or
+                                  event in cancel_keys or values['-AMENU-'] in audit_names or
+                                  values['-RMENU-'] in (report_tx, stats_tx)):
 
             msg = _('Audit is currently running. Are you sure you would like '
                     'to exit?')

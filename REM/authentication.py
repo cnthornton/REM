@@ -2,17 +2,30 @@
 REM authentication and user classes.
 """
 import hashlib
+from multiprocessing import Process, Queue
 import pandas as pd
+from pandas.io import sql
 import pyodbc
+import PySimpleGUI as sg
+import REM.program_settings as const
+import REM.secondary_win as win2
+import time
 
 
 class SQLStatementError(Exception):
-    """A simple exception that is raised when an SQL statemet is formatted
-    incorrectly
+    """A simple exception that is raised when an SQL statement is formatted incorrectly.
     """
 
     def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
+        Exception.__init__(self, *args)
+
+
+class DBConnectionError(Exception):
+    """A simple exception that is raised when there is a problem connecting to the database.
+    """
+
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args)
 
 
 class UserAccount:
@@ -26,47 +39,78 @@ class UserAccount:
 
         superuser (bool): existing account is an admin account.
 
-        cnxn (class): pyodbc connection object
-
         logged_in (bool): user is logged in
     """
 
     def __init__(self):
         """
         """
+        # User account attributes
         self.uid = None
         self.pwd = None
-        self.cnxn = None
-        self.cnxn_prog = None
         self.logged_in = False
         self.superuser = False
 
+        # Database connection attributes
+        self.driver = None
+        self.server = None
+        self.port = None
+        self.dbname = None
+        self.prog_db = None
+        self.alt_dbs = None
+
     def login(self, db, uid, pwd):
         """
-        Verify username and password exists in the database accounts table
-        and obtain user permissions.
+        Verify username and password exists in the database accounts table and obtain user permissions.
 
         Args:
-            db (DataFrame): DataBase object.
+            db (class): DataBase object.
 
             uid (str): existing account username.
 
             pwd (str): password associated with the existing account.
         """
-        ugroup = db.authenticate(uid, pwd)
+        self.driver = db.driver
+        self.server = db.server
+        self.port = db.port
+        self.dbname = db.dbname
+        self.prog_db = db.prog_db
+        self.alt_dbs = db.alt_dbs
 
-        self.uid = uid,
+        conn = self.db_connect(uid, pwd, database=self.prog_db, timeout=5)
+
+        cursor = conn.cursor()
+
+        # Privileges
+        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
+        try:
+            cursor.execute(query_str, (uid,))
+        except pyodbc.Error as e:
+            print('DB Error: querying Users table from {DB} failed due to {EX}'.format(DB=self.prog_db, EX=e))
+            raise DBConnectionError(e)
+
+        ugroup = None
+        results = cursor.fetchall()
+        for row in results:
+            username, user_group = row
+            if username == uid:
+                ugroup = user_group
+                break
+
+        cursor.close()
+        conn.close()
+
+        if not ugroup:
+            return (False)
+
+        self.uid = uid
         self.pwd = pwd
         self.logged_in = True
 
         if ugroup == 'admin':
             self.superuser = True
 
-        cnxn = db.db_connect(uid, pwd, database=db.dbname)
-        self.cnxn = cnxn
-
-        cnxn_prog = db.db_connect(uid, pwd, database=db.prog_db)
-        self.cnxn_prog = cnxn_prog
+        return (True)
 
     def logout(self):
         """
@@ -76,15 +120,144 @@ class UserAccount:
         self.pwd = None
         self.logged_in = False
         self.superuser = False
+
+        self.driver = None
+        self.server = None
+        self.port = None
+        self.dbname = None
+        self.prog_db = None
+        self.alt_dbs = None
+
+        return (True)
+
+    def db_connect(self, uid, pwd, database=None, timeout=20):
+        """
+        Generate a pyODBC Connection object.
+        """
+        driver = self.driver
+        server = self.server
+        port = self.port
+        dbname = database if database else self.dbname
+
+        db_settings = {'Driver': driver,
+                       'Server': server,
+                       'Database': dbname,
+                       'Port': port,
+                       'UID': uid,
+                       'PWD': pwd,
+                       'Trusted_Connection': 'no'}
+
+        conn_str = ';'.join(['{}={}'.format(k, db_settings[k]) for k in db_settings if db_settings[k]])
+        print('Info: connecting to database {DB}'.format(DB=dbname))
+
         try:
-            self.cnxn.close()
-            self.cnxn_prog.close()
-        except AttributeError:
-            self.cnxn = None
-            self.cnxn_prog = None
+            conn = pyodbc.connect(conn_str, timeout=timeout)
+        except pyodbc.Error as e:
+            print('DB Error: connection to {DB} failed due to {EX}'.format(DB=dbname, EX=e))
+            print('Connection string is: {}'.format(conn_str))
+            raise
         else:
-            self.cnxn = None
-            self.cnxn_prog = None
+            print('Info: successfully established a connection to {}'.format(dbname))
+
+        return (conn)
+
+    def thread_transaction(self, statement, params, database: str = None, operation: str = 'read', timeout: int = 20):
+        """
+        Thread a database operation.
+        """
+        db = database if database else self.dbname
+
+        q = Queue()
+        if operation == 'read':
+            p = Process(target=self.read_db, args=(q, statement, params, db), daemon=True)
+            alt_result = pd.DataFrame()
+        elif operation == 'write':
+            p = Process(target=self.write_db, args=(q, statement, params, db), daemon=True)
+            alt_result = False
+        else:
+            print('Database Error: unknown operation {}'.format(operation))
+            return(None)
+
+        p.start()
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if time.time() - start_time > 1:
+                sg.popup_animated(const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=1)
+
+            if not q.empty():
+                print('Info: Process finished')
+                result = q.get()
+                p.join()
+                sg.popup_animated(image_source=None)
+                break
+        else:
+            win2.popup_error('Error: database unresponsive after {} seconds'.format(timeout))
+            p.terminate()
+            sg.popup_animated(image_source=None)
+            result = alt_result
+
+        return (result)
+
+    def read_db(self, queue, statement, params, database):
+        """
+        Thread database read function.
+        """
+        # Connect to database
+        print('Info: Connecting to database with parameters UID: {}, PWD: {}, database: {}'.format(self.uid, self.pwd, database))
+        try:
+            conn = self.db_connect(self.uid, self.pwd, database=database)
+        except DBConnectionError:
+            print('DB Read Error: connection to database cannot be established')
+            df = pd.DataFrame()
+        else:
+            try:
+                df = pd.read_sql(statement, conn, params=params)
+            except sql.DatabaseError as ex:
+                print('Query Error: {}'.format(ex))
+                df = pd.DataFrame()
+            else:
+                print('Info: database {} successfully read'.format(database))
+
+            conn.close()
+
+        # Add return value to the queue
+        queue.put(df)
+
+    def write_db(self, queue, statement, params, database):
+        """
+        Thread database write functions.
+        """
+        # Connect to database
+        try:
+            conn = self.db_connect(self.uid, self.pwd, database=database)
+        except DBConnectionError:
+            print('DB Write Error: connection to database cannot be established')
+            status = False
+        else:
+            try:
+                cursor = conn.cursor()
+            except AttributeError:
+                print('Update Error: connection to database cannot be established')
+                status = False
+            else:
+                try:
+                    cursor.execute(statement, params)
+                except pyodbc.Error as ex1:  # possible duplicate entries
+                    print('DB Write Error: {}'.format(ex1))
+                    status = False
+                else:
+                    print('Info: database {} successfully written'.format(database))
+
+                    conn.commit()
+                    status = True
+
+                    # Close the connection
+                    cursor.close()
+                    conn.close()
+
+        # Add return value to the queue
+        queue.put(status)
 
     def query(self, tables, columns='*', filter_rules=None, order=None, prog_db=False):
         """
@@ -110,12 +283,12 @@ class UserAccount:
                  'FULL OUTER JOIN', 'CROSS JOIN')
 
         # Connect to database
-        conn = self.cnxn if not prog_db else self.cnxn_prog
-        try:
-            cursor = conn.cursor()
-        except AttributeError:
-            print('Query Error: connection to database cannot be established')
-            return (pd.DataFrame())
+ #       conn = self.cnxn if not prog_db else self.cnxn_prog
+ #       try:
+ #           cursor = conn.cursor()
+ #       except AttributeError:
+ #           print('Query Error: connection to database cannot be established')
+ #           return(pd.DataFrame())
 
         # Define sorting component of query statement
         if type(order) in (type(list()), type(tuple())):
@@ -158,7 +331,7 @@ class UserAccount:
             where_clause, params = self.construct_where_clause(filter_rules)
         except SQLStatementError as e:
             print('Query Error: {}'.format(e))
-            return (pd.DataFrame())
+            return(pd.DataFrame())
 
         query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'.format(COLS=colnames, TABLE=table_component,
                                                                         WHERE=where_clause, SORT=order_by)
@@ -166,30 +339,32 @@ class UserAccount:
         print('Query string supplied was: {} with parameters {}'.format(query_str, params))
 
         # Query database and format results as a Pandas dataframe
-        try:
-            df = pd.read_sql(query_str, conn, params=params)
-        except pd.io.sql.DatabaseError as ex:
-            print('Query Error: {}'.format(ex))
-            df = pd.DataFrame()
+        #        try:
+        #            df = pd.read_sql(query_str, conn, params=params)
+        #        except pd.io.sql.DatabaseError as ex:
+        #            print('Query Error: {}'.format(ex))
+        #            df = pd.DataFrame()
+        db = self.prog_db if prog_db else self.dbname
+        df = self.thread_transaction(query_str, params, operation='read', database=db)
 
-        cursor.close()
+#        cursor.close()
 
-        return (df)
+        return(df)
 
     def insert(self, table, columns, values):
         """
         Insert data into the daily summary table.
         """
-        conn = self.cnxn_prog
-        try:
-            cursor = conn.cursor()
-        except AttributeError:
-            print('Insertion Error: connection to database cannot be established')
-            return (False)
+#        conn = self.cnxn_prog
+#        try:
+#            cursor = conn.cursor()
+#        except AttributeError:
+#            print('Insertion Error: connection to database cannot be established')
+#            return(False)
 
         if len(columns) != len(values):
             print('Insertion Error: columns size is not equal to values size')
-            return (False)
+            return(False)
 
         # Format parameters
         if type(values) == type(list()):
@@ -200,40 +375,41 @@ class UserAccount:
             params = (values,)
         else:
             print('Insertion Error: unknown values type {}'.format(type(values)))
-            return (False)
+            return(False)
 
-        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES ({VALS})'\
+        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES ({VALS})' \
             .format(TABLE=table, COLS=','.join(columns), VALS=','.join(['?' for i in params]))
         print('Info: insertion string is: {}'.format(insert_str))
         print('Info: with parameters: {}'.format(params))
-        print('Info: ')
 
-        try:
-            cursor.execute(insert_str, params)
-        except pyodbc.Error as ex1:  # possible duplicate entries
-            print('Insertion Error: {}'.format(ex1))
-            return (False)
-        else:
-            conn.commit()
+#        try:
+#            cursor.execute(insert_str, params)
+#        except pyodbc.Error as ex1:  # possible duplicate entries
+#            print('Insertion Error: {}'.format(ex1))
+#            return(False)
+#        else:
+#            conn.commit()
 
-        cursor.close()
+#        cursor.close()
+        db = self.prog_db
+        status = self.thread_transaction(insert_str, params, operation='read', database=db)
 
-        return (True)
+        return (status)
 
     def update(self, table, columns, values, filters):
         """
         Insert data into the daily summary table.
         """
-        conn = self.cnxn_prog
-        try:
-            cursor = conn.cursor()
-        except AttributeError:
-            print('Update Error: connection to database cannot be established')
-            return (False)
+#        conn = self.cnxn_prog
+#        try:
+#            cursor = conn.cursor()
+#        except AttributeError:
+#            print('Update Error: connection to database cannot be established')
+#            return(False)
 
         if len(columns) != len(values):
             print('Update Error: columns size is not equal to values size')
-            return (False)
+            return(False)
 
         # Format parameters
         if type(values) == type(list()):
@@ -245,7 +421,7 @@ class UserAccount:
         else:
             print('Update Error: unknown values type {}' \
                   .format(type(values)))
-            return (False)
+            return(False)
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
 
@@ -258,17 +434,19 @@ class UserAccount:
         print('update string is: {}'.format(update_str))
         print('with parameters: {}'.format(params))
 
-        try:
-            cursor.execute(update_str, params)
-        except pyodbc.Error as ex:
-            print('Update Error: {}'.format(ex))
-            return (False)
-        else:
-            conn.commit()
+#        try:
+#            cursor.execute(update_str, params)
+#        except pyodbc.Error as ex:
+#            print('Update Error: {}'.format(ex))
+#            return(False)
+#        else:
+#            conn.commit()
 
-        cursor.close()
+#        cursor.close()
+        db = self.prog_db
+        status = self.thread_transaction(update_str, params, operation='read', database=db)
 
-        return (True)
+        return(status)
 
     def construct_where_clause(self, filter_rules):
         """

@@ -162,15 +162,13 @@ class TabItem:
         for element, new_param in element_tup:
             element_key = self.key_lookup(element)
             if element_key:
-                expression = "window['{}'].update({})"\
-                    .format(element_key, new_param)
+                expression = "window['{}'].update({})".format(element_key, new_param)
                 eval(expression)
 
-                print('Info: tab {NAME}, rule {RULE}: updated element {ELEM} to {VAL}'\
-                    .format(NAME=self.name, RULE=self.rule_name,ELEM=element, VAL=new_param))
+                print('Info: tab {NAME}, rule {RULE}: updated element {ELEM} to {VAL}'
+                      .format(NAME=self.name, RULE=self.rule_name, ELEM=element, VAL=new_param))
             else:
-                print('Layout Warning: tab {NAME}, rule {RULE}: element '\
-                      '{ELEM} not found in list of sub-elements'\
+                print('Layout Warning: tab {NAME}, rule {RULE}: element {ELEM} not found in list of sub-elements'
                       .format(Name=self.name, RULE=self.rule_name, ELEM=element))
 
     def get_query_column(self, colname):
@@ -208,9 +206,8 @@ class TabItem:
         elif header.lower() in headers:
             col_name = header.lower()
         else:
-            print('Warning: tab {NAME}, rule {RULE}: column {COL} not in list '\
-                'of table columns'.format(NAME=self.name, RULE=self.rule_name, \
-                COL=header))
+            print('Warning: tab {NAME}, rule {RULE}: column {COL} not in list of table columns'
+                  .format(NAME=self.name, RULE=self.rule_name, COL=header))
             col_name = None
 
         return(col_name)
@@ -228,9 +225,8 @@ class TabItem:
         orig_cols = {}
         for col_name in display_columns:
             col_rule = display_columns[col_name]
-            col_list = [i.strip() for i in \
-                re.split('{}'.format('|'.join([' {} '.format(i) for i in \
-                chain_operators])), col_rule)]  #only return column names
+            col_list = [i.strip() for i in re.split('{}'.format('|'.join([' {} '.format(i) for i in chain_operators])),
+                                                    col_rule)]  #only return column names
             col_oper_list = dm.parse_operation_string(col_rule)
 
             if len(col_list) > 1:  #column to display is custom
@@ -623,8 +619,9 @@ class TabItem:
         """
         pkey = self.get_column_name(self.db_key)
 
-        df.sort_values(by=[pkey], inplace=True, ascending=ascending)
-        df.reset_index(drop=True, inplace=True)
+        if not df.empty:
+            df.sort_values(by=[pkey], inplace=True, ascending=ascending)
+            df.reset_index(drop=True, inplace=True)
 
         return(df)
 
@@ -633,6 +630,9 @@ class TabItem:
         Use error rules specified in configuration file to annotate rows.
         """
         df = self.df
+        if df.empty:
+            return(set())
+
         headers = df.columns.values.tolist()
         pkey = self.db_key if self.db_key in headers else self.db_key.lower()
 
@@ -697,8 +697,6 @@ class TabItem:
         audit_params = kwargs['parameters']
         window = args[0]
 
-        cursor = user.cnxn.cursor()
-
         # Class attribites
         pkey = self.get_column_name(self.db_key)
         df = self.sort_table(self.df)
@@ -708,7 +706,8 @@ class TabItem:
         # Format audit parameters
         for audit_param in audit_params:
             if audit_param.type.lower() == 'date':
-                date_col = self.get_query_column(audit_param.name)
+                date_col = audit_param.name
+                date_col_full = self.get_query_column(date_col)
                 date_fmt = audit_param.format
                 try:
                     audit_date = strptime(audit_param.value, date_fmt)
@@ -734,10 +733,10 @@ class TabItem:
               .format(self.name, first_id, first_number_comp, first_date_comp))
 
         ## Find date of last transaction
-        query_str = 'SELECT DISTINCT {DATE} from {TBL}'.format(DATE=date_col, TBL=main_table)
-        cursor.execute(query_str)
+        query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col_full, TBL=main_table)
+        dates_df = user.thread_transaction(query_str, (), operation='read')
 
-        unq_dates = [row[0] for row in cursor.fetchall()]
+        unq_dates = dates_df[date_col].tolist()
         try:
             unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
         except TypeError:
@@ -766,7 +765,7 @@ class TabItem:
             print('Info: {NAME} Audit: searching for most recent transaction created in {DATE}'
                   .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
-            filters = ('{} = ?'.format(date_col), (prev_date.strftime(date_fmt),))
+            filters = ('{} = ?'.format(date_col_full), (prev_date.strftime(date_fmt),))
             last_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
             last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
@@ -821,7 +820,7 @@ class TabItem:
 
         ## Search for missed numbers at end of day
         last_id_of_df = id_list[-1]
-        filters = ('{} = ?'.format(date_col), (audit_date.strftime(date_fmt),))
+        filters = ('{} = ?'.format(date_col_full), (audit_date.strftime(date_fmt),))
         current_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
         current_df.sort_values(by=[pkey], inplace=True, ascending=False)
 

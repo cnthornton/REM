@@ -219,11 +219,13 @@ def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
                 window['-SUCCESS-'].update(value=msg)
             else:
                 try:
-                    account.login(db, uname, pwd)
+                    login_success = account.login(db, uname, pwd)
                 except pyodbc.Error as ex:
                     sqlstat = ex.args[1]
                     window['-SUCCESS-'].update(value=sqlstat)
                 else:
+                    if login_success:
+                        print('Info: successfully logged in as {}'.format(uname))
                     break
 
     window.close()

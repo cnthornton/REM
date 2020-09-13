@@ -83,70 +83,6 @@ class DataBase:
         except KeyError:
             self.alt_dbs = []
 
-    def authenticate(self, uid, pwd):
-        """
-        Query database to validate sign-on and obtain user group information.
-
-        Arguments:
-
-            uid (str): Account user name.
-
-            pwd (str): Account password.
-        """
-        conn = self.db_connect(uid, pwd, self.prog_db)
-
-        cursor = conn.cursor()
-
-        # Privileges
-        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
-        try:
-            cursor.execute(query_str, (uid,))
-        except pyodbc.Error as e:
-            print('DB Error: querying Users table from {DB} failed due to {EX}'
-                  .format(DB=self.prog_db, EX=e))
-            raise
-
-        ugroup = None
-        results = cursor.fetchall()
-        for row in results:
-            username, user_group = row
-            if username == uid:
-                ugroup = user_group
-                break
-
-        cursor.close()
-        conn.close()
-
-        return (ugroup)
-
-    def db_connect(self, uid, pwd, database=None):
-        """
-        Generate a pyODBC Connection object
-        """
-        driver = self.driver
-        server = self.server
-        port = self.port
-        dbname = database if database else self.dbname
-
-        db_settings = {'Driver': driver,
-                       'Server': server,
-                       'Database': dbname,
-                       'Port': port,
-                       'UID': uid,
-                       'PWD': pwd,
-                       'Trusted_Connection': 'no'}
-
-        conn_str = ';'.join(['{}={}'.format(k, db_settings[k]) for k in db_settings if db_settings[k]])
-
-        try:
-            conn = pyodbc.connect(conn_str)
-        except pyodbc.Error as e:
-            print('DB Error: connection to {DB} failed due to {EX}'.format(DB=dbname, EX=e))
-            print('Connection string is: {}'.format(conn_str))
-            raise
-
-        return (conn)
-
 
 class AuditRules(ProgramSettings):
     """
@@ -756,7 +692,7 @@ class SummaryPanel:
                 tbl_layout.append(row)
 
         ### Totals with horizontal bar
-        tbl_layout.append([sg.Text(' ' * 60, font=font_main, background_color=bg_col, pad=(0, pad_el)), \
+        tbl_layout.append([sg.Text(' ' * 60, font=font_main, background_color=bg_col, pad=(0, pad_el)),
                            sg.Text('_' * 20, font=font_main, background_color=bg_col, pad=(0, pad_el))])
 
         totals_key = lo.as_key('{} Summary Totals'.format(self.rule_name))
