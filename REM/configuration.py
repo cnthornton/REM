@@ -629,8 +629,8 @@ class SummaryPanel:
 
         # Layout elements
         ## Title
-        layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)),
-                                        font=font_h, background_color=default_col)]],
+        layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)), font=font_h,
+                                        background_color=default_col)]],
                               justification='c', element_justification='c')]]
 
         ## Main screen
@@ -640,15 +640,12 @@ class SummaryPanel:
             if colname in mapping_columns:
                 input_key = mapping_columns[colname]['element_key']
 
-                row = [sg.Input(display_name, size=(30, 1), pad=(0, pad_el),
-                                font=font_main, border_width=0, background_color=bg_col,
-                                disabled_readonly_background_color=bg_col,
+                row = [sg.Input(display_name, size=(30, 1), pad=(0, pad_el), font=font_main, border_width=0,
+                                background_color=bg_col, disabled_readonly_background_color=bg_col,
                                 justification='right', readonly=True),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col),
-                       sg.Input('', key=input_key, size=(20, 1),
-                                pad=(0, pad_el), font=font_main,
-                                border_width=0, background_color=bg_col,
-                                disabled_readonly_background_color=bg_col,
+                       sg.Input('', key=input_key, size=(20, 1), pad=(0, pad_el), font=font_main, border_width=0,
+                                background_color=bg_col, disabled_readonly_background_color=bg_col,
                                 justification='l', readonly=True),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col)]
 
@@ -657,15 +654,13 @@ class SummaryPanel:
                 tt = _('Input {} balance').format(display_name)
                 input_key = input_columns[colname]['element_key']
 
-                row = [sg.Input(display_name, size=(30, 1), pad=(0, pad_el),
-                                font=font_main, border_width=0, background_color=bg_col,
-                                disabled_readonly_background_color=bg_col,
+                row = [sg.Input(display_name, size=(30, 1), pad=(0, pad_el), font=font_main, border_width=0,
+                                background_color=bg_col, disabled_readonly_background_color=bg_col,
                                 justification='right', readonly=True),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col),
-                       sg.Input('', key=input_key, size=(20, 1), pad=(0, pad_el),
-                                font=font_main, border_width=1, background_color=bg_col,
-                                disabled_readonly_background_color=bg_col, enable_events=True,
-                                justification='l', tooltip=tt, readonly=False),
+                       sg.Input('', key=input_key, size=(20, 1), pad=(0, pad_el), font=font_main, border_width=1,
+                                background_color=bg_col, disabled_readonly_background_color=bg_col,
+                                enable_events=True, justification='l', tooltip=tt, readonly=False),
                        sg.Text(' ' * 20, font=font_main, background_color=bg_col)]
 
                 tbl_layout.append(row)
@@ -675,15 +670,12 @@ class SummaryPanel:
                            sg.Text('_' * 20, font=font_main, background_color=bg_col, pad=(0, pad_el))])
 
         totals_key = lo.as_key('{} Summary Totals'.format(self.rule_name))
-        totals_layout = [sg.Input(_('Totals'), size=(30, 1), pad=(0, pad_el),
-                                  font=font_main, border_width=0, background_color=bg_col,
-                                  disabled_readonly_background_color=bg_col,
+        totals_layout = [sg.Input(_('Totals'), size=(30, 1), pad=(0, pad_el), font=font_main, border_width=0,
+                                  background_color=bg_col, disabled_readonly_background_color=bg_col,
                                   justification='right', readonly=True),
                          sg.Text(' ' * 20, font=font_main, background_color=bg_col),
-                         sg.Input('', key=totals_key, size=(20, 1),
-                                  pad=(0, pad_el), font=font_main,
-                                  border_width=0, background_color=bg_col,
-                                  disabled_readonly_background_color=bg_col,
+                         sg.Input('', key=totals_key, size=(20, 1), pad=(0, pad_el), font=font_main,
+                                  border_width=0, background_color=bg_col, disabled_readonly_background_color=bg_col,
                                   justification='l', readonly=True),
                          sg.Text(' ' * 20, font=font_main, background_color=bg_col)]
         tbl_layout.append(totals_layout)
@@ -693,15 +685,13 @@ class SummaryPanel:
         title_key = lo.as_key('{} Summary Title'.format(self.rule_name))
 
         summ_layout = [sg.Frame('',
-                                [[sg.Col([[sg.Input('', font=font_h,
-                                                    key=title_key, border_width=0, readonly=True, justification='c',
-                                                    background_color=bg_col,
+                                [[sg.Col([[sg.Input('', key=title_key, font=font_h, border_width=0, readonly=True,
+                                                    justification='c', background_color=bg_col,
                                                     disabled_readonly_background_color=bg_col)]],
                                          pad=(0, pad_frame), element_justification='c', justification='c')],
                                  [sg.Text(' ' * 284, pad=(0, pad_screen), background_color=bg_col)],
-                                 [sg.Col(tbl_layout, background_color=bg_col,
-                                         justification='c', element_justification='c',
-                                         pad=(0, 0))],
+                                 [sg.Col(tbl_layout, background_color=bg_col, justification='c',
+                                         element_justification='c', pad=(0, 0))],
                                  [sg.Text(' ' * 284, pad=(0, pad_screen), background_color=bg_col)],
                                  [sg.Text(' ' * 284, background_color=bg_col)]],
                                 background_color=bg_col, pad=(pad_frame, pad_v))]
@@ -936,21 +926,15 @@ class AuditParameterDateRange(AuditParameterDate):
         key_to = self.element_key2
 
         layout = [sg.Text(desc_from, font=font, pad=((0, pad_el), (0, pad_v))),
-                  sg.Input('', key=key_from, size=(16, 1), enable_events=True,
-                           pad=((0, pad_el), (0, pad_v)), font=font,
-                           tooltip=_('Input date as YYYY-MM-DD or use the calendar '
-                                     'button to select the date')),
-                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
-                                    border_width=0, size=(2, 1), pad=(0, (0, pad_v)),
-                                    tooltip=_('Select date from calendar menu')),
+                  sg.Input('', key=key_from, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)), font=font,
+                           tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
+                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, size=(2, 1),
+                                    pad=(0, (0, pad_v)), tooltip=_('Select date from calendar menu')),
                   sg.Text(desc_to, font=font, pad=((pad_h, pad_el), (0, pad_v))),
-                  sg.Input('', key=key_to, size=(16, 1), enable_events=True,
-                           pad=((0, pad_el), (0, pad_v)),
-                           tooltip=_('Input date as YYYY-MM-DD or use the calendar '
-                                     'button to select the date')),
-                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
-                                    border_width=0, size=(2, 1), pad=(0, (0, pad_v)),
-                                    tooltip=_('Select date from calendar menu'))]
+                  sg.Input('', key=key_to, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)),
+                           tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
+                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, size=(2, 1),
+                                    pad=(0, (0, pad_v)), tooltip=_('Select date from calendar menu'))]
 
         return (layout)
 

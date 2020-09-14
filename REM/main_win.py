@@ -4,8 +4,8 @@ REM main program. Includes primary display.
 """
 import gettext
 import datetime
+from multiprocessing import freeze_support
 import os
-import pandas as pd
 import PySimpleGUI as sg
 import REM.configuration as config
 import REM.layouts as lo
@@ -542,16 +542,8 @@ def main():
 
             # Start Audit
             if all(inputs):  # all rule parameters have input
-                audit_in_progress = True
-                print('Info: {} audit in progress with parameters {}'
-                      .format(rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
-
-                # Disable start button and parameter elements
-                start_key = rule.key_lookup('Start')
-                window[start_key].update(disabled=True)
-                rule.toggle_parameters(window, 'disable')
-
                 # Initialize audit
+                initialized = True
                 tab_keys = []  # to track tabs displayed
                 for tab in rule.tabs:
                     tab_key = tab.element_key
@@ -579,7 +571,12 @@ def main():
                             filters.append(('{} = ?'.format(tab_param_col), (tab_param_value,)))
 
                     # Extract data from database
-                    df = user.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
+                    try:
+                        df = user.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
+                    except Exception as e:
+                        win2.popup_error('Error: audit failed due to {}'.format(e))
+                        initialized = False
+                        break
 
                     # Update tab object and elements
                     tab.df = df  # update tab data
@@ -589,6 +586,19 @@ def main():
 
                     # Enable / disable action buttons
                     tab.toggle_actions(window, 'enable')
+
+                if initialized:
+                    audit_in_progress = True
+                    print('Info: {} audit in progress with parameters {}'
+                          .format(rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
+
+                    # Disable start button and parameter elements
+                    start_key = rule.key_lookup('Start')
+                    window[start_key].update(disabled=True)
+                    rule.toggle_parameters(window, 'disable')
+                else:
+                    for tab in rule.tabs():
+                        tab.reset_dynamic_attributes()
 
         action_performed = False
         # Scan for missing data if applicable
@@ -777,5 +787,6 @@ def main():
 
 
 if __name__ == "__main__":
+    freeze_support()
     main()
     sys.exit(0)

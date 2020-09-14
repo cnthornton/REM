@@ -677,9 +677,8 @@ class TabItem:
             try:
                  df = action_function(*args, **kwargs)
             except Exception as e:
-                print('Warning: tab {NAME}, rule {RULE}: method {METHOD} failed due to {E}'\
-                    .format(NAME=self.name, RULE=self.rule_name, METHOD=action, E=e))
-                raise Exception
+                print('Warning: tab {NAME}, rule {RULE}: method {METHOD} failed due to {E}'
+                      .format(NAME=self.name, RULE=self.rule_name, METHOD=action, E=e))
             else:
                 self.df = df
 

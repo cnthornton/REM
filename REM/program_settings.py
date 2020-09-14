@@ -55,7 +55,7 @@ HEADER_FONT = ('Arial', 14, 'bold')
 MAIN_FONT = ('Arial', 12)
 BOLD_FONT = ('Arial', 12, 'bold')
 IT_FONT = ('Arial', 12, 'italic')
-SMALL_FONT = ('Arial', 10)
+SMALL_FONT = ('Arial', 9)
 MID_FONT = ('Arial', 13)
 LARGE_FONT = ('Arial', 14)
 

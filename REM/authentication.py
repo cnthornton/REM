@@ -1,8 +1,8 @@
 """
 REM authentication and user classes.
 """
+import concurrent.futures
 import hashlib
-from multiprocessing import Process, Queue
 import pandas as pd
 from pandas.io import sql
 import pyodbc
@@ -130,7 +130,7 @@ class UserAccount:
 
         return (True)
 
-    def db_connect(self, uid, pwd, database=None, timeout=20):
+    def db_connect(self, uid, pwd, database=None, timeout=5):
         """
         Generate a pyODBC Connection object.
         """
@@ -161,50 +161,54 @@ class UserAccount:
 
         return (conn)
 
-    def thread_transaction(self, statement, params, database: str = None, operation: str = 'read', timeout: int = 20):
+    def thread_transaction(self, statement, params, database: str = None, operation: str = 'read', timeout: int = 10):
         """
         Thread a database operation.
         """
         db = database if database else self.dbname
 
-        q = Queue()
         if operation == 'read':
-            p = Process(target=self.read_db, args=(q, statement, params, db), daemon=True)
+            p = self.read_db
             alt_result = pd.DataFrame()
         elif operation == 'write':
-            p = Process(target=self.write_db, args=(q, statement, params, db), daemon=True)
+            p = self.write_db
             alt_result = False
         else:
             print('Database Error: unknown operation {}'.format(operation))
             return(None)
 
-        p.start()
+        with concurrent.futures.ThreadPoolExecutor(1) as executor:
+            future = executor.submit(p, statement, params, db)
 
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if time.time() - start_time > 2:
-                sg.popup_animated(const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=1)
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                sg.popup_animated(const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
 
-            if not q.empty():
-                print('Info: Process finished')
-                result = q.get()
-                p.join()
+                if future.done():
+                    print('Info: database process {} completed'.format(operation))
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        print('Info: database process failed due to {}'.format(e))
+                        result = alt_result
+
+                    sg.popup_animated(image_source=None)
+                    break
+            else:
+                try:
+                    result = future.result(1)
+                except concurrent.futures.TimeoutError:
+                    result = alt_result
+                win2.popup_error('Error: database unresponsive after {} seconds'.format(timeout))
                 sg.popup_animated(image_source=None)
-                break
-        else:
-            win2.popup_error('Error: database unresponsive after {} seconds'.format(timeout))
-            p.terminate()
-            sg.popup_animated(image_source=None)
-            result = alt_result
 
         return (result)
 
-    def read_db(self, queue, statement, params, database):
+    def read_db(self, statement, params, database):
         """
         Thread database read function.
         """
         # Connect to database
-        print('Info: Connecting to database {}'.format(database))
         try:
             conn = self.db_connect(self.uid, self.pwd, database=database)
         except DBConnectionError:
@@ -222,14 +226,13 @@ class UserAccount:
             conn.close()
 
         # Add return value to the queue
-        queue.put(df)
+        return(df)
 
-    def write_db(self, queue, statement, params, database):
+    def write_db(self, statement, params, database):
         """
         Thread database write functions.
         """
         # Connect to database
-        print('Info: Connecting to database {}'.format(database))
         try:
             conn = self.db_connect(self.uid, self.pwd, database=database)
         except DBConnectionError:
@@ -258,7 +261,7 @@ class UserAccount:
                     conn.close()
 
         # Add return value to the queue
-        queue.put(status)
+        return(status)
 
     def query(self, tables, columns='*', filter_rules=None, order=None, prog_db=False):
         """

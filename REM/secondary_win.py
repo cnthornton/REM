@@ -151,7 +151,7 @@ def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
                                               tooltip=_('Input account password'))]],
                                background_color=input_col, pad=(pad_frame, pad_el),
                                relief='sunken')],
-                     [sg.Text('', key='-SUCCESS-', size=(20, 4),
+                     [sg.Text('', key='-SUCCESS-', size=(20, 6),
                               pad=(pad_frame, pad_frame), font=small_font,
                               justification='center',
                               text_color='Red', background_color=bg_col)],
@@ -271,7 +271,7 @@ def import_window(df, win_size: tuple = (1920, 1080)):
               [sg.Col(bttn_layout, justification='c',
                       pad=(0, (0, pad_frame)))]]
 
-    window = sg.Window(_('Import Data'), layout, font=main_font, modal=True)
+    window = sg.Window(_('Import Data'), layout, font=main_font, modal=True, resizable=True)
 
     # Start event loop
     vfy_orders = []
