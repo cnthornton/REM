@@ -154,8 +154,7 @@ def parse_operation_string(condition, equivalent: bool = True):
     parsed_condition.append(''.join(buff))
 
     if equivalent:
-        parsed_condition_fmt = [i.replace('=', '==') if len(i) == 1 else i for
-                                i in parsed_condition if i]
+        parsed_condition_fmt = [i.replace('=', '==') if len(i) == 1 else i for i in parsed_condition if i]
     else:
         parsed_condition_fmt = [i for i in parsed_condition if i]
 

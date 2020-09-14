@@ -182,7 +182,7 @@ class UserAccount:
 
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if time.time() - start_time > 1:
+            if time.time() - start_time > 2:
                 sg.popup_animated(const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=1)
 
             if not q.empty():
@@ -204,7 +204,7 @@ class UserAccount:
         Thread database read function.
         """
         # Connect to database
-        print('Info: Connecting to database with parameters UID: {}, PWD: {}, database: {}'.format(self.uid, self.pwd, database))
+        print('Info: Connecting to database {}'.format(database))
         try:
             conn = self.db_connect(self.uid, self.pwd, database=database)
         except DBConnectionError:
@@ -229,6 +229,7 @@ class UserAccount:
         Thread database write functions.
         """
         # Connect to database
+        print('Info: Connecting to database {}'.format(database))
         try:
             conn = self.db_connect(self.uid, self.pwd, database=database)
         except DBConnectionError:
@@ -282,14 +283,6 @@ class UserAccount:
                  'RIGHT JOIN', 'RIGHT OUTER JOIN', 'FULL JOIN',
                  'FULL OUTER JOIN', 'CROSS JOIN')
 
-        # Connect to database
- #       conn = self.cnxn if not prog_db else self.cnxn_prog
- #       try:
- #           cursor = conn.cursor()
- #       except AttributeError:
- #           print('Query Error: connection to database cannot be established')
- #           return(pd.DataFrame())
-
         # Define sorting component of query statement
         if type(order) in (type(list()), type(tuple())):
             order_by = ' ORDER BY {}'.format(', '.join(order))
@@ -299,12 +292,10 @@ class UserAccount:
             order_by = ''
 
         # Define column component of query statement
-        colnames = ', '.join(columns) if type(columns) in \
-                                         (type(list()), type(tuple())) else columns
+        colnames = ', '.join(columns) if type(columns) in (type(list()), type(tuple())) else columns
 
         # Define table component of query statement
-        table_names = [i for i in tables] if type(tables) == \
-                                             type(dict()) else [tables]
+        table_names = [i for i in tables] if type(tables) == type(dict()) else [tables]
         first_table = table_names[0]
         if len(table_names) > 1:
             table_rules = [first_table]
@@ -316,8 +307,7 @@ class UserAccount:
                     print('Query Error: table join rule {} requires three components'.format(table_rule))
                     continue
                 if join_clause not in joins:
-                    print('Query Error: unknown join type {JOIN} in {RULE} '
-                          ''.format(JOIN=join_clause, RULE=table_rule))
+                    print('Query Error: unknown join type {JOIN} in {RULE}'.format(JOIN=join_clause, RULE=table_rule))
                     continue
                 join_statement = '{JOIN} {TABLE} ON {F1}={F2}'.format(JOIN=join_clause, TABLE=table, F1=tbl1_field,
                                                                       F2=tbl2_field)
@@ -338,16 +328,8 @@ class UserAccount:
 
         print('Query string supplied was: {} with parameters {}'.format(query_str, params))
 
-        # Query database and format results as a Pandas dataframe
-        #        try:
-        #            df = pd.read_sql(query_str, conn, params=params)
-        #        except pd.io.sql.DatabaseError as ex:
-        #            print('Query Error: {}'.format(ex))
-        #            df = pd.DataFrame()
         db = self.prog_db if prog_db else self.dbname
         df = self.thread_transaction(query_str, params, operation='read', database=db)
-
-#        cursor.close()
 
         return(df)
 
@@ -355,12 +337,6 @@ class UserAccount:
         """
         Insert data into the daily summary table.
         """
-#        conn = self.cnxn_prog
-#        try:
-#            cursor = conn.cursor()
-#        except AttributeError:
-#            print('Insertion Error: connection to database cannot be established')
-#            return(False)
 
         if len(columns) != len(values):
             print('Insertion Error: columns size is not equal to values size')
@@ -377,20 +353,11 @@ class UserAccount:
             print('Insertion Error: unknown values type {}'.format(type(values)))
             return(False)
 
-        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES ({VALS})' \
+        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES ({VALS})'\
             .format(TABLE=table, COLS=','.join(columns), VALS=','.join(['?' for i in params]))
         print('Info: insertion string is: {}'.format(insert_str))
         print('Info: with parameters: {}'.format(params))
 
-#        try:
-#            cursor.execute(insert_str, params)
-#        except pyodbc.Error as ex1:  # possible duplicate entries
-#            print('Insertion Error: {}'.format(ex1))
-#            return(False)
-#        else:
-#            conn.commit()
-
-#        cursor.close()
         db = self.prog_db
         status = self.thread_transaction(insert_str, params, operation='read', database=db)
 
@@ -400,12 +367,6 @@ class UserAccount:
         """
         Insert data into the daily summary table.
         """
-#        conn = self.cnxn_prog
-#        try:
-#            cursor = conn.cursor()
-#        except AttributeError:
-#            print('Update Error: connection to database cannot be established')
-#            return(False)
 
         if len(columns) != len(values):
             print('Update Error: columns size is not equal to values size')
@@ -419,8 +380,7 @@ class UserAccount:
         elif type(values) == type(str()):
             params = (values,)
         else:
-            print('Update Error: unknown values type {}' \
-                  .format(type(values)))
+            print('Update Error: unknown values type {}'.format(type(values)))
             return(False)
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
@@ -429,20 +389,11 @@ class UserAccount:
         if type(filter_params) == type(tuple()):
             params = params + filter_params
 
-        update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}' \
+        update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}'\
             .format(TABLE=table, PAIRS=','.join(pair_list), CLAUSE=where_clause)
         print('update string is: {}'.format(update_str))
         print('with parameters: {}'.format(params))
 
-#        try:
-#            cursor.execute(update_str, params)
-#        except pyodbc.Error as ex:
-#            print('Update Error: {}'.format(ex))
-#            return(False)
-#        else:
-#            conn.commit()
-
-#        cursor.close()
         db = self.prog_db
         status = self.thread_transaction(update_str, params, operation='read', database=db)
 

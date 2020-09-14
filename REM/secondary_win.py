@@ -296,8 +296,7 @@ def import_window(df, win_size: tuple = (1920, 1080)):
                 vfy_orders.remove(row_index)  # remove row from list of verified
 
             # Get row colors for rows that have been selected
-            print('Info: Importer: selected orders are {}' \
-                  .format(', '.join([str(i) for i in vfy_orders])))
+            print('Info: Importer: selected orders are {}'.format(', '.join([str(i) for i in vfy_orders])))
             selected = [(i, tbl_vfy_col) for i in vfy_orders]
 
             # Get row colors for rows that have not been selected
@@ -318,8 +317,7 @@ def import_window(df, win_size: tuple = (1920, 1080)):
 
         if event == '-IMPORT-':  # click 'Import' button
             if len(data) != len(vfy_orders):  # not all orders selected
-                msg = _("Not all rows have been selected importing. Are "
-                        "you sure you would like to continue?")
+                msg = _("Not all rows have been selected importing. Are you sure you would like to continue?")
                 selection = popup_confirm(msg)
 
                 if selection == 'OK':  # continue anyway

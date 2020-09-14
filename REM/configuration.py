@@ -5,7 +5,6 @@ and rule parameters.
 import dateutil.parser
 import dateutil.parser._parser
 import numpy as np
-import pyodbc
 import PySimpleGUI as sg
 import REM.data_manipulation as dm
 import REM.layouts as lo
@@ -119,8 +118,7 @@ class AuditRules(ProgramSettings):
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('Rule {NAME} not in list of configured audit rules. ' \
-                  'Available rules are {ALL}' \
+            print('Rule {NAME} not in list of configured audit rules. Available rules are {ALL}'
                   .format(NAME=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
@@ -149,8 +147,7 @@ class AuditRule:
         try:
             params = adict['RuleParameters']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "RuleParameters" ' \
-                  'is required for rule {}'.format(name)
+            msg = 'Configuration Error: the rule parameter "RuleParameters" is required for rule {}'.format(name)
             win2.popup_error(msg)
             sys.exit(1)
 
@@ -169,8 +166,7 @@ class AuditRule:
         try:
             tdict = adict['Tabs']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "Tabs" is required ' \
-                  'for rule {}'.format(name)
+            msg = 'Configuration Error: the rule parameter "Tabs" is required for rule {}'.format(name)
             win2.popup_error(msg)
             sys.exit(1)
 
@@ -180,8 +176,7 @@ class AuditRule:
         try:
             summary = adict['Summary']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "Summary" is ' \
-                  'required for rule {}'.format(name)
+            msg = 'Configuration Error: the rule parameter "Summary" is required for rule {}'.format(name)
             win2.popup_error(msg)
             sys.exit(1)
 
@@ -209,8 +204,7 @@ class AuditRule:
         try:
             index = names.index(name)
         except ValueError:
-            print('Error: rule {RULE}: tab item {TAB} not in list of tab items'
-                  .format(RULE=self.name, TAB=name))
+            print('Error: rule {RULE}: tab item {TAB} not in list of tab items'.format(RULE=self.name, TAB=name))
             tab_item = None
         else:
             tab_item = self.tabs[index]
@@ -221,8 +215,7 @@ class AuditRule:
         """
         """
         if by_key and by_type:
-            print('Warning: the "by_key" and "by_type" arguments are mutually '
-                  'exclusive. Defaulting to "by_key".')
+            print('Warning: the "by_key" and "by_type" arguments are mutually exclusive. Defaulting to "by_key".')
             by_type = False
 
         if by_key:
@@ -261,9 +254,8 @@ class AuditRule:
         params = self.parameters
 
         # Layout elements
-        layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)),
-                                        font=font_h)]], justification='c',
-                              element_justification='c')]]
+        layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)), font=font_h)]],
+                              justification='c', element_justification='c')]]
 
         # Control elements
         nparam = len(params)
@@ -295,13 +287,10 @@ class AuditRule:
         cancel_key = self.key_lookup('Cancel')
         start_key = self.key_lookup('Start')
         report_key = self.key_lookup('Finalize')
-        bttn_layout = [lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)),
-                             tooltip='Cancel current action'),
-                       lo.B2('Start', key=start_key, pad=((pad_el, 0), (pad_v, 0)),
-                             tooltip='Start audit'),
+        bttn_layout = [lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)), tooltip='Cancel current action'),
+                       lo.B2('Start', key=start_key, pad=((pad_el, 0), (pad_v, 0)), tooltip='Start audit'),
                        sg.Text(' ' * 238, pad=(0, (pad_v, 0))),
-                       lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)),
-                             disabled=True,
+                       lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)), disabled=True,
                              tooltip='Finalize audit and generate summary report')]
         layout_els.append(bttn_layout)
 
@@ -318,9 +307,8 @@ class AuditRule:
 
         for parameter in self.parameters:
             element_key = parameter.element_key
-            print('Info: parameter {NAME}, rule {RULE}: updated element to ' \
-                  '"disabled={VAL}"'.format(NAME=parameter.name,
-                                            RULE=self.name, VAL=status))
+            print('Info: parameter {NAME}, rule {RULE}: updated element to "disabled={VAL}"'
+                  .format(NAME=parameter.name, RULE=self.name, VAL=status))
 
             window[element_key].update(disabled=status)
 
@@ -343,16 +331,16 @@ class SummaryPanel:
         try:
             self.table = sdict['DatabaseTable']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing '
-                    'required field "DatabaseTable".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}: Summary missing required field "DatabaseTable".')\
+                .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
 
         try:
             all_columns = sdict['TableColumns']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing '
-                    'required field "TableColumns".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}: Summary missing required field "TableColumns".')\
+                .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
         else:
@@ -361,14 +349,13 @@ class SummaryPanel:
         try:
             parameters = sdict['Parameters']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing '
-                    'required field "Parameters".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}: Summary missing required field "Parameters".')\
+                .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
         else:
             if type(parameters) != type(dict()):
-                msg = _('Configuration Error: rule {RULE}: Summary '
-                        'parameters incorrectly configured.') \
+                msg = _('Configuration Error: rule {RULE}: Summary parameters incorrectly configured.')\
                     .format(RULE=rule_name)
                 win2.popup_error(msg)
                 sys.exit(1)
@@ -384,8 +371,8 @@ class SummaryPanel:
         try:
             display_columns = sdict['DisplayColumns']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, Summary: missing '
-                    'required parameter "DisplayColumns".').format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}, Summary: missing required parameter "DisplayColumns".')\
+                .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
         else:
@@ -414,9 +401,8 @@ class SummaryPanel:
                                            'value': 0}
 
         if not map_cols and not in_cols:
-            msg = _('Configuration Error: rule {RULE}, Summary: one or both of '
-                    'parameters "MappingColumns" and "InputColumns" are required.') \
-                .format(RULE=rule_name)
+            msg = _('Configuration Error: rule {RULE}, Summary: one or both of parameters "MappingColumns" and '
+                    '"InputColumns" are required.').format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
 
@@ -474,9 +460,8 @@ class SummaryPanel:
                     rule_param = rule_parameters[index]
                     value = rule_param.value
                 else:
-                    print('Error: rule {RULE}, summary: summary parameter has ' \
-                          'reference {REF} not found in rule parameters' \
-                          .format(RULE=self.rule_name, REF=reference))
+                    print('Error: rule {RULE}, summary: summary parameter has reference {REF} not found in rule '
+                          'parameters'.format(RULE=self.rule_name, REF=reference))
                     continue
             try:
                 title = param_keys['Title']
@@ -493,10 +478,9 @@ class SummaryPanel:
 
             self.parameters[param]['value'] = value
 
-            print('Info: value for summary parameter {PARAM} is {VAL} with ' \
-                  'alias {ALIAS}'.format(PARAM=param, VAL=value, ALIAS=final_val))
-            title_components.append('{NAME} {VAL}' \
-                                    .format(NAME=title, VAL=final_val))
+            print('Info: value for summary parameter {PARAM} is {VAL} with alias {ALIAS}'
+                  .format(PARAM=param, VAL=value, ALIAS=final_val))
+            title_components.append('{NAME} {VAL}'.format(NAME=title, VAL=final_val))
 
         sum_title = '{} {}'.format(self.title, ' '.join(title_components))
 
@@ -511,8 +495,8 @@ class SummaryPanel:
         try:
             mapping = self.mapping_columns[colname]
         except KeyError:
-            print('Error: rule {RULE}, summary: mapping column {COL} does not ' \
-                  'exist'.format(RULE=self.rule_name, COL=colname))
+            print('Error: rule {RULE}, summary: mapping column {COL} does not exist'
+                  .format(RULE=self.rule_name, COL=colname))
             return ('')
 
         reference = mapping['reference']
@@ -526,8 +510,8 @@ class SummaryPanel:
             try:
                 ref_table, ref_col = component.split('.')
             except ValueError:
-                print('Error: rule {RULE}, summary: unknown reference column ' \
-                      'format {COMP}'.format(RULE=self.rule_name, COMP=component))
+                print('Error: rule {RULE}, summary: unknown reference column format {COMP}'
+                      .format(RULE=self.rule_name, COMP=component))
                 return ('')
             else:
                 try:
@@ -536,9 +520,8 @@ class SummaryPanel:
                     try:
                         comp_value = float(component)
                     except ValueError:
-                        print('Error: rule {RULE}, summary: tab item {TAB} not ' \
-                              'in list of Tabs'.format(RULE=self.rule_name, \
-                                                       TAB=ref_table))
+                        print('Error: rule {RULE}, summary: tab item {TAB} not in list of Tabs'
+                              .format(RULE=self.rule_name, TAB=ref_table))
                         return ('')
                     else:
                         rule_values.append(comp_value)
@@ -552,22 +535,19 @@ class SummaryPanel:
                     df_series = df[ref_col.lower()]
                     dtype = df.dtypes[ref_col.lower()]
 
-                if np.issubdtype(dtype, np.integer) or \
-                        np.issubdtype(dtype, np.floating):
+                if np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.floating):
                     rule_values.append(df_series.sum())
                 elif dtype == np.object:
                     rule_values.append(df_series.nunique())
                 else:
-                    print('Error: rule {RULE}, summary: unknown data type ' \
-                          '{TYPE} for mapping reference {COMP}' \
+                    print('Error: rule {RULE}, summary: unknown data type {TYPE} for mapping reference {COMP}'
                           .format(RULE=self.rule_name, TYPE=dtype, COMP=component))
                     return ('')
 
         try:
             summary_total = eval(' '.join([str(i) for i in rule_values]))
         except Exception as e:
-            print('Error: rule {RULE}, summary: {ERR}' \
-                  .format(RULE=self.rule_name, ERR=e))
+            print('Error: rule {RULE}, summary: {ERR}'.format(RULE=self.rule_name, ERR=e))
             summary_total = ''
 
         self.mapping_columns[colname]['value'] = summary_total
@@ -586,8 +566,7 @@ class SummaryPanel:
         try:
             value_fmt = float(value)
         except ValueError:
-            msg = _('Input {VAL} provided to {FIELD} should be '
-                    'a numeric value').format(VAL=value, FIELD=colname)
+            msg = _('Input {VAL} provided to {FIELD} should be a numeric value').format(VAL=value, FIELD=colname)
             win2.popup_error(msg)
             value_fmt = 0
 
@@ -775,8 +754,8 @@ class AuditParameter:
         try:
             elem_key = self.element_key
         except KeyError:
-            print('Warning: parameter {PARAM}, rule {RULE}: no values set for ' \
-                  'parameter'.format(PARAM=self.name, RULE=self.rule_name))
+            print('Warning: parameter {PARAM}, rule {RULE}: no values set for parameter'
+                  .format(PARAM=self.name, RULE=self.rule_name))
             value = ''
         else:
             value = values[elem_key]
@@ -819,8 +798,7 @@ class AuditParameterCombo(AuditParameter):
         try:
             self.combo_values = cdict['Values']
         except KeyError:
-            print('Configuration Warning: parameter {PM}, rule {RULE}: ' \
-                  'values required for parameter type "dropdown"' \
+            print('Configuration Warning: parameter {PM}, rule {RULE}: values required for parameter type "dropdown"'
                   .format(PM=name, RULE=rule_name))
             self.combo_values = []
 
@@ -897,8 +875,8 @@ class AuditParameterDate(AuditParameter):
         try:
             value_raw: str = values[elem_key]
         except KeyError:
-            print('Warning: parameter {PARAM}, rule {RULE}: no values set for '
-                  'parameter'.format(PARAM=self.name, RULE=self.rule_name))
+            print('Warning: parameter {PARAM}, rule {RULE}: no values set for parameter'
+                  .format(PARAM=self.name, RULE=self.rule_name))
             value_fmt = ''
             value_raw = ''
         else:
@@ -960,7 +938,7 @@ class AuditParameterDateRange(AuditParameterDate):
         layout = [sg.Text(desc_from, font=font, pad=((0, pad_el), (0, pad_v))),
                   sg.Input('', key=key_from, size=(16, 1), enable_events=True,
                            pad=((0, pad_el), (0, pad_v)), font=font,
-                           tooltip=_('Input date as YYYY-MM-DD or use the calendar ' \
+                           tooltip=_('Input date as YYYY-MM-DD or use the calendar '
                                      'button to select the date')),
                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
                                     border_width=0, size=(2, 1), pad=(0, (0, pad_v)),
@@ -968,7 +946,7 @@ class AuditParameterDateRange(AuditParameterDate):
                   sg.Text(desc_to, font=font, pad=((pad_h, pad_el), (0, pad_v))),
                   sg.Input('', key=key_to, size=(16, 1), enable_events=True,
                            pad=((0, pad_el), (0, pad_v)),
-                           tooltip=_('Input date as YYYY-MM-DD or use the calendar ' \
+                           tooltip=_('Input date as YYYY-MM-DD or use the calendar '
                                      'button to select the date')),
                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
                                     border_width=0, size=(2, 1), pad=(0, (0, pad_v)),

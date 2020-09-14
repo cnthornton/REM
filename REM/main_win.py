@@ -30,18 +30,14 @@ class ToolBar:
 
         self.name = 'toolbar'
         self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
-        self.audit_menu = {'name': '&Audits',
-                           'items': [('!', i) for i in audit_names]}
+        self.audit_menu = {'name': '&Audits', 'items': [('!', i) for i in audit_names]}
         self.reports_menu = {'name': '&Reports',
-                             'items': [('!', 'Summary S&tatistics'),
-                                       ('!', '&Summary Reports')]}
+                             'items': [('!', 'Summary S&tatistics'), ('!', '&Summary Reports')]}
         self.user_menu = {'name': '&User',
-                          'items': [('!', '&Manage Accounts'), ('', '---'),
-                                    ('', 'Sign &In'), ('!', 'Sign &Out')]}
+                          'items': [('!', '&Manage Accounts'), ('', '---'), ('', 'Sign &In'), ('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
-                          'items': [('!', '&Configuration'), ('', '&Debug'),
-                                    ('', '---'), ('', '&Help'), ('', 'About &Program'),
-                                    ('', '---'), ('', '&Quit')]}
+                          'items': [('!', '&Configuration'), ('', '&Debug'), ('', '---'), ('', '&Help'),
+                                    ('', 'About &Program'), ('', '---'), ('', '&Quit')]}
 
     def key_lookup(self, element):
         """
@@ -73,24 +69,19 @@ class ToolBar:
         menu_ico = const.MENU_ICON
         padding = const.TOOLBAR_PAD
 
-        toolbar = [[sg.ButtonMenu('', menu_audit, image_data=audit_ico,
-                                  tooltip=_('Run Audits'), key='-AMENU-',
+        toolbar = [[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
                                   pad=(padding, padding)),
-                    sg.ButtonMenu('', menu_reports, image_data=report_ico,
-                                  tooltip=_('Generate Reports & Statistics'), key='-RMENU-',
-                                  pad=(padding, padding)),
-                    sg.Button('', image_data=db_ico,
-                              tooltip=_('Modify Database'), key='-DBMENU-',
+                    sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
+                                  tooltip=_('Generate Reports & Statistics'), pad=(padding, padding)),
+                    sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
                               pad=(padding, padding), border_width=0, disabled=True),
                     sg.Text('', pad=(495, 0)),
-                    sg.ButtonMenu('', menu_user, image_data=user_ico,
-                                  tooltip=_('User Settings'), key='-UMENU-',
-                                  pad=(padding, padding)),
-                    sg.ButtonMenu('', menu_menu, image_data=menu_ico,
-                                  tooltip=_('Help and program settings'), key='-MMENU-', pad=(padding, padding))]]
+                    sg.ButtonMenu('', menu_user, key='-UMENU-', image_data=user_ico,
+                                  tooltip=_('User Settings'), pad=(padding, padding)),
+                    sg.ButtonMenu('', menu_menu, key='-MMENU-', image_data=menu_ico,
+                                  tooltip=_('Help and program settings'), pad=(padding, padding))]]
 
-        layout = [sg.Frame('', toolbar, relief='groove', pad=(0, 0),
-                           key='-TOOLBAR-')]
+        layout = [sg.Frame('', toolbar, key='-TOOLBAR-', relief='groove', pad=(0, 0))]
 
         return (layout)
 
@@ -107,8 +98,7 @@ class ToolBar:
             print('Selected menu {} not list of available menus'.format(menu))
             return (None)
 
-        menu_def = [menu_object['name'], ['{}{}'.format(*i) for i in \
-                                          menu_object['items']]]
+        menu_def = [menu_object['name'], ['{}{}'.format(*i) for i in menu_object['items']]]
 
         return (menu_def)
 
@@ -120,7 +110,7 @@ class ToolBar:
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
         try:
-            menu_object = menus[menu.lower()]
+            menus[menu.lower()]
         except KeyError:
             print('Selected menu {} not list of available menus'.format(menu))
             return (False)
@@ -166,8 +156,8 @@ def get_panels(audit_rules):
     #    panels.append(db_layout())
 
     # Layout
-    pane = [sg.Col([[sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat',
-                             key='-PANELS-')]], pad=(0, 10), justification='center', element_justification='center')]
+    pane = [sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False, border_width=0,
+                             relief='flat')]], pad=(0, 10), justification='center', element_justification='center')]
 
     return (pane)
 
@@ -362,26 +352,22 @@ def main():
                     window['-DBMENU-'].update(disabled=False)
 
                     # Reports and statistics
-                    toolbar.toggle_menu(window, 'rmenu', 'summary reports',
-                                        value='enable')
-                    toolbar.toggle_menu(window, 'rmenu', 'summary statistics',
-                                        value='enable')
+                    toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='enable')
+                    toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='enable')
+
                     window['-STATS-'].update(disabled=False)
                     window['-REPORTS-'].update(disabled=False)
 
                     # User
-                    toolbar.toggle_menu(window, 'umenu', 'manage accounts',
-                                        value='enable')
+                    toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
 
                     # Menu
-                    toolbar.toggle_menu(window, 'mmenu', 'configuration',
-                                        value='enable')
+                    toolbar.toggle_menu(window, 'mmenu', 'configuration', value='enable')
 
                 # Enable permissions on per audit rule basis defined in config
                 for rule_name in audit_names:
                     if admin:
-                        toolbar.toggle_menu(window, 'amenu', rule_name,
-                                            value='enable')
+                        toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
                         window[rule_name].update(disabled=False)
 
                     rule = audit_rules.fetch_rule(rule_name)
@@ -455,12 +441,10 @@ def main():
             continue
 
         # Switch panels when audit in progress
-        if audit_in_progress and (event in ('-DB-', '-DBMENU-') or
-                                  event in cancel_keys or values['-AMENU-'] in audit_names or
-                                  values['-RMENU-'] in (report_tx, stats_tx)):
+        if audit_in_progress and (event in ('-DB-', '-DBMENU-') or event in cancel_keys
+                                  or values['-AMENU-'] in audit_names or values['-RMENU-'] in (report_tx, stats_tx)):
 
-            msg = _('Audit is currently running. Are you sure you would like '
-                    'to exit?')
+            msg = _('Audit is currently running. Are you sure you would like to exit?')
             selection = win2.popup_confirm(msg)
 
             if selection == 'OK':
@@ -624,8 +608,7 @@ def main():
                 except IndexError:  # user double-clicked too quickly
                     continue
 
-                print('Info: removing row {ROW} from table element {TBL}' \
-                      .format(ROW=row, TBL=tbl_key))
+                print('Info: removing row {ROW} from table element {TBL}'.format(ROW=row, TBL=tbl_key))
 
                 tab.df.drop(row, axis=0, inplace=True)
                 tab.df.reset_index(drop=True, inplace=True)
@@ -683,8 +666,7 @@ def main():
             audit_key = tab.key_lookup('Audit')
             if event == audit_key:
                 # Run schema action methods
-                print('Info: running audit on the {NAME} data' \
-                      .format(NAME=tab.name))
+                print('Info: running audit on the {NAME} data'.format(NAME=tab.name))
                 tab.run_audit(window, account=user, parameters=params)
 
                 # Update information elements - most actions modify tab data 
@@ -733,8 +715,7 @@ def main():
                 # Update totals element
                 total_key = rule_summ.key_lookup('Totals')
                 sum_total = sum(totals)
-                print('Info: the sum total of all values is {}' \
-                      .format(sum_total))
+                print('Info: the sum total of all values is {}'.format(sum_total))
                 window[total_key].update(value=sum_total)
 
                 # Display summary panel
@@ -768,8 +749,7 @@ def main():
                         totals.append(input_value_flt)
 
                 sum_total = sum(totals)
-                print('Info: the sum total of all values is {}' \
-                      .format(sum_total))
+                print('Info: the sum total of all values is {}'.format(sum_total))
                 window[total_key].update(value=sum_total)
 
             back_key = rule.summary.key_lookup('Back')
