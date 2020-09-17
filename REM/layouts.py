@@ -192,87 +192,72 @@ class TabItem:
         chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
 
         display_columns = self.display_columns
+        display_header = list(display_columns.keys())
         display_df = pd.DataFrame()
 
         # Subset dataframe by specified columns to display
-        orig_cols = {}
         for col_name in display_columns:
             col_rule = display_columns[col_name]
             col_list = [i.strip() for i in re.split('{}'.format('|'.join([' {} '.format(i) for i in chain_operators])),
                                                     col_rule)]  # only return column names
-            col_oper_list = dm.parse_operation_string(col_rule)
 
-            if len(col_list) > 1:  # column to display is custom
-                merge_cols = []
-                agg_func = sum
-                for i, merge_col in enumerate(col_list):
-                    merge_col_fmt = self.get_column_name(merge_col)
-                    try:
-                        dataframe[merge_col_fmt] = dm.fill_na(dataframe, merge_col_fmt)
-                    except KeyError:  # column not in table
-                        continue
+            col_to_add = pd.Series(np.full([dataframe.shape[0]], np.nan))
+            dtypes = []
+            merge_cols = []
+            for sub_rule in col_list:
+                col_oper_list = dm.parse_operation_string(sub_rule)
 
-                    merge_cols.append(merge_col_fmt)
-                    orig_cols[merge_col] = col_name
+                sub_colnames = dm.get_column_from_oper(dataframe, col_oper_list)
+                for sub_colname in sub_colnames:
+                    merge_cols.append(sub_colname)
 
-                    # Determine data type of columns and aggregation function 
-                    # to use
-                    if i == 0:  # base dtype on first column in list
-                        dtype = dataframe.dtypes[merge_col_fmt]
-                        if dtype in (np.int64, np.float64):
-                            agg_func = sum
-                        elif dtype == np.object:
-                            agg_func = ' '.join
-                    else:
-                        if dtype != dataframe.dtypes[merge_col_fmt]:
-                            print('Warning: tab {NAME}, rule {RULE}: attempting to combine columns of different type'
-                                  .format(NAME=self.name, RULE=self.rule_name))
-                            print('... changing data type of columns {COLS} to object'
-                                  .format(COLS=col_list))
-                            dtype = np.object
-                            agg_func = ' '.join
-                            for item in col_list:
-                                dataframe[item].astype('object')
-
+                    dtype = dataframe.dtypes[sub_colname]
+                    dtypes.append(dtype)
+                    for former_dtype in dtypes:
+                        if dtype != former_dtype:
+                            print('Warning: tab {NAME}, rule {RULE}: attempting to combine columns {COLS} of different '
+                                  'type {DTYPES}'.format(NAME=self.name, RULE=self.rule_name, COLS=merge_cols,
+                                                         DTYPES=dtypes))
+                            continue
                 try:
-                    display_df[col_name] = dataframe[merge_cols].agg(agg_func, axis=1)
-                except Exception:
-                    print(display_df.head)
-                    print(merge_cols, dtype, agg_func)
-                    raise Exception
-            elif len(col_oper_list) > 1:
-                col_to_add = dm.evaluate_rule(dataframe, col_oper_list)
-            else:  # column to display already exists in table
-                orig_cols[col_rule] = col_name
-
-                col_to_add = self.get_column_name(col_rule)
-                try:
-                    display_df[col_name] = dm.fill_na(dataframe, col_to_add)
-                except KeyError:
+                    sub_values = dm.evaluate_rule(dataframe, col_oper_list)
+                except Exception as e:
+                    print('Warning: tab {NAME}, rule {RULE}: merging of columns {COLS} failed due to {ERR}'
+                          .format(NAME=self.name, RULE=self.rule_name, COLS=merge_cols, ERR=e))
                     continue
+                else:
+                    try:
+                        print('Info: tab {NAME}, rule {RULE}: filling column {COL} with values {VALS}'
+                              .format(NAME=self.name, RULE=self.rule_name, COL=col_name, VALS=sub_values))
+                        col_to_add.fillna(pd.Series(sub_values), inplace=True)
+                    except Exception as e:
+                        print('Warning: tab {NAME}, rule {RULE}: filling column {COL} with values from rule {COND} '
+                              'failed due to {ERR}'.format(NAME=self.name, RULE=self.rule_name, COL=col_name,
+                                                           COND=sub_rule, ERR=e))
+
+            display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
         for alias_col in self.aliases:
             alias_map = self.aliases[alias_col]  # dictionary of mapped values
+            print(alias_map)
 
-            try:
-                alias_col_trans = orig_cols[alias_col]
-            except KeyError:
+            if alias_col not in display_header:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
             print('Info: tab {NAME}, rule {RULE}: applying aliases {MAP} to {COL}'
-                  .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col_trans))
+                  .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col))
 
             try:
-                display_df[alias_col_trans] = display_df[alias_col_trans].map(alias_map)
+                print(display_df[alias_col])
+                print(display_df[alias_col].replace(alias_map))
+                display_df[alias_col].replace(alias_map, inplace=True)
             except KeyError:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
-            else:
-                display_df[alias_col_trans].fillna(display_df[alias_col_trans], inplace=True)
 
         return (display_df)
 
