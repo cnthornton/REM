@@ -4,7 +4,6 @@ REM Layout classes and functions.
 import datetime
 import dateutil
 import PySimpleGUI as sg
-import numpy as np
 import pandas as pd
 import re
 import REM.configuration as config
@@ -12,7 +11,6 @@ import REM.data_manipulation as dm
 import REM.program_settings as const
 import REM.secondary_win as win2
 import sys
-import threading
 
 
 # Schema Layout Classes
@@ -23,7 +21,7 @@ class TabItem:
         element_name = "{RULE} {TAB}".format(RULE=rule_name, TAB=name)
         self.element_name = element_name
         self.element_key = as_key(element_name)
-        self.data_elements = ['Table', 'Summary']
+        self.data_elements = ['Table', 'Summary', 'Width', 'Fill']
         self.action_elements = ['Audit', 'Input', 'Add']
         self._actions = ['scan', 'filter']
 
@@ -81,7 +79,7 @@ class TabItem:
                     self.actions.append(action)
                 else:
                     print('Configuration Warning: tab {NAME}, rule {RULE}: unknown audit method specified {METHOD}'
-                          .format(Name=name, RULE=rule_name, METHOD=action))
+                          .format(NAME=name, RULE=rule_name, METHOD=action))
 
         try:
             self.tab_parameters = tdict['TabParameters']
@@ -99,9 +97,16 @@ class TabItem:
             self.codes = {}
 
         try:
-            self.summary_rules = tdict['SummaryRules']
+            summary_rules = tdict['SummaryRules']
         except KeyError:
-            self.summary_rules = {}
+            summary_rules = {}
+        for summary_rule in summary_rules:
+            if 'Reference' not in summary_rules[summary_rule]:
+                msg = ('Configuration Error: tab {NAME}, rule {RULE}: the parameter "Reference" is required for '
+                       'SummaryRule {SUMM}').format(NAME=name, RULE=rule_name, SUMM=summary_rule)
+                win2.popup_error(msg)
+                sys.exit(1)
+        self.summary_rules = summary_rules
 
         try:
             self.error_rules = tdict['ErrorRules']
@@ -109,9 +114,16 @@ class TabItem:
             self.error_rules = {}
 
         try:
-            self.filter_rules = tdict['FilterRules']
+            filter_rules = tdict['FilterRules']
         except KeyError:
-            self.filter_rules = {}
+            filter_rules = {}
+        for filter_rule in filter_rules:
+            if 'Reference' not in filter_rules[filter_rule]:
+                msg = ('Configuration Error: tab {NAME}, rule {RULE}: the parameter "Reference" is required for '
+                   'FilterRule {FILT}').format(NAME=name, RULE=rule_name, FILT=filter_rule)
+                win2.popup_error(msg)
+                sys.exit(1)
+        self.filter_rules = filter_rules
 
         try:
             self.id_format = re.findall(r'\{(.*?)\}', tdict['IDFormat'])
@@ -130,6 +142,20 @@ class TabItem:
         self.audit_performed = False
         self.id_components = []
 
+    def key_lookup(self, element):
+        """
+        Lookup key for element in schema.
+        """
+        elements = self.data_elements + self.action_elements
+        if element in elements:
+            key = as_key('{} {}'.format(self.element_name, element))
+        else:
+            print('Warning: tab {TAB}, rule {RULE}: element {ELEM} not found in list of sub-elements'
+                  .format(TAB=self.name, RULE=self.rule_name, ELEM=element))
+            key = None
+
+        return key
+
     def reset_dynamic_attributes(self):
         """
         Reset class dynamic attributes to default.
@@ -142,17 +168,30 @@ class TabItem:
         self.audit_performed = False
         self.id_components = []
 
-    def reset_column_widths(self, window):
+    def resize_elements(self, window, height=800, width=1200):
         """
         Reset Table Columns widths to default when resized.
         """
         headers = list(self.display_columns.keys())
-        lengths = dm.calc_column_widths(headers, pixels=True)
-        table_key = self.key_lookup('Table')
+        tbl_key = self.key_lookup('Table')
+        fill_key = self.key_lookup('Fill')
+        element_key = self.element_key
 
+        # Reset table size
+        tab_width = width - 120 if width > 120 else width
+        window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
+
+        tab_fill = tab_width - 832 if tab_width > 832 else 0
+        window[fill_key].set_size((tab_fill, None))
+
+        # Reset table column size
+        lengths = dm.calc_column_widths(headers, width=tab_width, pixels=True)
         for col_index, col_name in enumerate(headers):
             col_width = lengths[col_index]
-            window[table_key].Widget.column(col_name, width=col_width)
+            window[tbl_key].Widget.column(col_name, width=col_width)
+
+        window[tbl_key].expand((True, True))
+        window[tbl_key].table_frame.pack(expand=True, fill='both')
 
     def update(self, window, element_tup):
         """
@@ -169,18 +208,18 @@ class TabItem:
                 print('Layout Warning: tab {NAME}, rule {RULE}: element {ELEM} not found in list of sub-elements'
                       .format(NAME=self.name, RULE=self.rule_name, ELEM=element))
 
-    def get_column_name(self, header):
+    def get_column_name(self, column):
         """
         """
-        headers = self.df.columns.values.tolist()
+        header = self.df.columns.values.tolist()
 
-        if header in headers:
-            col_name = header
-        elif header.lower() in headers:
-            col_name = header.lower()
+        if column in header:
+            col_name = column
+        elif column.lower() in header:
+            col_name = column.lower()
         else:
             print('Warning: tab {NAME}, rule {RULE}: column {COL} not in list of table columns'
-                  .format(NAME=self.name, RULE=self.rule_name, COL=header))
+                  .format(NAME=self.name, RULE=self.rule_name, COL=column))
             col_name = None
 
         return (col_name)
@@ -188,9 +227,6 @@ class TabItem:
     def format_display_table(self, dataframe):
         """
         """
-        operators = set('+-*/')
-        chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
-
         display_columns = self.display_columns
         display_header = list(display_columns.keys())
         display_df = pd.DataFrame()
@@ -198,49 +234,13 @@ class TabItem:
         # Subset dataframe by specified columns to display
         for col_name in display_columns:
             col_rule = display_columns[col_name]
-            col_list = [i.strip() for i in re.split('{}'.format('|'.join([' {} '.format(i) for i in chain_operators])),
-                                                    col_rule)]  # only return column names
 
-            col_to_add = pd.Series(np.full([dataframe.shape[0]], np.nan))
-            dtypes = []
-            merge_cols = []
-            for sub_rule in col_list:
-                col_oper_list = dm.parse_operation_string(sub_rule)
-
-                sub_colnames = dm.get_column_from_oper(dataframe, col_oper_list)
-                for sub_colname in sub_colnames:
-                    merge_cols.append(sub_colname)
-
-                    dtype = dataframe.dtypes[sub_colname]
-                    dtypes.append(dtype)
-                    for former_dtype in dtypes:
-                        if dtype != former_dtype:
-                            print('Warning: tab {NAME}, rule {RULE}: attempting to combine columns {COLS} of different '
-                                  'type {DTYPES}'.format(NAME=self.name, RULE=self.rule_name, COLS=merge_cols,
-                                                         DTYPES=dtypes))
-                            continue
-                try:
-                    sub_values = dm.evaluate_rule(dataframe, col_oper_list)
-                except Exception as e:
-                    print('Warning: tab {NAME}, rule {RULE}: merging of columns {COLS} failed due to {ERR}'
-                          .format(NAME=self.name, RULE=self.rule_name, COLS=merge_cols, ERR=e))
-                    continue
-                else:
-                    try:
-                        print('Info: tab {NAME}, rule {RULE}: filling column {COL} with values {VALS}'
-                              .format(NAME=self.name, RULE=self.rule_name, COL=col_name, VALS=sub_values))
-                        col_to_add.fillna(pd.Series(sub_values), inplace=True)
-                    except Exception as e:
-                        print('Warning: tab {NAME}, rule {RULE}: filling column {COL} with values from rule {COND} '
-                              'failed due to {ERR}'.format(NAME=self.name, RULE=self.rule_name, COL=col_name,
-                                                           COND=sub_rule, ERR=e))
-
+            col_to_add = dm.generate_column_from_rule(dataframe, col_rule)
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
         for alias_col in self.aliases:
             alias_map = self.aliases[alias_col]  # dictionary of mapped values
-            print(alias_map)
 
             if alias_col not in display_header:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
@@ -251,51 +251,13 @@ class TabItem:
                   .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col))
 
             try:
-                print(display_df[alias_col])
-                print(display_df[alias_col].replace(alias_map))
                 display_df[alias_col].replace(alias_map, inplace=True)
             except KeyError:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
-        return (display_df)
-
-    def append_to_table(self, add_df):
-        """
-        Append new rows to dataframe.
-        """
-
-        df = self.df
-        if add_df.empty:
-            return (df)
-
-        # Add row information to the table
-        if not add_df.dtypes.equals(df.dtypes):
-            print('Warning: appending row has some dtypes that are different from the dataframe dtypes')
-            wrong_types = []
-            for header in add_df.columns.tolist():
-                new_dtype = add_df[header].dtypes
-                tab_dtype = df[header].dtypes
-
-                print('Info: comparing data type of {COL} with dtype {TYPEN} to dtype {TYPEO}'
-                      .format(COL=header, TYPEN=new_dtype, TYPEO=tab_dtype))
-                if new_dtype != tab_dtype:
-                    print(
-                        'Warning: trying to append new row with column {COL} having a non-matching data type. '
-                        'Coercing datatype to {TYPE}'.format(COL=header, TYPE=tab_dtype))
-                    wrong_types.append(header)
-
-            # Set data type to df column data type
-            try:
-                add_df = add_df.astype(df[wrong_types].dtypes.to_dict(), errors='raise')
-            except Exception as e:
-                print('Error: unable to add new row due to: {}'.format(e))
-                add_df = None
-
-        append_df = df.append(add_df, ignore_index=True, sort=False)
-
-        return (self.sort_table(append_df))
+        return (dm.fill_na(display_df))
 
     def update_table(self, window):
         """
@@ -305,7 +267,7 @@ class TabItem:
         tbl_key = self.key_lookup('Table')
 
         # Modify table for displaying
-        df = self.sort_table(self.df)
+        df = dm.sort_table(self.df, self.db_key)
 
         display_df = self.format_display_table(df)
         data = display_df.values.tolist()
@@ -373,7 +335,7 @@ class TabItem:
                 if not date:
                     print('Warning: tab {NAME}, rule {RULE}: no date provided for ID number {NUM} ... reverting to '
                           'today\'s date'.format(NAME=self.name, RULE=self.rule_name, NUM=number))
-                    value = datetime.datetime.now().strftime(strfmt)
+                    value = datetime.datetime.now().strftime(comp_value)
                 else:
                     value = date
             elif comp_name == 'variable':
@@ -419,13 +381,18 @@ class TabItem:
         """
         Update Summary element with data summary
         """
+        is_numeric_dtype = pd.api.types.is_numeric_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+
         operators = set('+-*/')
 
         df = self.df
-        headers = df.columns.values.tolist()
         summ_rules = self.summary_rules
 
         outputs = []
+
         # Total number of rows
         output = (_('Number of rows in table'), df.shape[0])
         outputs.append(output)
@@ -434,64 +401,51 @@ class TabItem:
         output = (_('Number of errors identified'), self.nerr)
         outputs.append(output)
 
-        # Summarize all headers
-        totals = {}
-        for header in headers:
-            # Determine object type of the values in each column
-            dtype = df.dtypes[header]
-            if np.issubdtype(dtype, np.integer) or \
-                    np.issubdtype(dtype, np.floating):
-                col_summary = df[header].sum()
-            elif dtype == np.object:
-                col_summary = df[header].nunique()
-            else:  # possibly empty dataframe
-                col_summary = 0
-
-            totals[header] = col_summary
-
-            # Summarize number of transactions in the table
-            if header in (self.db_key, self.db_key.lower()):
-                output = (_('Number of transactions processed'), col_summary)
-                outputs.append(output)
-
         # Calculate totals defined by summary rules
         for rule_name in summ_rules:
-            rule = summ_rules[rule_name]
+            summ_rule = summ_rules[rule_name]
+            reference = summ_rule['Reference']
+
+            # Subset df if subset rule provided
+            if 'Subset' in summ_rule:
+                subset_df = dm.subset_dataframe(df, summ_rule['Subset'])
+            else:
+                subset_df = df
+
             rule_values = []
-            for component in dm.parse_operation_string(rule):
+            for component in dm.parse_operation_string(reference):
                 if component in operators:
                     rule_values.append(component)
                     continue
 
                 component_col = self.get_column_name(component)
                 if component_col:  # component is header column
-                    try:
-                        rule_values.append(totals[component_col])
-                    except KeyError:  # try lower-case
-                        print('Warning: tab {NAME}, rule {RULE}: "{ITEM}" ' \
-                              'from summary rule "{SUMM}" not in display ' \
-                              'columns'.format(NAME=self.name, \
-                                               RULE=self.rule_name, ITEM=component, \
-                                               SUMM=rule_name))
+                    dtype = subset_df.dtypes[component_col]
+                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
+                        col_summary = subset_df[component_col].sum()
+                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+                        col_summary = subset_df[component_col].nunique()
+                    else:  # possibly empty dataframe
+                        col_summary = 0
+
+                    rule_values.append(col_summary)
+                else:
+                    try:  # component is a number
+                        float(component)
+                    except ValueError:  # component is an unsupported character
+                        print('Warning: tab {NAME}, rule {RULE}: unsupported character "{ITEM}" found in summary rule '
+                              '"{SUMM}"'.format(NAME=self.name, RULE=self.rule_name, ITEM=component, SUMM=rule_name))
                         rule_values = [0]
                         break
-                elif component.isnumeric():  # component is integer
-                    rule_values.append(component)
-                else:  # component is unsupported character
-                    print('Warning: tab {NAME}, rule {RULE}: unsupported ' \
-                          'character "{ITEM}" provided to summary rule "{SUMM}"' \
-                          .format(NAME=self.name, RULE=self.rule_name, \
-                                  ITEM=component, SUMM=rule_name))
-                    rule_values = [0]
-                    break
+                    else:
+                        rule_values.append(component)
 
             summary_total = eval(' '.join([str(i) for i in rule_values]))
 
             outputs.append((rule_name, summary_total))
 
         summary_key = self.key_lookup('Summary')
-        window[summary_key].update(value='\n'.join(['{}: {}'.format(*i) for \
-                                                    i in outputs]))
+        window[summary_key].update(value='\n'.join(['{}: {}'.format(*i) for i in outputs]))
 
     def toggle_actions(self, window, value='enable'):
         """
@@ -503,22 +457,7 @@ class TabItem:
             element_tup = [(element, 'disabled={}'.format(status))]
             self.update(window, element_tup)
 
-    def key_lookup(self, element):
-        """
-        Lookup key for element in schema.
-        """
-        elements = self.data_elements + self.action_elements
-        if element in elements:
-            key = as_key('{} {}'.format(self.element_name, element))
-        else:
-            print('Warning: tab {TAB}, rule {RULE}: element {ELEM} not found ' \
-                  'in list of sub-elements' \
-                  .format(TAB=self.name, RULE=self.rule_name, ELEM=element))
-            key = None
-
-        return (key)
-
-    def layout(self):
+    def layout(self, height=800, width=1200):
         """
         GUI layout for the tab item.
         """
@@ -531,6 +470,9 @@ class TabItem:
         font_l = const.LARGE_FONT
         font_m = const.MID_FONT
 
+        tab_width = width - 120 if width >= 200 else width
+        tab_fill = tab_width - 832 if tab_width > 832 else 0
+
         header = self.df.columns.values.tolist()
         data = self.df.values.tolist()
 
@@ -539,11 +481,12 @@ class TabItem:
         table_key = self.key_lookup('Table')
         add_key = self.key_lookup('Add')
         input_key = self.key_lookup('Input')
-        layout = [[create_table_layout(data, header, table_key, bind=True)],
+        fill_key = self.key_lookup('Fill')
+        layout = [[create_table_layout(data, header, table_key, bind=True, height=height, width=tab_width)],
                   [sg.Frame(_('Summary'), [[sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=summary_key,
                                                          disabled=True, background_color=bg_col)]], font=font_l,
                             pad=((pad_frame, 0), (0, pad_frame)), background_color=bg_col, element_justification='l'),
-                   sg.Text(' ' * 60, background_color=bg_col),
+                   sg.Canvas(key=fill_key, size=(tab_fill, 0), visible=True),
                    sg.Col([[
                        sg.Input('', key=input_key, font=font_l, size=(20, 1), pad=(pad_el, 0), do_not_clear=False,
                                 tooltip=_('Input document number to add a transaction to the table'), disabled=True),
@@ -551,10 +494,10 @@ class TabItem:
                           disabled=True),
                        B2(_('Audit'), key=audit_key, disabled=True, pad=((0, pad_frame), 0),
                           tooltip=_('Run Audit methods'))
-                   ]], background_color=bg_col)
+                   ]], vertical_alignment='top', background_color=bg_col)
                    ]]
 
-        return (layout)
+        return layout
 
     def row_ids(self):
         """
@@ -566,24 +509,63 @@ class TabItem:
             try:
                 row_ids = list(self.df[self.db_key.lower()])
             except KeyError:
-                print('Warning: tab {TAB}, rule {RULE}: missing database key ' \
-                      '{KEY} in column headers' \
+                print('Warning: tab {TAB}, rule {RULE}: missing database key {KEY} in column headers'
                       .format(TAB=self.name, RULE=self.rule_name, KEY=self.db_key))
                 row_ids = []
 
-        return (row_ids)
+        return row_ids
 
-    def sort_table(self, df, ascending: bool = True):
+    def filter_statements(self):
         """
-        Sort dataframe on primary key defined in configuration.
+        Generate the filter statements for tab query parameters.
         """
-        pkey = self.get_column_name(self.db_key)
+        operators = {'>', '>=', '<', '<=', '=', '!=', 'IN', 'in', 'In'}
 
-        if not df.empty:
-            df.sort_values(by=[pkey], inplace=True, ascending=ascending)
-            df.reset_index(drop=True, inplace=True)
+        params = self.tab_parameters
 
-        return (df)
+        filters = []
+        for param in params:
+            param_rule = params[param]
+
+            param_col = dm.get_query_from_header(param, self.db_columns)
+            if not param_col:
+                print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} not found in TableColumns'
+                      .format(RULE=self.rule_name, NAME=self.name, PARAM=param))
+                continue
+
+            param_oper = None
+            param_values = []
+            conditional = dm.parse_operation_string(param_rule, equivalent=False)
+            for component in conditional:
+                if component in operators:
+                    if not param_oper:
+                        param_oper = component
+                    else:
+                        print(
+                            'Error: rule {RULE}, tab {NAME}: only one operator allowed in tab parameters for parameter '
+                            '{PARAM}'.format(RULE=self.rule_name, NAME=self.name, PARAM=param))
+                        break
+                else:
+                    param_values.append(component)
+
+            if not (param_oper and param_values):
+                print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} requires both an operator and a value'
+                      .format(RULE=self.rule_name, NAME=self.name, PARAM=param))
+                break
+
+            if param_oper.upper() == 'IN':
+                vals_fmt = ', '.join(['?' for i in param_values])
+                filters.append(('{COL} {OPER} ({VALS})'.format(COL=param_col, OPER=param_oper, VALS=vals_fmt),
+                                (param_values, )))
+            else:
+                if len(param_values) == 1:
+                    filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0], )))
+                else:
+                    print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} has too many values {COND}'
+                          .format(RULE=self.rule_name, NAME=self.name, PARAM=param, COND=param_rule))
+                    break
+
+        return filters
 
     def search_for_errors(self):
         """
@@ -598,6 +580,8 @@ class TabItem:
 
         # Search for errors in the data based on the defined error rules
         error_rules = self.error_rules
+        print('Info: tab {NAME}, rule {RULE}: searching for errors based on defined error rules {ERR}'
+              .format(NAME=self.name, RULE=self.rule_name, ERR=error_rules))
         errors = dm.evaluate_rule_set(df, error_rules)
 
         # Search for errors in the transaction ID using ID format
@@ -620,6 +604,8 @@ class TabItem:
                       'configuration'.format(NAME=self.name, RULE=self.rule_name, ID=trans_id))
                 if index not in errors:
                     errors.append(index)
+
+        del df
 
         return (set(errors))
 
@@ -654,15 +640,16 @@ class TabItem:
         # Arguments
         user = kwargs['account']
         audit_params = kwargs['parameters']
-        window = args[0]
 
-        # Class attribites
+        # Class attributes
         pkey = self.get_column_name(self.db_key)
-        df = self.sort_table(self.df)
+        df = dm.sort_table(self.df, pkey)
+
         id_list = df[pkey].tolist()
         main_table = [i for i in self.db_tables][0]
 
         # Format audit parameters
+        audit_date = None
         for audit_param in audit_params:
             if audit_param.type.lower() == 'date':
                 date_col = audit_param.name
@@ -671,130 +658,133 @@ class TabItem:
                 try:
                     audit_date = strptime(audit_param.value, date_fmt)
                 except ValueError:
-                    print('Warning: no date provided ... skipping checks for most recent ID')
-                    audit_date = None
+                    print('Warning: rule {RULE}, tab {NAME}: no date provided ... skipping checks for most recent ID'
+                          .format(RULE=self.rule_name, NAME=self.name))
                 else:
                     audit_date_iso = audit_date.strftime("%Y-%m-%d")
 
-        # Search for missing data
         missing_transactions = []
+        # Search for missing data
 
         try:
             first_id = id_list[0]
-        except IndexError:  # no data in dataframe
-            print('Warning: {NAME} Audit: no transactions for audit date {DATE}'
-                  .format(NAME=self.name, DATE=audit_date_iso))
-            return (df)
-
-        first_number_comp = int(self.get_id_component(first_id, 'variable'))
-        first_date_comp = self.get_id_component(first_id, 'date')
-        print('Info: {} Audit: first transaction ID {} has number {} and date {}' \
-              .format(self.name, first_id, first_number_comp, first_date_comp))
-
-        ## Find date of last transaction
-        query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col_full, TBL=main_table)
-        dates_df = user.thread_transaction(query_str, (), operation='read')
-
-        unq_dates = dates_df[date_col].tolist()
-        try:
-            unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
-        except TypeError:
-            print('Warning: {NAME} Audit: date {DATE} is not formatted correctly as a datetime object'
-                  .format(NAME=self.name, DATE=audit_date_iso))
-            return (False)
-
-        unq_dates_iso.sort()
-
-        try:
-            current_date_index = unq_dates_iso.index(audit_date_iso)
-        except ValueError:
-            print('Warning: {NAME} Audit: no transactions for audit date {DATE} found in list {DATES}'
-                  .format(NAME=self.name, DATE=audit_date_iso, DATES=unq_dates_iso))
-            return (False)
-
-        try:
-            prev_date = dparse(unq_dates_iso[current_date_index - 1], yearfirst=True)
         except IndexError:
-            print('Warning: {NAME} Audit: no date found prior to current audit date {DATE}'
-                  .format(NAME=self.name, DATE=audit_date_iso))
-            prev_date = None
-        except ValueError:
-            print('Warning: {NAME} Audit: unknown format {DATE} provided'
-                  .format(NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
-            prev_date = None
+            first_id = None
+        else:
+            first_number_comp = int(self.get_id_component(first_id, 'variable'))
+            first_date_comp = self.get_id_component(first_id, 'date')
+            print('Info: {NAME} Audit: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
 
-        ## Query last transaction from previous date
-        if prev_date:
-            print('Info: {NAME} Audit: searching for most recent transaction created in {DATE}'
-                  .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
+        if audit_date and first_id:
+            ## Find date of last transaction
+            query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col_full, TBL=main_table)
+            dates_df = user.thread_transaction(query_str, (), operation='read')
 
-            filters = ('{} = ?'.format(date_col_full), (prev_date.strftime(date_fmt),))
-            last_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
-            last_df.sort_values(by=[pkey], inplace=True, ascending=False)
+            unq_dates = dates_df[date_col].tolist()
+            try:
+                unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
+            except TypeError:
+                print('Warning: {NAME} Audit: date {DATE} is not formatted correctly as a datetime object'
+                      .format(NAME=self.name, DATE=audit_date_iso))
+                return df
 
-            last_id = None
-            prev_ids = last_df[pkey].tolist()
-            for prev_id in prev_ids:
-                prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
-                prev_date_comp = self.get_id_component(prev_id, 'date')
+            unq_dates_iso.sort()
 
-                if prev_number_comp > first_number_comp:
-                    continue
+            try:
+                current_date_index = unq_dates_iso.index(audit_date_iso)
+            except ValueError:
+                print('Warning: {NAME} Audit: no transactions for audit date {DATE} found in list {DATES}'
+                      .format(NAME=self.name, DATE=audit_date_iso, DATES=unq_dates_iso))
+                return df
 
-                # Search only for IDs with correct ID formats (skip potential errors)
-                if prev_id == self.format_id(prev_number_comp, date=prev_date_comp):
-                    last_id = prev_id
+            try:
+                prev_date = dparse(unq_dates_iso[current_date_index - 1], yearfirst=True)
+            except IndexError:
+                print('Warning: {NAME} Audit: no date found prior to current audit date {DATE}'
+                      .format(NAME=self.name, DATE=audit_date_iso))
+                prev_date = None
+            except ValueError:
+                print('Warning: {NAME} Audit: unknown format {DATE} provided'
+                      .format(NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
+                prev_date = None
+
+            ## Query last transaction from previous date
+            if prev_date:
+                print('Info: {NAME} Audit: searching for most recent transaction created in {DATE}'
+                      .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
+
+                filters = ('{} = ?'.format(date_col_full), (prev_date.strftime(date_fmt),))
+                last_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
+                last_df.sort_values(by=[pkey], inplace=True, ascending=False)
+
+                last_id = None
+                prev_ids = last_df[pkey].tolist()
+                for prev_id in prev_ids:
+                    prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
+                    prev_date_comp = self.get_id_component(prev_id, 'date')
+
+                    if prev_number_comp > first_number_comp:
+                        continue
+
+                    # Search only for IDs with correct ID formats (skip potential errors)
+                    if prev_id == self.format_id(prev_number_comp, date=prev_date_comp):
+                        last_id = prev_id
+                        break
+
+                if last_id:
+                    print('Info: {NAME} Audit: last transaction ID is {ID} from {DATE}' \
+                          .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
+
+                    if first_date_comp != prev_date_comp:  # start of new month
+                        if first_number_comp != 1:
+                            missing_range = list(range(1, first_number_comp))
+                        else:
+                            missing_range = []
+
+                    else:  # still in same month
+                        if (prev_number_comp + 1) != first_number_comp:  # first not increment of last
+                            missing_range = list(range(prev_number_comp + 1, first_number_comp))
+                        else:
+                            missing_range = []
+
+                    for missing_number in missing_range:
+                        missing_id = self.format_id(missing_number, date=first_date_comp)
+                        missing_transactions.append(missing_id)
+
+            ## Search for missed numbers at end of day
+            last_id_of_df = id_list[-1]
+            filters = ('{} = ?'.format(date_col_full), (audit_date.strftime(date_fmt),))
+            current_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
+            current_df.sort_values(by=[pkey], inplace=True, ascending=False)
+
+            current_ids = current_df[pkey].tolist()
+            for current_id in current_ids:
+                if last_id_of_df == current_id:
                     break
 
-            if last_id:
-                print('Info: {NAME} Audit: last transaction ID is {ID} from {DATE}' \
-                      .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
-
-                if first_date_comp != prev_date_comp:  # start of new month
-                    if first_number_comp != 1:
-                        missing_range = list(range(1, first_number_comp))
-                    else:
-                        missing_range = []
-
-                else:  # still in same month
-                    if (prev_number_comp + 1) != first_number_comp:  # first not increment of last
-                        missing_range = list(range(prev_number_comp + 1, first_number_comp))
-                    else:
-                        missing_range = []
-
-                for missing_number in missing_range:
-                    missing_id = self.format_id(missing_number, date=first_date_comp)
-                    missing_transactions.append(missing_id)
+                current_number_comp = int(self.get_id_component(current_id, 'variable'))
+                if current_id == self.format_id(current_number_comp, date=first_date_comp):
+                    missing_transactions.append(current_id)
 
         ## Search for skipped transaction numbers
-        prev_number = first_number_comp
-        for transaction_id in id_list[1:]:
-            trans_number = int(self.get_id_component(transaction_id, 'variable'))
-            if (prev_number + 1) != trans_number:
-                missing_range = list(range(prev_number + 1, trans_number))
-                for missing_number in missing_range:
-                    missing_id = self.format_id(missing_number, date=first_date_comp)
-                    missing_transactions.append(missing_id)
+        try:
+            id_list[1]
+        except IndexError:
+            pass
+        else:
+            prev_number = first_number_comp
+            for transaction_id in id_list[1:]:
+                trans_number = int(self.get_id_component(transaction_id, 'variable'))
+                if (prev_number + 1) != trans_number:
+                    missing_range = list(range(prev_number + 1, trans_number))
+                    for missing_number in missing_range:
+                        missing_id = self.format_id(missing_number, date=first_date_comp)
+                        missing_transactions.append(missing_id)
 
-            prev_number = trans_number
+                prev_number = trans_number
 
         print('Info: {NAME} Audit: potentially missing transactions: {MISS}'
               .format(NAME=self.name, MISS=missing_transactions))
-
-        ## Search for missed numbers at end of day
-        last_id_of_df = id_list[-1]
-        filters = ('{} = ?'.format(date_col_full), (audit_date.strftime(date_fmt),))
-        current_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
-        current_df.sort_values(by=[pkey], inplace=True, ascending=False)
-
-        current_ids = current_df[pkey].tolist()
-        for current_id in current_ids:
-            if last_id_of_df == current_id:
-                break
-
-            current_number_comp = int(self.get_id_component(current_id, 'variable'))
-            if current_id == self.format_id(current_number_comp, date=first_date_comp):
-                missing_transactions.append(current_id)
 
         # Query database for the potentially missing transactions
         if missing_transactions:
@@ -806,62 +796,78 @@ class TabItem:
             filters = [(filter_str, tuple(missing_transactions))]
 
             # Drop missing transactions if they don't meet tab parameter requirements
-            tab_params = self.tab_parameters
-            for tab_param in tab_params:
-                tab_param_value = tab_params[tab_param]
-                tab_param_col = dm.get_query_from_header(tab_param, self.db_columns)
-                if not tab_param_col:
-                    continue
-
-                filters.append(('{} = ?'.format(tab_param_col), (tab_param_value,)))
+            filters += self.filter_statements()
 
             missing_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters, order=pkey_fmt)
         else:
             missing_df = pd.DataFrame(columns=df.columns)
 
         # Display import window with potentially missing data
-        missing_df_fmt = self.format_display_table(self.sort_table(missing_df))
-        import_rows = win2.import_window(missing_df_fmt)
-        import_df = missing_df.iloc[import_rows]
+        if not missing_df.empty:
+            missing_df_fmt = self.format_display_table(dm.sort_table(missing_df, pkey))
+            import_rows = win2.import_window(missing_df_fmt)
+            import_df = missing_df.iloc[import_rows]
 
-        # Updata dataframe with imported data
-        df = self.append_to_table(import_df)
+            # Update dataframe with imported data
+            if not import_df.empty:
+                df = dm.append_to_table(self.df, import_df)
 
         print('Info: new size of {0} dataframe is {1} rows and {2} columns'.format(self.name, *df.shape))
 
-        # Inform main thread that sub-thread has completed its operations
-        return (df)
+        return df
 
     def filter_transactions(self, *args, **kwargs):
         """
         Filter pandas dataframe using the filter rules specified in the configuration.
         """
-        # Method arguments
-        window = args[0]
-
         # Tab attributes
-        df = self.df
         filter_rules = self.filter_rules
+        df = self.df.copy()
 
-        if not filter_rules:
-            return (df)
+        if df.empty or not filter_rules:
+            return df
 
-        print('Info: tab {NAME}, rule {RULE}: running filter method with filter rules {RULES}'
+        print('Info: tab {NAME}, rule {RULE}: running filter duplicates method with filter rules {RULES}'
               .format(NAME=self.name, RULE=self.rule_name, RULES=list(filter_rules.values())))
 
-        failed = dm.evaluate_rule_set(df, filter_rules)
+        for filter_number in filter_rules:
+            filter_rule = filter_rules[filter_number]['Reference']
+            try:
+                filter_key = filter_rules[filter_number]['Key']
+            except KeyError:
+                filter_key = None
 
-        df.drop(failed, axis=0, inplace=True)
-        df.reset_index(drop=True, inplace=True)
+            try:
+                filter_cond = dm.evaluate_rule(df, filter_rule, as_list=False)
+            except Exception as e:
+                print('Info: tab {NAME}, rule {RULE}: filtering duplicates with rule {NO} failed due to {ERR}'
+                      .format(NAME=self.name, RULE=self.rule_name, NO=filter_number, ERR=e))
+                continue
 
-        return (df)
+            if filter_key:
+                cond_str = '(df.duplicated(subset=["{KEY}"], keep=False)) & (filter_cond)'.format(KEY=filter_key)
+            else:
+                cond_str = '(filter_cond)'.format(KEY=filter_key, RES=filter_cond)
+
+            try:
+                print(cond_str)
+                failed = eval('df[{}].index'.format(cond_str))
+            except Exception as e:
+                print('Info: tab {NAME}, rule {RULE}: filtering duplicates with rule {NO} failed due to {ERR}'
+                      .format(NAME=self.name, RULE=self.rule_name, NO=filter_number, ERR=e))
+                continue
+
+            df.drop(failed, axis=0, inplace=True)
+            df.reset_index(drop=True, inplace=True)
+
+        return df
 
 
 def as_key(key):
     """
     Format string as element key.
     """
-    return ('-{}-'.format(key).replace(' ', ':').upper())
+    return '-{}-'.format(key).replace(' ', ':').upper()
 
 
 # GUI Element Functions
@@ -882,7 +888,7 @@ def B2(*args, **kwargs):
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
-                 nrows: int = None, height: int = None, width: int = None, font: tuple = None):
+                 nrows: int = None, height: int = 800, width: int = 1200, font: tuple = None):
     """
     Create table elements that have consistency in layout.
     """
@@ -894,12 +900,14 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
 
     pad_frame = const.FRAME_PAD
 
-    font = font if font else ('Sans Serif', 10)
+    font = const.MID_FONT
+    font_size = font[1]
 
     # Arguments
-    height = height if height else const.TBL_HEIGHT
-    width = width if width else const.TBL_WIDTH
-    nrows = nrows if nrows else const.TBL_NROW
+    row_height = const.TBL_HEIGHT
+    width = width
+    height = height * 0.5
+    nrows = int(nrows if nrows else height / 40)
 
     # Parameters
     if events and bind:
@@ -907,16 +915,16 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
         print('Warning: both bind_return_key and enable_events have been selected during table creation. '
               'These parameters are mutually exclusive.')
 
-    lengths = dm.calc_column_widths(header, width=width, pixels=False)
+    lengths = dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
     layout = sg.Table(data, headings=header, pad=(pad_frame, pad_frame),
-                      key=keyname, row_height=height, alternating_row_color=alt_col,
+                      key=keyname, row_height=row_height, alternating_row_color=alt_col,
                       text_color=text_col, selected_row_colors=(text_col, select_col),
                       background_color=bg_col, num_rows=nrows, font=font,
                       display_row_numbers=False, auto_size_columns=False,
                       col_widths=lengths, enable_events=events, tooltip=tooltip,
                       vertical_scroll_only=False, bind_return_key=bind)
 
-    return (layout)
+    return layout
 
 
 # Panel layouts
@@ -939,7 +947,8 @@ def action_layout(audit_rules):
                         background_color=bg_col)]]
 
     for rule_name in rule_names:
-        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=True)]
+#        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=True)]
+        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=False)]
         buttons.append(rule_el)
 
     other_bttns = [[sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
@@ -955,15 +964,18 @@ def action_layout(audit_rules):
 
     buttons += other_bttns
 
-    layout = sg.Col([[sg.Text('', pad=(0, pad_screen))],
-                     [sg.Frame('', buttons, element_justification='center',
-                               relief='raised', background_color=bg_col)],
-                     [sg.Text('', pad=(0, pad_screen))]], key='-ACTIONS-')
+#    layout = sg.Col([[sg.Text('', pad=(0, pad_screen))],
+#                     [sg.Frame('', buttons, element_justification='center',
+#                               relief='raised', background_color=bg_col)],
+#                     [sg.Text('', pad=(0, pad_screen))]], key='-ACTIONS-')
 
-    return (layout)
+    layout = sg.Col([[sg.Frame('', buttons, element_justification='center', relief='raised', background_color=bg_col)]],
+                    key='-ACTIONS-', vertical_alignment='b', justification='c', expand_y=True)
+
+    return layout
 
 
-def tab_layout(tabs):
+def tab_layout(tabs, height=800, width=1200, initial_visibility='first'):
     """
     Layout of the audit panel tab groups.
     """
@@ -977,12 +989,14 @@ def tab_layout(tabs):
         tab_key = tab.element_key
 
         # Enable only the first tab to start
-        visible = True if i == 0 else False
+        if initial_visibility == 'first':
+            visible = True if i == 0 else False
+        else:
+            visible = True
 
         # Generate the layout
-        tab_layout = tab.layout()
+        tab_layout = tab.layout(height=height, width=width)
 
-        layout.append(sg.Tab(tab_name, tab_layout, visible=visible,
-                             background_color=bg_col, key=tab_key))
+        layout.append(sg.Tab(tab_name, tab_layout, key=tab_key, visible=visible, background_color=bg_col))
 
-    return (layout)
+    return layout
