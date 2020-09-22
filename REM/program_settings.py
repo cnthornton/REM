@@ -52,12 +52,18 @@ IN1_SIZE = 20
 
 # Text
 HEADER_FONT = ('Arial', 14, 'bold')
+
 MAIN_FONT = ('Arial', 12)
 BOLD_FONT = ('Arial', 12, 'bold')
 IT_FONT = ('Arial', 12, 'italic')
+
 SMALL_FONT = ('Arial', 9)
 MID_FONT = ('Arial', 13)
 LARGE_FONT = ('Arial', 14)
+
+# Window initial dimensions
+WIN_HEIGHT = 800
+WIN_WIDTH = 1200
 
 # Tables
 TBL_WIDTH = 120

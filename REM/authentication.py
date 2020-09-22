@@ -174,8 +174,8 @@ class UserAccount:
             p = self.write_db
             alt_result = False
         else:
-            print('Database Error: unknown operation {}'.format(operation))
-            return(None)
+            raise ValueError('Database Error: unknown operation {}. operation must be either read or write'
+                             .format(operation))
 
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
             future = executor.submit(p, statement, params, db)
@@ -202,7 +202,7 @@ class UserAccount:
                 win2.popup_error('Error: database unresponsive after {} seconds'.format(timeout))
                 sg.popup_animated(image_source=None)
 
-        return (result)
+        return result
 
     def read_db(self, statement, params, database):
         """
@@ -324,7 +324,7 @@ class UserAccount:
             where_clause, params = self.construct_where_clause(filter_rules)
         except SQLStatementError as e:
             print('Query Error: {}'.format(e))
-            return(pd.DataFrame())
+            return pd.DataFrame()
 
         query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'.format(COLS=colnames, TABLE=table_component,
                                                                         WHERE=where_clause, SORT=order_by)
@@ -334,7 +334,7 @@ class UserAccount:
         db = self.prog_db if prog_db else self.dbname
         df = self.thread_transaction(query_str, params, operation='read', database=db)
 
-        return(df)
+        return df
 
     def insert(self, table, columns, values):
         """
@@ -394,8 +394,8 @@ class UserAccount:
 
         update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}'\
             .format(TABLE=table, PAIRS=','.join(pair_list), CLAUSE=where_clause)
-        print('update string is: {}'.format(update_str))
-        print('with parameters: {}'.format(params))
+        print('Info: update string is: {}'.format(update_str))
+        print('Info: with parameters: {}'.format(params))
 
         db = self.prog_db
         status = self.thread_transaction(update_str, params, operation='read', database=db)

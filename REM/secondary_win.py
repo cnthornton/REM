@@ -265,13 +265,13 @@ def import_window(df, win_size: tuple = (1920, 1080)):
     tbl_key = lo.as_key('Import Table')
     layout = [[sg.Col([[sg.Text(_('Import Missing Data'), font=font_h)]],
                       pad=(0, pad_v), justification='center')],
-              [sg.Frame('', [[lo.create_table(data, header, tbl_key, bind=True)]],
+              [sg.Frame('', [[lo.create_table_layout(data, header, tbl_key, bind=True)]],
                         background_color=bg_col, element_justification='c',
                         pad=(pad_frame, pad_frame))],
               [sg.Col(bttn_layout, justification='c',
                       pad=(0, (0, pad_frame)))]]
 
-    window = sg.Window(_('Import Data'), layout, font=main_font, modal=True, resizable=True)
+    window = sg.Window(_('Import Data'), layout, font=main_font, modal=True, resizable=False)
 
     # Start event loop
     vfy_orders = []

@@ -222,10 +222,15 @@ class AuditRule:
 
         return key
 
-    def resize_elements(self, window, height=800, width=1200):
+    def resize_elements(self, window, win_size: tuple = None):
         """
         Resize Audit Rule GUI elements based on window size
         """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Resize space between action buttons
         layout_width = width - 120 if width >= 200 else width
         spacer = layout_width - 124 if layout_width > 124 else 0
@@ -236,7 +241,14 @@ class AuditRule:
         # Resize tab elements
         tabs = self.tabs
         for tab in tabs:
-            tab.resize_elements(window, height=height, width=width)
+            tab.resize_elements(window, win_size)
+
+        # Resize summary elements
+        summary = self.summary
+        summary_fill_key = summary.key_lookup('Fill')
+        window[summary_fill_key].set_size((spacer, None))
+        for summary_item in summary.summary_items:
+            summary_item.resize_elements(window, win_size)
 
     def fetch_tab(self, name, by_key: bool = False):
         """
@@ -279,10 +291,15 @@ class AuditRule:
 
         return param
 
-    def layout(self, height=840, width=1200):
+    def layout(self, win_size: tuple = None):
         """
         Generate a GUI layout for the audit rule.
         """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Element parameters
         inactive_col = const.INACTIVE_COL
         bg_col = const.ACTION_COL
@@ -323,7 +340,7 @@ class AuditRule:
 
         # Tab elements
         tabgroub_key = self.key_lookup('TG')
-        audit_layout = [sg.TabGroup([lo.tab_layout(self.tabs, height=height, width=width)],
+        audit_layout = [sg.TabGroup([lo.tab_layout(self.tabs, win_size=win_size)],
                                     pad=(pad_v, (pad_frame, pad_v)),
                                     tab_background_color=inactive_col,
                                     selected_title_color=text_col,
@@ -392,7 +409,7 @@ class SummaryPanel:
 
         self.rule_name = rule_name
         self.element_key = lo.as_key('{} Summary'.format(rule_name))
-        self.elements = ['Cancel', 'Back', 'Save', 'Title']
+        self.elements = ['Cancel', 'Back', 'Save', 'Title', 'Fill']
 
         self.summary_items = []
 
@@ -433,12 +450,17 @@ class SummaryPanel:
                   .format(RULE=self.rule_name, ELEM=element))
             key = None
 
-        return (key)
+        return key
 
-    def layout(self, height=800, width=1200):
+    def layout(self, win_size: tuple = None):
         """
         Generate a GUI layout for the Audit Rule Summary.
         """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Layout settings
         pad_frame = const.FRAME_PAD
         pad_el = const.ELEM_PAD
@@ -453,6 +475,9 @@ class SummaryPanel:
 
         summary_items = self.summary_items
 
+        layout_width = width - 120 if width >= 200 else width
+        spacer = layout_width - 124 if layout_width > 124 else 0
+
         # Layout elements
         ## Title
         title_key = self.key_lookup('Title')
@@ -462,7 +487,7 @@ class SummaryPanel:
         layout_els.append([sg.Text(self.title, key=title_key, pad=(0, (0, pad_v)), font=font_h)])
 
         ## Main screen
-        summ_layout = [sg.TabGroup([lo.tab_layout(summary_items, height=height, width=width, initial_visibility='all')],
+        summ_layout = [sg.TabGroup([lo.tab_layout(summary_items, win_size=win_size, initial_visibility='all')],
                                    pad=(pad_v, (pad_frame, pad_v)), background_color=default_col,
                                    tab_background_color=inactive_col, selected_background_color=bg_col,
                                    selected_title_color=text_col)]
@@ -473,11 +498,12 @@ class SummaryPanel:
         b1_key = self.key_lookup('Cancel')
         b2_key = self.key_lookup('Back')
         b3_key = self.key_lookup('Save')
+        fill_key = self.key_lookup('Fill')
         bttn_layout = [lo.B2(_('Cancel'), key=b1_key,
                              tooltip=_('Cancel audit'), pad=((0, pad_el), (pad_v, 0))),
                        lo.B2(_('Back'), key=b2_key,
                              tooltip=_('Back to transactions'), pad=((pad_el, 0), (pad_v, 0))),
-                       sg.Text(' ' * 238, pad=(0, (pad_v, 0))),
+                       sg.Canvas(key=fill_key, size=(spacer, 0), visible=True),
                        lo.B2(_('Save'), key=b3_key,
                              tooltip=_('Save summary'), pad=(0, (pad_v, 0)))]
 
@@ -696,7 +722,7 @@ class SummaryItem:
         self.rule_name = rule_name
         self.name = name
         self.element_key = lo.as_key('{} {} Summary'.format(rule_name, name))
-        self.elements = ['Totals', 'Table']
+        self.elements = ['Totals', 'Table', 'Fill']
 
         try:
             self.title = sdict['Title']
@@ -787,10 +813,57 @@ class SummaryItem:
         header = [dm.get_column_from_header(i, self.db_columns) for i in self.db_columns]
         self.df = pd.DataFrame(index=[0], columns=header)
 
-    def layout(self, height=800, width=1200):
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Reset Table Columns widths to default when resized.
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+        headers = list(self.display_columns.keys())
+        tbl_key = self.key_lookup('Table')
+        fill_key = self.key_lookup('Fill')
+        element_key = self.element_key
+
+        # Reset table size
+        tab_pad = 120
+        # for every ten pixel increase in window size, increase tab size by one
+
+        tab_width = width - tab_pad if width > tab_pad else width
+        height = height * 0.5
+        nrows = int(height / 40)
+
+        window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
+
+        fill = 832
+        # for every ten pixel increase in window size, increase fill size by one
+        tab_fill = tab_width - fill if tab_width > fill else 0
+        window[fill_key].set_size((tab_fill, None))
+
+        # Reset table column size
+        lengths = dm.calc_column_widths(headers, width=tab_width, pixels=True)
+        for col_index, col_name in enumerate(headers):
+            col_width = lengths[col_index]
+            window[tbl_key].Widget.column(col_name, width=col_width)
+
+        window[tbl_key].expand((True, True))
+        window[tbl_key].table_frame.pack(expand=True, fill='both')
+
+        window.refresh()
+
+        window[tbl_key].update(num_rows=nrows)
+
+    def layout(self, win_size: tuple = None):
         """
         GUI layout for the tab item.
         """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Window and element size parameters
         bg_col = const.ACTION_COL
 
@@ -805,6 +878,10 @@ class SummaryItem:
         data = dm.create_empty_table(nrow=5, ncol=ncol)
         input_columns = self.input_columns
         scroll = True if len(input_columns) > 5 else False
+
+
+        tab_width = width - 120 if width >= 200 else width
+        tab_fill = tab_width - 832 if tab_width > 832 else 0
 
         inputs_layout = []
         for input_column in input_columns:
@@ -825,11 +902,12 @@ class SummaryItem:
 
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
+        fill_key = self.key_lookup('Fill')
         layout = [[lo.create_table_layout(data, header, tbl_key, bind=False, height=height, width=width)],
                   [sg.Frame(_('Totals'), [[sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=totals_key,
                                                         disabled=True, background_color=bg_col)]], font=font_l,
                             pad=((pad_frame, 0), (0, pad_frame)), background_color=bg_col, element_justification='l'),
-                   sg.Text(' ' * 56, background_color=bg_col),
+                   sg.Canvas(key=fill_key, size=(tab_fill, 0), visible=True),
                    sg.Col(inputs_layout, scrollable=scroll, vertical_scroll_only=True, vertical_alignment='top',
                           background_color=bg_col)
                    ]]

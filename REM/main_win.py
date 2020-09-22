@@ -8,6 +8,7 @@ from multiprocessing import freeze_support
 import os
 import PySimpleGUI as sg
 import REM.configuration as config
+import REM.data_manipulation as dm
 import REM.layouts as lo
 import REM.secondary_win as win2
 import REM.program_settings as const
@@ -51,10 +52,15 @@ class ToolBar:
 
         return (key)
 
-    def layout(self):
+    def layout(self, win_size: tuple = None):
         """
         Create the layout for the toolbar GUI element.
         """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Menu items
         menu_audit = self.menu_definition('amenu')
         menu_reports = self.menu_definition('rmenu')
@@ -69,21 +75,23 @@ class ToolBar:
         menu_ico = const.MENU_ICON
         padding = const.TOOLBAR_PAD
 
-        toolbar = [[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
+        toolbar = [[sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
                                   pad=(padding, padding)),
-                    sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
-                                  tooltip=_('Generate Reports & Statistics'), pad=(padding, padding)),
-                    sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
-                              pad=(padding, padding), border_width=0, disabled=True),
-                    sg.Text('', pad=(495, 0)),
-                    sg.ButtonMenu('', menu_user, key='-UMENU-', image_data=user_ico,
+                             sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
+                                           tooltip=_('Generate Reports & Statistics'), pad=(padding, padding)),
+                             sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
+                                       pad=(padding, padding), border_width=0, disabled=True)]],
+                           justification='l'),
+                    sg.Canvas(key='-CANVAS_WIDTH-', size=(width-260, 0), visible=True),
+                    sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', image_data=user_ico,
                                   tooltip=_('User Settings'), pad=(padding, padding)),
-                    sg.ButtonMenu('', menu_menu, key='-MMENU-', image_data=menu_ico,
-                                  tooltip=_('Help and program settings'), pad=(padding, padding))]]
+                             sg.ButtonMenu('', menu_menu, key='-MMENU-', image_data=menu_ico,
+                                           tooltip=_('Help and program settings'), pad=(padding, padding))]],
+                           justification='r')]]
 
         layout = [sg.Frame('', toolbar, key='-TOOLBAR-', relief='groove', pad=(0, 0))]
 
-        return (layout)
+        return layout
 
     def menu_definition(self, menu):
         """
@@ -95,12 +103,12 @@ class ToolBar:
         try:
             menu_object = menus[menu.lower()]
         except KeyError:
-            print('Selected menu {} not list of available menus'.format(menu))
+            print('Error: selected menu {} not list of available menus'.format(menu))
             return (None)
 
         menu_def = [menu_object['name'], ['{}{}'.format(*i) for i in menu_object['items']]]
 
-        return (menu_def)
+        return menu_def
 
     def toggle_menu(self, window, menu, menu_item, value: str = 'enable'):
         """
@@ -112,7 +120,7 @@ class ToolBar:
         try:
             menus[menu.lower()]
         except KeyError:
-            print('Selected menu {} not list of available menus'.format(menu))
+            print('Error: selected menu {} not list of available menus'.format(menu))
             return (False)
 
         status = '' if value == 'enable' else '!'
@@ -122,7 +130,7 @@ class ToolBar:
         try:
             index = items_clean.index(menu_item.lower())
         except IndexError:
-            print('Seleted menu item {} not found in {} item list'.format(menu_item, menu))
+            print('Error: seleted menu item {} not found in {} item list'.format(menu_item, menu))
             return (False)
 
         # Set status of menu item
@@ -137,29 +145,54 @@ class ToolBar:
         element_key = self.key_lookup(menu.lower())
         window[element_key].update(self.menu_definition(menu))
 
-        return (True)
+        return True
 
 
 # General functions
-def get_panels(audit_rules):
+def get_panels(audit_rules, win_size: tuple = None):
     """
     """
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
     # Home page action panel
     panels = [lo.action_layout(audit_rules)]
 
     # Audit rule panels
     for audit_rule in audit_rules.rules:
-        panels.append(audit_rule.layout())
-        panels.append(audit_rule.summary.layout())
+        panels.append(audit_rule.layout(win_size=win_size))
+        panels.append(audit_rule.summary.layout(win_size=win_size))
 
     # Database modification panel
     #    panels.append(db_layout())
 
     # Layout
-    pane = [sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False, border_width=0,
+    pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
+            sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False, border_width=0,
                              relief='flat')]], pad=(0, 10), justification='center', element_justification='center')]
 
-    return (pane)
+    return pane
+
+
+def resize_elements(window, audit_rules, win_size: tuple = None):
+    """
+    Resize GUI elements when window is resized
+    """
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+    # Update toolbar and pane elements
+    menu_size = 260
+    window['-CANVAS_HEIGHT-'].set_size((None, height))
+    window['-CANVAS_WIDTH-'].set_size((width - menu_size, None))
+
+    # Update audit rule elements
+    for audit_rule in audit_rules:
+        audit_rule.resize_elements(window, win_size=win_size)
 
 
 def reset_to_default(window, rule):
@@ -168,6 +201,8 @@ def reset_to_default(window, rule):
     """
     if not rule:
         return (None)
+
+    win_width, win_height = window.size
 
     current_key = rule.element_key
     summ_panel_key = rule.summary.element_key
@@ -185,6 +220,9 @@ def reset_to_default(window, rule):
     end_key = rule.key_lookup('Finalize')
     window[end_key].update(disabled=True)
 
+    # Reset rule item attributes, including tab, summary, and parameter
+    rule.reset_attributes()
+
     # Reset audit parameters. Audit specific parameters include actions
     # buttons Scan and Confirm, for instance.
     rule.toggle_parameters(window, 'enable')
@@ -199,23 +237,15 @@ def reset_to_default(window, rule):
         except AttributeError:
             pass
 
-        param.value = None
-        try:
-            param.value2 = None
-        except AttributeError:
-            pass
-
     # Reset tab-specific element values
     for i, tab in enumerate(rule.tabs):
-        # Reset displays and Tab attributes
-        ## Reset Tab attributes
-        tab.reset_dynamic_attributes()
+        # Reset displays
 
         ## Reset table element
         table_key = tab.key_lookup('Table')
         window[table_key].update(values=tab.df.values.tolist())
 
-        tab.reset_column_widths(window)
+        tab.resize_elements(window, win_size=(win_width, win_height))
 
         ## Reset summary element
         summary_key = tab.key_lookup('Summary')
@@ -230,7 +260,7 @@ def reset_to_default(window, rule):
               .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
         window[tab.element_key].update(visible=visible)
 
-    return (None)
+    return '-ACTIONS-'
 
 
 def main():
@@ -254,11 +284,27 @@ def main():
                    input_elements_background_color=action_col,
                    button_color=(text_col, default_col))
 
+    # Original window size
+    root = tk.Tk()
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+    root.destroy()
+    del root
+
+    if screen_w >= const.WIN_WIDTH:
+        current_w = const.WIN_WIDTH
+    else:
+        current_w = screen_w
+
+    if screen_h >= const.WIN_HEIGHT:
+        current_h = const.WIN_HEIGHT
+    else:
+        current_h = screen_h
+
     # Import settings from configuration file
     dirname = os.path.dirname(os.path.realpath(__file__))
     cnfg_name = 'settings.yaml'
     cnfg_file = os.path.join(dirname, cnfg_name)
-    print(dirname, cnfg_name, cnfg_file)
 
     try:
         fh = open(cnfg_file, 'r', encoding='utf-8')
@@ -291,7 +337,8 @@ def main():
     # Configure GUI layout
     audit_rules = config.AuditRules(cnfg)
     toolbar = ToolBar(audit_rules)
-    layout = [toolbar.layout(), get_panels(audit_rules)]
+    layout = [toolbar.layout(win_size=(current_w, current_h)),
+              get_panels(audit_rules, win_size=(current_w, current_h))]
 
     # Element keys and names
     audit_names = audit_rules.print_rules()
@@ -314,20 +361,53 @@ def main():
     debug_win = None
 
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, icon=logo, font=('Arial', 12), size=(1258, 840), return_keyboard_events=True)
+    window = sg.Window('REM Tila', layout, icon=logo, font=('Arial', 12), size=(current_w, current_h), resizable=True,
+                       return_keyboard_events=True)
     window.finalize()
     print('Info: starting up')
+
+    screen_w, screen_h = window.get_screen_dimensions()
+    print('Info: screen size is {W} x {H}'.format(W=screen_w, H=screen_h))
 
     user_image = tk.PhotoImage(data=const.USER_ICON)
     userin_image = tk.PhotoImage(data=const.USERIN_ICON)
 
+    resize_elements(window, audit_rules.rules, win_size=(current_w, current_h))
+    resized = False
+
     # Event Loop
+    action_panel = current_panel = '-ACTIONS-'
     while True:
-        event, values = window.read()
+        event, values = window.read(timeout=100)
 
         # Quit program
         if event == sg.WIN_CLOSED or values['-MMENU-'] == 'Quit':
             break
+
+        # Resize screen
+        if resized and current_panel != action_panel:
+            window[current_panel].update(visible=False)
+            window['-ACTIONS-'].update(visible=True)
+
+            window.refresh()
+
+            window['-ACTIONS-'].update(visible=False)
+            window[current_panel].update(visible=True)
+
+            resized = False
+
+        # Resize screen
+        ## Get window dimensions
+        win_w, win_h = window.size
+        if win_w != current_w or win_h != current_h:
+            print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
+
+            # Update sizable elements
+            resize_elements(window, audit_rules.rules, win_size=(win_w, win_h))
+
+            current_w, current_h = (win_w, win_h)
+            resized = True
+            continue
 
         # User login
         if values['-UMENU-'] == 'Sign In':  # user logs on
@@ -390,7 +470,8 @@ def main():
                 continue
 
             audit_in_progress = False
-            rule = reset_to_default(window, rule)  # reset to home screen
+            current_panel = reset_to_default(window, rule)  # reset to home screen
+            rule = None
 
             # Reset User attributes
             user.logout()
@@ -437,7 +518,8 @@ def main():
                 debug_win = None
 
         if not audit_in_progress and event in cancel_keys:
-            rule = reset_to_default(window, rule)
+            current_panel = reset_to_default(window, rule)
+            rule = None
             continue
 
         # Switch panels when audit in progress
@@ -451,14 +533,16 @@ def main():
                 # Reset to defaults
                 audit_in_progress = False
                 summary_panel_active = False
-                rule = reset_to_default(window, rule)
+                current_panel = reset_to_default(window, rule)
+                rule = None
             else:
                 continue
 
         # Switch panels when audit not in progress
         if rule and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or values['-AMENU-'] in audit_names or
                      values['-RMENU-'] in (report_tx, stats_tx)):
-            rule = reset_to_default(window, rule)
+            current_panel = reset_to_default(window, rule)
+            rule = None
 
         # Activate appropriate audit panel
         if values['-AMENU-'] or event in audit_names:
@@ -466,9 +550,9 @@ def main():
             action_value = values['-AMENU-'] if values['-AMENU-'] else event
             rule = audit_rules.fetch_rule(action_value)
 
-            panel_key = rule.element_key
+            current_panel = rule.element_key
             window['-ACTIONS-'].update(visible=False)
-            window[panel_key].update(visible=True)
+            window[current_panel].update(visible=True)
 
             tab_windows = [i.name for i in rule.tabs]
             final_index = len(tab_windows) - 1
@@ -555,20 +639,7 @@ def main():
                     filters = [i.filter_statement(table=main_table) for i in rule_params]
 
                     # Check for tab-specific query parameters
-                    tab_params = tab.tab_parameters
-                    if tab_params:
-                        print('Info: adding {TAB} parameters {PARAMS} to current filter rules {FILT}'
-                              .format(TAB=tab.name, PARAMS=tab_params, FILT=filters))
-                        for tab_param in tab_params:
-                            tab_param_value = tab_params[tab_param]
-
-                            # Find corresponding column ID from TableColumns
-                            tab_param_col = tab.get_query_column(tab_param)
-                            if not tab_param_col:
-                                continue
-
-                            # Append tab filter rule to query filter rules
-                            filters.append(('{} = ?'.format(tab_param_col), (tab_param_value,)))
+                    filters += tab.filter_statements()
 
                     # Extract data from database
                     try:
@@ -580,6 +651,7 @@ def main():
 
                     # Update tab object and elements
                     tab.df = df  # update tab data
+                    print('Info: dtypes of {NAME} are:\r {DTYPES}'.format(NAME=tab.name, DTYPES=df.dtypes))
                     tab.update_id_components(rule_params)
                     tab.update_table(window)  # display tab data in table
                     tab.update_summary(window)  # summarize individual tab data
@@ -664,7 +736,7 @@ def main():
                 window[input_key].update(value='')
 
                 # Append new rows to the table
-                df = tab.append_to_table(new_row)
+                df = dm.append_to_table(tab.df, new_row)
                 tab.df = df
 
                 # Update display table
@@ -675,6 +747,8 @@ def main():
             # Run audit
             audit_key = tab.key_lookup('Audit')
             if event == audit_key:
+                print('Info: tab in view is {}'.format(tab_windows[current_index]))
+
                 # Run schema action methods
                 print('Info: running audit on the {NAME} data'.format(NAME=tab.name))
                 tab.run_audit(window, account=user, parameters=params)
@@ -686,7 +760,6 @@ def main():
 
             # Enable movement to the next tab
             current_index = tab_keys.index(current_tab)
-            print('Info: tab in view is {}'.format(tab_windows[current_index]))
             next_index = current_index + 1
             if tab.audit_performed and not next_index > final_index:
                 next_key = tab_keys[next_index]
@@ -702,86 +775,73 @@ def main():
             if tab.audit_performed and current_index == final_index:
                 window[final_key].update(disabled=False)
 
-            if event == final_key:
+            if event == final_key:  # display summary panel
                 summary_panel_active = True
                 rule_summ = rule.summary
 
-                # Update summary title with rule parameter values
-                new_summ_title = rule_summ.update_parameters(rule)
-                title_key = rule_summ.key_lookup('Title')
-                window[title_key].update(value=new_summ_title)
+                # Update summary tables with the current audit's parameter values
+                rule_summ.update_parameters(window, rule)
 
-                # Update input elements with mapping values
-                rule_summ = rule.summary
-                mappings = rule_summ.mapping_columns
-                totals = []
-                for mapping in mappings:
-                    map_items = mappings[mapping]
-                    element_key = map_items['element_key']
-                    mapping_value = rule_summ.update_mapping_value(rule, mapping)
-                    window[element_key].update(value=mapping_value)
-                    totals.append(mapping_value)
+                # update summary elements with mapped tab values
+                rule_summ.update_tables(rule, params)
 
-                # Update totals element
-                total_key = rule_summ.key_lookup('Totals')
-                sum_total = sum(totals)
-                print('Info: the sum total of all values is {}'.format(sum_total))
-                window[total_key].update(value=sum_total)
+                # Format tables for displaying
+                rule_summ.format_tables(window)
 
-                # Display summary panel
-                window[panel_key].update(visible=False)
+                # Hide tab panel and un-hide summary panel
+                window[current_panel].update(visible=False)
                 window[summary_key].update(visible=True)
+
+                # Switch panel key
+                current_panel = summary_key
 
                 # Reset tab table column widths
                 for tab in rule.tabs:
-                    tab.reset_column_widths(window)
+                    tab.resize_elements(window, win_size=(current_w, current_h))
 
             if summary_panel_active and event in return_keys:
-                # Update totals element, including input elements
-                totals = []
-                for mapping in mappings:
-                    map_items = mappings[mapping]
-                    element_key = map_items['element_key']
-                    mapping_value = rule_summ.update_mapping_value(rule, mapping)
-                    window[element_key].update(value=mapping_value)
-                    totals.append(mapping_value)
-
-                input_cols = rule_summ.input_columns
-                for input_col in input_cols:
-                    input_key = input_cols[input_col]['element_key']
-                    try:
-                        input_col_value = values[input_key]
-                    except KeyError:
-                        print('Warning: unknown input key {}'.format(input_key))
-                        totals.append(0)
-                    else:
-                        input_value_flt = rule_summ.update_input_value(input_col_value, input_col)
-                        totals.append(input_value_flt)
-
-                sum_total = sum(totals)
-                print('Info: the sum total of all values is {}'.format(sum_total))
-                window[total_key].update(value=sum_total)
+                # Update table values with potential user input
+                rule_summ.update_input_values(values)
+                rule_summ.format_tables(window)
 
             back_key = rule.summary.key_lookup('Back')
             if event == back_key:
                 summary_panel_active = False
 
                 # Return to tab display
+                current_panel = rule.element_key
                 window[summary_key].update(visible=False)
-                window[panel_key].update(visible=True)
+                window[current_panel].update(visible=True)
+
+                # Reset summary values
+                rule_summ.reset_tables()
 
             save_key = rule.summary.key_lookup('Save')
             if event == save_key:
-                success = rule_summ.save_to_database(user)
-                if not success:
-                    msg = _('Save to database failed.')
+                # Save summary to excel or csv file
+                outfile = sg.popup_get_file('', title='Save As', save_as=True, default_extension='xls', no_window=True,
+                                            file_types=(('Text CSV', '*.csv'), ('Excel 97-2003', '*.xls'),
+                                                        ('Excel 2007-365', '*.xlsx')))
+                try:
+                    rule_summ.save_to_file(outfile)
+                except Exception as e:
+                    msg = _('Save to file {} failed due to {}').format(outfile, e)
+                    win2.popup_error(msg)
+                    continue
+
+                # Save summary to the program database
+                try:
+                    rule_summ.save_to_database(user)
+                except Exception as e:
+                    msg = _('Save to database failed due to {}').format(e)
                     win2.popup_error(msg)
                 else:
                     # Reset audit elements
                     audit_in_progress = False
                     summary_panel_active = False
                     rule_summ.reset_values()
-                    rule = reset_to_default(window, rule)
+                    current_panel = reset_to_default(window, rule)
+                    rule = None
 
     window.close()
 

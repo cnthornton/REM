@@ -168,7 +168,7 @@ class TabItem:
         self.audit_performed = False
         self.id_components = []
 
-    def resize_elements(self, window, height=800, width=1200):
+    def resize_elements(self, window, win_size: tuple = None):
         """
         Reset Table Columns widths to default when resized.
         """
@@ -177,11 +177,24 @@ class TabItem:
         fill_key = self.key_lookup('Fill')
         element_key = self.element_key
 
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Reset table size
-        tab_width = width - 120 if width > 120 else width
+        tab_pad = 120
+        # for every ten pixel increase in window size, increase tab size by one
+
+        tab_width = width - tab_pad if width > tab_pad else width
+        height = height * 0.5
+        nrows = int(height / 40)
+
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
 
-        tab_fill = tab_width - 832 if tab_width > 832 else 0
+        fill = 832
+        # for every ten pixel increase in window size, increase fill size by one
+        tab_fill = tab_width - fill if tab_width > fill else 0
         window[fill_key].set_size((tab_fill, None))
 
         # Reset table column size
@@ -192,6 +205,10 @@ class TabItem:
 
         window[tbl_key].expand((True, True))
         window[tbl_key].table_frame.pack(expand=True, fill='both')
+
+        window.refresh()
+
+        window[tbl_key].update(num_rows=nrows)
 
     def update(self, window, element_tup):
         """
@@ -457,10 +474,15 @@ class TabItem:
             element_tup = [(element, 'disabled={}'.format(status))]
             self.update(window, element_tup)
 
-    def layout(self, height=800, width=1200):
+    def layout(self, win_size: tuple = None):
         """
         GUI layout for the tab item.
         """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Window and element size parameters
         bg_col = const.ACTION_COL
 
@@ -876,7 +898,7 @@ def B1(*args, **kwargs):
     Action button element defaults.
     """
     size = const.B1_SIZE
-    return (sg.Button(*args, **kwargs, size=(size, 1)))
+    return sg.Button(*args, **kwargs, size=(size, 1))
 
 
 def B2(*args, **kwargs):
@@ -884,7 +906,7 @@ def B2(*args, **kwargs):
     Panel button element defaults.
     """
     size = const.B2_SIZE
-    return (sg.Button(*args, **kwargs, size=(size, 1)))
+    return sg.Button(*args, **kwargs, size=(size, 1))
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
@@ -900,7 +922,7 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
 
     pad_frame = const.FRAME_PAD
 
-    font = const.MID_FONT
+    font = font if font else const.MID_FONT
     font_size = font[1]
 
     # Arguments
@@ -930,21 +952,18 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
 # Panel layouts
 def action_layout(audit_rules):
     """
+    Create layout for the home panel.
     """
     # Layout settings
     bg_col = const.ACTION_COL
     pad_frame = const.FRAME_PAD
     pad_el = const.ELEM_PAD
     pad_v = const.VERT_PAD
-    button_size = const.B3_SIZE
 
     rule_names = audit_rules.print_rules()
-    nrule = len(rule_names)
-    pad_screen = (266 - (nrule * button_size)) / 2
 
     # Button layout
-    buttons = [[sg.Text('', pad=(pad_frame, 0), size=(0, 0),
-                        background_color=bg_col)]]
+    buttons = [[sg.Text('', pad=(pad_frame, 0), size=(0, 0), background_color=bg_col)]]
 
     for rule_name in rule_names:
 #        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=True)]
@@ -952,22 +971,13 @@ def action_layout(audit_rules):
         buttons.append(rule_el)
 
     other_bttns = [[sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
-                   [B1(_('Update Database'), pad=(pad_frame, pad_el),
-                       key='-DB-', disabled=True)],
+                   [B1(_('Update Database'), key='-DB-', pad=(pad_frame, pad_el), disabled=True)],
                    [sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
-                   [B1(_('Summary Statistics'), pad=(pad_frame, pad_el),
-                       key='-STATS-', disabled=True)],
-                   [B1(_('Summary Reports'), pad=(pad_frame, pad_el),
-                       key='-REPORTS-', disabled=True)],
-                   [sg.Text('', pad=(pad_frame, 0), size=(0, 0),
-                            background_color=bg_col)]]
+                   [B1(_('Summary Statistics'), key='-STATS-', pad=(pad_frame, pad_el), disabled=True)],
+                   [B1(_('Summary Reports'), key='-REPORTS-', pad=(pad_frame, pad_el), disabled=True)],
+                   [sg.Text('', pad=(pad_frame, 0), size=(0, 0), background_color=bg_col)]]
 
     buttons += other_bttns
-
-#    layout = sg.Col([[sg.Text('', pad=(0, pad_screen))],
-#                     [sg.Frame('', buttons, element_justification='center',
-#                               relief='raised', background_color=bg_col)],
-#                     [sg.Text('', pad=(0, pad_screen))]], key='-ACTIONS-')
 
     layout = sg.Col([[sg.Frame('', buttons, element_justification='center', relief='raised', background_color=bg_col)]],
                     key='-ACTIONS-', vertical_alignment='b', justification='c', expand_y=True)
@@ -975,10 +985,15 @@ def action_layout(audit_rules):
     return layout
 
 
-def tab_layout(tabs, height=800, width=1200, initial_visibility='first'):
+def tab_layout(tabs, win_size: tuple = None, initial_visibility='first'):
     """
     Layout of the audit panel tab groups.
     """
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
     # Element parameters
     bg_col = const.ACTION_COL
 
@@ -995,7 +1010,7 @@ def tab_layout(tabs, height=800, width=1200, initial_visibility='first'):
             visible = True
 
         # Generate the layout
-        tab_layout = tab.layout(height=height, width=width)
+        tab_layout = tab.layout(win_size=win_size)
 
         layout.append(sg.Tab(tab_name, tab_layout, key=tab_key, visible=visible, background_color=bg_col))
 
