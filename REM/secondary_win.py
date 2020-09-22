@@ -2,6 +2,7 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
+import pandas as pd
 import pyodbc
 import PySimpleGUI as sg
 import REM.authentication as auth
@@ -16,7 +17,7 @@ def popup_confirm(msg):
     completing the current action.
     """
     font = const.MID_FONT
-    return (sg.popup_ok_cancel(textwrap.fill(msg, width=40), font=font, title=''))
+    return sg.popup_ok_cancel(textwrap.fill(msg, width=40), font=font, title='')
 
 
 def popup_notice(msg):
@@ -25,7 +26,7 @@ def popup_notice(msg):
     be undertaken.
     """
     font = const.MID_FONT
-    return (sg.popup_ok(textwrap.fill(msg, width=40), font=font, title=''))
+    return sg.popup_ok(textwrap.fill(msg, width=40), font=font, title='')
 
 
 def popup_error(msg):
@@ -33,7 +34,7 @@ def popup_error(msg):
     Display popup notifying user that there is a fatal program error.
     """
     font = const.MID_FONT
-    return (sg.popup_error(textwrap.fill(msg, width=40), font=font, title=''))
+    return sg.popup_error(textwrap.fill(msg, width=40), font=font, title='')
 
 
 # Functions
@@ -69,7 +70,7 @@ def verify_row(self, row_index):
     # Update table row colors
     all_row_colors = selected + unselected
 
-    return (all_row_colors)
+    return all_row_colors
 
 
 # Windows
@@ -87,7 +88,7 @@ def debugger(win_size: tuple = (1920, 1080)):
 
     window = sg.Window('Debug', layout, font=main_font, modal=False)
 
-    return (window)
+    return window
 
 
 def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
@@ -125,51 +126,31 @@ def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
 
     column_layout = [img_layout,
                      [sg.Text('', pad=(pad_frame, pad_el), background_color=bg_col)],
-                     [sg.Frame('', [[sg.Image(data=username_icon,
-                                              background_color=input_col,
-                                              pad=((pad_el, pad_h), 0)),
-                                     sg.Input(default_text=_('username'),
-                                              key='-USER-', size=(isize - 2, 1),
-                                              text_color=help_col,
-                                              border_width=0, do_not_clear=True,
-                                              background_color=input_col,
-                                              enable_events=True,
-                                              pad=((0, 2), 0),
+                     [sg.Frame('', [[sg.Image(data=username_icon, background_color=input_col, pad=((pad_el, pad_h), 0)),
+                                     sg.Input(default_text=_('username'), key='-USER-', size=(isize - 2, 1),
+                                              pad=((0, 2), 0), text_color=help_col, border_width=0, do_not_clear=True,
+                                              background_color=input_col, enable_events=True,
                                               tooltip=_('Input account username'))]],
-                               background_color=input_col, pad=(pad_frame, pad_el),
-                               relief='sunken')],
-                     [sg.Frame('', [[sg.Image(data=lock_icon,
-                                              background_color=input_col,
-                                              pad=((pad_el, pad_h), 0)),
-                                     sg.Input(default_text=_('password'),
-                                              key='-PASSWORD-', size=(isize - 2, 1),
-                                              text_color=help_col,
-                                              border_width=0, do_not_clear=True,
-                                              background_color=input_col,
-                                              enable_events=True,
-                                              pad=((0, 2), 0), password_char='*',
-                                              tooltip=_('Input account password'))]],
-                               background_color=input_col, pad=(pad_frame, pad_el),
-                               relief='sunken')],
-                     [sg.Text('', key='-SUCCESS-', size=(20, 6),
-                              pad=(pad_frame, pad_frame), font=small_font,
-                              justification='center',
-                              text_color='Red', background_color=bg_col)],
-                     [sg.Button(_('Sign In'), key='-LOGIN-', size=(bsize, 1),
-                                pad=(pad_frame, pad_el), font=bold_text,
+                               background_color=input_col, pad=(pad_frame, pad_el), relief='sunken')],
+                     [sg.Frame('', [[sg.Image(data=lock_icon, pad=((pad_el, pad_h), 0), background_color=input_col),
+                                     sg.Input(default_text=_('password'), key='-PASSWORD-', size=(isize - 2, 1),
+                                              pad=((0, 2), 0), password_char='*', text_color=help_col,
+                                              background_color=input_col, border_width=0, do_not_clear=True,
+                                              enable_events=True, tooltip=_('Input account password'))]],
+                               background_color=input_col, pad=(pad_frame, pad_el), relief='sunken')],
+                     [sg.Text('', key='-SUCCESS-', size=(20, 6), pad=(pad_frame, pad_frame), font=small_font,
+                              justification='center', text_color='Red', background_color=bg_col)],
+                     [sg.Button(_('Sign In'), key='-LOGIN-', size=(bsize, 1), pad=(pad_frame, pad_el), font=bold_text,
                                 button_color=(text_col, login_col))],
-                     [sg.Button(_('Cancel'), key='-CANCEL-', size=(bsize, 1),
-                                pad=(pad_frame, (pad_el, pad_frame)), font=bold_text,
-                                button_color=(text_col, cancel_col))]]
+                     [sg.Button(_('Cancel'), key='-CANCEL-', size=(bsize, 1), pad=(pad_frame, (pad_el, pad_frame)),
+                                font=bold_text, button_color=(text_col, cancel_col))]]
 
-    layout = [[sg.Col(column_layout, element_justification='center',
-                      justification='center', background_color=bg_col)]]
+    layout = [[sg.Col(column_layout, element_justification='center', justification='center', background_color=bg_col)]]
 
     db = cnfg.db
     account = auth.UserAccount()
 
-    window = sg.Window('', layout, font=main_font, modal=True,
-                       keep_on_top=True, no_titlebar=True,
+    window = sg.Window('', layout, font=main_font, modal=True, keep_on_top=True, no_titlebar=True,
                        return_keyboard_events=True)
     window.finalize()
     window['-USER-'].update(select=True)
@@ -230,13 +211,18 @@ def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
 
     window.close()
 
-    return (account)
+    return account
 
 
-def import_window(df, win_size: tuple = (1920, 1080)):
+def import_window(df, win_size: tuple = None):
     """
     Display the transaction importer window.
     """
+    if win_size:
+        width, height = [i * 0.8 for i in win_size]
+    else:
+        width, height = (const.WIN_WIDTH * 0.8, const.WIN_HEIGHT * 0.8)
+
     # Format dataframe as list for input into sg
     data = df.values.tolist()
     header = df.columns.values.tolist()
@@ -256,20 +242,16 @@ def import_window(df, win_size: tuple = (1920, 1080)):
     tbl_vfy_col = const.TBL_VFY_COL
 
     # GUI layout
-    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-',
-                          tooltip=_('Cancel import'), pad=(pad_el, 0)),
-                    lo.B2(_('Import'), bind_return_key=True, key='-IMPORT-',
-                          tooltip=_('Import the selected transaction orders'),
-                          pad=(pad_el, 0))]]
+    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
+                    lo.B2(_('Import'), bind_return_key=True, key='-IMPORT-', pad=(pad_el, 0),
+                          tooltip=_('Import the selected transaction orders'))]]
 
     tbl_key = lo.as_key('Import Table')
     layout = [[sg.Col([[sg.Text(_('Import Missing Data'), font=font_h)]],
                       pad=(0, pad_v), justification='center')],
-              [sg.Frame('', [[lo.create_table_layout(data, header, tbl_key, bind=True)]],
-                        background_color=bg_col, element_justification='c',
-                        pad=(pad_frame, pad_frame))],
-              [sg.Col(bttn_layout, justification='c',
-                      pad=(0, (0, pad_frame)))]]
+              [sg.Frame('', [[lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width)]],
+                        background_color=bg_col, element_justification='c', pad=(pad_frame, pad_frame))],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
 
     window = sg.Window(_('Import Data'), layout, font=main_font, modal=True, resizable=False)
 
@@ -329,4 +311,88 @@ def import_window(df, win_size: tuple = (1920, 1080)):
 
     window.close()
 
-    return (vfy_orders)
+    return vfy_orders
+
+
+def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = None):
+    """
+    Display window for user to modify the editable field in a record.
+    """
+    if win_size:
+        width, height = [i * 0.95 for i in win_size]
+    else:
+        width, height = (const.WIN_WIDTH * 0.95, const.WIN_HEIGHT * 0.95)
+
+    # Format dataframe as list for input into sg
+    row = df.iloc[index]
+    data = row.tolist()
+    print('data to modify {}'.format(data))
+    header = df.columns.values.tolist()
+    display_header = []
+    for column in header:
+        if column in header_map:
+            mapped_column = header_map[column]
+        else:
+            mapped_column = column
+        display_header.append(mapped_column)
+
+    print('with header {}'.format(header))
+    print('and display header {}'.format(display_header))
+
+    edit_keys = {}
+    edit_keys_mapped = {}
+    for column in edit_cols:
+        element_key = lo.as_key(column)
+        edit_keys[column] = element_key
+
+        try:
+            edit_keys_mapped[header_map[column]] = element_key
+        except KeyError:
+            edit_keys_mapped[column] = element_key
+
+    # Window and element size parameters
+    main_font = const.MAIN_FONT
+
+    pad_el = const.ELEM_PAD
+    pad_frame = const.FRAME_PAD
+
+    bg_col = const.ACTION_COL
+
+    # GUI layout
+    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
+                    lo.B2(_('Delete'), key='-DELETE-', pad=(pad_el, 0), tooltip=_('Permanently delete record')),
+                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                          tooltip=_('Save record'))]]
+
+    layout = [[sg.Col([[lo.create_etable_layout(data, display_header, edit_keys_mapped, height=height, width=width)]],
+                      background_color=bg_col, element_justification='c', pad=(pad_frame, pad_frame))],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+
+    window = sg.Window(_('Modify Record'), layout, font=main_font, modal=True, resizable=False)
+    window.finalize()
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            break
+
+        if event in (sg.WIN_CLOSED, '-DELETE-'):  # selected close-window or Cancel
+            df = df.drop(index, axis=0, inplace=True)
+            df.reset_index(drop=True, inplace=True)
+            break
+
+        if event == '-SAVE-':  # click 'Save' button
+            for column in edit_keys:
+                col_key = edit_keys[column]
+                field_val = values[col_key]
+
+                # Replace field value with modified value
+                df.at[index, column] = field_val
+
+            break
+
+    window.close()
+
+    return df

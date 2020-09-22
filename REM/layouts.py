@@ -183,10 +183,12 @@ class TabItem:
             width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
         # Reset table size
+        # for every five-pixel increase in window size, increase tab size by one
         tab_pad = 120
-        # for every ten pixel increase in window size, increase tab size by one
+        win_diff = width - const.WIN_WIDTH
+        tab_pad = tab_pad + (win_diff/5)
 
-        tab_width = width - tab_pad if width > tab_pad else width
+        tab_width = width - tab_pad if tab_pad > 0 else width
         height = height * 0.5
         nrows = int(height / 40)
 
@@ -239,7 +241,7 @@ class TabItem:
                   .format(NAME=self.name, RULE=self.rule_name, COL=column))
             col_name = None
 
-        return (col_name)
+        return col_name
 
     def format_display_table(self, dataframe):
         """
@@ -274,7 +276,7 @@ class TabItem:
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
-        return (dm.fill_na(display_df))
+        return dm.fill_na(display_df)
 
     def update_table(self, window):
         """
@@ -362,7 +364,7 @@ class TabItem:
 
             id_parts.append(value)
 
-        return (''.join(id_parts))
+        return ''.join(id_parts)
 
     def get_id_component(self, identifier, component):
         """
@@ -381,7 +383,7 @@ class TabItem:
 
                 break
 
-        return (comp_value)
+        return comp_value
 
     def get_component(self, comp_id):
         """
@@ -392,7 +394,7 @@ class TabItem:
             if comp_name == comp_id:
                 comp_tup = component
 
-        return (comp_tup)
+        return comp_tup
 
     def update_summary(self, window):
         """
@@ -595,7 +597,7 @@ class TabItem:
         """
         df = self.df
         if df.empty:
-            return (set())
+            return set()
 
         headers = df.columns.values.tolist()
         pkey = self.db_key if self.db_key in headers else self.db_key.lower()
@@ -629,7 +631,7 @@ class TabItem:
 
         del df
 
-        return (set(errors))
+        return set(errors)
 
     def run_audit(self, *args, **kwargs):
         """
@@ -660,6 +662,7 @@ class TabItem:
         strptime = datetime.datetime.strptime
 
         # Arguments
+        window = args[0]
         user = kwargs['account']
         audit_params = kwargs['parameters']
 
@@ -827,7 +830,7 @@ class TabItem:
         # Display import window with potentially missing data
         if not missing_df.empty:
             missing_df_fmt = self.format_display_table(dm.sort_table(missing_df, pkey))
-            import_rows = win2.import_window(missing_df_fmt)
+            import_rows = win2.import_window(missing_df_fmt, win_size=window.size)
             import_df = missing_df.iloc[import_rows]
 
             # Update dataframe with imported data
@@ -949,6 +952,48 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     return layout
 
 
+def create_etable_layout(data, header, edit_keys: dict = {}, height: int = 800, width: int = 1200, font: tuple = None):
+    """
+    Create a table with editable fields.
+    """
+    # Element settings
+    header_col = const.TBL_HEADER_COL
+    bg_col = const.TBL_ALT_COL
+
+    pad_frame = const.FRAME_PAD
+
+    font = font if font else const.MID_FONT
+    font_size = font[1]
+
+    # Arguments
+    width = width if width else const.WIN_WIDTH
+
+    # Parameters
+
+    lengths = dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
+    row_layout = []
+    header_layout = []
+    for index, column in enumerate(header):
+        col_width = lengths[index]
+        header_layout.append(sg.Text(column, size=(col_width, 1), auto_size_text=False, border_width=1, relief='sunken',
+                                     background_color=header_col, justification='c', font=font, tooltip=column))
+
+        field_val = data[index]
+        if column in edit_keys:
+            element_key = edit_keys[column]
+            readonly = False
+        else:
+            element_key = None
+            readonly = True
+
+        row_layout.append(sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
+                                   font=font, justification='r', readonly=readonly, background_color=bg_col, tooltip=field_val))
+
+    layout = sg.Frame('', [header_layout, row_layout], relief='sunken', border_width=1)
+
+    return layout
+
+
 # Panel layouts
 def action_layout(audit_rules):
     """
@@ -966,8 +1011,7 @@ def action_layout(audit_rules):
     buttons = [[sg.Text('', pad=(pad_frame, 0), size=(0, 0), background_color=bg_col)]]
 
     for rule_name in rule_names:
-#        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=True)]
-        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=False)]
+        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=True)]
         buttons.append(rule_el)
 
     other_bttns = [[sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
@@ -989,10 +1033,8 @@ def tab_layout(tabs, win_size: tuple = None, initial_visibility='first'):
     """
     Layout of the audit panel tab groups.
     """
-    if win_size:
-        width, height = win_size
-    else:
-        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+    if not win_size:
+        win_size = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
     # Element parameters
     bg_col = const.ACTION_COL

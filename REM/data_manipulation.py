@@ -33,8 +33,6 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
         width = int(width / font_size)
         max_size_per_col = int(max_size_per_col / font_size)
 
-    print('Info: columns sizes are: {}'.format(max_size_per_col))
-
     # Each column has size == max characters per column
     lengths = [max_size_per_col for i in header]
 
@@ -258,6 +256,8 @@ def append_to_table(df, add_df, ignore_dtypes=False):
     """
     if add_df.empty:
         return df
+    elif df.empty:
+        return add_df
 
     # Add row information to the table
     if not add_df.dtypes.equals(df.dtypes) and not ignore_dtypes:
@@ -317,7 +317,6 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
             rule_eval_list.append(chain_map['and'])
 
         if rule_key:
-            print(conditions)
             rule_str = conditions[rule_name][rule_key]
         else:
             rule_str = conditions[rule_name]  # db column name is dictionary key

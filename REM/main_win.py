@@ -50,7 +50,7 @@ class ToolBar:
         else:
             key = None
 
-        return (key)
+        return key
 
     def layout(self, win_size: tuple = None):
         """
@@ -121,7 +121,7 @@ class ToolBar:
             menus[menu.lower()]
         except KeyError:
             print('Error: selected menu {} not list of available menus'.format(menu))
-            return (False)
+            return False
 
         status = '' if value == 'enable' else '!'
 
@@ -130,8 +130,8 @@ class ToolBar:
         try:
             index = items_clean.index(menu_item.lower())
         except IndexError:
-            print('Error: seleted menu item {} not found in {} item list'.format(menu_item, menu))
-            return (False)
+            print('Error: seleted menu item {MENU} not found in {MENUS} item list'.format(MENU=menu_item, MENUS=menu))
+            return False
 
         # Set status of menu item
         item = menu_items[index]
@@ -171,7 +171,7 @@ def get_panels(audit_rules, win_size: tuple = None):
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
             sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False, border_width=0,
-                             relief='flat')]], pad=(0, 10), justification='center', element_justification='center')]
+                             relief='flat')]], pad=(0, 10), justification='c', element_justification='c')]
 
     return pane
 
@@ -765,7 +765,6 @@ def main():
                 next_key = tab_keys[next_index]
 
                 # Enable next tab
-                print('Info: enabling tab {}'.format(tab_windows[next_index]))
                 window[next_key].update(disabled=False, visible=True)
 
             # Enable the finalize button when all actions have been performed
@@ -799,9 +798,23 @@ def main():
                 for tab in rule.tabs:
                     tab.resize_elements(window, win_size=(current_w, current_h))
 
-            if summary_panel_active and event in return_keys:
-                # Update table values with potential user input
-                rule_summ.update_input_values(values)
+            summ_tbl_keys = [i.key_lookup('Table') for i in rule.summary.summary_items]
+            if summary_panel_active and event in summ_tbl_keys:
+                # Get current tab in view
+                tg_key = rule.summary.key_lookup('TG')
+                current_summ_tab = window[tg_key].Get()
+                summ_tab = rule.summary.fetch_tab(current_summ_tab, by_key=True)
+
+                # Show modify row window to user
+                try:
+                    select_row_index = values[event][0]
+                except IndexError:  # user double-clicked too quickly
+                    continue
+
+                # Edit selected row
+                summ_tab.edit_row(select_row_index, win_size=(win_w, win_h))
+
+                # Update display table
                 rule_summ.format_tables(window)
 
             back_key = rule.summary.key_lookup('Back')
