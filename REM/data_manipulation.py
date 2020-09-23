@@ -5,7 +5,6 @@ REM function for manipulating data.
 import numpy as np
 import pandas as pd
 import re
-import REM.program_settings as const
 
 
 def create_empty_table(nrow: int = 20, ncol: int = 10):

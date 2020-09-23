@@ -8,7 +8,8 @@ import pandas as pd
 import re
 import REM.configuration as config
 import REM.data_manipulation as dm
-import REM.program_settings as const
+from REM.initialize_settings import settings
+import REM.program_constants as const
 import REM.secondary_win as win2
 import sys
 
@@ -36,7 +37,7 @@ class TabItem:
         try:
             tables = tdict['DatabaseTables']
         except KeyError:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".')\
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".') \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -45,7 +46,7 @@ class TabItem:
         try:
             pkey = tdict['IDField']
         except KeyError:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "IDField".')\
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "IDField".') \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -54,7 +55,7 @@ class TabItem:
         try:
             all_columns = tdict['TableColumns']
         except KeyError:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".')\
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".') \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -63,7 +64,7 @@ class TabItem:
         try:
             display_columns = tdict['DisplayColumns']
         except KeyError:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".')\
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".') \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -120,7 +121,7 @@ class TabItem:
         for filter_rule in filter_rules:
             if 'Reference' not in filter_rules[filter_rule]:
                 msg = ('Configuration Error: tab {NAME}, rule {RULE}: the parameter "Reference" is required for '
-                   'FilterRule {FILT}').format(NAME=name, RULE=rule_name, FILT=filter_rule)
+                       'FilterRule {FILT}').format(NAME=name, RULE=rule_name, FILT=filter_rule)
                 win2.popup_error(msg)
                 sys.exit(1)
         self.filter_rules = filter_rules
@@ -128,7 +129,7 @@ class TabItem:
         try:
             self.id_format = re.findall(r'\{(.*?)\}', tdict['IDFormat'])
         except KeyError:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "IDFormat".')\
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "IDFormat".') \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -136,7 +137,8 @@ class TabItem:
         # Dynamic attributes
         display_header = list(display_columns.keys())
         ncol = len(display_header)
-        self.df = pd.DataFrame(dm.create_empty_table(nrow=20, ncol=ncol), columns=display_header)  # initialize with empty table
+        self.df = pd.DataFrame(dm.create_empty_table(nrow=20, ncol=ncol),
+                               columns=display_header)  # initialize with empty table
 
         self.nerr = 0
         self.audit_performed = False
@@ -186,7 +188,7 @@ class TabItem:
         # for every five-pixel increase in window size, increase tab size by one
         tab_pad = 120
         win_diff = width - const.WIN_WIDTH
-        tab_pad = tab_pad + (win_diff/5)
+        tab_pad = tab_pad + (win_diff / 5)
 
         tab_width = width - tab_pad if tab_pad > 0 else width
         height = height * 0.5
@@ -243,16 +245,21 @@ class TabItem:
 
         return col_name
 
-    def format_display_table(self, dataframe, date_offset: int = 0, date_fmt: str = '%d-%m-%Y'):
+    def format_display_table(self, dataframe, date_fmt: str = '%d-%m-%Y'):
         """
         Format dataframe for displaying in GUI
         """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
         is_float_dtype = pd.api.types.is_float_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
         display_columns = self.display_columns
         display_header = list(display_columns.keys())
         display_df = pd.DataFrame()
+
+        # Localization specific options
+        date_offset = settings.get_date_offset()
 
         # Subset dataframe by specified columns to display
         for col_name in display_columns:
@@ -263,8 +270,9 @@ class TabItem:
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
             elif is_datetime_dtype(dtype):
-#                col_to_add = col_to_add.apply(const.add_date_offset, args=(date_offset, date_fmt))
-                col_to_add = col_to_add.apply(lambda x: x.strftime(date_fmt) if pd.notnull(x) else '')
+                col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
+                                                         relativedelta(years=+date_offset)).strftime(date_fmt)
+                                                        if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
@@ -288,20 +296,17 @@ class TabItem:
 
         return display_df
 
-    def update_table(self, window, settings):
+    def update_table(self, window):
         """
         Update Table element with data
         """
         tbl_error_col = const.TBL_ERROR_COL
         tbl_key = self.key_lookup('Table')
 
-        # Localization specific options
-        date_offset = const.get_date_offset(settings)
-
         # Modify table for displaying
         df = dm.sort_table(self.df, self.db_key)
 
-        display_df = self.format_display_table(df, date_offset=date_offset)
+        display_df = self.format_display_table(df)
         data = display_df.values.tolist()
 
         window[tbl_key].update(values=data)
@@ -593,10 +598,10 @@ class TabItem:
             if param_oper.upper() == 'IN':
                 vals_fmt = ', '.join(['?' for i in param_values])
                 filters.append(('{COL} {OPER} ({VALS})'.format(COL=param_col, OPER=param_oper, VALS=vals_fmt),
-                                (param_values, )))
+                                (param_values,)))
             else:
                 if len(param_values) == 1:
-                    filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0], )))
+                    filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0],)))
                 else:
                     print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} has too many values {COND}'
                           .format(RULE=self.rule_name, NAME=self.name, PARAM=param, COND=param_rule))
@@ -926,7 +931,7 @@ def B2(*args, **kwargs):
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
-                 nrows: int = None, height: int = 800, width: int = 1200, font: tuple = None):
+                        nrows: int = None, height: int = 800, width: int = 1200, font: tuple = None):
     """
     Create table elements that have consistency in layout.
     """
@@ -1000,7 +1005,8 @@ def create_etable_layout(data, header, edit_keys: dict = {}, height: int = 800, 
             readonly = True
 
         row_layout.append(sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
-                                   font=font, justification='r', readonly=readonly, background_color=bg_col, tooltip=field_val))
+                                   font=font, justification='r', readonly=readonly, background_color=bg_col,
+                                   tooltip=field_val))
 
     layout = sg.Frame('', [header_layout, row_layout], relief='sunken', border_width=1)
 

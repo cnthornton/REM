@@ -2,12 +2,12 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
-import pandas as pd
 import pyodbc
 import PySimpleGUI as sg
 import REM.authentication as auth
+from REM.initialize_settings import settings
 import REM.layouts as lo
-import REM.program_settings as const
+import REM.program_constants as const
 import textwrap
 
 
@@ -91,7 +91,7 @@ def debugger(win_size: tuple = (1920, 1080)):
     return window
 
 
-def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
+def login_window():
     """
     Display the login window.
     """
@@ -117,6 +117,8 @@ def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
 
     main_font = const.MAIN_FONT
     small_font = const.SMALL_FONT
+
+    logo = settings.logo
 
     # GUI layout
     if logo:
@@ -147,7 +149,6 @@ def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
 
     layout = [[sg.Col(column_layout, element_justification='center', justification='center', background_color=bg_col)]]
 
-    db = cnfg.db
     account = auth.UserAccount()
 
     window = sg.Window('', layout, font=main_font, modal=True, keep_on_top=True, no_titlebar=True,
@@ -200,7 +201,7 @@ def login_window(cnfg, logo=None, win_size: tuple = (1920, 1080)):
                 window['-SUCCESS-'].update(value=msg)
             else:
                 try:
-                    login_success = account.login(db, uname, pwd)
+                    login_success = account.login(uname, pwd)
                 except pyodbc.Error as ex:
                     sqlstat = ex.args[1]
                     window['-SUCCESS-'].update(value=sqlstat)

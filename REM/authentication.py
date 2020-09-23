@@ -7,7 +7,8 @@ import pandas as pd
 from pandas.io import sql
 import pyodbc
 import PySimpleGUI as sg
-import REM.program_settings as const
+from REM.initialize_settings import settings
+import REM.program_constants as const
 import REM.secondary_win as win2
 import time
 
@@ -51,15 +52,7 @@ class UserAccount:
         self.logged_in = False
         self.superuser = False
 
-        # Database connection attributes
-        self.driver = None
-        self.server = None
-        self.port = None
-        self.dbname = None
-        self.prog_db = None
-        self.alt_dbs = None
-
-    def login(self, db, uid, pwd):
+    def login(self, uid, pwd):
         """
         Verify username and password exists in the database accounts table and obtain user permissions.
 
@@ -70,14 +63,10 @@ class UserAccount:
 
             pwd (str): password associated with the existing account.
         """
-        self.driver = db.driver
-        self.server = db.server
-        self.port = db.port
-        self.dbname = db.dbname
-        self.prog_db = db.prog_db
-        self.alt_dbs = db.alt_dbs
+        self.uid = uid
+        self.pwd = pwd
 
-        conn = self.db_connect(uid, pwd, database=self.prog_db, timeout=5)
+        conn = self.db_connect(database=settings.prog_db, timeout=5)
 
         cursor = conn.cursor()
 
@@ -86,7 +75,7 @@ class UserAccount:
         try:
             cursor.execute(query_str, (uid,))
         except pyodbc.Error as e:
-            print('DB Error: querying Users table from {DB} failed due to {EX}'.format(DB=self.prog_db, EX=e))
+            print('DB Error: querying Users table from {DB} failed due to {EX}'.format(DB=settings.prog_db, EX=e))
             raise DBConnectionError(e)
 
         ugroup = None
@@ -101,7 +90,9 @@ class UserAccount:
         conn.close()
 
         if not ugroup:
-            return (False)
+            self.uid = None
+            self.pwd = None
+            return False
 
         self.uid = uid
         self.pwd = pwd
@@ -110,7 +101,7 @@ class UserAccount:
         if ugroup == 'admin':
             self.superuser = True
 
-        return (True)
+        return True
 
     def logout(self):
         """
@@ -121,23 +112,19 @@ class UserAccount:
         self.logged_in = False
         self.superuser = False
 
-        self.driver = None
-        self.server = None
-        self.port = None
-        self.dbname = None
-        self.prog_db = None
-        self.alt_dbs = None
+        return True
 
-        return (True)
-
-    def db_connect(self, uid, pwd, database=None, timeout=5):
+    def db_connect(self, database=None, timeout=5):
         """
         Generate a pyODBC Connection object.
         """
-        driver = self.driver
-        server = self.server
-        port = self.port
-        dbname = database if database else self.dbname
+        uid = self.uid
+        pwd = self.pwd
+
+        driver = settings.driver
+        server = settings.server
+        port = settings.port
+        dbname = database if database else settings.dbname
 
         db_settings = {'Driver': driver,
                        'Server': server,
@@ -159,13 +146,13 @@ class UserAccount:
         else:
             print('Info: successfully established a connection to {}'.format(dbname))
 
-        return (conn)
+        return conn
 
     def thread_transaction(self, statement, params, database: str = None, operation: str = 'read', timeout: int = 10):
         """
         Thread a database operation.
         """
-        db = database if database else self.dbname
+        db = database if database else settings.dbname
 
         if operation == 'read':
             p = self.read_db
@@ -210,7 +197,7 @@ class UserAccount:
         """
         # Connect to database
         try:
-            conn = self.db_connect(self.uid, self.pwd, database=database)
+            conn = self.db_connect(database=database)
         except DBConnectionError:
             print('DB Read Error: connection to database cannot be established')
             df = pd.DataFrame()
@@ -234,7 +221,7 @@ class UserAccount:
         """
         # Connect to database
         try:
-            conn = self.db_connect(self.uid, self.pwd, database=database)
+            conn = self.db_connect(database=database)
         except DBConnectionError:
             print('DB Write Error: connection to database cannot be established')
             status = False
@@ -331,7 +318,7 @@ class UserAccount:
 
         print('Query string supplied was: {} with parameters {}'.format(query_str, params))
 
-        db = self.prog_db if prog_db else self.dbname
+        db = settings.prog_db if prog_db else settings.dbname
         df = self.thread_transaction(query_str, params, operation='read', database=db)
 
         return df
@@ -361,7 +348,7 @@ class UserAccount:
         print('Info: insertion string is: {}'.format(insert_str))
         print('Info: with parameters: {}'.format(params))
 
-        db = self.prog_db
+        db = settings.prog_db
         status = self.thread_transaction(insert_str, params, operation='read', database=db)
 
         return (status)
@@ -397,7 +384,7 @@ class UserAccount:
         print('Info: update string is: {}'.format(update_str))
         print('Info: with parameters: {}'.format(params))
 
-        db = self.prog_db
+        db = settings.prog_db
         status = self.thread_transaction(update_str, params, operation='read', database=db)
 
         return(status)

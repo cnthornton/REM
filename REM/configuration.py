@@ -1,6 +1,5 @@
 """
-REM configuration classes and functions. Includes audit rules, audit objects,
-and rule parameters.
+REM configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
 """
 import datetime
 from typing import List
@@ -9,84 +8,14 @@ import pandas as pd
 import PySimpleGUI as sg
 import re
 import REM.data_manipulation as dm
+from REM.initialize_settings import settings
 import REM.layouts as lo
-import REM.program_settings as const
+import REM.program_constants as const
 import REM.secondary_win as win2
 import sys
 
 
-class ProgramSettings:
-    """
-    Class to store and manage program configuration settings.
-
-    Arguments:
-
-        cnfg: Parsed YAML file
-
-    Attributes:
-
-        language (str): Display language. Default: EN.
-    """
-
-    def __init__(self, cnfg):
-        # Display parameters
-        settings = cnfg['settings']
-        self.language = settings['language'] if settings['language'] else 'en'
-        self.locale = settings['locale'] if settings['locale'] else 'en_US'
-
-        # Database parameters
-        ddict = settings['database']
-        self.db = DataBase(ddict)
-
-    def translate(self):
-        """
-        Translate text using chosen language.
-        """
-
-    def modify(self):
-        """
-        """
-        pass
-
-    def display(self):
-        """
-        """
-        pass
-
-
-class DataBase:
-    """
-    Primary database object for querying databases and initializing
-    authentication.
-
-    Attributes:
-
-        driver (str): ODBC driver
-
-        server (str): Database server.
-
-        port (str): Listening port for database connections
-
-        dbname (str): Database name.
-
-        prog_db (str): Program database name.
-
-        alt_dbs (list): Alternative databases to query if targets not found in primary database.
-    """
-
-    def __init__(self, ddict):
-        self.driver = ddict['odbc_driver']
-        self.server = ddict['odbc_server']
-        self.port = ddict['odbc_port']
-        self.dbname = ddict['database']
-        self.prog_db = ddict['rem_database']
-        try:
-            self.alt_dbs = ddict['alternative_databases']
-        except KeyError:
-            self.alt_dbs = []
-
-
-class AuditRules(ProgramSettings):
+class AuditRules:
     """
     Class to store and manage program audit_rule configuration settings.
 
@@ -100,7 +29,6 @@ class AuditRules(ProgramSettings):
     """
 
     def __init__(self, cnfg):
-        super().__init__(cnfg)
 
         # Audit parameters
         audit_rules = cnfg['audit_rules']
@@ -112,7 +40,7 @@ class AuditRules(ProgramSettings):
         """
         Return name of all audit rules defined in configuration file.
         """
-        return ([i.name for i in self.rules])
+        return [i.name for i in self.rules]
 
     def fetch_rule(self, name):
         """
@@ -127,7 +55,7 @@ class AuditRules(ProgramSettings):
         else:
             rule = self.rules[index]
 
-        return (rule)
+        return rule
 
 
 class AuditRule:
@@ -939,16 +867,21 @@ class SummaryItem:
         df = win2.edit_record(df, index, edit_columns, header_map=display_map, win_size=win_size)
         self.df = df
 
-    def format_display_table(self, date_offset: int = 0, date_fmt: str = '%d-%m-%Y'):
+    def format_display_table(self, date_fmt: str = '%d-%m-%Y'):
         """
         Format dataframe for displaying as a table.
         """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
         is_float_dtype = pd.api.types.is_float_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
         display_columns = self.display_columns
         display_header = list(display_columns.keys())
         dataframe = self.df
+
+        # Localization specific options
+        date_offset = settings.get_date_offset()
 
         display_df = pd.DataFrame()
 
@@ -961,8 +894,9 @@ class SummaryItem:
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
             elif is_datetime_dtype(dtype):
-                #                col_to_add = col_to_add.apply(const.add_date_offset, args=(date_offset, date_fmt))
-                col_to_add = col_to_add.apply(lambda x: x.strftime(date_fmt) if pd.notnull(x) else '')
+                col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
+                                                         relativedelta(years=+date_offset)).strftime(date_fmt)
+                                                        if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration

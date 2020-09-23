@@ -2,19 +2,17 @@
 """
 REM main program. Includes primary display.
 """
-import gettext
 import datetime
 from multiprocessing import freeze_support
-import os
 import PySimpleGUI as sg
 import REM.configuration as config
 import REM.data_manipulation as dm
+from REM.initialize_settings import cnfg, settings
 import REM.layouts as lo
 import REM.secondary_win as win2
-import REM.program_settings as const
+import REM.program_constants as const
 import sys
 import tkinter as tk
-import yaml
 
 
 # Classes
@@ -301,39 +299,6 @@ def main():
     else:
         current_h = screen_h
 
-    # Import settings from configuration file
-    dirname = os.path.dirname(os.path.realpath(__file__))
-    cnfg_name = 'settings.yaml'
-    cnfg_file = os.path.join(dirname, cnfg_name)
-
-    try:
-        fh = open(cnfg_file, 'r', encoding='utf-8')
-    except FileNotFoundError:
-        msg = 'Unable to load configuration file'
-        win2.popup_error(msg)
-        sys.exit(1)
-    else:
-        cnfg = yaml.safe_load(fh)
-        fh.close()
-
-    # Import logo image, if exists
-    logo_name = 'logo.png'
-    logo_file = os.path.join(dirname, 'docs', 'images', logo_name)
-
-    try:
-        fh = open(logo_file, 'r', encoding='utf-8')
-    except FileNotFoundError:
-        logo = None
-    else:
-        logo = logo_file
-        fh.close()
-
-    settings = config.ProgramSettings(cnfg)
-
-    language = settings.language
-    translation = const.change_locale(language)
-    translation.install('base')  # bind gettext to _() in __builtins__ namespace
-
     # Configure GUI layout
     audit_rules = config.AuditRules(cnfg)
     toolbar = ToolBar(audit_rules)
@@ -348,7 +313,6 @@ def main():
 #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
     date_key = None
-    return_keys = ('Return:36', '\r')
 
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
     report_tx = 'Summary Report'
@@ -361,8 +325,8 @@ def main():
     debug_win = None
 
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, icon=logo, font=('Arial', 12), size=(current_w, current_h), resizable=True,
-                       return_keyboard_events=True)
+    window = sg.Window('REM Tila', layout, icon=settings.logo, font=('Arial', 12), size=(current_w, current_h),
+                       resizable=True, return_keyboard_events=True)
     window.finalize()
     print('Info: starting up')
 
@@ -412,7 +376,7 @@ def main():
         # User login
         if values['-UMENU-'] == 'Sign In':  # user logs on
             print('Info: displaying user login screen')
-            user = win2.login_window(settings, logo=logo)
+            user = win2.login_window()
 
             if user.logged_in:  # logged on successfully
                 # Disable sign-in and enable sign-off
@@ -651,9 +615,8 @@ def main():
 
                     # Update tab object and elements
                     tab.df = df  # update tab data
-                    print('Info: dtypes of {NAME} are:\r {DTYPES}'.format(NAME=tab.name, DTYPES=df.dtypes))
                     tab.update_id_components(rule_params)
-                    tab.update_table(window, settings)  # display tab data in table
+                    tab.update_table(window)  # display tab data in table
                     tab.update_summary(window)  # summarize individual tab data
 
                     # Enable / disable action buttons
@@ -695,7 +658,7 @@ def main():
                 tab.df.drop(row, axis=0, inplace=True)
                 tab.df.reset_index(drop=True, inplace=True)
 
-                tab.update_table(window, settings)
+                tab.update_table(window)
                 tab.update_summary(window)
                 continue
 
@@ -740,7 +703,7 @@ def main():
                 tab.df = df
 
                 # Update display table
-                tab.update_table(window, settings)
+                tab.update_table(window)
                 tab.update_summary(window)
                 continue
 
@@ -755,7 +718,7 @@ def main():
 
                 # Update information elements - most actions modify tab data 
                 # in some way.
-                tab.update_table(window, settings)
+                tab.update_table(window)
                 tab.update_summary(window)
 
             # Enable movement to the next tab
