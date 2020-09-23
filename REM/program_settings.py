@@ -6,26 +6,41 @@ import gettext
 import os
 
 
-def change_locale(locale):
+def change_locale(language):
     """
     Translate application text based on supplied locale.
     """
-    if locale not in LOCALES:
+    if language not in [i.split('_')[0] for i in LOCALES]:
         raise NameError
 
     localdir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'locale')
     domain = 'base'
 
     try:
-        trans = gettext.translation(domain, localedir=localdir, languages=[locale])
+        trans = gettext.translation(domain, localedir=localdir, languages=[language])
     except Exception:
-        print('Unable to find translations for locale {}'.format(locale))
+        print('Unable to find translations for locale {}'.format(language))
         trans = gettext
 
-    return (trans)
+    return trans
 
 
-LOCALES = ['en', 'th']
+def get_date_offset(settings):
+    """
+    Find date offset for calendar systems other than the gregorian calendar
+    """
+    locale = settings.locale
+
+    if locale == 'th_TH':
+        offset = 543
+    else:
+        offset = 0
+
+    return offset
+
+
+# Supported locales
+LOCALES = ['en_US', 'en_UK', 'th_TH']
 
 # Element colors
 ACTION_COL = '#FFFFFF'

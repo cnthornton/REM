@@ -4,7 +4,6 @@ and rule parameters.
 """
 import datetime
 from typing import List
-
 import dateutil.parser
 import pandas as pd
 import PySimpleGUI as sg
@@ -33,6 +32,7 @@ class ProgramSettings:
         # Display parameters
         settings = cnfg['settings']
         self.language = settings['language'] if settings['language'] else 'en'
+        self.locale = settings['locale'] if settings['locale'] else 'en_US'
 
         # Database parameters
         ddict = settings['database']
@@ -709,8 +709,13 @@ class SummaryPanel:
 
                 if existing_df.empty:  # row doesn't exist in database yet
                     success.append(user.insert(table, columns, values))
-                else:  # update existing values in table
-                    success.append(user.update(table, columns, values, filters))
+                else:  # update existing values in table (requires admin privileges)
+                    if user.admin:
+                        success.append(user.update(table, columns, values, filters))
+                    else:
+                        msg = 'Transaction {} already exists in the summary database'.format(ident)
+                        win2.popup_notice(msg)
+                        success.append(False)
 
         return all(success)
 
@@ -934,10 +939,13 @@ class SummaryItem:
         df = win2.edit_record(df, index, edit_columns, header_map=display_map, win_size=win_size)
         self.df = df
 
-    def format_display_table(self):
+    def format_display_table(self, date_offset: int = 0, date_fmt: str = '%d-%m-%Y'):
         """
         Format dataframe for displaying as a table.
         """
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
         display_columns = self.display_columns
         display_header = list(display_columns.keys())
         dataframe = self.df
@@ -949,6 +957,12 @@ class SummaryItem:
             col_rule = display_columns[col_name]
 
             col_to_add = dm.generate_column_from_rule(dataframe, col_rule)
+            dtype = col_to_add.dtype
+            if is_float_dtype(dtype):
+                col_to_add = col_to_add.apply('{:,.2f}'.format)
+            elif is_datetime_dtype(dtype):
+                #                col_to_add = col_to_add.apply(const.add_date_offset, args=(date_offset, date_fmt))
+                col_to_add = col_to_add.apply(lambda x: x.strftime(date_fmt) if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
@@ -1267,7 +1281,7 @@ class AuditParameterCombo(AuditParameter):
                   sg.Combo(values, font=font, key=key, enable_events=True,
                            size=(width, 1), pad=(0, (0, pad_v)))]
 
-        return (layout)
+        return layout
 
 
 class AuditParameterDate(AuditParameter):
@@ -1303,7 +1317,7 @@ class AuditParameterDate(AuditParameter):
                                     border_width=0, size=(2, 1), pad=(0, (0, pad_v)), font=font,
                                     tooltip=_('Select date from calendar menu'))]
 
-        return (layout)
+        return layout
 
     def set_value(self, values):
         """
@@ -1353,9 +1367,9 @@ class AuditParameterDate(AuditParameter):
 
         input_date = value.replace('-', '')
         if input_date and len(input_date) == 8:
-            return (True)
+            return True
         else:
-            return (False)
+            return False
 
 
 class AuditParameterDateRange(AuditParameterDate):
@@ -1396,7 +1410,7 @@ class AuditParameterDateRange(AuditParameterDate):
                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, size=(2, 1),
                                     pad=(0, (0, pad_v)), tooltip=_('Select date from calendar menu'))]
 
-        return (layout)
+        return layout
 
     def filter_statement(self, table=None):
         """
@@ -1410,7 +1424,7 @@ class AuditParameterDateRange(AuditParameterDate):
         params = (self.value, self.value2)
         statement = ('{} BETWEEN ? AND ?'.format(db_field), params)
 
-        return (statement)
+        return statement
 
     def set_value(self, values):
         """
@@ -1431,9 +1445,9 @@ class AuditParameterDateRange(AuditParameterDate):
         Check whether all values attributes have been set.
         """
         if self.value and self.value2:
-            return (True)
+            return True
         else:
-            return (False)
+            return False
 
 
 def format_date_element(date_str):
@@ -1455,7 +1469,7 @@ def format_date_element(date_str):
         else:
             buff.append(char)
 
-    return (''.join(buff))
+    return ''.join(buff)
 
 
 def format_date_str(date_str):

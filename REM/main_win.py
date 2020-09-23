@@ -653,7 +653,7 @@ def main():
                     tab.df = df  # update tab data
                     print('Info: dtypes of {NAME} are:\r {DTYPES}'.format(NAME=tab.name, DTYPES=df.dtypes))
                     tab.update_id_components(rule_params)
-                    tab.update_table(window)  # display tab data in table
+                    tab.update_table(window, settings)  # display tab data in table
                     tab.update_summary(window)  # summarize individual tab data
 
                     # Enable / disable action buttons
@@ -695,7 +695,7 @@ def main():
                 tab.df.drop(row, axis=0, inplace=True)
                 tab.df.reset_index(drop=True, inplace=True)
 
-                tab.update_table(window)
+                tab.update_table(window, settings)
                 tab.update_summary(window)
                 continue
 
@@ -740,7 +740,7 @@ def main():
                 tab.df = df
 
                 # Update display table
-                tab.update_table(window)
+                tab.update_table(window, settings)
                 tab.update_summary(window)
                 continue
 
@@ -755,7 +755,7 @@ def main():
 
                 # Update information elements - most actions modify tab data 
                 # in some way.
-                tab.update_table(window)
+                tab.update_table(window, settings)
                 tab.update_summary(window)
 
             # Enable movement to the next tab

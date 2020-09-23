@@ -154,7 +154,8 @@ def fill_na(df, colname=None):
             continue
 #            df[column].fillna('nan', inplace=True)
         elif is_datetime_dtype(dtype):
-            df[column] = df[column].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else 'nan')
+            continue
+#            df[column] = df[column].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else 'nan')
         elif is_bool_dtype(dtype):
             df[column].fillna(False, inplace=True)
         else:  # empty df?

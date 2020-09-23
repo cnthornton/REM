@@ -243,9 +243,13 @@ class TabItem:
 
         return col_name
 
-    def format_display_table(self, dataframe):
+    def format_display_table(self, dataframe, date_offset: int = 0, date_fmt: str = '%d-%m-%Y'):
         """
+        Format dataframe for displaying in GUI
         """
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
         display_columns = self.display_columns
         display_header = list(display_columns.keys())
         display_df = pd.DataFrame()
@@ -255,6 +259,12 @@ class TabItem:
             col_rule = display_columns[col_name]
 
             col_to_add = dm.generate_column_from_rule(dataframe, col_rule)
+            dtype = col_to_add.dtype
+            if is_float_dtype(dtype):
+                col_to_add = col_to_add.apply('{:,.2f}'.format)
+            elif is_datetime_dtype(dtype):
+#                col_to_add = col_to_add.apply(const.add_date_offset, args=(date_offset, date_fmt))
+                col_to_add = col_to_add.apply(lambda x: x.strftime(date_fmt) if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
@@ -276,19 +286,22 @@ class TabItem:
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
-        return dm.fill_na(display_df)
+        return display_df
 
-    def update_table(self, window):
+    def update_table(self, window, settings):
         """
         Update Table element with data
         """
         tbl_error_col = const.TBL_ERROR_COL
         tbl_key = self.key_lookup('Table')
 
+        # Localization specific options
+        date_offset = const.get_date_offset(settings)
+
         # Modify table for displaying
         df = dm.sort_table(self.df, self.db_key)
 
-        display_df = self.format_display_table(df)
+        display_df = self.format_display_table(df, date_offset=date_offset)
         data = display_df.values.tolist()
 
         window[tbl_key].update(values=data)
