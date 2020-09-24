@@ -5,7 +5,7 @@ REM main program. Includes primary display.
 import datetime
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
-import REM.configuration as config
+import REM.audit as audit
 import REM.data_manipulation as dm
 from REM.initialize_settings import cnfg, settings
 import REM.layouts as lo
@@ -193,6 +193,28 @@ def resize_elements(window, audit_rules, win_size: tuple = None):
         audit_rule.resize_elements(window, win_size=win_size)
 
 
+def format_date_element(date_str):
+    """
+    Forces user input to date element to be in ISO format.
+    """
+    buff = []
+    for index, char in enumerate(date_str):
+        if index == 3:
+            if len(date_str) != 4:
+                buff.append('{}-'.format(char))
+            else:
+                buff.append(char)
+        elif index == 5:
+            if len(date_str) != 6:
+                buff.append('{}-'.format(char))
+            else:
+                buff.append(char)
+        else:
+            buff.append(char)
+
+    return ''.join(buff)
+
+
 def reset_to_default(window, rule):
     """
     Reset main window to program defaults.
@@ -300,7 +322,7 @@ def main():
         current_h = screen_h
 
     # Configure GUI layout
-    audit_rules = config.AuditRules(cnfg)
+    audit_rules = audit.AuditRules(cnfg)
     toolbar = ToolBar(audit_rules)
     layout = [toolbar.layout(win_size=(current_w, current_h)),
               get_panels(audit_rules, win_size=(current_w, current_h))]
@@ -328,6 +350,7 @@ def main():
     window = sg.Window('REM Tila', layout, icon=settings.logo, font=('Arial', 12), size=(current_w, current_h),
                        resizable=True, return_keyboard_events=True)
     window.finalize()
+    window.maximize()
     print('Info: starting up')
 
     screen_w, screen_h = window.get_screen_dimensions()
@@ -475,11 +498,13 @@ def main():
             debug_win.finalize()
             print('Info: starting debugger')
         elif debug_win:
-            debug_event, debug_value = debug_win.read(timeout=100)
+            debug_event, debug_value = debug_win.read(timeout=1000)
 
             if debug_event == sg.WIN_CLOSED:
                 debug_win.close()
                 debug_win = None
+            else:
+                debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
 
         if not audit_in_progress and event in cancel_keys:
             current_panel = reset_to_default(window, rule)
@@ -543,28 +568,28 @@ def main():
                 window[date_key].update(value=input_value.strftime('%Y-%m-%d'))
                 continue
 
-            if len(input_value) > 8:  # don't go beyond acceptible size
-                date_str_fmt = config.format_date_element(date_str)
+            if len(input_value) > 8:  # don't go beyond acceptable size
+                date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
                 continue
 
             if input_value and not input_value.isnumeric():
-                date_str_fmt = config.format_date_element(date_str)
+                date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
                 continue
 
             if len(input_value) > len(date_str):  # add character
                 date_str.append(input_value[-1])
 
-                date_str_fmt = config.format_date_element(date_str)
+                date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
             elif len(input_value) < len(date_str):  # remove character
                 removed_char = date_str.pop()
 
-                date_str_fmt = config.format_date_element(date_str)
+                date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
             else:
-                date_str_fmt = config.format_date_element(date_str)
+                date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
 
         # Start the selected audit
@@ -743,6 +768,9 @@ def main():
 
                 # Update summary tables with the current audit's parameter values
                 rule_summ.update_parameters(window, rule)
+
+                # Update summary totals with tab summary totals
+                rule_summ.update_totals(window, rule)
 
                 # update summary elements with mapped tab values
                 rule_summ.update_tables(rule, params)

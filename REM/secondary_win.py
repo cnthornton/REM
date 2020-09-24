@@ -74,7 +74,7 @@ def verify_row(self, row_index):
 
 
 # Windows
-def debugger(win_size: tuple = (1920, 1080)):
+def debugger():
     """
     Display the debugger window.
     """
@@ -84,9 +84,9 @@ def debugger(win_size: tuple = (1920, 1080)):
     main_font = const.MAIN_FONT
 
     # GUI layout
-    layout = [[sg.Output(size=(60, 20), pad=(pad_frame, pad_frame))]]
+    layout = [[sg.Output(key='-DEBUG-', size=(60, 20), pad=(pad_frame, pad_frame))]]
 
-    window = sg.Window('Debug', layout, font=main_font, modal=False)
+    window = sg.Window('Debug', layout, font=main_font, modal=False, resizable=True)
 
     return window
 
@@ -318,6 +318,90 @@ def import_window(df, win_size: tuple = None):
 def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = None):
     """
     Display window for user to modify the editable field in a record.
+    """
+    if win_size:
+        width, height = [i * 0.95 for i in win_size]
+    else:
+        width, height = (const.WIN_WIDTH * 0.95, const.WIN_HEIGHT * 0.95)
+
+    # Format dataframe as list for input into sg
+    row = df.iloc[index]
+    data = row.tolist()
+    print('data to modify {}'.format(data))
+    header = df.columns.values.tolist()
+    display_header = []
+    for column in header:
+        if column in header_map:
+            mapped_column = header_map[column]
+        else:
+            mapped_column = column
+        display_header.append(mapped_column)
+
+    print('with header {}'.format(header))
+    print('and display header {}'.format(display_header))
+
+    edit_keys = {}
+    edit_keys_mapped = {}
+    for column in edit_cols:
+        element_key = lo.as_key(column)
+        edit_keys[column] = element_key
+
+        try:
+            edit_keys_mapped[header_map[column]] = element_key
+        except KeyError:
+            edit_keys_mapped[column] = element_key
+
+    # Window and element size parameters
+    main_font = const.MAIN_FONT
+
+    pad_el = const.ELEM_PAD
+    pad_frame = const.FRAME_PAD
+
+    bg_col = const.ACTION_COL
+
+    # GUI layout
+    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
+                    lo.B2(_('Delete'), key='-DELETE-', pad=(pad_el, 0), tooltip=_('Permanently delete record')),
+                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                          tooltip=_('Save record'))]]
+
+    layout = [[sg.Col([[lo.create_etable_layout(data, display_header, edit_keys_mapped, height=height, width=width)]],
+                      background_color=bg_col, element_justification='c', pad=(pad_frame, pad_frame))],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+
+    window = sg.Window(_('Modify Record'), layout, font=main_font, modal=True, resizable=False)
+    window.finalize()
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            break
+
+        if event in (sg.WIN_CLOSED, '-DELETE-'):  # selected close-window or Cancel
+            df = df.drop(index, axis=0, inplace=True)
+            df.reset_index(drop=True, inplace=True)
+            break
+
+        if event == '-SAVE-':  # click 'Save' button
+            for column in edit_keys:
+                col_key = edit_keys[column]
+                field_val = values[col_key]
+
+                # Replace field value with modified value
+                df.at[index, column] = field_val
+
+            break
+
+    window.close()
+
+    return df
+
+
+def add_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = None):
+    """
+    Display window for user to add new record.
     """
     if win_size:
         width, height = [i * 0.95 for i in win_size]

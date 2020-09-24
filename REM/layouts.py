@@ -6,7 +6,7 @@ import dateutil
 import PySimpleGUI as sg
 import pandas as pd
 import re
-import REM.configuration as config
+import REM.audit as audit
 import REM.data_manipulation as dm
 from REM.initialize_settings import settings
 import REM.program_constants as const
@@ -101,12 +101,15 @@ class TabItem:
             summary_rules = tdict['SummaryRules']
         except KeyError:
             summary_rules = {}
-        for summary_rule in summary_rules:
-            if 'Reference' not in summary_rules[summary_rule]:
+        for summary_name in summary_rules:
+            summary_rule = summary_rules[summary_name]
+            if 'Reference' not in summary_rule:
                 msg = ('Configuration Error: tab {NAME}, rule {RULE}: the parameter "Reference" is required for '
                        'SummaryRule {SUMM}').format(NAME=name, RULE=rule_name, SUMM=summary_rule)
                 win2.popup_error(msg)
                 sys.exit(1)
+            if 'Title' not in summary_rule:
+                summary_rule['Title'] = summary_name
         self.summary_rules = summary_rules
 
         try:
@@ -316,6 +319,7 @@ class TabItem:
         self.nerr = len(errors)
         error_colors = [(i, tbl_error_col) for i in errors]
         window[tbl_key].update(row_colors=error_colors)
+        window.refresh()
 
     def update_id_components(self, parameters):
         """
@@ -442,6 +446,7 @@ class TabItem:
         for rule_name in summ_rules:
             summ_rule = summ_rules[rule_name]
             reference = summ_rule['Reference']
+            title = summ_rule['Title']
 
             # Subset df if subset rule provided
             if 'Subset' in summ_rule:
@@ -479,7 +484,8 @@ class TabItem:
 
             summary_total = eval(' '.join([str(i) for i in rule_values]))
 
-            outputs.append((rule_name, summary_total))
+            outputs.append((title, summary_total))
+            summ_rule['Total'] = summary_total
 
         summary_key = self.key_lookup('Summary')
         window[summary_key].update(value='\n'.join(['{}: {}'.format(*i) for i in outputs]))
@@ -628,7 +634,7 @@ class TabItem:
 
         # Search for errors in the transaction ID using ID format
         try:
-            date_cnfg = config.format_date_str(self.get_component('date')[1])
+            date_cnfg = audit.format_date_str(self.get_component('date')[1])
         except TypeError:
             date_cnfg = None
 

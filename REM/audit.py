@@ -510,6 +510,73 @@ class SummaryPanel:
         for summary_item in summary_items:
             summary_item.reset_attributes()
 
+    def update_totals(self, window, rule):
+        """
+        Populate totals table with audit tab summary totals.
+        """
+        operators = set('+-*/')
+
+        summary_items = self.summary_items
+        for summary_item in summary_items:
+            totals = summary_item.totals
+
+            totals_columns = totals['DisplayColumns']
+            totals_values = []
+            for column in totals_columns:
+                reference = totals_columns[column]
+
+                rule_values = []
+                for component in dm.parse_operation_string(reference):
+                    if component in operators:
+                        rule_values.append(component)
+                        continue
+
+                    try:  # component is numeric
+                        float(component)
+                    except ValueError:
+                        try:  # component is potentially a data table column
+                            ref_table, ref_col = component.split('.')
+                        except ValueError:  # unaccepted type
+                            print('Error: rule {RULE}, summary {NAME}: unknown data type {COMP} in mapping rule {REF}'
+                                  .format(RULE=self.rule_name, NAME=summary_item.name, COMP=component, REF=reference))
+                            rule_values.append(0)
+                            continue
+                        else:
+                            try:
+                                tab_summary = rule.fetch_tab(ref_table).summary
+                            except AttributeError:
+                                print('Error: rule {RULE}, summary {NAME}: tab item {TAB} not in list of Tabs'
+                                      .format(RULE=self.rule_name, NAME=summary_item.name, TAB=ref_table))
+                                rule_values.append(0)
+                                continue
+
+                            if ref_col in tab_summary:
+                                try:
+                                    rule_values.append(tab_summary[ref_col]['Total'])
+                                except KeyError:
+                                    rule_values.append(0)
+                            else:
+                                print('Error: rule {RULE}, summary {NAME}: column {COL} not found in tab {TAB} summary'
+                                      .format(RULE=self.rule_name, NAME=summary_item.name, COL=ref_col, TAB=ref_table))
+                                rule_values.append(0)
+
+                    else:
+                        rule_values.append(component)
+
+                try:
+                    summary_total = eval(' '.join([str(i) for i in rule_values]))
+                except Exception as e:
+                    print('Error: rule {RULE}, summary {NAME}: {ERR}'
+                          .format(RULE=self.rule_name, NAME=summary_item.name, ERR=e))
+                    summary_total = 0
+
+                print('Info: rule {RULE}, summary {NAME}: adding {SUMM} to column {COL}'
+                      .format(RULE=self.rule_name, NAME=summary_item.name, SUMM=summary_total, COL=column))
+                totals_values.append(summary_total)
+
+            totals_key = summary_item.key_lookup('Totals')
+            window[totals_key].update(totals_values)
+
     def update_parameters(self, window, rule):
         """
         Update summary title to include audit parameters.
@@ -572,36 +639,6 @@ class SummaryPanel:
 
         title_key = self.key_lookup('Title')
         window[title_key].update(value=summ_title)
-
-    def update_input_values(self, values):
-        """
-        Update summary values for an input column.
-        """
-        summary_items = self.summary_items
-
-        for summary_item in summary_items:
-            input_cols = summary_item.input_columns
-            for column in input_cols:
-                element_key = summary_item.key_lookup(column)
-                try:
-                    value = values[element_key]
-                except KeyError:
-                    print('Error: rule {RULE}, summary {NAME}: input {ELEM} not found in list of window elements'
-                          .format(RULE=self.rule_name, NAME=summary_item.name, ELEM=element_key))
-                    continue
-
-                try:
-                    value_fmt = float(value)
-                except ValueError:
-                    msg = _('Input {VAL} provided to {FIELD} should be a numeric value').format(VAL=value, FIELD=column)
-                    win2.popup_error(msg)
-                    value_fmt = 0
-
-                try:
-                    summary_item.df[column] = value_fmt
-                except KeyError:
-                    print('Error: rule {RULE}, summary {NAME}: parameter column {COL} not found in dataframe'
-                          .format(RULE=self.rule_name, NAME=summary_item.name, COL=column))
 
     def save_to_database(self, user):
         """
@@ -693,7 +730,8 @@ class SummaryItem:
         self.rule_name = rule_name
         self.name = name
         self.element_key = lo.as_key('{} {} Summary'.format(rule_name, name))
-        self.elements = ['Totals', 'Table', 'Fill', 'Add']
+        self.elements = ['Totals', 'Total', 'Table', 'Fill', 'Add']
+        self.type = None
 
         try:
             self.title = sdict['Title']
@@ -724,31 +762,38 @@ class SummaryItem:
             self.db_columns = all_columns
 
         try:
-            display_columns = sdict['DisplayColumns']
+            records = sdict['Records']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "DisplayColumns".') \
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Records".') \
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
-        else:
-            self.display_columns = display_columns
+        if 'DisplayColumns' not in records:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "DisplayColumns" '
+                    'in the "Records" parameter.').format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        if 'EditColumns' not in records:
+            records['EditColumns'] = []
+
+        self.records = records
 
         try:
-            map_cols = sdict['MappingColumns']
+            totals = sdict['Totals']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "MappingColumns".') \
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Totals".') \
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
-        else:
-            self.mapping_columns = map_cols
+        if 'DisplayColumns' not in totals:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "DisplayColumns" '
+                    'in the "Totals" parameter.').format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        if 'EditColumns' not in totals:
+            totals['EditColumns'] = []
 
-        try:
-            edit_cols = sdict['EditColumns']
-        except KeyError:
-            edit_cols = []
-        else:
-            self.edit_columns = edit_cols
+        self.totals = totals
 
         try:
             self.aliases = sdict['Aliases']
@@ -758,6 +803,8 @@ class SummaryItem:
         # Dynamic attributes
         header = [dm.get_column_from_header(i, all_columns) for i in all_columns]
         self.df = pd.DataFrame(index=[0], columns=header)
+
+        self.totals_df = None
 
     def key_lookup(self, element):
         """
@@ -781,8 +828,14 @@ class SummaryItem:
         else:
             width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
-        headers = list(self.display_columns.keys())
+        record_columns = self.records['DisplayColumns']
+        header = list(record_columns.keys())
+
+        totals_columns = self.totals['DisplayColumns']
+        totals_header = list(totals_columns.keys())
+
         tbl_key = self.key_lookup('Table')
+        totals_key = self.key_lookup('Totals')
         fill_key = self.key_lookup('Fill')
         element_key = self.element_key
 
@@ -790,7 +843,7 @@ class SummaryItem:
         # For every five-pixel increase in window size, increase tab size by one
         tab_pad = 120
         win_diff = width - const.WIN_WIDTH
-        tab_pad = tab_pad + (win_diff/5)
+        tab_pad = tab_pad + (win_diff / 5)
 
         tab_width = width - tab_pad if tab_pad > 0 else width
         height = height * 0.5
@@ -798,19 +851,25 @@ class SummaryItem:
 
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
 
-        fill = 832
         # for every ten pixel increase in window size, increase fill size by one
-        tab_fill = tab_width - fill if tab_width > fill else 0
-        window[fill_key].set_size((tab_fill, None))
+        window[fill_key].set_size((tab_width, None))
 
-        # Reset table column size
-        lengths = dm.calc_column_widths(headers, width=tab_width, pixels=True)
-        for col_index, col_name in enumerate(headers):
+        # Reset table column sizes
+        lengths = dm.calc_column_widths(header, width=tab_width, pixels=True)
+        for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
             window[tbl_key].Widget.column(col_name, width=col_width)
 
         window[tbl_key].expand((True, True))
         window[tbl_key].table_frame.pack(expand=True, fill='both')
+
+        lengths = dm.calc_column_widths(totals_header, width=tab_width, pixels=True)
+        for col_index, col_name in enumerate(totals_header):
+            col_width = lengths[col_index]
+            window[totals_key].Widget.column(col_name, width=col_width)
+
+        window[totals_key].expand((True, True))
+        window[totals_key].table_frame.pack(expand=True, fill='both')
 
         window.refresh()
 
@@ -825,47 +884,65 @@ class SummaryItem:
         else:
             width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
+        display_columns = self.records['DisplayColumns']
+        totals_columns = self.totals['DisplayColumns']
+
         # Window and element size parameters
         bg_col = const.ACTION_COL
-
-        pad_el = const.ELEM_PAD
         pad_frame = const.FRAME_PAD
-        font_l = const.LARGE_FONT
-        font_m = const.MID_FONT
 
-        display_columns = self.display_columns
         header = list(display_columns.keys())
-        ncol = len(header)
-        data = dm.create_empty_table(nrow=5, ncol=ncol)
+        totals_header = list(totals_columns.keys())
 
-        tab_width = width - 120 if width >= 200 else width
-        tab_fill = tab_width - 832 if tab_width > 832 else 0
+        totals_data = dm.create_empty_table(nrow=1, ncol=len(totals_header))
+        data = dm.create_empty_table(nrow=5, ncol=len(header))
+
+        # Set Tab size
+        tab_pad = 120
+        win_diff = width - const.WIN_WIDTH
+        tab_pad = tab_pad + (win_diff / 5)
+        tab_width = width - tab_pad if tab_pad > 0 else width
+        visible = True if self.type == 'Add' else False
 
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
         fill_key = self.key_lookup('Fill')
         add_key = self.key_lookup('Add')
-        layout = [[lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width)],
-                  [sg.Frame(_('Totals'), [[sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=totals_key,
-                                                        disabled=True, background_color=bg_col)]], font=font_l,
-                            pad=((pad_frame, 0), (0, pad_frame)), background_color=bg_col, element_justification='l'),
-                   sg.Canvas(key=fill_key, size=(tab_fill, 0), visible=True),
-                   lo.B2('Add', key=add_key, visible=False, pad=((0, pad_frame), 0))
-                   ]]
+        layout = [[lo.create_table_layout(totals_data, totals_header, totals_key, bind=True, height=height,
+                                          width=width)],
+                  [sg.Canvas(key=fill_key, size=(tab_width, 0), visible=True, background_color=bg_col)],
+                  [lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width)],
+                  [lo.B2('Add', key=add_key, visible=visible, pad=((0, pad_frame), 0))]]
 
         return layout
 
-    def edit_row(self, index, win_size: tuple = None):
+    def edit_row(self, index, element_key, win_size: tuple = None):
         """
         Edit row using modify record window
         """
-        df = self.df
-        edit_columns = self.edit_columns
-        display_columns = self.display_columns
+        if element_key == self.key_lookup('Table'):
+            parameter = self.records
+            df = self.df
+            table = 'records'
+        elif element_key == self.key_lookup('Totals'):
+            parameter = self.totals
+            df = self.totals_df
+            table = 'totals'
+        else:
+            raise KeyError('element key {} does not correspond to either the Totals or Records tables'
+                           .format(element_key))
+
+        display_columns = parameter['DisplayColumns']
+        edit_columns = parameter['EditColumns']
+
         display_map = {display_columns[i]: i for i in display_columns}
 
         df = win2.edit_record(df, index, edit_columns, header_map=display_map, win_size=win_size)
-        self.df = df
+
+        if table == 'records':
+            self.df = df
+        elif table == 'totals':
+            self.totals_df = df
 
     def format_display_table(self, date_fmt: str = '%d-%m-%Y'):
         """
@@ -876,7 +953,7 @@ class SummaryItem:
         is_float_dtype = pd.api.types.is_float_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
-        display_columns = self.display_columns
+        display_columns = self.records['DisplayColumns']
         display_header = list(display_columns.keys())
         dataframe = self.df
 
@@ -896,7 +973,7 @@ class SummaryItem:
             elif is_datetime_dtype(dtype):
                 col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
                                                          relativedelta(years=+date_offset)).strftime(date_fmt)
-                                                        if pd.notnull(x) else '')
+                if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
@@ -927,6 +1004,7 @@ class SummaryItemAdd(SummaryItem):
 
     def __init__(self, rule_name, name, sdict):
         super().__init__(rule_name, name, sdict)
+        self.type = 'Add'
 
     def reset_attributes(self):
         """
@@ -934,6 +1012,8 @@ class SummaryItemAdd(SummaryItem):
         """
         header = [dm.get_column_from_header(i, self.db_columns) for i in self.db_columns]
         self.df = pd.DataFrame(index=[0], columns=header)
+
+        self.totals_df = None
 
     def create_id(self, params):
         """
@@ -964,15 +1044,8 @@ class SummaryItemAdd(SummaryItem):
 
     def update_table(self, rule, params):
         """
-        Populate the summary item dataframe with values from the TabItem tables defined in the MappingColumns parameter.
+        Populate the summary item dataframe with added records.
         """
-        operators = set('+-*/')
-        is_numeric_dtype = pd.api.types.is_numeric_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-
-        mapping_columns = self.mapping_columns
         df = self.df
 
         print('Info: rule {RULE}, summary {NAME}: updating table'.format(RULE=self.rule_name, NAME=self.name))
@@ -981,72 +1054,6 @@ class SummaryItemAdd(SummaryItem):
         id_field = self.pkey
         ident = self.create_id(params)
         df[id_field] = ident
-
-        # Fill in values from mapping column
-        for mapping_column in mapping_columns:
-            if mapping_column not in self.db_columns:
-                print('Error: rule {RULE}, summary {NAME}: mapping column {COL} not in list of table columns'
-                      .format(RULE=self.rule_name, NAME=self.name, COL=mapping_column))
-                continue
-
-            reference = self.mapping_columns[mapping_column]
-
-            rule_values = []
-            for component in dm.parse_operation_string(reference):
-                if component in operators:
-                    rule_values.append(component)
-                    continue
-
-                try:  # component is numeric
-                    float(component)
-                except ValueError:
-                    try:  # component is potentially a data table column
-                        ref_table, ref_col = component.split('.')
-                    except ValueError:  # unaccepted type
-                        print('Error: rule {RULE}, summary {NAME}: unknown data type {COMP} in mapping rule {REF}'
-                              .format(RULE=self.rule_name, NAME=self.name, COMP=component, REF=reference))
-                        break
-                    else:
-                        try:
-                            tab_df = rule.fetch_tab(ref_table).df
-                        except AttributeError:
-                            print('Error: rule {RULE}, summary {NAME}: tab item {TAB} not in list of Tabs'
-                                  .format(RULE=self.rule_name, NAME=self.name, TAB=ref_table))
-                            break
-
-                        header = tab_df.columns.values.tolist()
-                        if ref_col in header:
-                            col_values = tab_df[ref_col]
-                            dtype = tab_df.dtypes[ref_col]
-                        elif ref_col.lower() in header:
-                            col_values = tab_df[ref_col.lower()]
-                            dtype = tab_df.dtypes[ref_col.lower()]
-                        else:
-                            print('Error: rule {RULE}, summary {NAME}: column {COL} not found in tab {TAB} header'
-                                  .format(RULE=self.rule_name, NAME=self.name, COL=ref_col, TAB=ref_table))
-                            break
-
-                        if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
-                            rule_values.append(col_values.sum())
-                        elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                            rule_values.append(col_values.nunique())
-                        else:
-                            print('Error: rule {RULE}, summary {NAME}: unknown data type {TYPE} for mapping reference '
-                                  '{COMP}'.format(RULE=self.rule_name, NAME=self.name, TYPE=dtype, COMP=component))
-                            break
-                else:
-                    rule_values.append(component)
-
-            try:
-                summary_total = eval(' '.join([str(i) for i in rule_values]))
-            except Exception as e:
-                print('Error: rule {RULE}, summary {NAME}: {ERR}'.format(RULE=self.rule_name, NAME=self.name, ERR=e))
-                summary_total = 0
-
-            print('Info: rule {RULE}, summary {NAME}: adding {SUMM} to column {COL}'
-                  .format(RULE=self.rule_name, NAME=self.name, SUMM=summary_total, COL=mapping_column))
-
-            df[mapping_column] = summary_total
 
         self.df = df
 
@@ -1057,8 +1064,27 @@ class SummaryItemSubset(SummaryItem):
 
     def __init__(self, rule_name, name, sdict):
         super().__init__(rule_name, name, sdict)
+        self.type = 'Subset'
 
-        self.reference_tables = sdict['ReferenceTables']
+        try:
+            reference_tables = sdict['ReferenceTables']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "ReferenceTables".') \
+                .format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.reference_tables = reference_tables
+
+        try:
+            map_cols = sdict['MappingColumns']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "MappingColumns".') \
+                .format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.mapping_columns = map_cols
 
         # Dynamic attributes
         header = [dm.get_column_from_header(i, self.db_columns) for i in self.db_columns]
@@ -1070,6 +1096,8 @@ class SummaryItemSubset(SummaryItem):
         """
         header = [dm.get_column_from_header(i, self.db_columns) for i in self.db_columns]
         self.df = pd.DataFrame(columns=header)
+
+        self.totals_df = None
 
     def update_table(self, rule, *args):
         """
@@ -1382,28 +1410,6 @@ class AuditParameterDateRange(AuditParameterDate):
             return True
         else:
             return False
-
-
-def format_date_element(date_str):
-    """
-    Forces user input to date element to be in ISO format.
-    """
-    buff = []
-    for index, char in enumerate(date_str):
-        if index == 3:
-            if len(date_str) != 4:
-                buff.append('{}-'.format(char))
-            else:
-                buff.append(char)
-        elif index == 5:
-            if len(date_str) != 6:
-                buff.append('{}-'.format(char))
-            else:
-                buff.append(char)
-        else:
-            buff.append(char)
-
-    return ''.join(buff)
 
 
 def format_date_str(date_str):
