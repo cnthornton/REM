@@ -512,7 +512,13 @@ class SummaryPanel:
 
             # Update summary totals elements
             total_key = summary_item.key_lookup('Total')
-            totals_sum = summary_item.totals_df.iloc[0].sum()
+            tally_rule = summary_item.totals['TallyRule']
+
+            if tally_rule:
+                totals_sum = dm.evaluate_rule(summary_item.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
+            else:
+                totals_sum = summary_item.totals_df.iloc[0].sum()
+
             window[total_key].update(value='{:,.2f}'.format(totals_sum))
 
             sum_column = summary_item.records['SumColumn']
@@ -638,10 +644,6 @@ class SummaryPanel:
                 df[column] = pd.to_numeric(df[column], downcast='float')
 
             summary_item.totals_df = df
-            print('dataframe is:')
-            print(summary_item.totals_df)
-            print('with dtypes:')
-            print(summary_item.totals_df.dtypes)
 
     def update_parameters(self, window, rule):
         """
@@ -863,6 +865,8 @@ class SummaryItem:
             totals['MappingColumns'] = {}
         if 'EditColumns' not in totals:
             totals['EditColumns'] = []
+        if 'TallyRule' not in totals:
+            totals['TallyRule'] = None
 
         self.totals = totals
 
@@ -1291,8 +1295,14 @@ class SummaryItemAdd(SummaryItem):
 
         # Update amount column
         sum_column = self.records['SumColumn']
-        totals_sum = self.totals_df.iloc[0].sum()
         df[sum_column] = pd.to_numeric(df[sum_column], downcast='float')
+
+        tally_rule = self.totals['TallyRule']
+        if tally_rule:
+            totals_sum = dm.evaluate_rule(self.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
+        else:
+            totals_sum = self.totals_df.iloc[0].sum()
+
         df.at[0, sum_column] = totals_sum
 
         self.df = df
