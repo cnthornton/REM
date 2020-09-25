@@ -21,7 +21,7 @@ Copyright:
 from setuptools import setup
 
 setup(name='REM',
-      version='0.4.1',
+      version='0.4.2',
       packages=['REM', ],
       description='',
       classifiers=[
@@ -45,7 +45,7 @@ setup(name='REM',
       install_requires=['numpy', 'pandas', 'PySimpleGUI', 'pyodbc'],
       entry_points={
           'console_scripts': [
-              'REM = REM.main_win:main',
+              'REM = REM.main:main',
           ]
       }
       )

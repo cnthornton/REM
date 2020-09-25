@@ -13,6 +13,8 @@ CANCEL_BUTTON_COL = '#FF6C5C'
 TEXT_COL = '#000000'
 WHITE_TEXT_COL = '#FFFFFF'
 HELP_TEXT_COL = '#616161'
+PASS_COL = '#94FA92'
+FAIL_COL = '#FF6C5C'
 
 # Element padding
 FRAME_PAD = 20
@@ -27,15 +29,16 @@ B3_SIZE = 31
 IN1_SIZE = 20
 
 # Text
-HEADER_FONT = ('Arial', 14, 'bold')
-
 MAIN_FONT = ('Arial', 12)
 BOLD_FONT = ('Arial', 12, 'bold')
 IT_FONT = ('Arial', 12, 'italic')
 
 SMALL_FONT = ('Arial', 9)
+BOLD_SMALL_FONT = ('Arial', 9, 'bold')
 MID_FONT = ('Arial', 13)
+BOLD_MID_FONT = ('Arial', 13, 'bold')
 LARGE_FONT = ('Arial', 14)
+HEADER_FONT = BOLD_LARGE_FONT = ('Arial', 14, 'bold')
 
 # Window initial dimensions
 WIN_HEIGHT = 800

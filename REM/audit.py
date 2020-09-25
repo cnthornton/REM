@@ -8,10 +8,10 @@ import pandas as pd
 import PySimpleGUI as sg
 import re
 import REM.data_manipulation as dm
-from REM.initialize_settings import settings
+from REM.config import settings
 import REM.layouts as lo
 import REM.program_constants as const
-import REM.secondary_win as win2
+import REM.secondary as win2
 import sys
 
 
@@ -275,11 +275,9 @@ class AuditRule:
         # Tab elements
         tabgroub_key = self.key_lookup('TG')
         audit_layout = [sg.TabGroup([lo.tab_layout(self.tabs, win_size=win_size)],
-                                    pad=(pad_v, (pad_frame, pad_v)),
-                                    tab_background_color=inactive_col,
-                                    selected_title_color=text_col,
-                                    selected_background_color=bg_col,
-                                    background_color=default_col, key=tabgroub_key)]
+                                    key= tabgroub_key, pad=(pad_v, (pad_frame, pad_v)),
+                                    tab_background_color=inactive_col, selected_title_color=text_col,
+                                    selected_background_color=bg_col, background_color=default_col)]
         layout_els.append(audit_layout)
 
         # Standard elements
@@ -483,16 +481,51 @@ class SummaryPanel:
 
     def format_tables(self, window):
         """
-        Format summary item tables for display.
+        Format summary item tables for display. Also update sum and remainder elements.
         """
+        default_col = const.ACTION_COL
+        greater_col = const.PASS_COL
+        lesser_col = const.FAIL_COL
+
         summary_items = self.summary_items
         for summary_item in summary_items:
-            # Modify tables for displaying
-            display_df = summary_item.format_display_table()
+            # Modify records tables for displaying
+            print('Info: rule {RULE}, summary {NAME}: formatting records table for displaying'
+                  .format(RULE=self.rule_name, NAME=summary_item.name))
+            print(summary_item.df)
+            display_df = summary_item.format_display_table(table='records')
             data = display_df.values.tolist()
 
             tbl_key = summary_item.key_lookup('Table')
             window[tbl_key].update(values=data)
+
+            # Modify records tables for displaying
+            print('Info: rule {RULE}, summary {NAME}: formatting totals table for displaying'
+                  .format(RULE=self.rule_name, NAME=summary_item.name))
+            print(summary_item.totals_df)
+            totals_display_df = summary_item.format_display_table(table='totals')
+            totals_data = totals_display_df.values.tolist()
+
+            totals_key = summary_item.key_lookup('Totals')
+            window[totals_key].update(values=totals_data)
+
+            # Update summary totals elements
+            total_key = summary_item.key_lookup('Total')
+            totals_sum = summary_item.totals_df.iloc[0].sum()
+            window[total_key].update(value='{:,.2f}'.format(totals_sum))
+
+            sum_column = summary_item.records['SumColumn']
+            records_sum = summary_item.df[sum_column].sum()
+            remainder = totals_sum - records_sum
+            if remainder > 0:
+                bg_color = greater_col
+            elif remainder < 0:
+                bg_color = lesser_col
+            else:
+                bg_color = default_col
+
+            remain_key = summary_item.key_lookup('Remainder')
+            window[remain_key].update(value='{:,.2f}'.format(remainder), background_color=bg_color)
 
     def update_tables(self, rule, *args):
         """
@@ -502,15 +535,27 @@ class SummaryPanel:
         for summary_item in summary_items:
             summary_item.update_table(rule, *args)
 
-    def reset_tables(self):
+    def reset_attributes(self):
         """
-        Reset summary item tables.
+        Reset summary item attributes.
         """
         summary_items = self.summary_items
         for summary_item in summary_items:
+            # Reset summary item attributes
             summary_item.reset_attributes()
 
-    def update_totals(self, window, rule):
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Resize summary items tables
+        """
+        win_size = win_size if win_size else window.size
+
+        summary_items = self.summary_items
+        for summary_item in summary_items:
+            # Reset summary item attributes
+            summary_item.resize_elements(window, win_size=win_size)
+
+    def update_totals(self, rule):
         """
         Populate totals table with audit tab summary totals.
         """
@@ -518,12 +563,23 @@ class SummaryPanel:
 
         summary_items = self.summary_items
         for summary_item in summary_items:
+            name = summary_item.name
             totals = summary_item.totals
+            df = summary_item.totals_df
 
-            totals_columns = totals['DisplayColumns']
-            totals_values = []
-            for column in totals_columns:
-                reference = totals_columns[column]
+            db_columns = totals['TableColumns']
+            mapping_columns = totals['MappingColumns']
+            edit_columns = totals['EditColumns']
+            for column in db_columns:
+                try:
+                    reference = mapping_columns[column]
+                except KeyError:
+                    if column not in edit_columns:
+                        print('Error: rule {RULE}, summary {NAME}: column {COL} not found in either mapping columns or '
+                              'edit columns'.format(RULE=self.rule_name, NAME=name, COL=column))
+                    df.at[0, column] = 0
+                    df[column] = pd.to_numeric(df[column], downcast='float')
+                    continue
 
                 rule_values = []
                 for component in dm.parse_operation_string(reference):
@@ -537,16 +593,20 @@ class SummaryPanel:
                         try:  # component is potentially a data table column
                             ref_table, ref_col = component.split('.')
                         except ValueError:  # unaccepted type
-                            print('Error: rule {RULE}, summary {NAME}: unknown data type {COMP} in mapping rule {REF}'
-                                  .format(RULE=self.rule_name, NAME=summary_item.name, COMP=component, REF=reference))
-                            rule_values.append(0)
-                            continue
+                            if component in edit_columns:
+                                rule_values.append(0)
+                                continue
+                            else:
+                                print('Error: rule {RULE}, summary {NAME}: unknown data type {COMP} in rule {REF}'
+                                      .format(RULE=self.rule_name, NAME=name, COMP=component, REF=reference))
+                                rule_values.append(0)
+                                continue
                         else:
                             try:
-                                tab_summary = rule.fetch_tab(ref_table).summary
+                                tab_summary = rule.fetch_tab(ref_table).summary_rules
                             except AttributeError:
                                 print('Error: rule {RULE}, summary {NAME}: tab item {TAB} not in list of Tabs'
-                                      .format(RULE=self.rule_name, NAME=summary_item.name, TAB=ref_table))
+                                      .format(RULE=self.rule_name, NAME=name, TAB=ref_table))
                                 rule_values.append(0)
                                 continue
 
@@ -557,7 +617,7 @@ class SummaryPanel:
                                     rule_values.append(0)
                             else:
                                 print('Error: rule {RULE}, summary {NAME}: column {COL} not found in tab {TAB} summary'
-                                      .format(RULE=self.rule_name, NAME=summary_item.name, COL=ref_col, TAB=ref_table))
+                                      .format(RULE=self.rule_name, NAME=name, COL=ref_col, TAB=ref_table))
                                 rule_values.append(0)
 
                     else:
@@ -571,11 +631,16 @@ class SummaryPanel:
                     summary_total = 0
 
                 print('Info: rule {RULE}, summary {NAME}: adding {SUMM} to column {COL}'
-                      .format(RULE=self.rule_name, NAME=summary_item.name, SUMM=summary_total, COL=column))
-                totals_values.append(summary_total)
+                      .format(RULE=self.rule_name, NAME=name, SUMM=summary_total, COL=column))
 
-            totals_key = summary_item.key_lookup('Totals')
-            window[totals_key].update(totals_values)
+                df.at[0, column] = summary_total
+                df[column] = pd.to_numeric(df[column], downcast='float')
+
+            summary_item.totals_df = df
+            print('dataframe is:')
+            print(summary_item.totals_df)
+            print('with dtypes:')
+            print(summary_item.totals_df.dtypes)
 
     def update_parameters(self, window, rule):
         """
@@ -592,22 +657,23 @@ class SummaryPanel:
         title_params = {}
         for param in params:
             param_col = param.name
-            value = param.value_raw
+            value = param.value_obj
 
-            if param_col in aliases:
-                try:
-                    final_val = aliases[param_col][value]
-                except KeyError:
-                    print('Warning: rule {RULE}, Summary: value {VAL} not found in alias list for alias {ALIAS}'
-                          .format(RULE=self.rule_name, VAL=value, ALIAS=param_col))
-                    final_val = value
-            else:
-                final_val = value
-            print('Info: rule {RULE}, Summary: value for summary parameter {PARAM} is {VAL} with alias {ALIAS}'
-                  .format(RULE=self.rule_name, PARAM=param_col, VAL=value, ALIAS=final_val))
+            print('Info: rule {RULE}, Summary: value for summary parameter {PARAM} is {VAL}'
+                  .format(RULE=self.rule_name, PARAM=param_col, VAL=value))
 
             # Check if parameter composes part of title
             if param_col in title_components:
+                if param_col in aliases:
+                    try:
+                        final_val = aliases[param_col][value]
+                    except KeyError:
+                        print('Warning: rule {RULE}, Summary: value {VAL} not found in alias list for alias {ALIAS}'
+                              .format(RULE=self.rule_name, VAL=value, ALIAS=param_col))
+                        final_val = value
+                else:
+                    final_val = value
+
                 print('Info: rule {RULE}, Summary: adding parameter value {VAL} to title'
                       .format(RULE=self.rule_name, VAL=final_val))
 
@@ -621,11 +687,15 @@ class SummaryPanel:
 
             # Update SummaryItem tables with parameter value
             for summary_item in self.summary_items:
+                # Update table value
                 try:
-                    summary_item.df[param_col] = final_val
+                    summary_item.df[param_col] = value
                 except KeyError:
                     print('Error: rule {RULE}, summary {SUMM}: parameter column {COL} not found in dataframe'
                           .format(RULE=self.rule_name, SUMM=summary_item.name, COL=param))
+
+                # Update identifier components
+                summary_item.update_id_components(params)
 
         try:
             summ_title = self.title.format(**title_params)
@@ -730,7 +800,7 @@ class SummaryItem:
         self.rule_name = rule_name
         self.name = name
         self.element_key = lo.as_key('{} {} Summary'.format(rule_name, name))
-        self.elements = ['Totals', 'Total', 'Table', 'Fill', 'Add']
+        self.elements = ['Totals', 'Table', 'Fill', 'Add', 'Total', 'Remainder']
         self.type = None
 
         try:
@@ -749,17 +819,7 @@ class SummaryItem:
         try:
             self.id_format = re.findall(r'\{(.*?)\}', sdict['IDFormat'])
         except KeyError:
-            self.id_format = None
-
-        try:
-            all_columns = sdict['TableColumns']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns".') \
-                .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        else:
-            self.db_columns = all_columns
+            self.id_format = []
 
         try:
             records = sdict['Records']
@@ -768,6 +828,20 @@ class SummaryItem:
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
+        if 'TableColumns' not in records:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns" '
+                    'in the "Records" parameter.').format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        if 'SumColumn' not in records:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "SumColumn" '
+                    'in the "Records" parameter.').format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        if 'MappingColumns' not in records:
+            records['MappingColumns'] = {}
+        if 'ReferenceTables' not in records:
+            records['ReferenceTables'] = {}
         if 'DisplayColumns' not in records:
             msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "DisplayColumns" '
                     'in the "Records" parameter.').format(RULE=rule_name, NAME=name)
@@ -785,6 +859,13 @@ class SummaryItem:
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
+        if 'TableColumns' not in totals:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns" '
+                    'in the "Totals" parameter.').format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        if 'MappingColumns' not in totals:
+            totals['MappingColumns'] = {}
         if 'DisplayColumns' not in totals:
             msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "DisplayColumns" '
                     'in the "Totals" parameter.').format(RULE=rule_name, NAME=name)
@@ -801,10 +882,16 @@ class SummaryItem:
             self.aliases = []
 
         # Dynamic attributes
-        header = [dm.get_column_from_header(i, all_columns) for i in all_columns]
+        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
         self.df = pd.DataFrame(index=[0], columns=header)
 
-        self.totals_df = None
+        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
+                         for i in self.totals["TableColumns"]]
+        self.totals_df = pd.DataFrame(index=[0], columns=totals_header)
+
+        self.ids = []
+
+        self.id_components = []
 
     def key_lookup(self, element):
         """
@@ -819,6 +906,62 @@ class SummaryItem:
 
         return key
 
+    def update_id_components(self, parameters):
+        """
+        """
+        id_format = self.id_format
+        self.id_components = []
+
+        last_index = 0
+        print('Info: tab {NAME}, rule {RULE}: ID is formatted as {FORMAT}'
+              .format(NAME=self.name, RULE=self.rule_name, FORMAT=id_format))
+        param_fields = [i.name for i in parameters]
+        for component in id_format:
+            if len(component) > 1 and set(component).issubset(set('YMD-/ ')):  # component is datestr
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('date', component, index)
+            elif component in param_fields:
+                param = parameters[param_fields.index(component)]
+                value = param.value
+                component_len = len(value)
+                index = (last_index, last_index + component_len)
+                part_tup = (component, value, index)
+            elif component.isnumeric():  # component is an incrementing number
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('variable', component_len, index)
+            else:  # unknown component type, probably separator
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('separator', component, index)
+
+            self.id_components.append(part_tup)
+
+            last_index += component_len
+
+        print('Info: tab {NAME}, rule {RULE}: ID updated with components {COMP}'
+              .format(NAME=self.name, RULE=self.rule_name, COMP=self.id_components))
+
+    def get_id_component(self, identifier, component):
+        """
+        Extract the specified component values from the provided identifier.
+        """
+        comp_value = ''
+        for id_component in self.id_components:
+            comp_name, comp_value, comp_index = id_component
+
+            if component == comp_name:
+                try:
+                    comp_value = identifier[comp_index[0]: comp_index[1]]
+                except IndexError:
+                    print('Warning: ID component {COMP} cannot be found in identifier {IDENT}'
+                          .format(COMP=component, IDENT=identifier))
+
+                break
+
+        return comp_value
+
     def resize_elements(self, window, win_size: tuple = None):
         """
         Reset Table Columns widths to default when resized.
@@ -827,12 +970,6 @@ class SummaryItem:
             width, height = win_size
         else:
             width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
-
-        record_columns = self.records['DisplayColumns']
-        header = list(record_columns.keys())
-
-        totals_columns = self.totals['DisplayColumns']
-        totals_header = list(totals_columns.keys())
 
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
@@ -847,14 +984,18 @@ class SummaryItem:
 
         tab_width = width - tab_pad if tab_pad > 0 else width
         height = height * 0.5
-        nrows = int(height / 40)
+        nrows = int(height / 60)
 
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
 
+        fill = 278
         # for every ten pixel increase in window size, increase fill size by one
-        window[fill_key].set_size((tab_width, None))
+        tab_fill = tab_width - fill if tab_width > fill else 0
+        window[fill_key].set_size((tab_fill, None))
 
         # Reset table column sizes
+        record_columns = self.records['DisplayColumns']
+        header = list(record_columns.keys())
         lengths = dm.calc_column_widths(header, width=tab_width, pixels=True)
         for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
@@ -863,6 +1004,8 @@ class SummaryItem:
         window[tbl_key].expand((True, True))
         window[tbl_key].table_frame.pack(expand=True, fill='both')
 
+        totals_columns = self.totals['DisplayColumns']
+        totals_header = list(totals_columns.keys())
         lengths = dm.calc_column_widths(totals_header, width=tab_width, pixels=True)
         for col_index, col_name in enumerate(totals_header):
             col_width = lengths[col_index]
@@ -877,7 +1020,7 @@ class SummaryItem:
 
     def layout(self, win_size: tuple = None):
         """
-        GUI layout for the tab item.
+        GUI layout for the summary item.
         """
         if win_size:
             width, height = win_size
@@ -889,7 +1032,12 @@ class SummaryItem:
 
         # Window and element size parameters
         bg_col = const.ACTION_COL
+        font = const.MID_FONT
+        font_b = const.BOLD_MID_FONT
         pad_frame = const.FRAME_PAD
+        pad_el = const.ELEM_PAD
+
+        tbl_pad = (pad_frame, (pad_el, pad_frame))
 
         header = list(display_columns.keys())
         totals_header = list(totals_columns.keys())
@@ -902,17 +1050,36 @@ class SummaryItem:
         win_diff = width - const.WIN_WIDTH
         tab_pad = tab_pad + (win_diff / 5)
         tab_width = width - tab_pad if tab_pad > 0 else width
-        visible = True if self.type == 'Add' else False
+
+        fill = 278
+        tab_fill = tab_width - fill if tab_width > fill else 0
+        disabled = False if self.type == 'Add' else True
 
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
         fill_key = self.key_lookup('Fill')
         add_key = self.key_lookup('Add')
-        layout = [[lo.create_table_layout(totals_data, totals_header, totals_key, bind=True, height=height,
-                                          width=width)],
-                  [sg.Canvas(key=fill_key, size=(tab_width, 0), visible=True, background_color=bg_col)],
-                  [lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width)],
-                  [lo.B2('Add', key=add_key, visible=visible, pad=((0, pad_frame), 0))]]
+        remain_key = self.key_lookup('Remainder')
+        total_key = self.key_lookup('Total')
+        layout = [[sg.Col([[sg.Text('Totals', pad=(0, (pad_frame, pad_el)), font=font_b, background_color=bg_col)]],
+                          justification='c', background_color=bg_col)],
+                  [lo.create_table_layout(totals_data, totals_header, totals_key, bind=True, height=height,
+                                          width=width, nrow=1, pad=tbl_pad)],
+                  [sg.Text('Total:', size=(10, 1), pad=((pad_frame, pad_el), (0, pad_frame)), font=font_b,
+                           background_color=bg_col, justification='r'),
+                   sg.Text('', key=total_key, size=(14, 1), pad=(0, (0, pad_frame)), font=font,
+                           background_color=bg_col, justification='r', relief='sunken')],
+                  [sg.Canvas(size=(0, 20), visible=True, background_color=bg_col)],
+                  [sg.Col([[sg.Text('Records', pad=(0, (0, pad_el)), background_color=bg_col, font=font_b)]],
+                          justification='c', background_color=bg_col)],
+                  [lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width, pad=tbl_pad)],
+                  [sg.Text('Remainder:', size=(10, 1), pad=((pad_frame, pad_el), (0, pad_frame)), font=font_b,
+                           background_color=bg_col, justification='r'),
+                   sg.Text('', key=remain_key, size=(14, 1), pad=(0, (0, pad_frame)), font=font,
+                           background_color=bg_col, justification='r', relief='sunken'),
+                   sg.Canvas(key=fill_key, size=(tab_fill, 0), visible=True, background_color=bg_col),
+                   lo.B2('Add', key=add_key, pad=((0, pad_frame), (0, pad_frame)), disabled=disabled)],
+                  [sg.Canvas(size=(0, 20), visible=True, background_color=bg_col)]]
 
         return layout
 
@@ -944,7 +1111,7 @@ class SummaryItem:
         elif table == 'totals':
             self.totals_df = df
 
-    def format_display_table(self, date_fmt: str = '%d-%m-%Y'):
+    def format_display_table(self, table: str = 'records', date_fmt: str = '%d-%m-%Y'):
         """
         Format dataframe for displaying as a table.
         """
@@ -953,9 +1120,14 @@ class SummaryItem:
         is_float_dtype = pd.api.types.is_float_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
-        display_columns = self.records['DisplayColumns']
-        display_header = list(display_columns.keys())
-        dataframe = self.df
+        if table == 'records':
+            dataframe = self.df
+            display_columns = self.records['DisplayColumns']
+            display_header = list(display_columns.keys())
+        else:
+            dataframe = self.totals_df
+            display_columns = self.totals['DisplayColumns']
+            display_header = list(display_columns.keys())
 
         # Localization specific options
         date_offset = settings.get_date_offset()
@@ -995,7 +1167,7 @@ class SummaryItem:
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
-        return dm.fill_na(display_df)
+        return display_df
 
 
 class SummaryItemAdd(SummaryItem):
@@ -1006,43 +1178,70 @@ class SummaryItemAdd(SummaryItem):
         super().__init__(rule_name, name, sdict)
         self.type = 'Add'
 
+        # Dynamic attributes
+        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
+        self.df = pd.DataFrame(index=[0], columns=header)
+
+        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
+                         for i in self.totals["TableColumns"]]
+        self.totals_df = pd.DataFrame(index=[0], columns=totals_header)
+
     def reset_attributes(self):
         """
         Reset Summary values.
         """
-        header = [dm.get_column_from_header(i, self.db_columns) for i in self.db_columns]
+        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
         self.df = pd.DataFrame(index=[0], columns=header)
 
-        self.totals_df = None
+        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
+                         for i in self.totals["TableColumns"]]
+        self.totals_df = pd.DataFrame(index=[0], columns=totals_header)
 
-    def create_id(self, params):
+        self.ids = []
+        self.id_components = []
+
+    def create_id(self, rule):
         """
         """
-        param_fields = [i.name for i in params]
+        param_fields = [i.name for i in rule.parameters]
 
         id_parts = []
         for component in self.id_format:
             if len(component) > 1 and set(component).issubset(set('YMD-/ ')):  # component is datestr
-                date_fmt = format_date_str(component)
-                id_parts.append(datetime.datetime.now().strftime(date_fmt))
+                date_fmt = settings.format_date_str(date_str=component)
+
+                date_param = rule.fetch_parameter('date', by_type=True)
+                if date_param:
+                    date = settings.apply_date_offset(date_param.value_obj)
+                else:
+                    date = datetime.datetime.now()
+
+                id_parts.append(date.strftime(date_fmt))
             elif component in param_fields:
-                param = params[param_fields.index(component)]
+                param = rule.fetch_parameter(component)
                 if isinstance(param.value_obj, datetime.datetime):
                     value = param.value_obj.strftime('%Y%m%d')
                 else:
                     value = param.value
                 id_parts.append(value)
-            #            elif component.isnumeric():  # component is an incrementing number
-            # Get last value from database
-            #                value = query_database()
-            # Append to id parts list
-            #                id_parts.append(value.zfill(len(component)))
-            else:  # unknown component type, probably separator
+            elif component.isnumeric():  # component is an incrementing number
+                # Increment last ID by one
+                if self.ids:  # search summary ids for most recent id
+                    last_id = self.ids[-1]
+                    last_var = self.get_id_component(last_id, 'variable')
+                else:  # search database for most recent id
+                    last_var = 0
+
+                current_var = str(last_var + 1)
+
+                # Append to id parts list
+                id_parts.append(current_var.zfill(len(component)))
+            else:  # unknown component type, probably separator or constant
                 id_parts.append(component)
 
         return ''.join(id_parts)
 
-    def update_table(self, rule, params):
+    def update_table(self, rule):
         """
         Populate the summary item dataframe with added records.
         """
@@ -1052,8 +1251,15 @@ class SummaryItemAdd(SummaryItem):
 
         # Create primary key for row
         id_field = self.pkey
-        ident = self.create_id(params)
+        ident = self.create_id(rule)
         df[id_field] = ident
+        self.ids.append(ident)
+
+        # Update amount column
+        sum_column = self.records['SumColumn']
+        totals_sum = self.totals_df.iloc[0].sum()
+        df[sum_column] = pd.to_numeric(df[sum_column], downcast='float')
+        df.at[0, sum_column] = totals_sum
 
         self.df = df
 
@@ -1066,49 +1272,41 @@ class SummaryItemSubset(SummaryItem):
         super().__init__(rule_name, name, sdict)
         self.type = 'Subset'
 
-        try:
-            reference_tables = sdict['ReferenceTables']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "ReferenceTables".') \
-                .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        else:
-            self.reference_tables = reference_tables
-
-        try:
-            map_cols = sdict['MappingColumns']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "MappingColumns".') \
-                .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        else:
-            self.mapping_columns = map_cols
-
         # Dynamic attributes
-        header = [dm.get_column_from_header(i, self.db_columns) for i in self.db_columns]
+        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
         self.df = pd.DataFrame(columns=header)
+
+        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
+                         for i in self.totals["TableColumns"]]
+        self.totals_df = pd.DataFrame(index=[0], columns=totals_header)
 
     def reset_attributes(self):
         """
         Reset Summary values.
         """
-        header = [dm.get_column_from_header(i, self.db_columns) for i in self.db_columns]
+        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
         self.df = pd.DataFrame(columns=header)
 
-        self.totals_df = None
+        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
+                         for i in self.totals["TableColumns"]]
+        self.totals_df = pd.DataFrame(index=[0], columns=totals_header)
+
+        self.ids = []
+        self.id_components = []
 
     def update_table(self, rule, *args):
         """
         Populate the summary item dataframe with rows from the TabItem dataframes specified in the configuration.
         """
         df = self.df
-        mapping_columns = self.mapping_columns
+        records = self.records
+        db_columns = records['TableColumns']
+        mapping_columns = records['MappingColumns']
+        edit_columns = records['EditColumns']
+        references = records['ReferenceTables']
 
         print('Info: rule {RULE}, summary {NAME}: updating table'.format(RULE=self.rule_name, NAME=self.name))
 
-        references = self.reference_tables
         for reference in references:
             subset_rule = references[reference]
             try:
@@ -1136,7 +1334,7 @@ class SummaryItemSubset(SummaryItem):
             # Select columns based on MappingColumns parameter
             append_df = pd.DataFrame(columns=df.columns.values.tolist())
             for mapping_column in mapping_columns:
-                if mapping_column not in self.db_columns:
+                if mapping_column not in db_columns:
                     print('Error: rule {RULE}, summary {NAME}: mapping column {COL} not in list of table columns'
                           .format(RULE=self.rule_name, NAME=self.name, COL=mapping_column))
                     continue
@@ -1253,11 +1451,11 @@ class AuditParameterDate(AuditParameter):
     def __init__(self, rule_name, name, cdict):
         super().__init__(rule_name, name, cdict)
         try:
-            self.format = format_date_str(cdict['DateFormat'])
+            self.format = settings.format_date_str(date_str=cdict['DateFormat'])
         except KeyError:
             print('Warning: rule {RULE}, parameter {PARAM}: no date format specified ... defaulting to YYYY-MM-DD'
                   .format(PARAM=name, RULE=rule_name))
-            self.format = format_date_str("YYYY-MM-DD")
+            self.format = "%Y-%m-%d"
 
     def layout(self):
         """
@@ -1312,7 +1510,7 @@ class AuditParameterDate(AuditParameter):
                     value_fmt: str = date.strftime(self.format)
                 except ValueError:
                     print('Configuration Error: rule {RULE}, parameter {PARAM}: invalid format string {STR}'
-                          .format(RULE=self.rule_name, NAME=self.name, STR=self.format))
+                          .format(RULE=self.rule_name, PARAM=self.name, STR=self.format))
                     value_fmt = None
                     date = ''
 
@@ -1412,59 +1610,3 @@ class AuditParameterDateRange(AuditParameterDate):
             return False
 
 
-def format_date_str(date_str):
-    """
-    """
-    separators = set(':/- ')
-    date_fmts = {'YYYY': '%Y', 'YY': '%y',
-                 'MMMM': '%B', 'MMM': '%b', 'MM': '%m', 'M': '%-m',
-                 'DD': '%d', 'D': '%-d',
-                 'HH': '%H', 'MI': '%M', 'SS': '%S'}
-
-    strfmt = []
-
-    last_char = date_str[0]
-    buff = [last_char]
-    for char in date_str[1:]:
-        if char not in separators:
-            if last_char != char:
-                # Check if char is first in a potential series
-                if last_char in separators:
-                    buff.append(char)
-                    last_char = char
-                    continue
-
-                # Check if component is minute
-                if ''.join(buff + [char]) == 'MI':
-                    strfmt.append(date_fmts['MI'])
-                    buff = []
-                    last_char = char
-                    continue
-
-                # Add characters in buffer to format string and reset buffer
-                component = ''.join(buff)
-                strfmt.append(date_fmts[component])
-                buff = [char]
-            else:
-                buff.append(char)
-        else:
-            component = ''.join(buff)
-            try:
-                strfmt.append(date_fmts[component])
-            except KeyError:
-                if component:
-                    print('Warning: unknown component {} provided to date string {}.'.format(component, date_str))
-                    raise
-
-            strfmt.append(char)
-            buff = []
-
-        last_char = char
-
-    try:  # format final component remaining in buffer
-        strfmt.append(date_fmts[''.join(buff)])
-    except KeyError:
-        print('Warning: unsupported characters {} found in date string {}'.format(''.join(buff), date_str))
-        raise
-
-    return ''.join(strfmt)

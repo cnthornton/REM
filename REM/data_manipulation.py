@@ -241,7 +241,7 @@ def generate_column_from_rule(dataframe, rule):
             continue
         else:
             try:
-                print('Info: filling new column with values {VALS}'.format(VALS=sub_values))
+#                print('Info: filling new column with values {VALS}'.format(VALS=sub_values))
                 col_to_add.fillna(pd.Series(sub_values), inplace=True)
             except Exception as e:
                 print('Warning: filling new column with values from rule {COND} failed due to {ERR}'
@@ -381,12 +381,12 @@ def evaluate_rule(df, condition, as_list: bool = True):
 
     eval_str = ' '.join(rule_value)
     try:
-        print('Info: evaluating rule string {}'.format(eval_str))
+#        print('Info: evaluating rule string {}'.format(eval_str))
         row_status = eval(eval_str)
     except SyntaxError:
-        raise 'invalid syntax for condition rule {NAME}'.format(NAME=condition)
+        raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
     except NameError:
-        raise 'unknown column found in condition rule {NAME}'.format(NAME=condition)
+        raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
 
     if as_list:
         row_status = list(row_status)

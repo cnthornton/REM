@@ -6,11 +6,10 @@ import dateutil
 import PySimpleGUI as sg
 import pandas as pd
 import re
-import REM.audit as audit
 import REM.data_manipulation as dm
-from REM.initialize_settings import settings
+from REM.config import settings
 import REM.program_constants as const
-import REM.secondary_win as win2
+import REM.secondary as win2
 import sys
 
 
@@ -177,15 +176,14 @@ class TabItem:
         """
         Reset Table Columns widths to default when resized.
         """
-        headers = list(self.display_columns.keys())
-        tbl_key = self.key_lookup('Table')
-        fill_key = self.key_lookup('Fill')
-        element_key = self.element_key
-
         if win_size:
             width, height = win_size
         else:
             width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+        tbl_key = self.key_lookup('Table')
+        fill_key = self.key_lookup('Fill')
+        element_key = self.element_key
 
         # Reset table size
         # for every five-pixel increase in window size, increase tab size by one
@@ -205,8 +203,9 @@ class TabItem:
         window[fill_key].set_size((tab_fill, None))
 
         # Reset table column size
-        lengths = dm.calc_column_widths(headers, width=tab_width, pixels=True)
-        for col_index, col_name in enumerate(headers):
+        header = list(self.display_columns.keys())
+        lengths = dm.calc_column_widths(header, width=tab_width, pixels=True)
+        for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
             window[tbl_key].Widget.column(col_name, width=col_width)
 
@@ -634,7 +633,7 @@ class TabItem:
 
         # Search for errors in the transaction ID using ID format
         try:
-            date_cnfg = audit.format_date_str(self.get_component('date')[1])
+            date_cnfg = settings.format_date_str(date_str=self.get_component('date')[1])
         except TypeError:
             date_cnfg = None
 
@@ -937,7 +936,7 @@ def B2(*args, **kwargs):
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
-                        nrows: int = None, height: int = 800, width: int = 1200, font: tuple = None):
+                        nrow: int = None, height: int = 800, width: int = 1200, font: tuple = None, pad: tuple = None):
     """
     Create table elements that have consistency in layout.
     """
@@ -949,6 +948,8 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
 
     pad_frame = const.FRAME_PAD
 
+    pad = pad if pad else (pad_frame, pad_frame)
+
     font = font if font else const.MID_FONT
     font_size = font[1]
 
@@ -956,7 +957,7 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     row_height = const.TBL_HEIGHT
     width = width
     height = height * 0.5
-    nrows = int(nrows if nrows else height / 40)
+    nrow = nrow if nrow else int(height / 40)
 
     # Parameters
     if events and bind:
@@ -965,13 +966,12 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
               'These parameters are mutually exclusive.')
 
     lengths = dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
-    layout = sg.Table(data, headings=header, pad=(pad_frame, pad_frame),
-                      key=keyname, row_height=row_height, alternating_row_color=alt_col,
-                      text_color=text_col, selected_row_colors=(text_col, select_col),
-                      background_color=bg_col, num_rows=nrows, font=font,
-                      display_row_numbers=False, auto_size_columns=False,
-                      col_widths=lengths, enable_events=events, tooltip=tooltip,
-                      vertical_scroll_only=False, bind_return_key=bind)
+    layout = sg.Table(data, key=keyname, headings=header, pad=pad, num_rows=nrow, row_height=row_height,
+                      alternating_row_color=alt_col, background_color=bg_col,
+                      text_color=text_col, selected_row_colors=(text_col, select_col), font=font,
+                      display_row_numbers=False, auto_size_columns=False, col_widths=lengths,
+                      enable_events=events, bind_return_key=bind, tooltip=tooltip,
+                      vertical_scroll_only=False)
 
     return layout
 

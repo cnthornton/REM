@@ -7,9 +7,9 @@ from multiprocessing import freeze_support
 import PySimpleGUI as sg
 import REM.audit as audit
 import REM.data_manipulation as dm
-from REM.initialize_settings import cnfg, settings
+from REM.config import cnfg, settings
 import REM.layouts as lo
-import REM.secondary_win as win2
+import REM.secondary as win2
 import REM.program_constants as const
 import sys
 import tkinter as tk
@@ -178,10 +178,8 @@ def resize_elements(window, audit_rules, win_size: tuple = None):
     """
     Resize GUI elements when window is resized
     """
-    if win_size:
-        width, height = win_size
-    else:
-        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+    win_size = win_size if win_size else window.size
+    width, height = win_size
 
     # Update toolbar and pane elements
     menu_size = 260
@@ -191,6 +189,7 @@ def resize_elements(window, audit_rules, win_size: tuple = None):
     # Update audit rule elements
     for audit_rule in audit_rules:
         audit_rule.resize_elements(window, win_size=win_size)
+        audit_rule.summary.resize_elements(window, win_size=win_size)
 
 
 def format_date_element(date_str):
@@ -334,6 +333,12 @@ def main():
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
 #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
+    summ_tbl_keys = []
+    for rule in audit_rules.rules:
+        for summary_item in rule.summary.summary_items:
+            summ_tbl_keys.append(summary_item.key_lookup('Table'))
+            summ_tbl_keys.append(summary_item.key_lookup('Totals'))
+
     date_key = None
 
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
@@ -343,6 +348,7 @@ def main():
     # Event modifiers
     audit_in_progress = False
     summary_panel_active = False
+    current_tab = None
     rule = None
     debug_win = None
 
@@ -662,13 +668,17 @@ def main():
 
         action_performed = False
         # Scan for missing data if applicable
-        if audit_in_progress:
+        if audit_in_progress and not summary_panel_active:
             tg_key = rule.key_lookup('TG')
+            previous_tab = current_tab
             current_tab = window[tg_key].Get()
 
-            # Get current tab object and rule parameters
+            # Get current tab in view
             tab = rule.fetch_tab(current_tab, by_key=True)
-            params = rule.parameters
+
+            # Refresh audit table
+            if current_tab != previous_tab:
+                tab.update_table(window)
 
             # Remove row from table when row is double-clicked.
             tbl_key = tab.key_lookup('Table')
@@ -739,6 +749,7 @@ def main():
 
                 # Run schema action methods
                 print('Info: running audit on the {NAME} data'.format(NAME=tab.name))
+                params = rule.parameters
                 tab.run_audit(window, account=user, parameters=params)
 
                 # Update information elements - most actions modify tab data 
@@ -770,10 +781,10 @@ def main():
                 rule_summ.update_parameters(window, rule)
 
                 # Update summary totals with tab summary totals
-                rule_summ.update_totals(window, rule)
+                rule_summ.update_totals(rule)
 
                 # update summary elements with mapped tab values
-                rule_summ.update_tables(rule, params)
+                rule_summ.update_tables(rule)
 
                 # Format tables for displaying
                 rule_summ.format_tables(window)
@@ -782,33 +793,39 @@ def main():
                 window[current_panel].update(visible=False)
                 window[summary_key].update(visible=True)
 
-                # Switch panel key
+                # Switch the current panel element key to the summary panel
                 current_panel = summary_key
 
                 # Reset tab table column widths
                 for tab in rule.tabs:
-                    tab.resize_elements(window, win_size=(current_w, current_h))
+                    tab.resize_elements(window, win_size=window.size)
 
-            summ_tbl_keys = [i.key_lookup('Table') for i in rule.summary.summary_items]
-            if summary_panel_active and event in summ_tbl_keys:
-                # Get current tab in view
-                tg_key = rule.summary.key_lookup('TG')
-                current_summ_tab = window[tg_key].Get()
-                summ_tab = rule.summary.fetch_tab(current_summ_tab, by_key=True)
+                # Panel keys
+                save_key = rule.summary.key_lookup('Save')
+                back_key = rule.summary.key_lookup('Back')
 
-                # Show modify row window to user
+        # Summary Panel
+        if audit_in_progress and summary_panel_active:
+            # Get current tab in view
+            tg_key = rule.summary.key_lookup('TG')
+            current_tab = window[tg_key].Get()
+            summ_tab = rule.summary.fetch_tab(current_tab, by_key=True)
+
+            # Edit row in either the totals or records table
+            if event in summ_tbl_keys:
+                # Find table row selected by user
                 try:
                     select_row_index = values[event][0]
                 except IndexError:  # user double-clicked too quickly
                     continue
 
-                # Edit selected row
-                summ_tab.edit_row(select_row_index, win_size=(win_w, win_h))
+                # Show the modify row window to the user
+                summ_tab.edit_row(select_row_index, event, win_size=window.size)
 
                 # Update display table
                 rule_summ.format_tables(window)
 
-            back_key = rule.summary.key_lookup('Back')
+            # Return to the Audit Panel
             if event == back_key:
                 summary_panel_active = False
 
@@ -818,9 +835,10 @@ def main():
                 window[current_panel].update(visible=True)
 
                 # Reset summary values
-                rule_summ.reset_tables()
+                rule_summ.reset_attributes()
+                rule_summ.resize_elements(window, win_size=window.size)
 
-            save_key = rule.summary.key_lookup('Save')
+            # Save results of the audit
             if event == save_key:
                 # Save summary to excel or csv file
                 outfile = sg.popup_get_file('', title='Save As', save_as=True, default_extension='xls', no_window=True,

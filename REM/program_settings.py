@@ -2,6 +2,8 @@
 REM configuration settings.
 """
 
+import datetime
+import dateutil
 import gettext
 import os
 
@@ -53,6 +55,7 @@ class ProgramSettings:
         self.port = ddict['odbc_port']
         self.dbname = ddict['database']
         self.prog_db = ddict['rem_database']
+        self.date_format = ddict['date_format']
         try:
             self.alt_dbs = ddict['alternative_databases']
         except KeyError:
@@ -73,19 +76,6 @@ class ProgramSettings:
         """
         pass
 
-    def get_date_offset(self):
-        """
-        Find date offset for calendar systems other than the gregorian calendar
-        """
-        locale = self.locale
-
-        if locale == 'th_TH':
-            offset = 543
-        else:
-            offset = 0
-
-        return offset
-
     def change_locale(self):
         """
         Translate application text based on supplied locale.
@@ -104,3 +94,86 @@ class ProgramSettings:
             trans = gettext
 
         return trans
+
+    def format_date_str(self, date_str: str = None):
+        """
+        """
+        separators = set(':/- ')
+        date_fmts = {'YYYY': '%Y', 'YY': '%y',
+                     'MMMM': '%B', 'MMM': '%b', 'MM': '%m', 'M': '%-m',
+                     'DD': '%d', 'D': '%-d',
+                     'HH': '%H', 'MI': '%M', 'SS': '%S'}
+
+        date_str = date_str if date_str else self.date_format
+
+        strfmt = []
+
+        last_char = date_str[0]
+        buff = [last_char]
+        for char in date_str[1:]:
+            if char not in separators:
+                if last_char != char:
+                    # Check if char is first in a potential series
+                    if last_char in separators:
+                        buff.append(char)
+                        last_char = char
+                        continue
+
+                    # Check if component is minute
+                    if ''.join(buff + [char]) == 'MI':
+                        strfmt.append(date_fmts['MI'])
+                        buff = []
+                        last_char = char
+                        continue
+
+                    # Add characters in buffer to format string and reset buffer
+                    component = ''.join(buff)
+                    strfmt.append(date_fmts[component])
+                    buff = [char]
+                else:
+                    buff.append(char)
+            else:
+                component = ''.join(buff)
+                try:
+                    strfmt.append(date_fmts[component])
+                except KeyError:
+                    if component:
+                        print('Warning: unknown component {} provided to date string {}.'.format(component, date_str))
+                        raise
+
+                strfmt.append(char)
+                buff = []
+
+            last_char = char
+
+        try:  # format final component remaining in buffer
+            strfmt.append(date_fmts[''.join(buff)])
+        except KeyError:
+            print('Warning: unsupported characters {} found in date string {}'.format(''.join(buff), date_str))
+            raise
+
+        return ''.join(strfmt)
+
+    def get_date_offset(self):
+        """
+        Find date offset for calendar systems other than the gregorian calendar
+        """
+        locale = self.locale
+
+        if locale == 'th_TH':
+            offset = 543
+        else:
+            offset = 0
+
+        return offset
+
+    def apply_date_offset(self, dt):
+        """
+        Apply date offset to a datetime object
+        """
+        relativedelta = dateutil.relativedelta.relativedelta
+
+        offset = self.get_date_offset()
+        dt_mod = dt + relativedelta(years=+offset)
+
+        return dt_mod

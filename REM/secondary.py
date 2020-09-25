@@ -2,10 +2,11 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
+import pandas as pd
 import pyodbc
 import PySimpleGUI as sg
 import REM.authentication as auth
-from REM.initialize_settings import settings
+from REM.config import settings
 import REM.layouts as lo
 import REM.program_constants as const
 import textwrap
@@ -319,6 +320,11 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
     """
     Display window for user to modify the editable field in a record.
     """
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_integer_dtype = pd.api.types.is_integer_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    is_bool_dtype = pd.api.types.is_bool_dtype
+
     if win_size:
         width, height = [i * 0.95 for i in win_size]
     else:
@@ -328,6 +334,8 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
     row = df.iloc[index]
     data = row.tolist()
     print('data to modify {}'.format(data))
+    print('dataframe has dtypes:')
+    print(df.dtypes)
     header = df.columns.values.tolist()
     display_header = []
     for column in header:
@@ -360,10 +368,10 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
     bg_col = const.ACTION_COL
 
     # GUI layout
-    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
+    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
                     lo.B2(_('Delete'), key='-DELETE-', pad=(pad_el, 0), tooltip=_('Permanently delete record')),
                     lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                          tooltip=_('Save record'))]]
+                          tooltip=_('Save changes'))]]
 
     layout = [[sg.Col([[lo.create_etable_layout(data, display_header, edit_keys_mapped, height=height, width=width)]],
                       background_color=bg_col, element_justification='c', pad=(pad_frame, pad_frame))],
@@ -387,7 +395,31 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
         if event == '-SAVE-':  # click 'Save' button
             for column in edit_keys:
                 col_key = edit_keys[column]
-                field_val = values[col_key]
+                input_val = values[col_key]
+
+                dtype = df[column].dtype
+                if is_float_dtype(dtype):
+                    try:
+                        field_val = float(input_val)
+                    except ValueError:
+                        field_val = input_val
+                elif is_integer_dtype(dtype):
+                    try:
+                        field_val = int(input_val)
+                    except ValueError:
+                        field_val = input_val
+                elif is_bool_dtype(dtype):
+                    try:
+                        field_val = bool(input_val)
+                    except ValueError:
+                        field_val = input_val
+                elif is_datetime_dtype(dtype):
+                    try:
+                        field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
+                    except ValueError:
+                        field_val = input_val
+                else:
+                    field_val = input_val
 
                 # Replace field value with modified value
                 df.at[index, column] = field_val
