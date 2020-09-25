@@ -811,6 +811,16 @@ def main():
             current_tab = window[tg_key].Get()
             summ_tab = rule.summary.fetch_tab(current_tab, by_key=True)
 
+            # Add a row to the records table
+            add_key = summ_tab.key_lookup('Add')
+            if event == add_key:
+                # Show the add row window to the user
+                summ_tab.add_row(rule, win_size=window.size)
+
+                # Update display table
+                rule_summ.format_tables(window)
+                continue
+
             # Edit row in either the totals or records table
             if event in summ_tbl_keys:
                 # Find table row selected by user
@@ -824,6 +834,7 @@ def main():
 
                 # Update display table
                 rule_summ.format_tables(window)
+                continue
 
             # Return to the Audit Panel
             if event == back_key:

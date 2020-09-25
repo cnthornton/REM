@@ -4,6 +4,7 @@ REM configuration classes and functions. Includes audit rules, audit objects, an
 import datetime
 from typing import List
 import dateutil.parser
+import numpy as np
 import pandas as pd
 import PySimpleGUI as sg
 import re
@@ -527,13 +528,13 @@ class SummaryPanel:
             remain_key = summary_item.key_lookup('Remainder')
             window[remain_key].update(value='{:,.2f}'.format(remainder), background_color=bg_color)
 
-    def update_tables(self, rule, *args):
+    def update_tables(self, rule):
         """
         Update summary item tables with data from tab item dataframes.
         """
         summary_items = self.summary_items
         for summary_item in summary_items:
-            summary_item.update_table(rule, *args)
+            summary_item.update_table(rule)
 
     def reset_attributes(self):
         """
@@ -719,7 +720,7 @@ class SummaryPanel:
         success = []
         for summary_item in summary_items:
             table = summary_item.name
-            id_field = summary_item.pkey
+            id_field = summary_item.records['IDColumn']
 
             df = summary_item.df
             columns = df.columns.values.tolist()
@@ -727,7 +728,7 @@ class SummaryPanel:
             try:
                 ids = df[id_field].tolist()
             except KeyError:
-                print('Error: rule {RULE}, Summary: cannot find IDField {ID} in data frame'
+                print('Error: rule {RULE}, Summary: cannot find IDColumn {ID} in data frame'
                       .format(RULE=self.rule_name, ID=id_field))
                 return False
 
@@ -809,14 +810,6 @@ class SummaryItem:
             self.title = '{} Summary'.format(name)
 
         try:
-            self.pkey = sdict['IDField']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "IDField".') \
-                .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-
-        try:
             self.id_format = re.findall(r'\{(.*?)\}', sdict['IDFormat'])
         except KeyError:
             self.id_format = []
@@ -828,25 +821,24 @@ class SummaryItem:
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
+        msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "{FIELD}" '
+                'in the "Records" parameter.')
+        if 'IDColumn' not in records:
+            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='IDColumn'))
+            sys.exit(1)
         if 'TableColumns' not in records:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns" '
-                    'in the "Records" parameter.').format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
+            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
             sys.exit(1)
         if 'SumColumn' not in records:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "SumColumn" '
-                    'in the "Records" parameter.').format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
+            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='SumColumn'))
+            sys.exit(1)
+        if 'DisplayColumns' not in records:
+            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
             sys.exit(1)
         if 'MappingColumns' not in records:
             records['MappingColumns'] = {}
         if 'ReferenceTables' not in records:
             records['ReferenceTables'] = {}
-        if 'DisplayColumns' not in records:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "DisplayColumns" '
-                    'in the "Records" parameter.').format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
-            sys.exit(1)
         if 'EditColumns' not in records:
             records['EditColumns'] = []
 
@@ -859,18 +851,16 @@ class SummaryItem:
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
+        msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "{FIELD}" '
+                'in the "Totals" parameter.')
         if 'TableColumns' not in totals:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns" '
-                    'in the "Totals" parameter.').format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
+            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
+            sys.exit(1)
+        if 'DisplayColumns' not in totals:
+            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
             sys.exit(1)
         if 'MappingColumns' not in totals:
             totals['MappingColumns'] = {}
-        if 'DisplayColumns' not in totals:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "DisplayColumns" '
-                    'in the "Totals" parameter.').format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
-            sys.exit(1)
         if 'EditColumns' not in totals:
             totals['EditColumns'] = []
 
@@ -890,7 +880,6 @@ class SummaryItem:
         self.totals_df = pd.DataFrame(index=[0], columns=totals_header)
 
         self.ids = []
-
         self.id_components = []
 
     def key_lookup(self, element):
@@ -1083,18 +1072,57 @@ class SummaryItem:
 
         return layout
 
+    def add_row(self, rule, win_size: tuple = None):
+        """
+        Add row to records table
+        """
+        df = self.df.copy()
+        edit_columns = self.records['EditColumns']
+        display_columns = self.records['DisplayColumns']
+        id_column = self.records['IDColumn']
+
+        # Initialize new empty row
+        nrow = df.shape[0]
+        new_index = nrow - 1 + 1  # first index starts at 0
+
+        df = df.append(pd.Series(), ignore_index=True)
+
+        # Create an identifier for the new row
+        ident = self.create_id(rule)
+        df.at[new_index, id_column] = ident
+        self.ids.append(ident)
+
+        # Update the amounts column
+        sum_column = self.records['SumColumn']
+        df.at[new_index, sum_column] = 0.0
+
+        # Fill in non-editable columns
+        df.fillna(inplace=True, method='ffill')
+
+        # Display the add row window
+        display_map = {display_columns[i]: i for i in display_columns}
+        df = win2.add_record(df, new_index, edit_columns, header_map=display_map, win_size=win_size)
+
+        # Remove identifier from list of ids if creation cancelled
+        if nrow == df.shape[0]:
+            self.ids.pop()
+
+        self.df = df
+
     def edit_row(self, index, element_key, win_size: tuple = None):
         """
         Edit row using modify record window
         """
         if element_key == self.key_lookup('Table'):
             parameter = self.records
-            df = self.df
+            df = self.df.copy()
             table = 'records'
+            id_column = parameter['IDColumn']
         elif element_key == self.key_lookup('Totals'):
             parameter = self.totals
-            df = self.totals_df
+            df = self.totals_df.copy()
             table = 'totals'
+            id_column = None
         else:
             raise KeyError('element key {} does not correspond to either the Totals or Records tables'
                            .format(element_key))
@@ -1103,8 +1131,14 @@ class SummaryItem:
         edit_columns = parameter['EditColumns']
 
         display_map = {display_columns[i]: i for i in display_columns}
-
         df = win2.edit_record(df, index, edit_columns, header_map=display_map, win_size=win_size)
+
+        # Remove identifier from list of ids if record deleted
+        if id_column:
+            try:
+                df.at[index, id_column]
+            except KeyError:
+                del self.ids[index]
 
         if table == 'records':
             self.df = df
@@ -1228,7 +1262,7 @@ class SummaryItemAdd(SummaryItem):
                 # Increment last ID by one
                 if self.ids:  # search summary ids for most recent id
                     last_id = self.ids[-1]
-                    last_var = self.get_id_component(last_id, 'variable')
+                    last_var = int(self.get_id_component(last_id, 'variable'))
                 else:  # search database for most recent id
                     last_var = 0
 
@@ -1250,7 +1284,7 @@ class SummaryItemAdd(SummaryItem):
         print('Info: rule {RULE}, summary {NAME}: updating table'.format(RULE=self.rule_name, NAME=self.name))
 
         # Create primary key for row
-        id_field = self.pkey
+        id_field = self.records['IDColumn']
         ident = self.create_id(rule)
         df[id_field] = ident
         self.ids.append(ident)
@@ -1294,15 +1328,16 @@ class SummaryItemSubset(SummaryItem):
         self.ids = []
         self.id_components = []
 
-    def update_table(self, rule, *args):
+    def update_table(self, rule):
         """
         Populate the summary item dataframe with rows from the TabItem dataframes specified in the configuration.
         """
         df = self.df
         records = self.records
+
+        id_column = records['IDColumn']
         db_columns = records['TableColumns']
         mapping_columns = records['MappingColumns']
-        edit_columns = records['EditColumns']
         references = records['ReferenceTables']
 
         print('Info: rule {RULE}, summary {NAME}: updating table'.format(RULE=self.rule_name, NAME=self.name))
@@ -1345,6 +1380,8 @@ class SummaryItemSubset(SummaryItem):
 
             # Append data to summary dataframe
             df = dm.append_to_table(df, append_df)
+
+        self.ids = df[id_column].tolist()
 
         self.df = df
 
