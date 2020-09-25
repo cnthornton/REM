@@ -269,6 +269,7 @@ class TabItem:
 
             col_to_add = dm.generate_column_from_rule(dataframe, col_rule)
             dtype = col_to_add.dtype
+            print('column {} has dtype {}'.format(col_name, dtype))
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
             elif is_datetime_dtype(dtype):
@@ -290,11 +291,15 @@ class TabItem:
                   .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col))
 
             try:
+                print('using aliases to replace column {COL} with values {VALS}'.format(COL=alias_col, VALS=display_df[alias_col]))
                 display_df[alias_col].replace(alias_map, inplace=True)
             except KeyError:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
+
+        print('original df dtypes')
+        print(self.df.dtypes)
 
         return display_df
 

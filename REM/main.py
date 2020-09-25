@@ -645,6 +645,7 @@ def main():
                         break
 
                     # Update tab object and elements
+                    print(df.dtypes)
                     tab.df = df  # update tab data
                     tab.update_id_components(rule_params)
                     tab.update_table(window)  # display tab data in table

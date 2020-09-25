@@ -219,21 +219,22 @@ def generate_column_from_rule(dataframe, rule):
 
     col_to_add = pd.Series(np.full([dataframe.shape[0]], np.nan))
 
-    dtypes = []
     merge_cols = []
-    for sub_rule in col_list:
+    dtype = None
+    for i, sub_rule in enumerate(col_list):
         col_oper_list = parse_operation_string(sub_rule)
 
         sub_colnames = get_column_from_oper(dataframe, col_oper_list)
         for sub_colname in sub_colnames:
             merge_cols.append(sub_colname)
 
-            dtype = dataframe.dtypes[sub_colname]
-            dtypes.append(dtype)
-            for former_dtype in dtypes:
-                if dtype != former_dtype:
-                    print('Warning: attempting to combine columns {COLS} of different type {DTYPES}'
-                          .format(COLS=merge_cols, DTYPES=dtypes))
+            column_dtype = dataframe.dtypes[sub_colname]
+            if i == 0:
+                dtype = column_dtype
+            elif i > 0:
+                if dtype != column_dtype:
+                    print('Warning: attempting to combine column {COL} with dtype {COL_DTYPE} different from the '
+                          'original dtype {DTYPE}'.format(COL=sub_colname, COL_DTYPE=column_dtype, DTYPE=dtype))
         try:
             sub_values = evaluate_rule(dataframe, col_oper_list)
         except Exception as e:
@@ -247,7 +248,8 @@ def generate_column_from_rule(dataframe, rule):
                 print('Warning: filling new column with values from rule {COND} failed due to {ERR}'
                       .format(COND=sub_rule, ERR=e))
 
-    return col_to_add
+    # Attempt to set column dtype
+    return col_to_add.astype(dtype, errors='raise')
 
 
 def append_to_table(df, add_df, ignore_dtypes=False):

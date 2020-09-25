@@ -213,7 +213,7 @@ class UserAccount:
             conn.close()
 
         # Add return value to the queue
-        return(df)
+        return df
 
     def write_db(self, statement, params, database):
         """
@@ -248,7 +248,7 @@ class UserAccount:
                     conn.close()
 
         # Add return value to the queue
-        return(status)
+        return status
 
     def query(self, tables, columns='*', filter_rules=None, order=None, prog_db=False):
         """
@@ -330,18 +330,18 @@ class UserAccount:
 
         if len(columns) != len(values):
             print('Insertion Error: columns size is not equal to values size')
-            return(False)
+            return False
 
         # Format parameters
-        if type(values) == type(list()):
+        if isinstance(values, list):
             params = tuple(values)
-        elif type(values) == type(tuple()):
+        elif isinstance(values, tuple):
             params = values
-        elif type(values) == type(str()):
+        elif isinstance(values, str):
             params = (values,)
         else:
             print('Insertion Error: unknown values type {}'.format(type(values)))
-            return(False)
+            return False
 
         insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES ({VALS})'\
             .format(TABLE=table, COLS=','.join(columns), VALS=','.join(['?' for i in params]))
@@ -351,7 +351,7 @@ class UserAccount:
         db = settings.prog_db
         status = self.thread_transaction(insert_str, params, operation='read', database=db)
 
-        return (status)
+        return status
 
     def update(self, table, columns, values, filters):
         """
@@ -360,23 +360,23 @@ class UserAccount:
 
         if len(columns) != len(values):
             print('Update Error: columns size is not equal to values size')
-            return(False)
+            return False
 
         # Format parameters
-        if type(values) == type(list()):
+        if isinstance(values, list):
             params = tuple(values)
-        elif type(values) == type(tuple()):
+        elif isinstance(values, tuple):
             params = values
-        elif type(values) == type(str()):
+        elif isinstance(values, str):
             params = (values,)
         else:
             print('Update Error: unknown values type {}'.format(type(values)))
-            return(False)
+            return False
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
 
         where_clause, filter_params = self.construct_where_clause(filters)
-        if type(filter_params) == type(tuple()):
+        if isinstance(filter_params, tuple):
             params = params + filter_params
 
         update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}'\
@@ -387,7 +387,7 @@ class UserAccount:
         db = settings.prog_db
         status = self.thread_transaction(update_str, params, operation='read', database=db)
 
-        return(status)
+        return status
 
     def construct_where_clause(self, filter_rules):
         """
@@ -395,10 +395,10 @@ class UserAccount:
         database tables.
         """
         if filter_rules is None:  # no filtering rules
-            return (('', None))
+            return ('', None)
 
         # Construct filtering rules
-        if type(filter_rules) == type(list()):  # multiple filter parameters
+        if isinstance(filter_rules, list):  # multiple filter parameters
             all_params = []
             for rule in filter_rules:
                 try:
@@ -414,23 +414,21 @@ class UserAccount:
                 elif type(params) in (type(str()), type(int()), type(float())):
                     all_params.append(params)
                 else:
-                    msg = 'unknown parameter type {} in rule {}' \
-                        .format(params, rule)
+                    msg = 'unknown parameter type {} in rule {}'.format(params, rule)
                     raise SQLStatementError(msg)
 
             params = tuple(all_params)
             where = 'WHERE {}'.format(' AND '.join([i[0] for i in filter_rules]))
 
-        elif type(filter_rules) == type(tuple()):  # single filter parameter
+        elif isinstance(filter_rules, tuple):  # single filter parameter
             statement, params = filter_rules
             where = 'WHERE {COND}'.format(COND=statement)
 
         else:  # unaccepted data type provided
-            msg = 'unaccepted data type {} provided in rule {}' \
-                .format(type(filter_rules), filter_rules)
+            msg = 'unaccepted data type {} provided in rule {}'.format(type(filter_rules), filter_rules)
             raise SQLStatementError(msg)
 
-        return ((where, params))
+        return (where, params)
 
 
 # Functions
@@ -445,4 +443,4 @@ def hash_password(password):
 
     password_hash = md5hash.hexdigest()
 
-    return (password_hash)
+    return password_hash

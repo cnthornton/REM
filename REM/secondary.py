@@ -333,9 +333,6 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
     # Format dataframe as list for input into sg
     row = df.iloc[index]
     data = row.tolist()
-    print('data to modify {}'.format(data))
-    print('dataframe has dtypes:')
-    print(df.dtypes)
     header = df.columns.values.tolist()
     display_header = []
     for column in header:
@@ -344,9 +341,6 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
         else:
             mapped_column = column
         display_header.append(mapped_column)
-
-    print('with header {}'.format(header))
-    print('and display header {}'.format(display_header))
 
     edit_keys = {}
     edit_keys_mapped = {}
@@ -393,6 +387,7 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
             break
 
         if event == '-SAVE-':  # click 'Save' button
+            ready_to_save = []
             for column in edit_keys:
                 col_key = edit_keys[column]
                 input_val = values[col_key]
@@ -422,9 +417,20 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
                     field_val = input_val
 
                 # Replace field value with modified value
-                df.at[index, column] = field_val
+                try:
+                    df.at[index, column] = field_val
+                except ValueError:
+                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type' \
+                        .format(VAL=field_val, COL=header_map[column])
+                    popup_notice(msg)
+                    ready_to_save.append(False)
+                else:
+                    ready_to_save.append(True)
 
-            break
+            if all(ready_to_save):
+                break
+            else:
+                continue
 
     window.close()
 
@@ -502,37 +508,50 @@ def add_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = No
             break
 
         if event == '-SAVE-':  # click 'Save' button
-            col_key = edit_keys[column]
-            input_val = values[col_key]
+            ready_to_save = []
+            for column in edit_keys:
+                col_key = edit_keys[column]
+                input_val = values[col_key]
 
-            dtype = df[column].dtype
-            if is_float_dtype(dtype):
-                try:
-                    field_val = float(input_val)
-                except ValueError:
+                dtype = df[column].dtype
+                if is_float_dtype(dtype):
+                    try:
+                        field_val = float(input_val)
+                    except ValueError:
+                        field_val = input_val
+                elif is_integer_dtype(dtype):
+                    try:
+                        field_val = int(input_val)
+                    except ValueError:
+                        field_val = input_val
+                elif is_bool_dtype(dtype):
+                    try:
+                        field_val = bool(input_val)
+                    except ValueError:
+                        field_val = input_val
+                elif is_datetime_dtype(dtype):
+                    try:
+                        field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
+                    except ValueError:
+                        field_val = input_val
+                else:
                     field_val = input_val
-            elif is_integer_dtype(dtype):
+
+                # Replace field value with modified value
                 try:
-                    field_val = int(input_val)
+                    df.at[index, column] = field_val
                 except ValueError:
-                    field_val = input_val
-            elif is_bool_dtype(dtype):
-                try:
-                    field_val = bool(input_val)
-                except ValueError:
-                    field_val = input_val
-            elif is_datetime_dtype(dtype):
-                try:
-                    field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
-                except ValueError:
-                    field_val = input_val
+                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type' \
+                        .format(VAL=field_val, COL=header_map[column])
+                    popup_notice(msg)
+                    ready_to_save.append(False)
+                else:
+                    ready_to_save.append(True)
+
+            if all(ready_to_save):
+                break
             else:
-                field_val = input_val
-
-            # Replace field value with modified value
-            df.at[index, column] = field_val
-
-            break
+                continue
 
     window.close()
 
