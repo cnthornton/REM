@@ -10,7 +10,7 @@ import REM.data_manipulation as dm
 from REM.config import cnfg, settings
 import REM.layouts as lo
 import REM.secondary as win2
-import REM.program_constants as const
+import REM.constants as const
 import sys
 import tkinter as tk
 
@@ -214,7 +214,7 @@ def format_date_element(date_str):
     return ''.join(buff)
 
 
-def reset_to_default(window, rule):
+def reset_to_default(window, rule, current: bool = False):
     """
     Reset main window to program defaults.
     """
@@ -227,9 +227,9 @@ def reset_to_default(window, rule):
     summ_panel_key = rule.summary.element_key
 
     # Disable current panel
-    window['-ACTIONS-'].update(visible=True)
     window[current_key].update(visible=False)
     window[summ_panel_key].update(visible=False)
+    window['-ACTIONS-'].update(visible=True)
 
     # Reset 'Start' element in case audit was in progress
     start_key = rule.key_lookup('Start')
@@ -279,7 +279,12 @@ def reset_to_default(window, rule):
               .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
         window[tab.element_key].update(visible=visible)
 
-    return '-ACTIONS-'
+    if current:
+        window['-ACTIONS-'].update(visible=False)
+        window[current_key].update(visible=True)
+        return current_key
+    else:
+        return '-ACTIONS-'
 
 
 def main():
@@ -645,7 +650,6 @@ def main():
                         break
 
                     # Update tab object and elements
-                    print(df.dtypes)
                     tab.df = df  # update tab data
                     tab.update_id_components(rule_params)
                     tab.update_table(window)  # display tab data in table
@@ -785,10 +789,10 @@ def main():
                 rule_summ.update_totals(rule)
 
                 # update summary elements with mapped tab values
-                rule_summ.update_tables(rule)
+                rule_summ.initialize_tables(rule)
 
                 # Format tables for displaying
-                rule_summ.format_tables(window)
+                rule_summ.update_tables(window)
 
                 # Hide tab panel and un-hide summary panel
                 window[current_panel].update(visible=False)
@@ -801,10 +805,6 @@ def main():
                 for tab in rule.tabs:
                     tab.resize_elements(window, win_size=window.size)
 
-                # Panel keys
-                save_key = rule.summary.key_lookup('Save')
-                back_key = rule.summary.key_lookup('Back')
-
         # Summary Panel
         if audit_in_progress and summary_panel_active:
             # Get current tab in view
@@ -815,15 +815,19 @@ def main():
             # Add a row to the records table
             add_key = summ_tab.key_lookup('Add')
             if event == add_key:
+                rule_summ.update_tables(window)
+
                 # Show the add row window to the user
                 summ_tab.add_row(rule, win_size=window.size)
 
                 # Update display table
-                rule_summ.format_tables(window)
+                rule_summ.update_tables(window)
                 continue
 
             # Edit row in either the totals or records table
             if event in summ_tbl_keys:
+                rule_summ.update_tables(window)
+
                 # Find table row selected by user
                 try:
                     select_row_index = values[event][0]
@@ -834,10 +838,11 @@ def main():
                 summ_tab.edit_row(select_row_index, event, win_size=window.size)
 
                 # Update display table
-                rule_summ.format_tables(window)
+                rule_summ.update_tables(window)
                 continue
 
             # Return to the Audit Panel
+            back_key = rule.summary.key_lookup('Back')
             if event == back_key:
                 summary_panel_active = False
 
@@ -851,31 +856,39 @@ def main():
                 rule_summ.resize_elements(window, win_size=window.size)
 
             # Save results of the audit
+            save_key = rule.summary.key_lookup('Save')
             if event == save_key:
                 # Save summary to excel or csv file
-                outfile = sg.popup_get_file('', title='Save As', save_as=True, default_extension='xls', no_window=True,
-                                            file_types=(('Text CSV', '*.csv'), ('Excel 97-2003', '*.xls'),
-                                                        ('Excel 2007-365', '*.xlsx')))
+                title = rule.summary.title.replace(' ', '_')
+                outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True, default_extension='pdf',
+                                            no_window=True, file_types=(('PDF - Portable Document Format', '*.pdf'), ))
                 try:
-                    rule_summ.save_to_file(outfile)
+                    rule_summ.save_report(outfile)
                 except Exception as e:
                     msg = _('Save to file {} failed due to {}').format(outfile, e)
                     win2.popup_error(msg)
                     continue
-
-                # Save summary to the program database
-                try:
-                    rule_summ.save_to_database(user)
-                except Exception as e:
-                    msg = _('Save to database failed due to {}').format(e)
-                    win2.popup_error(msg)
                 else:
                     # Reset audit elements
                     audit_in_progress = False
                     summary_panel_active = False
-                    rule_summ.reset_values()
-                    current_panel = reset_to_default(window, rule)
-                    rule = None
+                    rule_summ.reset_attributes()
+                    rule_summ.resize_elements(window, win_size=window.size)
+                    current_panel = reset_to_default(window, rule, current=True)
+
+            # Save summary to the program database
+#                try:
+#                    rule_summ.save_to_database(user)
+#                except Exception as e:
+#                    msg = _('Save to database failed due to {}').format(e)
+#                    win2.popup_error(msg)
+#                else:
+#                    # Reset audit elements
+#                    audit_in_progress = False
+#                    summary_panel_active = False
+#                    rule_summ.reset_values()
+#                    current_panel = reset_to_default(window, rule)
+#                    rule = None
 
     window.close()
 

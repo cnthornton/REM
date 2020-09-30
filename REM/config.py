@@ -4,8 +4,8 @@ REM settings initializer
 
 import PySimpleGUI as sg
 import os
-import REM.program_constants as const
-import REM.program_settings as prog_sets
+import REM.constants as const
+import REM.settings as prog_sets
 import sys
 import textwrap
 import yaml

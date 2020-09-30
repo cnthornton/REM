@@ -8,7 +8,7 @@ from pandas.io import sql
 import pyodbc
 import PySimpleGUI as sg
 from REM.config import settings
-import REM.program_constants as const
+import REM.constants as const
 import REM.secondary as win2
 import time
 

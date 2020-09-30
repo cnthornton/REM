@@ -8,7 +8,7 @@ import pandas as pd
 import re
 import REM.data_manipulation as dm
 from REM.config import settings
-import REM.program_constants as const
+import REM.constants as const
 import REM.secondary as win2
 import sys
 
@@ -657,8 +657,6 @@ class TabItem:
                 if index not in errors:
                     errors.append(index)
 
-        del df
-
         return set(errors)
 
     def run_audit(self, *args, **kwargs):
@@ -977,49 +975,6 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
                       display_row_numbers=False, auto_size_columns=False, col_widths=lengths,
                       enable_events=events, bind_return_key=bind, tooltip=tooltip,
                       vertical_scroll_only=False)
-
-    return layout
-
-
-def create_etable_layout(data, header, edit_keys: dict = {}, height: int = 800, width: int = 1200, font: tuple = None):
-    """
-    Create a table with editable fields.
-    """
-    # Element settings
-    header_col = const.TBL_HEADER_COL
-    bg_col = const.TBL_ALT_COL
-
-    pad_frame = const.FRAME_PAD
-
-    font = font if font else const.MID_FONT
-    font_size = font[1]
-
-    # Arguments
-    width = width if width else const.WIN_WIDTH
-
-    # Parameters
-
-    lengths = dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
-    row_layout = []
-    header_layout = []
-    for index, column in enumerate(header):
-        col_width = lengths[index]
-        header_layout.append(sg.Text(column, size=(col_width, 1), auto_size_text=False, border_width=1, relief='sunken',
-                                     background_color=header_col, justification='c', font=font, tooltip=column))
-
-        field_val = data[index]
-        if column in edit_keys:
-            element_key = edit_keys[column]
-            readonly = False
-        else:
-            element_key = None
-            readonly = True
-
-        row_layout.append(sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
-                                   font=font, justification='r', readonly=readonly, background_color=bg_col,
-                                   tooltip=field_val))
-
-    layout = sg.Frame('', [header_layout, row_layout], relief='sunken', border_width=1)
 
     return layout
 

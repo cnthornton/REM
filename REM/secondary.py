@@ -2,13 +2,15 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
+import numpy as np
 import pandas as pd
 import pyodbc
 import PySimpleGUI as sg
 import REM.authentication as auth
 from REM.config import settings
+import REM.data_manipulation as dm
 import REM.layouts as lo
-import REM.program_constants as const
+import REM.constants as const
 import textwrap
 
 
@@ -316,9 +318,9 @@ def import_window(df, win_size: tuple = None):
     return vfy_orders
 
 
-def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = None):
+def modify_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = None, edit: bool = True):
     """
-    Display window for user to modify the editable field in a record.
+    Display window for user to add or edit a row.
     """
     is_float_dtype = pd.api.types.is_float_dtype
     is_integer_dtype = pd.api.types.is_integer_dtype
@@ -339,7 +341,7 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
         if column in header_map:
             mapped_column = header_map[column]
         else:
-            mapped_column = column
+            continue
         display_header.append(mapped_column)
 
     edit_keys = {}
@@ -351,37 +353,93 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
         try:
             edit_keys_mapped[header_map[column]] = element_key
         except KeyError:
-            edit_keys_mapped[column] = element_key
+            continue
 
     # Window and element size parameters
     main_font = const.MAIN_FONT
+    font_size = main_font[1]
 
     pad_el = const.ELEM_PAD
     pad_frame = const.FRAME_PAD
 
+    header_col = const.TBL_HEADER_COL
     bg_col = const.ACTION_COL
 
     # GUI layout
-    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                    lo.B2(_('Delete'), key='-DELETE-', pad=(pad_el, 0), tooltip=_('Permanently delete record')),
-                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                          tooltip=_('Save changes'))]]
+    ## Buttons
+    if edit is True and index > 0:
+        bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
+                        lo.B2(_('Delete'), key='-DELETE-', pad=(pad_el, 0), tooltip=_('Permanently delete record')),
+                        lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip=_('Save changes'))]]
+    else:
+        bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
+                        lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip=_('Save changes'))]]
 
-    layout = [[sg.Col([[lo.create_etable_layout(data, display_header, edit_keys_mapped, height=height, width=width)]],
-                      background_color=bg_col, element_justification='c', pad=(pad_frame, pad_frame))],
+    ## Table
+    lengths = dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
+
+    tbl_layout = []
+    for i, display_column in enumerate(display_header):
+        col_width = lengths[i]
+        column = header[i]
+        column_layout = [[sg.Text(display_column, size=(col_width, 1), auto_size_text=False, border_width=1,
+                                  relief='sunken', background_color=header_col, justification='c', font=main_font,
+                                  tooltip=display_column)]]
+
+        field_val = data[i]
+        if display_column in edit_keys_mapped:
+            element_key = edit_keys_mapped[display_column]
+            readonly = False
+            try:
+                column_type = edit_cols[column]['ElementType']
+            except KeyError:
+                column_type = 'string'
+        else:
+            element_key = lo.as_key(column)
+            readonly = True
+            column_type = 'string'
+
+        if column_type == 'dropdown':
+            try:
+                values = edit_cols[column]['Values']
+            except KeyError:
+                values = [field_val]
+            column_layout.append([sg.DropDown(values, default_value=field_val, key=element_key, size=(col_width-2, 1),
+                                              font=main_font, readonly=readonly,
+                                              tooltip='Select item from the dropdown menu')])
+        else:
+            column_layout.append([sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
+                                           font=main_font, justification='r', readonly=readonly,
+                                           background_color=bg_col, tooltip=field_val)])
+
+        tbl_layout.append(sg.Col(column_layout, ))
+
+    layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, pad_frame))],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
 
-    window = sg.Window(_('Modify Record'), layout, font=main_font, modal=True, resizable=False)
+    window = sg.Window(_('Modify Record'), layout, modal=True, resizable=False)
     window.finalize()
+
+    for display_column in display_header:
+        if display_column in edit_keys_mapped:
+            element_key = edit_keys_mapped[display_column]
+            window[element_key].expand(expand_x=True)
 
     # Start event loop
     while True:
         event, values = window.read()
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            if edit is False:
+                print('attempting to drop index {}'.format(index))
+                print('number of rows is {}'.format(df.shape[0]))
+                df.drop(index, axis=0, inplace=True)
+                df.reset_index(drop=True, inplace=True)
             break
 
-        if event in (sg.WIN_CLOSED, '-DELETE-'):  # selected close-window or Cancel
+        if edit is True and event == '-DELETE-':  # selected to delete the record
             df.drop(index, axis=0, inplace=True)
             df.reset_index(drop=True, inplace=True)
             break
@@ -392,7 +450,24 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
                 col_key = edit_keys[column]
                 input_val = values[col_key]
 
-                dtype = df[column].dtype
+                # Get data type of column
+                try:
+                    dtype = edit_cols[column]['ElementType']
+                except KeyError:
+                    dtype = df[column].dtype
+                else:
+                    if dtype == 'date':
+                        dtype = np.datetime64
+                    elif dtype == 'dropdown':
+                        dtype = np.object
+                    elif dtype == 'numeric':
+                        dtype = float
+                    elif dtype == 'int':
+                        dtype = int
+                    else:
+                        dtype = np.object
+
+                # Set field value based on data type
                 if is_float_dtype(dtype):
                     try:
                         field_val = float(input_val)
@@ -419,130 +494,9 @@ def edit_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = N
                 # Replace field value with modified value
                 try:
                     df.at[index, column] = field_val
-                except ValueError:
-                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type' \
-                        .format(VAL=field_val, COL=header_map[column])
-                    popup_notice(msg)
-                    ready_to_save.append(False)
-                else:
-                    ready_to_save.append(True)
-
-            if all(ready_to_save):
-                break
-            else:
-                continue
-
-    window.close()
-
-    return df
-
-
-def add_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = None):
-    """
-    Display window for user to add new record.
-    """
-    is_float_dtype = pd.api.types.is_float_dtype
-    is_integer_dtype = pd.api.types.is_integer_dtype
-    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-    is_bool_dtype = pd.api.types.is_bool_dtype
-
-    if win_size:
-        width, height = [i * 0.95 for i in win_size]
-    else:
-        width, height = (const.WIN_WIDTH * 0.95, const.WIN_HEIGHT * 0.95)
-
-    # Format dataframe as list for input into sg
-    row = df.iloc[index]
-    data = row.tolist()
-    print('data to modify {}'.format(data))
-    header = df.columns.values.tolist()
-    display_header = []
-    for column in header:
-        if column in header_map:
-            mapped_column = header_map[column]
-        else:
-            mapped_column = column
-        display_header.append(mapped_column)
-
-    print('with header {}'.format(header))
-    print('and display header {}'.format(display_header))
-
-    edit_keys = {}
-    edit_keys_mapped = {}
-    for column in edit_cols:
-        element_key = lo.as_key(column)
-        edit_keys[column] = element_key
-
-        try:
-            edit_keys_mapped[header_map[column]] = element_key
-        except KeyError:
-            edit_keys_mapped[column] = element_key
-
-    # Window and element size parameters
-    main_font = const.MAIN_FONT
-
-    pad_el = const.ELEM_PAD
-    pad_frame = const.FRAME_PAD
-
-    bg_col = const.ACTION_COL
-
-    # GUI layout
-    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel adding new record')),
-                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                          tooltip=_('Save new record'))]]
-
-    layout = [[sg.Col([[lo.create_etable_layout(data, display_header, edit_keys_mapped, height=height, width=width)]],
-                      background_color=bg_col, element_justification='c', pad=(pad_frame, pad_frame))],
-              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
-
-    window = sg.Window(_('Modify Record'), layout, font=main_font, modal=True, resizable=False)
-    window.finalize()
-
-    # Start event loop
-    while True:
-        event, values = window.read()
-
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
-            df.drop(index, axis=0, inplace=True)
-            df.reset_index(drop=True, inplace=True)
-            break
-
-        if event == '-SAVE-':  # click 'Save' button
-            ready_to_save = []
-            for column in edit_keys:
-                col_key = edit_keys[column]
-                input_val = values[col_key]
-
-                dtype = df[column].dtype
-                if is_float_dtype(dtype):
-                    try:
-                        field_val = float(input_val)
-                    except ValueError:
-                        field_val = input_val
-                elif is_integer_dtype(dtype):
-                    try:
-                        field_val = int(input_val)
-                    except ValueError:
-                        field_val = input_val
-                elif is_bool_dtype(dtype):
-                    try:
-                        field_val = bool(input_val)
-                    except ValueError:
-                        field_val = input_val
-                elif is_datetime_dtype(dtype):
-                    try:
-                        field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
-                    except ValueError:
-                        field_val = input_val
-                else:
-                    field_val = input_val
-
-                # Replace field value with modified value
-                try:
-                    df.at[index, column] = field_val
-                except ValueError:
-                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type' \
-                        .format(VAL=field_val, COL=header_map[column])
+                except ValueError as e:
+                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type - {ERR}' \
+                        .format(VAL=field_val, COL=header_map[column], ERR=e)
                     popup_notice(msg)
                     ready_to_save.append(False)
                 else:

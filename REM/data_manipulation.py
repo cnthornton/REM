@@ -137,7 +137,7 @@ def fill_na(df, colname=None):
     """
     Fill fields NaNs with default values that depend on data type.
     """
-    is_numeric_dtype = pd.api.types.is_numeric_dtype
+    is_float_dtype = pd.api.types.is_float_dtype
     is_string_dtype = pd.api.types.is_string_dtype
     is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
     is_bool_dtype = pd.api.types.is_bool_dtype
@@ -146,15 +146,12 @@ def fill_na(df, colname=None):
     for column in columns:
         dtype = df.dtypes[column]
 
-        if is_numeric_dtype(dtype):
-            continue
-        #            df[column].fillna(-1, inplace=True)
+        if is_float_dtype(dtype):
+            df[column].fillna(0.0, inplace=True)
         elif is_string_dtype(dtype):
-            continue
-#            df[column].fillna('nan', inplace=True)
+            df[column].fillna('', inplace=True)
         elif is_datetime_dtype(dtype):
-            continue
-#            df[column] = df[column].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else 'nan')
+            df[column].fillna(inplace=True, method='ffill')
         elif is_bool_dtype(dtype):
             df[column].fillna(False, inplace=True)
         else:  # empty df?
@@ -164,7 +161,7 @@ def fill_na(df, colname=None):
     return df
 
 
-def subset_dataframe(df, subset_rule, duplicates=None):
+def subset_dataframe(df, subset_rule):
     """
     Subset a dataframe based on a set of rules.
     """
@@ -201,9 +198,9 @@ def subset_dataframe(df, subset_rule, duplicates=None):
         print('Info: subsetting evaluation string is {}'.format(cond_str))
         subset_df = eval('df[{}]'.format(cond_str))
     except SyntaxError:
-        raise 'invalid syntax for subset rule {NAME}'.format(NAME=subset_rule)
+        raise SyntaxError('invalid syntax for subset rule {NAME}'.format(NAME=subset_rule))
     except NameError:
-        raise 'unknown column specified in subset rule {NAME}'.format(NAME=subset_rule)
+        raise NameError('unknown column specified in subset rule {NAME}'.format(NAME=subset_rule))
 
     return subset_df
 
@@ -242,7 +239,6 @@ def generate_column_from_rule(dataframe, rule):
             continue
         else:
             try:
-#                print('Info: filling new column with values {VALS}'.format(VALS=sub_values))
                 col_to_add.fillna(pd.Series(sub_values), inplace=True)
             except Exception as e:
                 print('Warning: filling new column with values from rule {COND} failed due to {ERR}'
