@@ -623,20 +623,26 @@ class TabItem:
         """
         Use error rules specified in configuration file to annotate rows.
         """
+        error_rules = self.error_rules
         df = self.df
         if df.empty:
             return set()
 
-        headers = df.columns.values.tolist()
-        pkey = self.db_key if self.db_key in headers else self.db_key.lower()
+        errors = []
 
         # Search for errors in the data based on the defined error rules
-        error_rules = self.error_rules
-        print('Info: tab {NAME}, rule {RULE}: searching for errors based on defined error rules {ERR}'
+        print('Info: rule {RULE}, tab {NAME}: searching for errors based on defined error rules {ERR}'
               .format(NAME=self.name, RULE=self.rule_name, ERR=error_rules))
-        errors = dm.evaluate_rule_set(df, error_rules)
+        results = dm.evaluate_rule_set(df, error_rules)  # returns list of booleans
+        for row, result in enumerate(results):
+            if result is False:
+                print('Info: rule {RULE}, tab {NAME}: table row {ROW} failed one or more condition rule'
+                      .format(RULE=self.rule_name, NAME=self.name, ROW=row))
+                errors.append(row)
 
         # Search for errors in the transaction ID using ID format
+        headers = df.columns.values.tolist()
+        pkey = self.db_key if self.db_key in headers else self.db_key.lower()
         try:
             date_cnfg = settings.format_date_str(date_str=self.get_component('date')[1])
         except TypeError:

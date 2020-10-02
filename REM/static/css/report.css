@@ -87,6 +87,7 @@ dd          { margin-left: 1.5em;}
 	on table cells has to be 27px, instead of the standard 18px or 36px
 	of other elements.
  */
+
 table       { margin-bottom: 4em; width:95%; border-collapse: collapse; }
 th          { vertical-align: top; text-align: left; font-weight: bold; font-size: 1.2em; }
 td          { font-size: 1.2em; }
@@ -101,7 +102,6 @@ tbody tr:nth-child(even) td,
 tbody tr.even td  {
 	background: #e5ecf9;
 }
-th:last-child { width: 40px; }
 tfoot       { font-style: italic; }
 caption     { background: #eee; }
 

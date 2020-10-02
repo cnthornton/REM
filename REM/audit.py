@@ -322,7 +322,7 @@ class AuditRule:
 
         # Reset Summary attributes
         for summary_item in self.summary.summary_items:
-            summary_item.reset_attributes()
+            summary_item.reset_dynamic_attributes()
 
     def toggle_parameters(self, window, value='enable'):
         """
@@ -589,7 +589,7 @@ class SummaryPanel:
         summary_items = self.summary_items
         for summary_item in summary_items:
             # Reset summary item attributes
-            summary_item.reset_attributes()
+            summary_item.reset_dynamic_attributes()
 
     def resize_elements(self, window, win_size: tuple = None):
         """
@@ -774,6 +774,7 @@ class SummaryPanel:
                 if reference_df.empty:
                     continue
 
+            # Subset rows based on subset rules in configuration
             try:
                 subset_df = dm.subset_dataframe(reference_df, section['Subset'])
             except KeyError:
@@ -786,6 +787,7 @@ class SummaryPanel:
                 if subset_df.empty:
                     continue
 
+            # Select columns from list in configuration
             try:
                 subset_df = subset_df[section['Columns']]
             except KeyError as e:
@@ -793,6 +795,7 @@ class SummaryPanel:
                       .format(RULE=self.rule_name, NAME=section_name, ERR=e))
                 continue
 
+            # Index rows using grouping list in configuration
             try:
                 grouping = section['Group']
             except KeyError:
@@ -801,8 +804,19 @@ class SummaryPanel:
                 grouped_df = subset_df.set_index(grouping).sort_index()
 
             html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
-                                          sparsify=True, na_rep='')
-            sections.append((title, html_str))
+                                          sparsify=True, na_rep='', classes=section['Columns'])
+
+            # Highlight errors in html string
+            error_col = const.TBL_ERROR_COL
+            errors = reference_tab.search_for_errors()
+            try:
+                html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">'.format(error_col), errors)
+            except Exception as e:
+                print('Warning: rule {RULE}, summary {NAME}: unable to apply error rule results to output - {ERR}'
+                      .format(RULE=self.rule_name, NAME=reference_tab.name, ERR=e))
+                html_out = html_str
+
+            sections.append((title, html_out))
 
         css_url = settings.report_css
         template_vars = {'title': self.title, 'report_sections': sections}
@@ -1012,7 +1026,7 @@ class SummaryItem:
         self.ids = []
         self.id_components = []
 
-    def reset_attributes(self):
+    def reset_dynamic_attributes(self):
         """
         Reset Summary values.
         """
@@ -1442,15 +1456,23 @@ class SummaryItem:
         """
         Use error rules specified in configuration file to annotate rows.
         """
+        error_rules = self.error_rules
         df = self.df
         if df.empty:
             return set()
 
+        errors = []
+
         # Search for errors in the data based on the defined error rules
-        error_rules = self.error_rules
         print('Info: rule {RULE}, summary {NAME}: searching for errors based on defined error rules {RULES}'
               .format(NAME=self.name, RULE=self.rule_name, RULES=error_rules))
-        errors = dm.evaluate_rule_set(df, error_rules)
+
+        results = dm.evaluate_rule_set(df, error_rules)
+        for row, result in enumerate(results):
+            if result is False:
+                print('Info: rule {RULE}, summary {NAME}: table row {ROW} failed one or more condition rule'
+                      .format(RULE=self.rule_name, NAME=self.name, ROW=row))
+                errors.append(row)
 
         return set(errors)
 
@@ -1830,3 +1852,21 @@ class AuditParameterDateRange(AuditParameterDate):
             return True
         else:
             return False
+
+
+def replace_nth(s, sub, new, n):
+    """
+    Replace the nth occurrence of an substring in a string
+    """
+    where = [m.start() for m in re.finditer(sub, s)]
+    new_s = s
+    for count, start_index in enumerate(where):
+        if count not in n:
+            continue
+
+        before = new_s[:start_index]
+        after = new_s[start_index:]
+        after = after.replace(sub, new, 1)
+        new_s = before + after
+
+    return new_s

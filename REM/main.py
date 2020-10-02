@@ -239,6 +239,10 @@ def reset_to_default(window, rule, current: bool = False):
     end_key = rule.key_lookup('Finalize')
     window[end_key].update(disabled=True)
 
+    # Switch to first tab in summary panel
+    tg_key = rule.summary.key_lookup('TG')
+    window[tg_key].Widget.select(0)
+
     # Reset rule item attributes, including tab, summary, and parameter
     rule.reset_attributes()
 
@@ -855,16 +859,27 @@ def main():
                 rule_summ.reset_attributes()
                 rule_summ.resize_elements(window, win_size=window.size)
 
+                # Switch to first tab
+                window[tg_key].Widget.select(0)
+
             # Save results of the audit
             save_key = rule.summary.key_lookup('Save')
             if event == save_key:
                 # Save summary to excel or csv file
                 title = rule.summary.title.replace(' ', '_')
-                outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True, default_extension='pdf',
-                                            no_window=True, file_types=(('PDF - Portable Document Format', '*.pdf'), ))
+                outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
+                                            default_extension='pdf', no_window=True,
+                                            file_types=(('PDF - Portable Document Format', '*.pdf'), ))
+
+                if not outfile:
+                    continue
+                else:
+                    print('Info: saving summary report to {}'.format(outfile))
+
                 try:
                     rule_summ.save_report(outfile)
                 except Exception as e:
+                    raise
                     msg = _('Save to file {} failed due to {}').format(outfile, e)
                     win2.popup_error(msg)
                     continue

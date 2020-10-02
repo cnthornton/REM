@@ -5,6 +5,7 @@ REM function for manipulating data.
 import numpy as np
 import pandas as pd
 import re
+import REM.constants as const
 
 
 def create_empty_table(nrow: int = 20, ncol: int = 10):
@@ -301,7 +302,7 @@ def sort_table(df, sort_key, ascending: bool = True):
 
 def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
     """
-    Check whether rows in a dataframe pass a set of conditions.
+    Check whether rows in a dataframe pass a set of conditions. Returns a list or pandas Series of failed indexes.
     """
     if not as_list:
         chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
@@ -329,6 +330,7 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
                 try:
                     failed_condition = evaluate_rule(df, component, as_list=as_list)
                 except Exception as e:
+                    raise
                     print('Warning: evaluation failed due to {}. Setting values to default "True"'.format(e))
                     nrow = df.shape[0]
                     eval_values.append([True for i in range(nrow)])
@@ -339,41 +341,46 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
 
     rule_eval_str = ' '.join(rule_eval_list)
     if as_list:
-        failed_set = []
+        results = []
         for row, results_tup in enumerate(zip(*eval_values)):
-            results = eval(rule_eval_str.format(*results_tup))
-            if not results:
-                print('Info: table row {ROW} failed one or more condition rule'.format(ROW=row))
-                failed_set.append(row)
+            print('results tuple is: {}'.format(results_tup))
+            result = eval(rule_eval_str.format(*results_tup))  # returns either True or False
+            print('with final result: {}'.format(result))
+            results.append(result)
     else:
-        failed_set = eval(rule_eval_str.format(*eval_values))
+        results = eval(rule_eval_str.format(*eval_values))
 
-    return failed_set
+    return results
 
 
-def evaluate_rule(df, condition, as_list: bool = True):
+def evaluate_rule(data, condition, as_list: bool = True):
     """
     Check whether rows in dataframe pass a given condition rule.
     """
     operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in'}
 
-    header = df.columns.values.tolist()
+    if isinstance(data, pd.Series):
+        header = data.index.tolist()
+    elif isinstance(data, pd.DataFrame):
+        header = data.columns.values.tolist()
+    else:
+        raise ValueError('data must be either a pandas DataFrame or Series')
 
     if isinstance(condition, str):
         conditional = parse_operation_string(condition)
     elif isinstance(condition, list):
         conditional = condition
     else:
-        raise ValueError('condition argument must be either a string or list')
+        raise ValueError('condition argument {} must be either a string or list'.format(condition))
 
     rule_value = []
     for i, component in enumerate(conditional):
         if component in operators:  # component is an operator
             rule_value.append(component)
         elif component in header:
-            rule_value.append('df["{}"]'.format(component))
+            rule_value.append('data["{}"]'.format(component))
         elif component.lower() in header:
-            rule_value.append('df["{}"]'.format(component.lower()))
+            rule_value.append('data["{}"]'.format(component.lower()))
         else:  # component is a string or integer
             rule_value.append(component)
 
@@ -386,13 +393,33 @@ def evaluate_rule(df, condition, as_list: bool = True):
     except NameError:
         raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
 
-    if as_list:
-        row_status = list(row_status)
+    if as_list is True:
+        if isinstance(row_status, pd.Series):
+            row_status = row_status.tolist()
+        else:
+            row_status = [row_status]
     else:
         if not isinstance(row_status, pd.Series):
-            raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
+            row_status = pd.Series(row_status)
 
     return row_status
+
+
+def color_errors(s, rule):
+    """
+    Color rows for pandas styling that fail a defined error rule
+    """
+    error_col = const.TBL_ERROR_COL
+
+    print('testing row {} with rule {}'.format(s, rule))
+    result = evaluate_rule_set(s, rule, as_list=True)
+    print('Info: result of evaluation is {}'.format(result))
+    if result is True:
+        color = error_col
+    else:
+        color = None
+
+    return ['background-color: {}'.format(error_col) if color else '' for _ in s]
 
 
 def parse_operation_string(condition, equivalent: bool = True):
