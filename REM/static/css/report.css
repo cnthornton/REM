@@ -89,7 +89,7 @@ dd          { margin-left: 1.5em;}
  */
 
 table       { margin-bottom: 4em; width:95%; border-collapse: collapse; }
-th          { vertical-align: top; text-align: left; font-weight: bold; font-size: 1.2em; }
+th          { vertical-align: top; text-align: left; font-weight: normal; font-size: 1.2em; }
 td          { font-size: 1.2em; }
 thead th    { background: #c3d9ff; }
 th,td,caption { padding: 4px 10px 4px 5px; }
@@ -98,10 +98,10 @@ table,th,td   { border: 1px solid #f2f2f2; }
 	You can zebra-stripe your tables in outdated browsers by adding
 	the class "even" to every other table row.
  */
-tbody tr:nth-child(even) td,
+/* tbody tr:nth-child(even) td,
 tbody tr.even td  {
 	background: #e5ecf9;
-}
+}  */
 tfoot       { font-style: italic; }
 caption     { background: #eee; }
 

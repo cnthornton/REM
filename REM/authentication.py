@@ -38,7 +38,7 @@ class UserAccount:
 
         pwd (str): hash value for associated account password.
 
-        superuser (bool): existing account is an admin account.
+        admin (bool): existing account is an admin account.
 
         logged_in (bool): user is logged in
     """
@@ -50,7 +50,7 @@ class UserAccount:
         self.uid = None
         self.pwd = None
         self.logged_in = False
-        self.superuser = False
+        self.admin = False
 
     def login(self, uid, pwd):
         """
@@ -99,7 +99,7 @@ class UserAccount:
         self.logged_in = True
 
         if ugroup == 'admin':
-            self.superuser = True
+            self.admin = True
 
         return True
 
@@ -110,7 +110,7 @@ class UserAccount:
         self.uid = None
         self.pwd = None
         self.logged_in = False
-        self.superuser = False
+        self.admin = False
 
         return True
 
@@ -229,16 +229,16 @@ class UserAccount:
             try:
                 cursor = conn.cursor()
             except AttributeError:
-                print('Update Error: connection to database cannot be established')
+                print('DB Write Error: connection to database cannot be established')
                 status = False
             else:
                 try:
                     cursor.execute(statement, params)
-                except pyodbc.Error as ex1:  # possible duplicate entries
-                    print('DB Write Error: {}'.format(ex1))
+                except pyodbc.Error as e:  # possible duplicate entries
+                    print('DB Write Error: {}'.format(e))
                     status = False
                 else:
-                    print('Info: database {} successfully written'.format(database))
+                    print('Info: database {} successfully modified'.format(database))
 
                     conn.commit()
                     status = True
@@ -328,28 +328,50 @@ class UserAccount:
         Insert data into the daily summary table.
         """
 
-        if len(columns) != len(values):
-            print('Insertion Error: columns size is not equal to values size')
-            return False
-
         # Format parameters
         if isinstance(values, list):
-            params = tuple(values)
+            if any(isinstance(i, list) for i in values):
+                if not all([len(columns) == len(i) for i in values]):
+                    print('Insertion Error: columns size is not equal to values size')
+                    return False
+
+                params = tuple([i for sublist in values for i in sublist])
+                marker_list = []
+                for value_set in values:
+                    marker_list.append('({})'.format(','.join(['?' for _ in value_set])))
+                markers = ','.join(marker_list)
+            else:
+                if len(columns) != len(values):
+                    print('Insertion Error: header size is not equal to values size')
+                    return False
+
+                params = tuple(values)
+                markers = '({})'.format(','.join(['?' for _ in params]))
         elif isinstance(values, tuple):
+            if len(columns) != len(values):
+                print('Insertion Error: header size is not equal to values size')
+                return False
+
             params = values
+            markers = '({})'.format(','.join(['?' for _ in params]))
         elif isinstance(values, str):
+            if not isinstance(columns, str):
+                print('Insertion Error: header size is not equal to values size')
+                return False
+
             params = (values,)
+            markers = '({})'.format(','.join(['?' for _ in params]))
         else:
             print('Insertion Error: unknown values type {}'.format(type(values)))
             return False
 
-        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES ({VALS})'\
-            .format(TABLE=table, COLS=','.join(columns), VALS=','.join(['?' for i in params]))
+        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES {VALS}'\
+            .format(TABLE=table, COLS=','.join(columns), VALS=markers)
         print('Info: insertion string is: {}'.format(insert_str))
         print('Info: with parameters: {}'.format(params))
 
         db = settings.prog_db
-        status = self.thread_transaction(insert_str, params, operation='read', database=db)
+        status = self.thread_transaction(insert_str, params, operation='write', database=db)
 
         return status
 
@@ -358,16 +380,24 @@ class UserAccount:
         Insert data into the daily summary table.
         """
 
-        if len(columns) != len(values):
-            print('Update Error: columns size is not equal to values size')
-            return False
-
         # Format parameters
         if isinstance(values, list):
+            if len(columns) != len(values):
+                print('Update Error: header size is not equal to values size')
+                return False
+
             params = tuple(values)
         elif isinstance(values, tuple):
+            if len(columns) != len(values):
+                print('Update Error: header size is not equal to values size')
+                return False
+
             params = values
         elif isinstance(values, str):
+            if not isinstance(columns, str):
+                print('Update Error: header size is not equal to values size')
+                return False
+
             params = (values,)
         else:
             print('Update Error: unknown values type {}'.format(type(values)))
@@ -385,7 +415,46 @@ class UserAccount:
         print('Info: with parameters: {}'.format(params))
 
         db = settings.prog_db
-        status = self.thread_transaction(update_str, params, operation='read', database=db)
+        status = self.thread_transaction(update_str, params, operation='write', database=db)
+
+        return status
+
+    def delete(self, table, columns, values):
+        """
+        Delete data from a summary table.
+        """
+
+        # Format parameters
+        if isinstance(values, list):
+            params = tuple(values)
+
+            if len(columns) != len(values):
+                print('Deletion Error: columns size is not equal to values size')
+                return False
+        elif isinstance(values, tuple):
+            params = values
+
+            if len(columns) != len(values):
+                print('Deletion Error: columns size is not equal to values size')
+                return False
+        elif isinstance(values, str):
+            params = (values,)
+
+            if not isinstance(columns, str):
+                print('Deletion Error: columns size is not equal to values size')
+                return False
+        else:
+            print('Deletion Error: unknown values type {}'.format(type(values)))
+            return False
+
+        pair_list = ['{}=?'.format(colname) for colname in columns]
+
+        delete_str = 'DELETE FROM {TABLE} WHERE {PAIRS}'.format(TABLE=table, PAIRS=' AND '.join(pair_list))
+        print('Info: deletion string is: {}'.format(delete_str))
+        print('Info: with parameters: {}'.format(params))
+
+        db = settings.prog_db
+        status = self.thread_transaction(delete_str, params, operation='write', database=db)
 
         return status
 

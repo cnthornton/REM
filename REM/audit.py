@@ -628,6 +628,7 @@ class SummaryPanel:
                     df[column] = pd.to_numeric(df[column], downcast='float')
                     continue
 
+                # Add audit tab summaries to totals table
                 rule_values = []
                 for component in dm.parse_operation_string(reference):
                     if component in operators:
@@ -685,7 +686,7 @@ class SummaryPanel:
 
             summary_item.totals_df = df
 
-    def update_parameters(self, window, rule):
+    def update_title(self, window, rule):
         """
         Update summary title to include audit parameters.
         """
@@ -804,17 +805,20 @@ class SummaryPanel:
                 grouped_df = subset_df.set_index(grouping).sort_index()
 
             html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
-                                          sparsify=True, na_rep='', classes=section['Columns'])
+                                          sparsify=True, na_rep='')
 
             # Highlight errors in html string
             error_col = const.TBL_ERROR_COL
-            errors = reference_tab.search_for_errors()
+            errors = reference_tab.search_for_errors(dataframe=grouped_df)
             try:
                 html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">'.format(error_col), errors)
             except Exception as e:
                 print('Warning: rule {RULE}, summary {NAME}: unable to apply error rule results to output - {ERR}'
                       .format(RULE=self.rule_name, NAME=reference_tab.name, ERR=e))
                 html_out = html_str
+
+            print(html_out)
+            print(grouped_df)
 
             sections.append((title, html_out))
 
@@ -838,7 +842,7 @@ class SummaryPanel:
 
         return status
 
-    def save_to_database(self, user):
+    def save_to_database(self, user, params):
         """
         Save results of an audit to the program database defined in the configuration file.
         """
@@ -846,77 +850,51 @@ class SummaryPanel:
 
         success = []
         for summary_item in summary_items:
-            table = summary_item.name
-            id_field = summary_item.records['IDColumn']
-
-            df = summary_item.df
-            columns = df.columns.values.tolist()
-
-            try:
-                ids = df[id_field].tolist()
-            except KeyError:
-                print('Error: rule {RULE}, Summary: cannot find IDColumn {ID} in data frame'
-                      .format(RULE=self.rule_name, ID=id_field))
-                return False
-
-            for ident in ids:
-                try:
-                    values = df.iloc[ident].values.tolist()
-                except AttributeError:
-                    print('Warning: rule {RULE}, Summary: identifier {ID} has more than one row '
-                          .format(RULE=self.rule_name, ID=ident))
+            records = summary_item.records
+            totals = summary_item.totals
+            db_items = [(records['DatabaseTable'], summary_item.df), (totals['DatabaseTable'], summary_item.totals_df)]
+            for table, df in db_items:
+                if table is None:
                     continue
-                else:
-                    filters = ('{} = ?'.format(id_field), (ident,))
-                    existing_df = user.query(table, filter_rules=filters, prog_db=True)
+
+                # Add audit parameters to table, if not already there
+                for param in params:
+                    colname = param.alias
+                    value = param.value_obj
+                    df[colname] = value
+
+                columns = df.columns.values.tolist()
+                values = df.values.tolist()
+
+                filters = [i.filter_statement(table=table, alias=True) for i in params]
+                existing_df = user.query(table, filter_rules=filters, prog_db=True)
 
                 if existing_df.empty:  # row doesn't exist in database yet
                     success.append(user.insert(table, columns, values))
                 else:  # update existing values in table (requires admin privileges)
+                    print('Info: audit results already exist in database table {}'.format(table))
                     if user.admin:
-                        success.append(user.update(table, columns, values, filters))
+                        # Verify that user would like to update the database table
+                        update_table = win2.popup_confirm('Audit results already exist in database table {}. Would you '
+                                                          'like to replace the results?'.format(table))
+                        if update_table:
+                            # Delete results from previous audit
+                            deleted = user.delete(table, [i.alias for i in params], [i.value_obj for i in params])
+                            if deleted is False:
+                                msg = 'Update failed. Run with the debug window to learn more'
+                                win2.popup_notice(msg)
+                                success.append(False)
+                                continue
+
+                            # Insert updated audit results
+                            success.append(user.insert(table, columns, values))
                     else:
-                        msg = 'Transaction {} already exists in the summary database'.format(ident)
+                        msg = 'Audit results already exist in the summary database. Only an admin can update audit ' \
+                              'records'
                         win2.popup_notice(msg)
                         success.append(False)
 
         return all(success)
-
-    def save_to_file(self, filename):
-        """
-        Save results of an audit to a file specified by the user.
-        """
-        summary_items = self.summary_items
-
-        file_type = filename.split('.')[-1]
-        if file_type not in ('csv', 'xls', 'xlsx'):
-            print('Error: rule {RULE}, Summary: unknown file type {TYPE} provided'
-                  .format(RULE=self.rule_name, TYPE=file_type))
-            return False
-
-        # Write to output file
-        saved: List[bool] = []
-        for summary_item in summary_items:
-            df = summary_item.df
-            if file_type == 'csv':
-                try:
-                    df.to_csv(filename, mode='a', index=False, header=True)
-                except Exception as e:
-                    print('Error: rule {RULE}, Summary: saving to file failed due to {ERR}'
-                          .format(RULE=self.rule_name, ERR=e))
-                else:
-                    saved.append(True)
-            else:
-                with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
-                    try:
-                        df.to_excel(writer, sheet_name=summary_item.title, index=False, header=True)
-                    except Exception as e:
-                        print('Error: rule {RULE}, Summary: saving to file failed due to {ERR}'
-                              .format(RULE=self.rule_name, ERR=e))
-                    else:
-                        saved.append(True)
-
-        return all(saved)
 
 
 class SummaryItem:
@@ -950,6 +928,8 @@ class SummaryItem:
             sys.exit(1)
         msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "{FIELD}" '
                 'in the "Records" parameter.')
+        if 'DatabaseTable' not in records:
+            records['DatabaseTable'] = None
         if 'TableColumns' not in records:
             win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
             sys.exit(1)
@@ -990,6 +970,8 @@ class SummaryItem:
             sys.exit(1)
         msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "{FIELD}" '
                 'in the "Totals" parameter.')
+        if 'DatabaseTable' not in totals:
+            totals['DatabaseTable'] = None
         if 'TableColumns' not in totals:
             win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
             sys.exit(1)
@@ -1452,12 +1434,12 @@ class SummaryItem:
 
         return display_df
 
-    def search_for_errors(self):
+    def search_for_errors(self, dataframe=None):
         """
         Use error rules specified in configuration file to annotate rows.
         """
         error_rules = self.error_rules
-        df = self.df
+        df = dataframe if dataframe is not None else self.df
         if df.empty:
             return set()
 
@@ -1497,22 +1479,11 @@ class SummaryItemAdd(SummaryItem):
         if df.shape[0]:  # no rows in table
             df = df.append(pd.Series(), ignore_index=True)
 
-        # Create primary key for row
+        # Create unique identifier for row
         id_field = self.records['IDColumn']
         ident = self.create_id(rule)
         df.at[0, id_field] = ident
         self.ids.append(ident)
-
-        # Update SummaryItem tables with parameter values
-        for param in rule.parameters:
-            param_col = param.name
-            param_value = param.value_obj
-
-            try:
-                df.at[0, param_col] = param_value
-            except KeyError:
-                print('Error: rule {RULE}, summary {SUMM}: parameter column {COL} not found in records dataframe'
-                      .format(RULE=self.rule_name, SUMM=self.name, COL=param_col))
 
         # Update amount column
         sum_column = self.records['SumColumn']
@@ -1544,7 +1515,6 @@ class SummaryItemSubset(SummaryItem):
         df = self.df
         records = self.records
 
-        id_column = records['IDColumn']
         db_columns = records['TableColumns']
         mapping_columns = records['MappingColumns']
         references = records['ReferenceTables']
@@ -1590,6 +1560,13 @@ class SummaryItemSubset(SummaryItem):
             # Append data to summary dataframe
             df = dm.append_to_table(df, append_df)
 
+        # Create unique identifiers for each row
+        id_field = self.records['IDColumn']
+        for row in range(df.shape[0]):
+            ident = self.create_id(rule)
+            df.at[row, id_field] = ident
+            self.ids.append(ident)
+
         self.df = df
 
 
@@ -1602,8 +1579,26 @@ class AuditParameter:
         self.name = name
         self.rule_name = rule_name
         self.element_key = lo.as_key('{} {}'.format(rule_name, name))
-        self.description = cdict['Description']
-        self.type = cdict['ElementType']
+        try:
+            self.description = cdict['Description']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Description".') \
+                .format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        try:
+            self.type = cdict['ElementType']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "ElementType".') \
+                .format(RULE=rule_name, NAME=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        try:
+            self.alias = cdict['Alias']
+        except KeyError:
+            self.alias = name
 
         # Dynamic attributes
         self.value = self.value_raw = self.value_obj = None
@@ -1636,14 +1631,19 @@ class AuditParameter:
         else:
             return False
 
-    def filter_statement(self, table=None):
+    def filter_statement(self, table=None, alias: bool = False):
         """
         Generate the filter clause for SQL querying.
         """
-        if table:
-            db_field = '{}.{}'.format(table, self.name)
+        if alias is True:
+            colname = self.alias
         else:
-            db_field = self.name
+            colname = self.name
+
+        if table:
+            db_field = '{}.{}'.format(table, colname)
+        else:
+            db_field = colname
 
         value = self.value
         if value:
@@ -1663,8 +1663,10 @@ class AuditParameterCombo(AuditParameter):
         try:
             self.combo_values = cdict['Values']
         except KeyError:
-            print('Configuration Warning: rule {RULE}, parameter {PARAM}: values required for parameter type "dropdown"'
-                  .format(PARAM=name, RULE=rule_name))
+            msg = _('Configuration Warning: rule {RULE}, parameter {PARAM}: values required for parameter type '
+                    '"dropdown"').format(PARAM=name, RULE=rule_name)
+            win2.popup_notice(msg)
+
             self.combo_values = []
 
     def layout(self, padding: int = 8):
@@ -1697,8 +1699,9 @@ class AuditParameterDate(AuditParameter):
         try:
             self.format = settings.format_date_str(date_str=cdict['DateFormat'])
         except KeyError:
-            print('Warning: rule {RULE}, parameter {PARAM}: no date format specified ... defaulting to YYYY-MM-DD'
-                  .format(PARAM=name, RULE=rule_name))
+            msg = _('Warning: rule {RULE}, parameter {PARAM}: no date format specified ... defaulting to '
+                    'YYYY-MM-DD').format(PARAM=name, RULE=rule_name)
+            win2.popup_notice(msg)
             self.format = "%Y-%m-%d"
 
     def layout(self):
@@ -1854,14 +1857,17 @@ class AuditParameterDateRange(AuditParameterDate):
             return False
 
 
-def replace_nth(s, sub, new, n):
+def replace_nth(s, sub, new, ns):
     """
     Replace the nth occurrence of an substring in a string
     """
+    if isinstance(ns, str):
+        ns = [ns]
+
     where = [m.start() for m in re.finditer(sub, s)]
     new_s = s
     for count, start_index in enumerate(where):
-        if count not in n:
+        if count not in ns:
             continue
 
         before = new_s[:start_index]

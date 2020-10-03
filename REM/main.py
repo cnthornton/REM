@@ -427,7 +427,7 @@ def main():
                 # Enable permission specific actions and menus
 
                 # Admin only actions and menus
-                admin = user.superuser
+                admin = user.admin
                 if admin:
                     # Database administration
                     window['-DB-'].update(disabled=False)
@@ -787,7 +787,7 @@ def main():
                 rule_summ = rule.summary
 
                 # Update summary tables with the current audit's parameter values
-                rule_summ.update_parameters(window, rule)
+                rule_summ.update_title(window, rule)
 
                 # Update summary totals with tab summary totals
                 rule_summ.update_totals(rule)
@@ -879,10 +879,22 @@ def main():
                 try:
                     rule_summ.save_report(outfile)
                 except Exception as e:
-                    raise
                     msg = _('Save to file {} failed due to {}').format(outfile, e)
                     win2.popup_error(msg)
-                    continue
+#                else:
+#                    # Reset audit elements
+#                    audit_in_progress = False
+#                    summary_panel_active = False
+#                    rule_summ.reset_attributes()
+#                    rule_summ.resize_elements(window, win_size=window.size)
+#                    current_panel = reset_to_default(window, rule, current=True)
+
+            # Save summary to the program database
+                try:
+                    rule_summ.save_to_database(user, rule.parameters)
+                except Exception as e:
+                    msg = _('Save to database failed - {}').format(e)
+                    win2.popup_error(msg)
                 else:
                     # Reset audit elements
                     audit_in_progress = False
@@ -890,20 +902,6 @@ def main():
                     rule_summ.reset_attributes()
                     rule_summ.resize_elements(window, win_size=window.size)
                     current_panel = reset_to_default(window, rule, current=True)
-
-            # Save summary to the program database
-#                try:
-#                    rule_summ.save_to_database(user)
-#                except Exception as e:
-#                    msg = _('Save to database failed due to {}').format(e)
-#                    win2.popup_error(msg)
-#                else:
-#                    # Reset audit elements
-#                    audit_in_progress = False
-#                    summary_panel_active = False
-#                    rule_summ.reset_values()
-#                    current_panel = reset_to_default(window, rule)
-#                    rule = None
 
     window.close()
 

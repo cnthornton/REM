@@ -2,10 +2,10 @@
 REM function for manipulating data.
 """
 
+import datetime
 import numpy as np
 import pandas as pd
 import re
-import REM.constants as const
 
 
 def create_empty_table(nrow: int = 20, ncol: int = 10):
@@ -152,7 +152,7 @@ def fill_na(df, colname=None):
         elif is_string_dtype(dtype):
             df[column].fillna('', inplace=True)
         elif is_datetime_dtype(dtype):
-            df[column].fillna(inplace=True, method='ffill')
+            df[column].fillna(datetime.datetime.now(), inplace=True)
         elif is_bool_dtype(dtype):
             df[column].fillna(False, inplace=True)
         else:  # empty df?
@@ -208,7 +208,7 @@ def subset_dataframe(df, subset_rule):
 
 def generate_column_from_rule(dataframe, rule):
     """
-    Generate dataframe column using a rule set
+    Generate the values of a dataframe column using the defined rule set.
     """
     chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
 
@@ -236,7 +236,7 @@ def generate_column_from_rule(dataframe, rule):
         try:
             sub_values = evaluate_rule(dataframe, col_oper_list)
         except Exception as e:
-            print('Warning: merging of columns {COLS} failed due to {ERR}'.format(COLS=merge_cols, ERR=e))
+            print('Warning: merging of columns {COLS} failed - {ERR}'.format(COLS=merge_cols, ERR=e))
             continue
         else:
             try:
@@ -245,7 +245,7 @@ def generate_column_from_rule(dataframe, rule):
                 print('Warning: filling new column with values from rule {COND} failed due to {ERR}'
                       .format(COND=sub_rule, ERR=e))
 
-    # Attempt to set column dtype
+    # Attempt to set the column data type
     return col_to_add.astype(dtype, errors='raise')
 
 
@@ -330,7 +330,6 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
                 try:
                     failed_condition = evaluate_rule(df, component, as_list=as_list)
                 except Exception as e:
-                    raise
                     print('Warning: evaluation failed due to {}. Setting values to default "True"'.format(e))
                     nrow = df.shape[0]
                     eval_values.append([True for i in range(nrow)])
@@ -403,23 +402,6 @@ def evaluate_rule(data, condition, as_list: bool = True):
             row_status = pd.Series(row_status)
 
     return row_status
-
-
-def color_errors(s, rule):
-    """
-    Color rows for pandas styling that fail a defined error rule
-    """
-    error_col = const.TBL_ERROR_COL
-
-    print('testing row {} with rule {}'.format(s, rule))
-    result = evaluate_rule_set(s, rule, as_list=True)
-    print('Info: result of evaluation is {}'.format(result))
-    if result is True:
-        color = error_col
-    else:
-        color = None
-
-    return ['background-color: {}'.format(error_col) if color else '' for _ in s]
 
 
 def parse_operation_string(condition, equivalent: bool = True):
