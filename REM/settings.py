@@ -20,7 +20,9 @@ class ProgramSettings:
         language (str): Display language. Default: EN.
     """
 
-    def __init__(self, cnfg):
+    def __init__(self, cnfg, dirname):
+        self.dirname = dirname
+
         # Supported locales
         self._locales = ['en_US', 'en_UK', 'th_TH']
 
@@ -35,15 +37,13 @@ class ProgramSettings:
         except KeyError:
             cnfg_locale = 'en_US'
         self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
-        self.localedir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'locale')
+        self.localedir = os.path.join(dirname, 'locale')
         self.domain = 'base'
 
         self.translation = self.change_locale()
         self.translation.install('base')  # bind gettext to _() in __builtins__ namespace
 
         # Display parameters
-        dirname = os.path.dirname(os.path.realpath(__file__))
-        self.dirname = dirname
         try:
             logo_name = settings['display']['logo']
         except KeyError:

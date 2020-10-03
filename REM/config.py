@@ -20,13 +20,20 @@ def popup_error(msg):
 
 
 # Global configuration settings
-dirname = os.path.dirname(os.path.realpath(__file__))
-cnfg_file = os.path.join(dirname, 'settings.yaml')
+cnfg_name = 'settings.yaml'
+
+# Determine if application is a script file or frozen exe
+if getattr(sys, 'frozen', False):
+    dirname = os.path.dirname(sys.executable)
+elif __file__:
+    dirname = os.path.dirname(__file__)
+
+cnfg_file = os.path.join(dirname, cnfg_name)
 
 try:
     fh = open(cnfg_file, 'r', encoding='utf-8')
 except FileNotFoundError:
-    msg = 'Unable to load configuration file'
+    msg = 'Unable to load configuration file at {}'.format(cnfg_file)
     popup_error(msg)
     sys.exit(1)
 else:
@@ -34,4 +41,4 @@ else:
     fh.close()
     del fh
 
-settings = prog_sets.ProgramSettings(cnfg)
+settings = prog_sets.ProgramSettings(cnfg, dirname)
