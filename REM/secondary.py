@@ -205,9 +205,10 @@ def login_window():
             else:
                 try:
                     login_success = account.login(uname, pwd)
-                except pyodbc.Error as ex:
-                    sqlstat = ex.args[1]
+                except pyodbc.Error as e:
+                    sqlstat = e.args[1]
                     window['-SUCCESS-'].update(value=sqlstat)
+                    print(e)
                 else:
                     if login_success:
                         print('Info: successfully logged in as {}'.format(uname))
@@ -328,9 +329,9 @@ def modify_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple =
     is_bool_dtype = pd.api.types.is_bool_dtype
 
     if win_size:
-        width, height = [i * 0.95 for i in win_size]
+        width, height = win_size
     else:
-        width, height = (const.WIN_WIDTH * 0.95, const.WIN_HEIGHT * 0.95)
+        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
     # Format dataframe as list for input into sg
     row = df.iloc[index]

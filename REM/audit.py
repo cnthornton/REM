@@ -868,6 +868,7 @@ class SummaryPanel:
 
                 filters = [i.filter_statement(table=table, alias=True) for i in params]
                 existing_df = user.query(table, filter_rules=filters, prog_db=True)
+                print(existing_df)
 
                 if existing_df.empty:  # row doesn't exist in database yet
                     success.append(user.insert(table, columns, values))

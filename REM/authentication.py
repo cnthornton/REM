@@ -72,11 +72,7 @@ class UserAccount:
 
         # Privileges
         query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
-        try:
-            cursor.execute(query_str, (uid,))
-        except pyodbc.Error as e:
-            print('DB Error: querying Users table from {DB} failed due to {EX}'.format(DB=settings.prog_db, EX=e))
-            raise DBConnectionError(e)
+        cursor.execute(query_str, (uid,))
 
         ugroup = None
         results = cursor.fetchall()

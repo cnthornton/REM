@@ -454,7 +454,12 @@ class TabItem:
 
             # Subset df if subset rule provided
             if 'Subset' in summ_rule:
-                subset_df = dm.subset_dataframe(df, summ_rule['Subset'])
+                try:
+                    subset_df = dm.subset_dataframe(df, summ_rule['Subset'])
+                except Exception as e:
+                    print('Warning: tab {NAME}, rule {RULE}: unable to subset dataframe with subset rule {SUB} - {ERR}'
+                          .format(NAME=self.name, RULE=self.rule_name, SUB=summ_rule['Subset'], ERR=e))
+                    break
             else:
                 subset_df = df
 

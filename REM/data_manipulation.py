@@ -34,12 +34,12 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
         max_size_per_col = int(max_size_per_col / font_size)
 
     # Each column has size == max characters per column
-    lengths = [max_size_per_col for i in header]
+    lengths = [max_size_per_col for _ in header]
 
     # Add any remainder evenly between columns
     remainder = width - (ncol * max_size_per_col)
     index = 0
-    for one in [1 for i in range(int(remainder))]:
+    for one in [1 for _ in range(int(remainder))]:
         if index > ncol - 1:
             index = 0
         lengths[index] += one
