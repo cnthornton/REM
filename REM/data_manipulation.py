@@ -330,7 +330,7 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
                 try:
                     failed_condition = evaluate_rule(df, component, as_list=as_list)
                 except Exception as e:
-                    print('Warning: evaluation failed due to {}. Setting values to default "True"'.format(e))
+                    print('Warning: evaluation failed - {}. Setting values to default "True"'.format(e))
                     nrow = df.shape[0]
                     eval_values.append([True for i in range(nrow)])
                 else:
@@ -342,9 +342,7 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
     if as_list:
         results = []
         for row, results_tup in enumerate(zip(*eval_values)):
-            print('results tuple is: {}'.format(results_tup))
             result = eval(rule_eval_str.format(*results_tup))  # returns either True or False
-            print('with final result: {}'.format(result))
             results.append(result)
     else:
         results = eval(rule_eval_str.format(*eval_values))
@@ -381,7 +379,10 @@ def evaluate_rule(data, condition, as_list: bool = True):
         elif component.lower() in header:
             rule_value.append('data["{}"]'.format(component.lower()))
         else:  # component is a string or integer
-            rule_value.append(component)
+            if component.isalpha() and '"' not in component:
+                rule_value.append('"{}"'.format(component))
+            else:
+                rule_value.append(component)
 
     eval_str = ' '.join(rule_value)
     try:
@@ -389,7 +390,7 @@ def evaluate_rule(data, condition, as_list: bool = True):
         row_status = eval(eval_str)
     except SyntaxError:
         raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
-    except NameError:
+    except NameError:  # dataframe does not have column
         raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
 
     if as_list is True:

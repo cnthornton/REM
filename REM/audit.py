@@ -958,7 +958,7 @@ class SummaryItem:
         if 'ReferenceTables' not in records:
             records['ReferenceTables'] = {}
         if 'EditColumns' not in records:
-            records['EditColumns'] = []
+            records['EditColumns'] = {}
 
         self.records = records
 
@@ -1486,6 +1486,12 @@ class SummaryItemAdd(SummaryItem):
         df.at[0, id_field] = ident
         self.ids.append(ident)
 
+        # Set parameter values
+        for param in rule.parameters:
+            colname = param.alias
+            value = param.value_obj
+            df.at[0, colname] = value
+
         # Update amount column
         sum_column = self.records['SumColumn']
         df[sum_column] = pd.to_numeric(df[sum_column], downcast='float')
@@ -1497,6 +1503,35 @@ class SummaryItemAdd(SummaryItem):
             totals_sum = self.totals_df.iloc[0].sum()
 
         df.at[0, sum_column] = totals_sum
+
+        # Update edit columns with default values, if specified in rules
+        edit_columns = self.records['EditColumns']
+        for edit_column in edit_columns:
+            edit_item = edit_columns[edit_column]
+            try:
+                default_rules = edit_item['DefaultRules']
+            except KeyError:
+                element_type = edit_item['ElementType']
+                if element_type in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                    df[edit_column].fillna(datetime.datetime.now().strftime(settings.format_date_str()), inplace=True)
+                elif element_type in ('int', 'integer', 'bit'):
+                    df[edit_column].fillna(0, inplace=True)
+                elif element_type in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+                    df[edit_column].fillna(0.0, inplace=True)
+                elif element_type in ('bool', 'boolean'):
+                    df[edit_column].fillna(False, inplace=True)
+                elif element_type in ('char', 'varchar', 'binary', 'text'):
+                    df[edit_column].fillna('', inplace=True)
+                else:
+                    df[edit_column].fillna('', inplace=True)
+                continue
+
+            for default_value in default_rules:
+                rule = default_rules[default_value]
+                results = dm.evaluate_rule_set(df, {default_value: rule}, as_list=True)
+                for row, result in enumerate(results):
+                    if result is True:
+                        df.at[row, edit_column] = default_value
 
         self.df = df
 
@@ -1567,6 +1602,41 @@ class SummaryItemSubset(SummaryItem):
             ident = self.create_id(rule)
             df.at[row, id_field] = ident
             self.ids.append(ident)
+
+        # Set parameter values
+        for param in rule.parameters:
+            colname = param.alias
+            value = param.value_obj
+            df[colname] = value
+
+        # Update edit columns with default values, if specified in rules
+        edit_columns = self.records['EditColumns']
+        for edit_column in edit_columns:
+            edit_item = edit_columns[edit_column]
+            try:
+                default_rules = edit_item['DefaultRules']
+            except KeyError:
+                element_type = edit_item['ElementType']
+                if element_type in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                    df[edit_column].fillna(datetime.datetime.now().strftime(settings.format_date_str()), inplace=True)
+                elif element_type in ('int', 'integer', 'bit'):
+                    df[edit_column].fillna(0, inplace=True)
+                elif element_type in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+                    df[edit_column].fillna(0.0, inplace=True)
+                elif element_type in ('bool', 'boolean'):
+                    df[edit_column].fillna(False, inplace=True)
+                elif element_type in ('char', 'varchar', 'binary', 'text'):
+                    df[edit_column].fillna('', inplace=True)
+                else:
+                    df[edit_column].fillna('', inplace=True)
+                continue
+
+            for default_value in default_rules:
+                rule = default_rules[default_value]
+                results = dm.evaluate_rule_set(df, {default_value: rule}, as_list=True)
+                for row, result in enumerate(results):
+                    if result is True:
+                        df.at[row, edit_column] = default_value
 
         self.df = df
 

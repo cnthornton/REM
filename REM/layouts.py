@@ -811,7 +811,8 @@ class TabItem:
 
                     for missing_number in missing_range:
                         missing_id = self.format_id(missing_number, date=first_date_comp)
-                        missing_transactions.append(missing_id)
+                        if missing_id not in id_list:
+                            missing_transactions.append(missing_id)
 
             ## Search for missed numbers at end of day
             last_id_of_df = id_list[-1]
@@ -841,7 +842,8 @@ class TabItem:
                     missing_range = list(range(prev_number + 1, trans_number))
                     for missing_number in missing_range:
                         missing_id = self.format_id(missing_number, date=first_date_comp)
-                        missing_transactions.append(missing_id)
+                        if missing_id not in id_list:
+                            missing_transactions.append(missing_id)
 
                 prev_number = trans_number
 
