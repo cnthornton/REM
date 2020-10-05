@@ -379,7 +379,7 @@ def modify_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple =
                               tooltip=_('Save changes'))]]
 
     ## Table
-    lengths = dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
+    lengths = dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
 
     tbl_layout = []
     for i, display_column in enumerate(display_header):
