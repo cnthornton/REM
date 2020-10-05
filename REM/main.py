@@ -33,7 +33,7 @@ class ToolBar:
         self.reports_menu = {'name': '&Reports',
                              'items': [('!', 'Summary S&tatistics'), ('!', '&Summary Reports')]}
         self.user_menu = {'name': '&User',
-                          'items': [('!', '&Manage Accounts'), ('', '---'), ('', 'Sign &In'), ('!', 'Sign &Out')]}
+                          'items': [('!', '&Manage Accounts'), ('', '---'), ('', 'Sign &In'),('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
                           'items': [('!', '&Configuration'), ('', '&Debug'), ('', '---'), ('', '&Help'),
                                     ('', 'About &Program'), ('', '---'), ('', '&Quit')]}
@@ -91,18 +91,35 @@ class ToolBar:
 
         return layout
 
-    def menu_definition(self, menu):
+    def update_username(self, window, username):
+        """
+        Update user menu to display username after a user is logged in.
+        """
+        element_key = '-UMENU-'
+
+        user_menu = {'name': '&User',
+                     'items': [('!', username), ('', '---'), ('!', '&Manage Accounts'), ('', '---'),
+                               ('!', 'Sign &In'), ('', 'Sign &Out')]}
+
+        menu_def = self.menu_definition('umenu', menu=user_menu)
+
+        window[element_key].update(menu_def)
+
+    def menu_definition(self, menu_item, menu=None):
         """
         Return the menu definition for a menu.
         """
         menus = {'amenu': self.audit_menu, 'rmenu': self.reports_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
-        try:
-            menu_object = menus[menu.lower()]
-        except KeyError:
-            print('Error: selected menu {} not list of available menus'.format(menu))
-            return (None)
+        if menu is None:
+            try:
+                menu_object = menus[menu_item.lower()]
+            except KeyError:
+                print('Error: selected menu {} not list of available menus'.format(menu_item))
+                return None
+        else:
+            menu_object = menu
 
         menu_def = [menu_object['name'], ['{}{}'.format(*i) for i in menu_object['items']]]
 
@@ -458,6 +475,9 @@ def main():
                     if perms != 'admin':
                         toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
                         window[rule_name].update(disabled=False)
+
+                # Update user menu items to include the login name
+                toolbar.update_username(window, user.uid)
             else:
                 print('Error: unable to login to the program')
                 continue
