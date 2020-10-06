@@ -5,6 +5,8 @@ REM configuration settings.
 import dateutil
 import gettext
 import os
+import PySimpleGUI as sg
+import REM.constants as const
 
 
 class ProgramSettings:
@@ -111,15 +113,92 @@ class ProgramSettings:
         Translate text using language defined in settings.
         """
 
-    def modify(self):
+    def edit_attribute(self, attr, value):
         """
+        Modify a settings attribute.
         """
-        pass
+        if attr == 'language':
+            self.language = value
+        elif attr == 'locale':
+            self.locale = value
+        elif attr == 'template':
+            self.report_template = value
+        elif attr == 'css':
+            self.report_css = value
+        elif attr == 'port':
+            self.port = value
+        elif attr == 'server':
+            self.server = value
+        elif attr == 'driver':
+            self.driver = value
+        elif attr == 'dbname':
+            self.dbname = value
 
     def layout(self):
         """
+        Generate GUI layout for the settings window.
         """
-        pass
+        # Window and element size parameters
+        main_font = const.LARGE_FONT
+        header_font = const.HEADER_FONT
+
+        pad_el = const.ELEM_PAD
+        pad_frame = const.FRAME_PAD
+        in_size = 18
+        spacer = (6, 1)
+        dd_size = 8
+
+        bg_col = const.ACTION_COL
+        in_col = const.INPUT_COL
+        sep_col = const.DEFAULT_COL
+
+        layout = [[sg.Text('Localization', font=header_font, pad=((pad_frame, pad_el), (pad_frame, pad_el)),
+                           background_color=bg_col)],
+                  [sg.Text('Language:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                           background_color=bg_col),
+                   sg.Combo(list(set([i.split('_')[0] for i in self._locales])), key='-LANGUAGE-', size=(dd_size, 1),
+                            pad=(pad_el, pad_el), default_value=self.language, auto_size_text=False,
+                            background_color=in_col)],
+                  [sg.Text('Locale:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                           background_color=bg_col),
+                   sg.Combo(self._locales, key='-LOCALE-', size=(dd_size, 1), pad=(pad_el, pad_el),
+                            default_value=self.locale, auto_size_text=False, background_color=in_col)],
+                  [sg.HorizontalSeparator(color=sep_col, pad=(pad_frame, pad_frame))],
+                  [sg.Text('Display', pad=((pad_frame, pad_el), pad_el), font=header_font,
+                           background_color=bg_col)],
+                  [sg.Text('Report template:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                           background_color=bg_col),
+                   sg.Input(self.report_template, key='-TEMPLATE-', size=(54, 1), pad=(pad_el, pad_el),
+                            font=main_font, background_color=in_col),
+                   sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
+                  [sg.Text('Report stylesheet:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                           background_color=bg_col),
+                   sg.Input(self.report_css, key='-CSS-', size=(54, 1), pad=(pad_el, pad_el), font=main_font,
+                            background_color=in_col),
+                   sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
+                  [sg.HorizontalSeparator(color=sep_col, pad=(pad_frame, pad_frame))],
+                  [sg.Text('Database', pad=((pad_frame, pad_el), pad_el), font=header_font,
+                           background_color=bg_col)],
+                  [sg.Text('ODBC port:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                           background_color=bg_col),
+                   sg.Input(self.port, key='-PORT-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                            font=main_font, background_color=in_col),
+                   sg.Text('', size=spacer, background_color=bg_col),
+                   sg.Text('ODBC server:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                           background_color=bg_col),
+                   sg.Input(self.server, key='-SERVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                            font=main_font, background_color=in_col)],
+                  [sg.Text('ODBC driver:', size=(15, 1), pad=((pad_frame, pad_el), (pad_el, pad_frame)), font=main_font,
+                           background_color=bg_col),
+                   sg.Input(self.driver, key='-DRIVER-', size=(in_size, 1),
+                            pad=((pad_el, pad_frame), (pad_el, pad_frame)), font=main_font, background_color=in_col),
+                   sg.Text('', size=spacer, background_color=bg_col, pad=(0, (pad_el, pad_frame))),
+                   sg.Text('Database:', size=(15, 1), pad=((pad_frame, pad_el), (pad_el, pad_frame)),
+                           font=main_font, background_color=bg_col),
+                   sg.Input(self.dbname, key='-DATABASE-', size=(in_size, 1),
+                            pad=((pad_el, pad_frame), (pad_el, pad_frame)), font=main_font, background_color=in_col)]]
+
+        return layout
 
     def change_locale(self):
         """

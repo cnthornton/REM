@@ -104,7 +104,7 @@ def login_window():
     pad_el = const.ELEM_PAD
 
     bg_col = const.ACTION_COL
-    input_col = const.DEFAULT_COL
+    input_col = const.INPUT_COL
     login_col = const.LOGIN_BUTTON_COL
     cancel_col = const.CANCEL_BUTTON_COL
     def_text_col = const.TEXT_COL
@@ -319,6 +319,57 @@ def import_window(df, win_size: tuple = None):
     return vfy_orders
 
 
+def edit_settings(win_size: tuple = None):
+    """
+    Display window for editing the configuration.
+    """
+    if win_size:
+        width, height = [i * 0.6 for i in win_size]
+    else:
+        width, height = (const.WIN_WIDTH * 0.6, const.WIN_HEIGHT * 0.6)
+
+    # Window and element size parameters
+    pad_el = const.ELEM_PAD
+    pad_frame = const.FRAME_PAD
+
+    bg_col = const.ACTION_COL
+
+    # GUI layout
+    ## Buttons
+    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
+                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                          tooltip=_('Save changes'))]]
+
+    item_layout = settings.layout()
+
+    layout = [[sg.Frame('', item_layout, relief='sunken', border_width=1, pad=(pad_frame, pad_frame),
+                        background_color=bg_col)],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+
+    window = sg.Window(_('Settings'), layout, modal=True, resizable=False)
+    window.finalize()
+
+    element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
+                    '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'server', '-DRIVER-': 'driver',
+                    '-DATABASE-': 'dbname'}
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            break
+
+        if event == '-SAVE-':
+            for element_key in element_keys:
+                attribute = element_keys[element_key]
+                element_value = values[element_key]
+                settings.edit_attribute(attribute, element_value)
+            break
+
+    window.close()
+
+
 def modify_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple = None, edit: bool = True):
     """
     Display window for user to add or edit a row.
@@ -365,6 +416,7 @@ def modify_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple =
 
     header_col = const.TBL_HEADER_COL
     bg_col = const.ACTION_COL
+    in_col = const.INPUT_COL
 
     # GUI layout
     ## Buttons
@@ -413,7 +465,7 @@ def modify_record(df, index, edit_cols, header_map: dict = {}, win_size: tuple =
         else:
             column_layout.append([sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
                                            font=main_font, justification='r', readonly=readonly,
-                                           background_color=bg_col, tooltip=field_val)])
+                                           background_color=in_col, tooltip=field_val)])
 
         tbl_layout.append(sg.Col(column_layout, ))
 

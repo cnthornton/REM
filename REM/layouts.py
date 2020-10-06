@@ -526,6 +526,7 @@ class TabItem:
         pad_h = const.HORZ_PAD
         font_l = const.LARGE_FONT
         font_m = const.MID_FONT
+        in_col = const.INPUT_COL
 
         tab_width = width - 120 if width >= 200 else width
         tab_fill = tab_width - 832 if tab_width > 832 else 0
@@ -546,7 +547,8 @@ class TabItem:
                    sg.Canvas(key=fill_key, size=(tab_fill, 0), visible=True),
                    sg.Col([[
                        sg.Input('', key=input_key, font=font_l, size=(20, 1), pad=(pad_el, 0), do_not_clear=False,
-                                tooltip=_('Input document number to add a transaction to the table'), disabled=True),
+                                background_color=in_col, disabled=True,
+                                tooltip=_('Input document number to add a transaction to the table')),
                        B2(_('Add'), key=add_key, pad=((0, pad_h), 0), tooltip=_('Add order to the table'),
                           disabled=True),
                        B2(_('Audit'), key=audit_key, disabled=True, pad=((0, pad_frame), 0),

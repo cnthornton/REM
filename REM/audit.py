@@ -509,9 +509,9 @@ class SummaryPanel:
 
         return layout
 
-    def update_tables(self, window):
+    def update_display(self, window):
         """
-        Format summary item tables for display. Also update sum and remainder elements.
+        Format summary item data elements for display.
         """
         default_col = const.ACTION_COL
         greater_col = const.PASS_COL
@@ -522,7 +522,6 @@ class SummaryPanel:
             # Modify records tables for displaying
             print('Info: rule {RULE}, summary {NAME}: formatting records table for displaying'
                   .format(RULE=self.rule_name, NAME=summary_item.name))
-            print(summary_item.df)
             display_df = summary_item.format_display_table(table='records')
             data = display_df.values.tolist()
 
@@ -535,7 +534,6 @@ class SummaryPanel:
             # Modify totals tables for displaying
             print('Info: rule {RULE}, summary {NAME}: formatting totals table for displaying'
                   .format(RULE=self.rule_name, NAME=summary_item.name))
-            print(summary_item.totals_df)
             totals_display_df = summary_item.format_display_table(table='totals')
             totals_data = totals_display_df.values.tolist()
 
@@ -1747,6 +1745,7 @@ class AuditParameterCombo(AuditParameter):
         pad_el = const.ELEM_PAD
         pad_v = const.VERT_PAD
         font = const.MID_FONT
+        in_col = const.INPUT_COL
 
         key = self.element_key
         desc = '{}:'.format(self.description)
@@ -1755,8 +1754,8 @@ class AuditParameterCombo(AuditParameter):
         width = max([len(i) for i in values]) + padding
 
         layout = [sg.Text(desc, font=font, pad=((0, pad_el), (0, pad_v))),
-                  sg.Combo(values, font=font, key=key, enable_events=True,
-                           size=(width, 1), pad=(0, (0, pad_v)))]
+                  sg.Combo(values, font=font, key=key, enable_events=True, size=(width, 1), pad=(0, (0, pad_v)),
+                           background_color=in_col)]
 
         return layout
 
@@ -1783,17 +1782,17 @@ class AuditParameterDate(AuditParameter):
         pad_v = const.VERT_PAD
         date_ico = const.CALENDAR_ICON
         font = const.MID_FONT
+        in_col = const.INPUT_COL
 
         desc = '{}:'.format(self.description)
 
         key = self.element_key
         layout = [sg.Text(desc, font=font, pad=((0, pad_el), (0, pad_v))),
-                  sg.Input('', key=key, size=(16, 1), enable_events=True,
-                           pad=((0, pad_el), (0, pad_v)), font=font,
+                  sg.Input('', key=key, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)), font=font,
+                           background_color=in_col,
                            tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
-                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico,
-                                    border_width=0, size=(2, 1), pad=(0, (0, pad_v)), font=font,
-                                    tooltip=_('Select date from calendar menu'))]
+                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, size=(2, 1), pad=(0, (0, pad_v)),
+                                    font=font, border_width=0, tooltip=_('Select date from calendar menu'))]
 
         return layout
 
@@ -1869,6 +1868,7 @@ class AuditParameterDateRange(AuditParameterDate):
         pad_h = const.HORZ_PAD
         date_ico = const.CALENDAR_ICON
         font = const.MID_FONT
+        in_col = const.INPUT_COL
 
         desc = self.description
 
@@ -1879,11 +1879,13 @@ class AuditParameterDateRange(AuditParameterDate):
 
         layout = [sg.Text(desc_from, font=font, pad=((0, pad_el), (0, pad_v))),
                   sg.Input('', key=key_from, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)), font=font,
+                           background_color=in_col,
                            tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, size=(2, 1),
                                     pad=(0, (0, pad_v)), tooltip=_('Select date from calendar menu')),
                   sg.Text(desc_to, font=font, pad=((pad_h, pad_el), (0, pad_v))),
                   sg.Input('', key=key_to, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)),
+                           background_color=in_col,
                            tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, size=(2, 1),
                                     pad=(0, (0, pad_v)), tooltip=_('Select date from calendar menu'))]

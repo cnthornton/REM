@@ -33,9 +33,9 @@ class ToolBar:
         self.reports_menu = {'name': '&Reports',
                              'items': [('!', 'Summary S&tatistics'), ('!', '&Summary Reports')]}
         self.user_menu = {'name': '&User',
-                          'items': [('!', '&Manage Accounts'), ('', '---'), ('', 'Sign &In'),('!', 'Sign &Out')]}
+                          'items': [('!', '&Manage Accounts'), ('', '---'), ('', 'Sign &In'), ('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
-                          'items': [('!', '&Configuration'), ('', '&Debug'), ('', '---'), ('', '&Help'),
+                          'items': [('!', '&Configure'), ('', '&Debug'), ('', '---'), ('', '&Help'),
                                     ('', 'About &Program'), ('', '---'), ('', '&Quit')]}
 
     def key_lookup(self, element):
@@ -74,15 +74,15 @@ class ToolBar:
         padding = const.TOOLBAR_PAD
 
         toolbar = [[sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
-                                  pad=(padding, padding)),
+                                           pad=(padding, padding)),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
                                            tooltip=_('Generate Reports & Statistics'), pad=(padding, padding)),
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
                                        pad=(padding, padding), border_width=0, disabled=True)]],
                            justification='l'),
-                    sg.Canvas(key='-CANVAS_WIDTH-', size=(width-260, 0), visible=True),
+                    sg.Canvas(key='-CANVAS_WIDTH-', size=(width - 260, 0), visible=True),
                     sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', image_data=user_ico,
-                                  tooltip=_('User Settings'), pad=(padding, padding)),
+                                           tooltip=_('User Settings'), pad=(padding, padding)),
                              sg.ButtonMenu('', menu_menu, key='-MMENU-', image_data=menu_ico,
                                            tooltip=_('Help and program settings'), pad=(padding, padding))]],
                            justification='r')]]
@@ -145,7 +145,7 @@ class ToolBar:
         try:
             index = items_clean.index(menu_item.lower())
         except IndexError:
-            print('Error: seleted menu item {MENU} not found in {MENUS} item list'.format(MENU=menu_item, MENUS=menu))
+            print('Error: selected menu item {MENU} not found in {MENUS} item list'.format(MENU=menu_item, MENUS=menu))
             return False
 
         # Set status of menu item
@@ -357,7 +357,7 @@ def main():
 
     cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
-#    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
+    #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
     summ_tbl_keys = []
     for rule in audit_rules.rules:
@@ -461,7 +461,7 @@ def main():
                     toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
 
                     # Menu
-                    toolbar.toggle_menu(window, 'mmenu', 'configuration', value='enable')
+                    toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
 
                 # Enable permissions on per audit rule basis defined in config
                 for rule_name in audit_names:
@@ -520,18 +520,23 @@ def main():
             toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='disable')
 
             # Menu
-            toolbar.toggle_menu(window, 'mmenu', 'configuration', value='disable')
+            toolbar.toggle_menu(window, 'mmenu', 'configure', value='disable')
 
             # Audit rules
             for rule_name in audit_names:
                 window[rule_name].update(disabled=True)
                 toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
 
+        if values['-MMENU-'] == 'Configure':  # open settings window
+            win2.edit_settings(win_size=window.size)
+            continue
+
         # Debugger window
         if not debug_win and values['-MMENU-'] == 'Debug':
             debug_win = win2.debugger()
             debug_win.finalize()
             print('Info: starting debugger')
+            continue
         elif debug_win:
             debug_event, debug_value = debug_win.read(timeout=1000)
 
@@ -542,6 +547,7 @@ def main():
                 debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
 
         if not audit_in_progress and event in cancel_keys:
+            toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
             current_panel = reset_to_default(window, rule)
             rule = None
             continue
@@ -555,6 +561,7 @@ def main():
 
             if selection == 'OK':
                 # Reset to defaults
+                toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
                 audit_in_progress = False
                 summary_panel_active = False
                 current_panel = reset_to_default(window, rule)
@@ -691,6 +698,9 @@ def main():
                     start_key = rule.key_lookup('Start')
                     window[start_key].update(disabled=True)
                     rule.toggle_parameters(window, 'disable')
+
+                    # Disable user ability to modify settings while audit is in progress
+                    toolbar.toggle_menu(window, 'mmenu', 'configure', value='disable')
                 else:
                     for tab in rule.tabs():
                         tab.reset_dynamic_attributes()
@@ -816,7 +826,7 @@ def main():
                 rule_summ.initialize_tables(rule)
 
                 # Format tables for displaying
-                rule_summ.update_tables(window)
+                rule_summ.update_display(window)
 
                 # Hide tab panel and un-hide summary panel
                 window[current_panel].update(visible=False)
@@ -839,18 +849,18 @@ def main():
             # Add a row to the records table
             add_key = summ_tab.key_lookup('Add')
             if event == add_key:
-                rule_summ.update_tables(window)
+                rule_summ.update_display(window)
 
                 # Show the add row window to the user
                 summ_tab.add_row(rule, win_size=window.size)
 
                 # Update display table
-                rule_summ.update_tables(window)
+                rule_summ.update_display(window)
                 continue
 
             # Edit row in either the totals or records table
             if event in summ_tbl_keys:
-                rule_summ.update_tables(window)
+                rule_summ.update_display(window)
 
                 # Find table row selected by user
                 try:
@@ -862,7 +872,7 @@ def main():
                 summ_tab.edit_row(select_row_index, event, win_size=window.size)
 
                 # Update display table
-                rule_summ.update_tables(window)
+                rule_summ.update_display(window)
                 continue
 
             # Return to the Audit Panel
@@ -889,7 +899,7 @@ def main():
                 title = rule.summary.title.replace(' ', '_')
                 outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
                                             default_extension='pdf', no_window=True,
-                                            file_types=(('PDF - Portable Document Format', '*.pdf'), ))
+                                            file_types=(('PDF - Portable Document Format', '*.pdf'),))
 
                 if not outfile:
                     continue
@@ -901,15 +911,8 @@ def main():
                 except Exception as e:
                     msg = _('Save to file {} failed due to {}').format(outfile, e)
                     win2.popup_error(msg)
-#                else:
-#                    # Reset audit elements
-#                    audit_in_progress = False
-#                    summary_panel_active = False
-#                    rule_summ.reset_attributes()
-#                    rule_summ.resize_elements(window, win_size=window.size)
-#                    current_panel = reset_to_default(window, rule, current=True)
 
-            # Save summary to the program database
+                # Save summary to the program database
                 try:
                     rule_summ.save_to_database(user, rule.parameters)
                 except Exception as e:
@@ -917,6 +920,7 @@ def main():
                     win2.popup_error(msg)
                 else:
                     # Reset audit elements
+                    toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
                     audit_in_progress = False
                     summary_panel_active = False
                     rule_summ.reset_attributes()
