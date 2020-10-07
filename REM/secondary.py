@@ -246,6 +246,7 @@ def import_window(df, win_size: tuple = None):
     tbl_bg_col = const.TBL_BG_COL
     tbl_alt_col = const.TBL_ALT_COL
     tbl_vfy_col = const.TBL_VFY_COL
+    header_col = const.HEADER_COL
 
     # GUI layout
     bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
@@ -253,11 +254,13 @@ def import_window(df, win_size: tuple = None):
                           tooltip=_('Import the selected transaction orders'))]]
 
     tbl_key = lo.as_key('Import Table')
-    layout = [[sg.Col([[sg.Text(_('Import Missing Data'), font=font_h)]],
-                      pad=(0, pad_v), justification='center')],
-              [sg.Frame('', [[lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width)]],
-                        background_color=bg_col, element_justification='c', pad=(pad_frame, pad_frame))],
-              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+    layout = [[sg.Col([[sg.Text(_('Import Missing Data'), pad=(pad_frame, (pad_frame, pad_v)),
+                                background_color=header_col, font=font_h)]],
+                      pad=(0, 0), background_color=header_col, justification='l', expand_x=True, expand_y=True)],
+              [sg.Frame('', [[lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width,
+                                                     pad=(0, 0))]],
+                        background_color=bg_col, element_justification='c', pad=(pad_frame, 0), border_width=0)],
+              [sg.Col(bttn_layout, justification='r', pad=(pad_frame, (pad_v, pad_frame)))]]
 
     window = sg.Window(_('Import Data'), layout, font=main_font, modal=True, resizable=False)
 
@@ -330,18 +333,21 @@ def about():
     text_font = const.MID_FONT
     pad_frame = const.FRAME_PAD
     pad_el = const.ELEM_PAD
+    header_col = const.HEADER_COL
 
-    layout = [[sg.Frame('', [[sg.Col([[sg.Image(filename=settings.logo)]], pad=(pad_frame, pad_frame),
+    layout = [[sg.Frame('', [[sg.Col([[sg.Image(filename=settings.logo)]], pad=((0, pad_el), 0),
                                      background_color=bg_col),
-               sg.Col([[sg.Text('REM', pad=((0, pad_frame), (pad_frame, pad_el)), background_color=bg_col,
+               sg.Col([[sg.Col([[sg.Text('REM', pad=((pad_el, pad_frame), 0), background_color=header_col,
                                 font=header_font)],
-                       [sg.Text('Revenue & Expense Management Platform', pad=((0, pad_frame), pad_el),
-                                background_color=bg_col, font=sub_font)],
-                       [sg.Text('version: {}'.format(__version__), pad=(0, 0),
+                                [sg.Text('Revenue & Expense Management', pad=((pad_el, pad_frame), (0, pad_el)),
+                                         background_color=header_col, font=sub_font)]],
+                               background_color=header_col, expand_y=True, expand_x=True)],
+                       [sg.Text('version: {}'.format(__version__), pad=((pad_el, pad_frame), 0),
                                 background_color=bg_col, font=text_font)],
-                       [sg.Text('copyright: 2020 Tila Construction Co.', pad=(0, 0), background_color=bg_col,
-                                font=text_font)],
-                       [sg.Text('license: GPL v3', pad=(0, 0), background_color=bg_col, font=text_font)]],
+                       [sg.Text('copyright: 2020 Tila Construction Co.', pad=((pad_el, pad_frame), 0),
+                                background_color=bg_col, font=text_font)],
+                       [sg.Text('license: GPL v3', pad=((pad_el, pad_frame), 0), background_color=bg_col,
+                                font=text_font)]],
                       element_justification='l', background_color=bg_col, vertical_alignment='t')]],
                         background_color=bg_col, border_width=0)]]
 

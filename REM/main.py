@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '0.5.5'
+__version__ = '0.5.6'
 
 import datetime
 from multiprocessing import freeze_support
@@ -75,22 +75,27 @@ class ToolBar:
         user_ico = const.USER_ICON
         menu_ico = const.MENU_ICON
         padding = const.TOOLBAR_PAD
+        header_col = const.HEADER_COL
+        text_col = const.TEXT_COL
 
         toolbar = [[sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
-                                           pad=(padding, padding)),
+                                           button_color=(text_col, header_col), pad=(padding, padding)),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
+                                           button_color=(text_col, header_col),
                                            tooltip=_('Generate Reports & Statistics'), pad=(padding, padding)),
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
-                                       pad=(padding, padding), border_width=0, disabled=True)]],
-                           justification='l'),
+                                       button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
+                                       disabled=True)]],
+                           justification='l', background_color=header_col),
                     sg.Canvas(key='-CANVAS_WIDTH-', size=(width - 260, 0), visible=True),
-                    sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', image_data=user_ico,
-                                           tooltip=_('User Settings'), pad=(padding, padding)),
-                             sg.ButtonMenu('', menu_menu, key='-MMENU-', image_data=menu_ico,
-                                           tooltip=_('Help and program settings'), pad=(padding, padding))]],
-                           justification='r')]]
+                    sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', pad=(padding, padding), image_data=user_ico,
+                                           button_color=(text_col, header_col), tooltip=_('User Settings')),
+                             sg.ButtonMenu('', menu_menu, key='-MMENU-', pad=(padding, padding), image_data=menu_ico,
+                                           button_color=(text_col, header_col),
+                                           tooltip=_('Help and program settings'))]],
+                           justification='r', background_color=header_col)]]
 
-        layout = [sg.Frame('', toolbar, key='-TOOLBAR-', relief='groove', pad=(0, 0))]
+        layout = [sg.Frame('', toolbar, key='-TOOLBAR-', relief='groove', pad=(0, 0), background_color=header_col)]
 
         return layout
 

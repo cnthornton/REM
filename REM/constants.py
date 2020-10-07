@@ -12,7 +12,7 @@ LOGIN_BUTTON_COL = PASS_COL = '#94FA92'  # green
 CANCEL_BUTTON_COL = FAIL_COL = '#FF6C5C'  # red
 TEXT_COL = '#000000'  # black
 HELP_TEXT_COL = '#616161'
-INPUT_COL = '#F8FAFC'  # light blue
+HEADER_COL = INPUT_COL = '#F8FAFC'  # light blue
 
 # Element padding
 FRAME_PAD = 20
