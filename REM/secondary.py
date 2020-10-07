@@ -8,9 +8,10 @@ import pyodbc
 import PySimpleGUI as sg
 import REM.authentication as auth
 from REM.config import settings
+import REM.constants as const
 import REM.data_manipulation as dm
 import REM.layouts as lo
-import REM.constants as const
+from REM.main import __version__
 import textwrap
 
 
@@ -317,6 +318,43 @@ def import_window(df, win_size: tuple = None):
     window.close()
 
     return vfy_orders
+
+
+def about():
+    """
+    Display the "about program" window.
+    """
+    bg_col = const.ACTION_COL
+    header_font = const.HEADER_FONT
+    sub_font = const.BOLD_MID_FONT
+    text_font = const.MID_FONT
+    pad_frame = const.FRAME_PAD
+    pad_el = const.ELEM_PAD
+
+    layout = [[sg.Frame('', [[sg.Col([[sg.Image(filename=settings.logo)]], pad=(pad_frame, pad_frame),
+                                     background_color=bg_col),
+               sg.Col([[sg.Text('REM', pad=((0, pad_frame), (pad_frame, pad_el)), background_color=bg_col,
+                                font=header_font)],
+                       [sg.Text('Revenue & Expense Management Platform', pad=((0, pad_frame), pad_el),
+                                background_color=bg_col, font=sub_font)],
+                       [sg.Text('version: {}'.format(__version__), pad=(0, 0),
+                                background_color=bg_col, font=text_font)],
+                       [sg.Text('copyright: 2020 Tila Construction Co.', pad=(0, 0), background_color=bg_col,
+                                font=text_font)],
+                       [sg.Text('license: GPL v3', pad=(0, 0), background_color=bg_col, font=text_font)]],
+                      element_justification='l', background_color=bg_col, vertical_alignment='t')]],
+                        background_color=bg_col, border_width=0)]]
+
+    window = sg.Window(_('About REM'), layout, modal=True, resizable=False)
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event == sg.WIN_CLOSED:  # selected close-window or Cancel
+            break
+
+    window.close()
 
 
 def edit_settings(win_size: tuple = None):

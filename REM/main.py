@@ -2,6 +2,9 @@
 """
 REM main program. Includes primary display.
 """
+
+__version__ = '0.5.5'
+
 import datetime
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -36,7 +39,7 @@ class ToolBar:
                           'items': [('!', '&Manage Accounts'), ('', '---'), ('', 'Sign &In'), ('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
                           'items': [('!', '&Configure'), ('', '&Debug'), ('', '---'), ('', '&Help'),
-                                    ('', 'About &Program'), ('', '---'), ('', '&Quit')]}
+                                    ('', 'A&bout'), ('', '---'), ('', '&Quit')]}
 
     def key_lookup(self, element):
         """
@@ -527,11 +530,17 @@ def main():
                 window[rule_name].update(disabled=True)
                 toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
 
-        if values['-MMENU-'] == 'Configure':  # open settings window
+        # Display edit settings window
+        if values['-MMENU-'] == 'Configure':
             win2.edit_settings(win_size=window.size)
             continue
 
-        # Debugger window
+        # Display "About" window
+        if values['-MMENU-'] == 'About':
+            win2.about()
+            continue
+
+        # Display debugger window
         if not debug_win and values['-MMENU-'] == 'Debug':
             debug_win = win2.debugger()
             debug_win.finalize()
@@ -546,13 +555,14 @@ def main():
             else:
                 debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
 
+        # Switch to home panel when audit is not in progress
         if not audit_in_progress and event in cancel_keys:
             toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
             current_panel = reset_to_default(window, rule)
             rule = None
             continue
 
-        # Switch panels when audit in progress
+        # Switch to home panel when audit is in progress
         if audit_in_progress and (event in ('-DB-', '-DBMENU-') or event in cancel_keys
                                   or values['-AMENU-'] in audit_names or values['-RMENU-'] in (report_tx, stats_tx)):
 
