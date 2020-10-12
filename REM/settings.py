@@ -138,65 +138,78 @@ class ProgramSettings:
         """
         Generate GUI layout for the settings window.
         """
+        width = 800
+
         # Window and element size parameters
-        main_font = const.LARGE_FONT
-        header_font = const.HEADER_FONT
+        main_font = const.MAIN_FONT
 
         pad_el = const.ELEM_PAD
+        pad_v = const.VERT_PAD
         pad_frame = const.FRAME_PAD
         in_size = 18
-        spacer = (6, 1)
+        spacer = (12, 1)
         dd_size = 8
 
         bg_col = const.ACTION_COL
         in_col = const.INPUT_COL
-        sep_col = const.DEFAULT_COL
 
-        layout = [[sg.Text('Localization', font=header_font, pad=((pad_frame, pad_el), (pad_frame, pad_el)),
-                           background_color=bg_col)],
-                  [sg.Text('Language:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                           background_color=bg_col),
-                   sg.Combo(list(set([i.split('_')[0] for i in self._locales])), key='-LANGUAGE-', size=(dd_size, 1),
-                            pad=(pad_el, pad_el), default_value=self.language, auto_size_text=False,
-                            background_color=in_col)],
-                  [sg.Text('Locale:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                           background_color=bg_col),
-                   sg.Combo(self._locales, key='-LOCALE-', size=(dd_size, 1), pad=(pad_el, pad_el),
-                            default_value=self.locale, auto_size_text=False, background_color=in_col)],
-                  [sg.HorizontalSeparator(color=sep_col, pad=(pad_frame, pad_frame))],
-                  [sg.Text('Display', pad=((pad_frame, pad_el), pad_el), font=header_font,
-                           background_color=bg_col)],
-                  [sg.Text('Report template:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                           background_color=bg_col),
-                   sg.Input(self.report_template, key='-TEMPLATE-', size=(54, 1), pad=(pad_el, pad_el),
-                            font=main_font, background_color=in_col),
-                   sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
-                  [sg.Text('Report stylesheet:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                           background_color=bg_col),
-                   sg.Input(self.report_css, key='-CSS-', size=(54, 1), pad=(pad_el, pad_el), font=main_font,
-                            background_color=in_col),
-                   sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
-                  [sg.HorizontalSeparator(color=sep_col, pad=(pad_frame, pad_frame))],
-                  [sg.Text('Database', pad=((pad_frame, pad_el), pad_el), font=header_font,
-                           background_color=bg_col)],
-                  [sg.Text('ODBC port:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                           background_color=bg_col),
-                   sg.Input(self.port, key='-PORT-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
-                            font=main_font, background_color=in_col),
-                   sg.Text('', size=spacer, background_color=bg_col),
-                   sg.Text('ODBC server:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                           background_color=bg_col),
-                   sg.Input(self.server, key='-SERVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
-                            font=main_font, background_color=in_col)],
-                  [sg.Text('ODBC driver:', size=(15, 1), pad=((pad_frame, pad_el), (pad_el, pad_frame)), font=main_font,
-                           background_color=bg_col),
-                   sg.Input(self.driver, key='-DRIVER-', size=(in_size, 1),
-                            pad=((pad_el, pad_frame), (pad_el, pad_frame)), font=main_font, background_color=in_col),
-                   sg.Text('', size=spacer, background_color=bg_col, pad=(0, (pad_el, pad_frame))),
-                   sg.Text('Database:', size=(15, 1), pad=((pad_frame, pad_el), (pad_el, pad_frame)),
-                           font=main_font, background_color=bg_col),
-                   sg.Input(self.dbname, key='-DATABASE-', size=(in_size, 1),
-                            pad=((pad_el, pad_frame), (pad_el, pad_frame)), font=main_font, background_color=in_col)]]
+        bwidth = 0.5
+        select_col = const.SELECT_TEXT_COL
+
+        layout = [[sg.Frame('Localization', [
+                      [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+                      [sg.Text('Language:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                               background_color=bg_col),
+                       sg.Combo(list(set([i.split('_')[0] for i in self._locales])), key='-LANGUAGE-',
+                                size=(dd_size, 1),
+                                pad=(pad_el, pad_el), default_value=self.language, auto_size_text=False,
+                                background_color=in_col)],
+                      [sg.Text('Locale:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                               background_color=bg_col),
+                       sg.Combo(self._locales, key='-LOCALE-', size=(dd_size, 1), pad=(pad_el, pad_el),
+                                default_value=self.locale,
+                                auto_size_text=False, background_color=in_col)],
+                      [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                            pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                            title_color=select_col, relief='groove')],
+                  [sg.Frame('Display', [
+                      [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+                      [sg.Text('Report template:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                               font=main_font, background_color=bg_col),
+                       sg.Input(self.report_template, key='-TEMPLATE-', size=(60, 1),
+                                pad=(pad_el, pad_el), font=main_font, background_color=in_col),
+                       sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
+                      [sg.Text('Report stylesheet:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                               font=main_font, background_color=bg_col),
+                       sg.Input(self.report_css, key='-CSS-', size=(60, 1), pad=(pad_el, pad_el),
+                                font=main_font, background_color=in_col),
+                       sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
+                      [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                  pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                            title_color=select_col, relief='groove')],
+                  [sg.Frame('Database', [
+                      [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+                      [sg.Text('ODBC port:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                               font=main_font, background_color=bg_col),
+                       sg.Input(self.port, key='-PORT-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                                font=main_font, background_color=in_col),
+                       sg.Text('', size=spacer, background_color=bg_col),
+                       sg.Text('ODBC server:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                               background_color=bg_col),
+                       sg.Input(self.server, key='-SERVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                                font=main_font, background_color=in_col)],
+                      [sg.Text('ODBC driver:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                               font=main_font, background_color=bg_col),
+                       sg.Input(self.driver, key='-DRIVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                                font=main_font, background_color=in_col),
+                       sg.Text('', size=spacer, background_color=bg_col, pad=(0, pad_el)),
+                       sg.Text('Database:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                               background_color=bg_col),
+                       sg.Input(self.dbname, key='-DATABASE-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                                font=main_font, background_color=in_col)],
+                      [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                            pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                            title_color=select_col, relief='groove')]]
 
         return layout
 
