@@ -183,13 +183,10 @@ def get_panels(audit_rules, win_size: tuple = None):
     # Home page action panel
     panels = [lo.action_layout(audit_rules)]
 
-    # Audit rule panels
+    # Audit rule and summary panels
     for audit_rule in audit_rules.rules:
-        panels.append(audit_rule.layout(win_size=win_size))
-        panels.append(audit_rule.summary.layout(win_size=win_size))
-
-    # Database modification panel
-    #    panels.append(db_layout())
+        panels.append(audit_rule.layout())
+        panels.append(audit_rule.summary.layout())
 
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
@@ -357,8 +354,7 @@ def main():
     # Configure GUI layout
     audit_rules = audit.AuditRules(cnfg)
     toolbar = ToolBar(audit_rules)
-    layout = [toolbar.layout(win_size=(current_w, current_h)),
-              get_panels(audit_rules, win_size=(current_w, current_h))]
+    layout = [toolbar.layout(win_size=(current_w, current_h)), get_panels(audit_rules, win_size=(current_w, current_h))]
 
     # Element keys and names
     audit_names = audit_rules.print_rules()
@@ -387,7 +383,7 @@ def main():
     debug_win = None
 
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, icon=settings.logo, font=('Arial', 12), size=(current_w, current_h),
+    window = sg.Window('REM Tila', layout, icon=settings.logo, font=const.MAIN_FONT, size=(current_w, current_h),
                        resizable=True, return_keyboard_events=True)
     window.finalize()
     window.maximize()
@@ -535,7 +531,7 @@ def main():
                 window[rule_name].update(disabled=True)
                 toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
 
-        # Display edit settings window
+        # Display the edit settings window
         if values['-MMENU-'] == 'Configure':
             win2.edit_settings(win_size=window.size)
             continue
@@ -543,6 +539,11 @@ def main():
         # Display "About" window
         if values['-MMENU-'] == 'About':
             win2.about()
+            continue
+
+        # Display the database update window
+        if event in ('-DB-', '-DBMENU-'):
+            win2.database_importer_window(user)
             continue
 
         # Display debugger window

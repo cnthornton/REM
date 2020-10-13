@@ -275,7 +275,7 @@ class TabItem:
             elif is_datetime_dtype(dtype):
                 col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
                                                          relativedelta(years=+date_offset)).strftime(date_fmt)
-                                                        if pd.notnull(x) else '')
+                if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
@@ -291,7 +291,8 @@ class TabItem:
                   .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col))
 
             try:
-                print('using aliases to replace column {COL} with values {VALS}'.format(COL=alias_col, VALS=display_df[alias_col]))
+                print('using aliases to replace column {COL} with values {VALS}'.format(COL=alias_col,
+                                                                                        VALS=display_df[alias_col]))
                 display_df[alias_col].replace(alias_map, inplace=True)
             except KeyError:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
@@ -994,6 +995,171 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     return layout
 
 
+def importer_layout(db_tables, win_size: tuple = None):
+    """
+    Create the layout for the database import window.
+    """
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (int(const.WIN_WIDTH * 0.8), int(const.WIN_HEIGHT * 0.8))
+
+    # Layout settings
+    header_col = const.HEADER_COL
+    bg_col = const.ACTION_COL
+    def_col = const.DEFAULT_COL
+    select_col = const.SELECT_TEXT_COL
+    text_col = const.TEXT_COL
+
+    pad_el = const.ELEM_PAD
+    pad_v = const.VERT_PAD
+    pad_frame = const.FRAME_PAD
+
+    font_h = const.HEADER_FONT
+    font_main = const.MAIN_FONT
+    font_large = const.LARGE_FONT
+
+    bwidth = 0.5
+
+    file_types = ['xls', 'csv/tsv']
+    encodings = ['Default']
+
+    header_req = ['Table Column Name', 'Data Type', 'Default Value']
+    header_map = ['Table Column Name', 'Data Type', 'File Column Name']
+
+    p1 = [[sg.Col([[sg.Text('File:', size=(5, 1), pad=((0, pad_el), 0), background_color=bg_col),
+                    sg.Input('', key='-FILE-', size=(60, 1), pad=(pad_el, 0), background_color=header_col),
+                    sg.FileBrowse('Browse ...', pad=((pad_el, pad_frame), 0))]],
+                  pad=(pad_frame, pad_frame), justification='l', background_color=bg_col)],
+          [sg.Frame('File format', [
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+              [sg.Col([
+                  [sg.Text('Format:', size=(16, 1), pad=(pad_el, pad_el), background_color=bg_col),
+                   sg.Combo(file_types, key='-FORMAT-', default_value='xls', size=(12, 1),
+                            pad=(pad_el, pad_el), background_color=header_col),
+                   sg.Text('', size=(10, 1), background_color=bg_col),
+                   sg.Text('Newline Separator:', size=(16, 1), pad=(pad_el, pad_el), background_color=bg_col),
+                   sg.Input('\\n', key='-NSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
+                            background_color=header_col)],
+                  [sg.Text('Encoding:', size=(16, 1), pad=(pad_el, 0), background_color=bg_col),
+                   sg.Combo(encodings, key='-ENCODE-', default_value='Default', size=(12, 1), pad=(pad_el, pad_el),
+                            background_color=header_col),
+                   sg.Text('', size=(10, 1), background_color=bg_col),
+                   sg.Text('Field Separator:', size=(16, 1), pad=(pad_el, pad_el), background_color=bg_col),
+                   sg.Input('\\t', key='-FSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
+                            background_color=header_col)]],
+                  pad=(pad_frame, 0), background_color=bg_col)],
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]
+          ],
+                    pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
+                    relief='groove')],
+          [sg.Frame('Formatting options', [
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+              [sg.Col([
+                  [sg.Checkbox('Recognize dates', key='-DATES-', pad=(0, pad_el), default=True, font=font_main,
+                               background_color=bg_col)],
+                  [sg.Checkbox('Recognize integers', key='-INTS-', pad=(0, pad_el), default=True,
+                               font=font_main, background_color=bg_col)],
+                  [sg.Text('Skip n rows at top:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+                           font=font_main),
+                   sg.Input('0', key='-TSKIP-', size=(8, 1), pad=(0, pad_el), font=font_main,
+                            background_color=header_col)],
+                  [sg.Text('Skip n rows at bottom:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+                           font=font_main),
+                   sg.Input('0', key='-BSKIP-', size=(8, 1), pad=(0, pad_el), font=font_main,
+                            background_color=header_col)],
+                  [sg.Text('header row (0 indexed):', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+                           font=font_main),
+                   sg.Input('0', key='-HROW-', size=(8, 1), pad=(0, pad_el), font=font_main,
+                            background_color=header_col)],
+                  [sg.Text('Thousands separator:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+                           font=font_main),
+                   sg.Input(',', key='-TSEP-', size=(8, 1), pad=(0, pad_el), font=font_main,
+                            background_color=header_col)],
+                  [sg.Checkbox('Trim white-space around field values', key='-WHITESPACE-', pad=(0, pad_el),
+                               default=True, font=font_main, background_color=bg_col)]],
+                  pad=(pad_frame, 0), background_color=bg_col)],
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]
+          ],
+                    pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
+                    relief='groove')]]
+    p2 = [[sg.Col([[sg.Text('Database Table:', size=(20, 1), pad=((0, pad_el), 0), background_color=bg_col),
+                    sg.Combo(db_tables, key='-TABLE-', size=(28, 1), pad=(pad_el, 0), enable_events=True,
+                             background_color=header_col)],
+                   [sg.Checkbox('Replace table data (default: append to the end)', pad=(0, (pad_el, 0)),
+                                default=False, font=font_main, background_color=bg_col)]],
+                  pad=(pad_frame, pad_frame), justification='l', background_color=bg_col)],
+          [sg.Frame('Required columns', [
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+              [sg.Col([
+                  [sg.Listbox(values=[], key='-REQLIST-', size=(25, 8), pad=((0, pad_frame), 0), font=font_main,
+                              background_color=bg_col, bind_return_key=True),
+                   create_table_layout([[]], header_req, '-REQCOL-', events=True, pad=(0, 0), nrow=4,
+                                       width=width * 0.65)]],
+                  pad=(pad_frame, 0), background_color=bg_col)],
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                    pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
+                    relief='groove')],
+          [sg.Frame('Column mapping', [
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+              [sg.Col([
+                  [sg.Listbox(values=[], key='-MAPLIST-', size=(25, 8), pad=((0, pad_frame), 0), font=font_main,
+                              background_color=bg_col, bind_return_key=True),
+                   create_table_layout([[]], header_map, '-MAPCOL-', events=True, pad=(0, 0), nrow=4,
+                                       width=width * 0.65)]],
+                  pad=(pad_frame, 0), background_color=bg_col)],
+              [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                    pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
+                    relief='groove')]]
+    p3 = [[sg.Frame('Preview', [
+        [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+        [sg.Col([
+            [create_table_layout([[]], ['' for _ in range(5)], '-PREVIEW-', pad=(0, 0), nrow=15, width=width * 0.94)]],
+            pad=(pad_frame, 0), background_color=bg_col)],
+        [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                    pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
+                    relief='groove')]]
+
+    panels = [sg.Col(p1, key='-P1-', background_color=bg_col, vertical_alignment='c', visible=True, expand_y=True,
+                     expand_x=True),
+              sg.Col(p2, key='-P2-', background_color=bg_col, vertical_alignment='c', visible=False, expand_y=True,
+                     expand_x=True),
+              sg.Col(p3, key='-P3-', background_color=bg_col, vertical_alignment='c', visible=False, expand_y=True,
+                     expand_x=True)]
+
+    bttn_layout = [[B2(_('Back'), key='-BACK-', pad=(pad_el, 0), disabled=True, tooltip=_('Return to last step')),
+                    B2(_('Next'), key='-NEXT-', pad=(pad_el, 0), disabled=False, tooltip=_('Proceed to next step')),
+                    B2(_('Import'), bind_return_key=True, key='-IMPORT-', pad=(pad_el, 0), disabled=True,
+                       tooltip=_('Import file contents into the selected database table')),
+                    B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), disabled=False, tooltip=_('Cancel import'))]]
+
+    sidebar_layout = [
+        [sg.Col([[sg.Canvas(size=(0, height * 0.8), background_color=def_col)]], background_color=def_col),
+         sg.Col([[sg.Text('• ', pad=((pad_frame, pad_el), (pad_frame, pad_el)), font=font_large),
+                  sg.Text('Import data', key='-PN1-', pad=((pad_el, pad_frame), (pad_frame, pad_el)),
+                          font=font_main, text_color=select_col)],
+                 [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large),
+                  sg.Text('Database table', key='-PN2-', pad=((pad_el, pad_frame), pad_el), font=font_main)],
+                 [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large),
+                  sg.Text('Preview', key='-PN3-', pad=((pad_el, pad_frame), pad_el), font=font_main)]],
+                background_color=def_col, element_justification='l', vertical_alignment='t', expand_y=True)]]
+
+    panel_layout = [[sg.Col([[sg.Canvas(size=(0, height * 0.8), background_color=bg_col)]], background_color=bg_col),
+                     sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False,
+                                      border_width=0, relief='flat')]], pad=(0, pad_v), expand_x=True)]]
+
+    layout = [[sg.Col([[sg.Text('Import into Database Table', pad=(pad_frame, (pad_frame, pad_v)),
+                                font=font_h, background_color=header_col)]],
+                      pad=(0, 0), justification='l', background_color=header_col, expand_x=True, expand_y=True)],
+              [sg.Frame('', sidebar_layout, border_width=bwidth, title_color=text_col, relief='solid',
+                        background_color=def_col),
+               sg.Frame('', panel_layout, border_width=bwidth, title_color=text_col, relief='solid',
+                        background_color=bg_col)],
+              [sg.Col(bttn_layout, justification='r', pad=(pad_frame, (pad_v, pad_frame)))]]
+
+    return layout
+
+
 # Panel layouts
 def action_layout(audit_rules):
     """
@@ -1015,6 +1181,7 @@ def action_layout(audit_rules):
         buttons.append(rule_el)
 
     other_bttns = [[sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
+                   #                   [B1(_('Update Database'), key='-DB-', pad=(pad_frame, pad_el), disabled=True)],
                    [B1(_('Update Database'), key='-DB-', pad=(pad_frame, pad_el), disabled=True)],
                    [sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
                    [B1(_('Summary Statistics'), key='-STATS-', pad=(pad_frame, pad_el), disabled=True)],
@@ -1052,7 +1219,7 @@ def tab_layout(tabs, win_size: tuple = None, initial_visibility='first'):
             visible = True
 
         # Generate the layout
-        tab_layout = tab.layout(win_size=win_size)
+        tab_layout = tab.layout()
 
         layout.append(sg.Tab(tab_name, tab_layout, key=tab_key, visible=visible, background_color=bg_col))
 

@@ -66,7 +66,7 @@ class UserAccount:
         self.uid = uid
         self.pwd = pwd
 
-        conn = self.db_connect(database=settings.prog_db, timeout=5)
+        conn = self.db_connect(database=settings.prog_db, timeout=2)
 
         cursor = conn.cursor()
 
@@ -143,6 +143,50 @@ class UserAccount:
             print('Info: successfully established a connection to {}'.format(dbname))
 
         return conn
+
+    def database_tables(self, database, timeout: int = 2):
+        """
+        Get table schema information.
+        """
+        try:
+            conn = self.db_connect(database=database, timeout=timeout)
+        except DBConnectionError:
+            print('DB Read Error: connection to database cannot be established')
+            return None
+        else:
+            try:
+                cursor = conn.cursor()
+            except AttributeError:
+                print('DB Read Error: connection to database cannot be established')
+                return None
+            else:
+                try:
+                    return cursor.tables()
+                except pyodbc.Error:
+                    print('DB Read Error: unable to find tables associated with database {}'.format(database))
+                    return None
+
+    def table_schema(self, database, table, timeout: int = 2):
+        """
+        Get table schema information.
+        """
+        try:
+            conn = self.db_connect(database=database, timeout=timeout)
+        except DBConnectionError:
+            print('DB Read Error: connection to database cannot be established')
+            return None
+        else:
+            try:
+                cursor = conn.cursor()
+            except AttributeError:
+                print('DB Read Error: connection to database cannot be established')
+                return None
+            else:
+                try:
+                    return cursor.columns(table=table)
+                except pyodbc.Error:
+                    print('DB Read Error: unable to read the schema for table {}'.format(table))
+                    return None
 
     def thread_transaction(self, statement, params, database: str = None, operation: str = 'read', timeout: int = 10):
         """

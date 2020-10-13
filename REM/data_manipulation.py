@@ -26,12 +26,17 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
     # table fills the empty space.
     width = width
 
-    max_size_per_col = width / ncol
+    try:
+        col_fraction = width / ncol
+    except ZeroDivisionError:
+        print('Warning: division by zero error encountered while attempting to calculate column widths')
+        col_fraction = width / 10
+
     if pixels:
-        max_size_per_col = int(max_size_per_col)
+        max_size_per_col = int(col_fraction)
     else:
         width = int(width / font_size)
-        max_size_per_col = int(max_size_per_col / font_size)
+        max_size_per_col = int(col_fraction / font_size)
 
     # Each column has size == max characters per column
     lengths = [max_size_per_col for _ in header]

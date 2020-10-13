@@ -11,6 +11,7 @@ BUTTON_COL = '#64B5F6'
 LOGIN_BUTTON_COL = PASS_COL = '#94FA92'  # green
 CANCEL_BUTTON_COL = FAIL_COL = '#FF6C5C'  # red
 TEXT_COL = '#000000'  # black
+SELECT_TEXT_COL = '#2A9DF4'
 HELP_TEXT_COL = '#616161'
 HEADER_COL = INPUT_COL = '#F8FAFC'  # light blue
 
@@ -37,6 +38,7 @@ MID_FONT = ('Arial', 13)
 BOLD_MID_FONT = ('Arial', 13, 'bold')
 LARGE_FONT = ('Arial', 14)
 HEADER_FONT = BOLD_LARGE_FONT = ('Arial', 14, 'bold')
+UNDERLINE_FONT = ('Arial', 12, 'underline')
 
 # Window initial dimensions
 WIN_HEIGHT = 800
@@ -45,7 +47,7 @@ WIN_WIDTH = 1200
 # Tables
 TBL_WIDTH = 120
 TBL_WIDTH_PX = 1080
-TBL_HEIGHT = 30
+TBL_HEIGHT = 28
 TBL_NROW = 10
 TBL_BG_COL = '#E5F4FD'  # light blue
 TBL_ALT_COL = '#FFFFFF'  # white

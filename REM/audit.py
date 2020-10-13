@@ -980,7 +980,7 @@ class SummaryItem:
         if 'MappingColumns' not in totals:
             totals['MappingColumns'] = {}
         if 'EditColumns' not in totals:
-            totals['EditColumns'] = []
+            totals['EditColumns'] = {}
         if 'TallyRule' not in totals:
             totals['TallyRule'] = None
 
@@ -1225,7 +1225,7 @@ class SummaryItem:
         total_key = self.key_lookup('Total')
         layout = [[sg.Col([[sg.Text('Totals', pad=(0, (pad_frame, pad_el)), font=font_b, background_color=bg_col)]],
                           justification='c', background_color=bg_col)],
-                  [lo.create_table_layout(totals_data, totals_header, totals_key, bind=True, height=height,
+                  [lo.create_table_layout(totals_data, totals_header, totals_key, events=True, height=height,
                                           width=width, nrow=1, pad=tbl_pad)],
                   [sg.Text('Total:', size=(10, 1), pad=((pad_frame, pad_el), (0, pad_frame)), font=font_b,
                            background_color=bg_col, justification='r'),
@@ -1234,7 +1234,7 @@ class SummaryItem:
                   [sg.Canvas(size=(0, 20), visible=True, background_color=bg_col)],
                   [sg.Col([[sg.Text('Records', pad=(0, (0, pad_el)), background_color=bg_col, font=font_b)]],
                           justification='c', background_color=bg_col)],
-                  [lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width, pad=tbl_pad)],
+                  [lo.create_table_layout(data, header, tbl_key, events=True, height=height, width=width, pad=tbl_pad)],
                   [sg.Text('Remainder:', size=(10, 1), pad=((pad_frame, pad_el), (0, pad_frame)), font=font_b,
                            background_color=bg_col, justification='r'),
                    sg.Text('', key=remain_key, size=(14, 1), pad=(0, (0, pad_frame)), font=font,
