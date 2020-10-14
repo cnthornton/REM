@@ -205,8 +205,8 @@ class ProgramSettings:
                        sg.Text('', size=spacer, background_color=bg_col, pad=(0, pad_el)),
                        sg.Text('Database:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
                                background_color=bg_col),
-                       sg.Input(self.dbname, key='-DATABASE-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
-                                font=main_font, background_color=in_col)],
+                       sg.Combo(self.alt_dbs, default_value=self.dbname, key='-DATABASE-', size=(in_size-1, 1),
+                                pad=((pad_el, pad_frame), pad_el), font=main_font, background_color=in_col)],
                       [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
                             pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
                             title_color=select_col, relief='groove')]]
