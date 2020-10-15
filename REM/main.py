@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '0.5.6'
+__version__ = '0.5.7'
 
 import datetime
 from multiprocessing import freeze_support
@@ -103,15 +103,22 @@ class ToolBar:
         """
         Update user menu to display username after a user is logged in.
         """
+        select_col = const.SELECT_TEXT_COL
+
         element_key = '-UMENU-'
 
+        # Update menu list to include the username
         user_menu = {'name': '&User',
-                     'items': [('!', username), ('', '---'), ('!', '&Manage Accounts'), ('', '---'),
+                     'items': [('', username), ('', '---'), ('!', '&Manage Accounts'), ('', '---'),
                                ('!', 'Sign &In'), ('', 'Sign &Out')]}
 
         menu_def = self.menu_definition('umenu', menu=user_menu)
 
         window[element_key].update(menu_def)
+
+        # Change username color
+        window[element_key].TKMenu.entryconfig(0, foreground=select_col)
+        window[element_key].TKButtonMenu.configure(menu=window[element_key].TKMenu)
 
     def menu_definition(self, menu_item, menu=None):
         """
