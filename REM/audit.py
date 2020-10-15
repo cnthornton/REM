@@ -5,7 +5,6 @@ import datetime
 import os
 import re
 import sys
-from typing import List
 
 import dateutil.parser
 from jinja2 import Environment, FileSystemLoader

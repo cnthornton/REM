@@ -269,7 +269,6 @@ class TabItem:
 
             col_to_add = dm.generate_column_from_rule(dataframe, col_rule)
             dtype = col_to_add.dtype
-            print('column {} has dtype {}'.format(col_name, dtype))
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
             elif is_datetime_dtype(dtype):
@@ -291,16 +290,11 @@ class TabItem:
                   .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col))
 
             try:
-                print('using aliases to replace column {COL} with values {VALS}'.format(COL=alias_col,
-                                                                                        VALS=display_df[alias_col]))
                 display_df[alias_col].replace(alias_map, inplace=True)
             except KeyError:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
-
-        print('original df dtypes')
-        print(self.df.dtypes)
 
         return display_df
 
@@ -1093,9 +1087,10 @@ def importer_layout(db_tables, win_size: tuple = None):
               [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
               [sg.Col([
                   [sg.Listbox(values=[], key='-REQLIST-', size=(25, 8), pad=((0, pad_frame), 0), font=font_main,
-                              background_color=bg_col, bind_return_key=True),
+                              background_color=bg_col, bind_return_key=True,
+                              tooltip='Double-click on a column name to add the column to the table'),
                    create_table_layout([[]], header_req, '-REQCOL-', events=True, pad=(0, 0), nrow=4,
-                                       width=width * 0.65)]],
+                                       width=width * 0.65, tooltip='Click on a row to edit the row fields')]],
                   pad=(pad_frame, 0), background_color=bg_col)],
               [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
                     pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
@@ -1104,9 +1099,10 @@ def importer_layout(db_tables, win_size: tuple = None):
               [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
               [sg.Col([
                   [sg.Listbox(values=[], key='-MAPLIST-', size=(25, 8), pad=((0, pad_frame), 0), font=font_main,
-                              background_color=bg_col, bind_return_key=True),
+                              background_color=bg_col, bind_return_key=True,
+                              tooltip='Double-click on a column name to add the column to the table'),
                    create_table_layout([[]], header_map, '-MAPCOL-', events=True, pad=(0, 0), nrow=4,
-                                       width=width * 0.65)]],
+                                       width=width * 0.65, tooltip='Click on a row to edit the row fields')]],
                   pad=(pad_frame, 0), background_color=bg_col)],
               [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
                     pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
@@ -1114,7 +1110,7 @@ def importer_layout(db_tables, win_size: tuple = None):
     p3 = [[sg.Frame('Preview', [
         [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
         [sg.Col([
-            [create_table_layout([[]], ['' for _ in range(5)], '-PREVIEW-', pad=(0, 0), nrow=15, width=width * 0.94)]],
+            [create_table_layout([[]], ['{}'.format(i) for i in range(1)], '-PREVIEW-', pad=(0, 0), nrow=15, width=width * 0.94)]],
             pad=(pad_frame, 0), background_color=bg_col)],
         [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
                     pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,

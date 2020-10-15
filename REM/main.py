@@ -190,10 +190,13 @@ def get_panels(audit_rules, win_size: tuple = None):
     # Home page action panel
     panels = [lo.action_layout(audit_rules)]
 
-    # Audit rule and summary panels
+    # Add Audit rule with summary panel
     for audit_rule in audit_rules.rules:
         panels.append(audit_rule.layout())
         panels.append(audit_rule.summary.layout())
+
+    # Add cash reconciliation panel
+    # Add bank reconciliation panel
 
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
@@ -248,7 +251,7 @@ def reset_to_default(window, rule, current: bool = False):
     Reset main window to program defaults.
     """
     if not rule:
-        return (None)
+        return None
 
     win_width, win_height = window.size
 
@@ -725,7 +728,7 @@ def main():
                     # Disable user ability to modify settings while audit is in progress
                     toolbar.toggle_menu(window, 'mmenu', 'configure', value='disable')
                 else:
-                    for tab in rule.tabs():
+                    for tab in rule.tabs:
                         tab.reset_dynamic_attributes()
 
         action_performed = False

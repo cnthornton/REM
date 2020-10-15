@@ -273,6 +273,7 @@ def database_importer_window(user):
         if event == '-NEXT-':
             next_panel = current_panel + 1
 
+            # Verify that required fields have values
             if not infile:
                 popup_notice('Please select an input file')
                 continue
@@ -298,6 +299,7 @@ def database_importer_window(user):
                     popup_notice('Unsupported character provided as the thousands separator')
                     continue
 
+            # Populate Preview table with top 20 values from spreadsheet
             if next_panel == last_panel:
                 if table is None:
                     popup_notice('Please select a valid table from the "Table" dropdown')
@@ -331,18 +333,26 @@ def database_importer_window(user):
                         column_value = row['Default Value']
                         import_df[column_name] = column_value
 
-                    all_cols = map_df['Table Column Name'].append(req_df['Table Column Name'], ignore_index=True)
+                    all_cols = req_df['Table Column Name'].append(map_df['Table Column Name'], ignore_index=True)
                     try:
                         final_df = import_df[all_cols]
                     except KeyError:
-                        print(all_cols)
-                        print(import_df.columns.values.tolist())
                         popup_notice('Please verify that column names are mapped correctly')
                         continue
 
                     # Populate preview with table values
-                    window['-PREVIEW-'].Widget.configure(columns=all_cols)
+                    col_widths = dm.calc_column_widths(all_cols, width=width * 0.77, pixels=True)
+                    window['-PREVIEW-'].Widget['columns'] = tuple(all_cols.values.tolist())
+                    window['-PREVIEW-'].Widget['displaycolumns'] = '#all'
+                    for index, column_name in enumerate(all_cols):
+                        col_width = col_widths[index]
+                        window['-PREVIEW-'].Widget.column(index, width=col_width)
+                        window['-PREVIEW-'].Widget.heading(index, text=column_name)
+
                     window['-PREVIEW-'].update(values=final_df.head(n=20).values.tolist())
+
+                    # Enable import button
+                    window['-IMPORT-'].update(disabled=False)
 
             # Enable /disable panels
             window[panel_keys[current_panel]].update(visible=False)
@@ -388,6 +398,10 @@ def database_importer_window(user):
             # Disable back button if on first panel
             if prev_panel == first_panel:
                 window['-BACK-'].update(disabled=True)
+
+            # Disable import button if not on last panel
+            if prev_panel != last_panel:
+                window['-IMPORT-'].update(disabled=True)
 
             # Reset current panel variable
             current_panel = prev_panel
