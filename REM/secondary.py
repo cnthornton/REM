@@ -133,7 +133,7 @@ def login_window():
     column_layout = [img_layout,
                      [sg.Text('', pad=(pad_frame, pad_el), background_color=bg_col)],
                      [sg.Frame('', [[sg.Image(data=username_icon, background_color=input_col, pad=((pad_el, pad_h), 0)),
-                                     sg.Input(default_text=_('username'), key='-USER-', size=(isize - 2, 1),
+                                     sg.Input(default_text=settings.username, key='-USER-', size=(isize - 2, 1),
                                               pad=((0, 2), 0), text_color=help_col, border_width=0, do_not_clear=True,
                                               background_color=input_col, enable_events=True,
                                               tooltip=_('Input account username'))]],

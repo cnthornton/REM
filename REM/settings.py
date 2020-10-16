@@ -7,6 +7,7 @@ import gettext
 import os
 import PySimpleGUI as sg
 import REM.constants as const
+import sys
 
 
 class ProgramSettings:
@@ -28,8 +29,19 @@ class ProgramSettings:
         # Supported locales
         self._locales = ['en_US', 'en_UK', 'th_TH']
 
+        try:
+            settings = cnfg['settings']
+        except KeyError:
+            print('Error: the "settings" parameter is a required field')
+            sys.exit(1)
+
+        # User parameters
+        try:
+            self.username = settings['user']['username']
+        except KeyError:
+            self.username = 'username'
+
         # Localization parameters
-        settings = cnfg['settings']
         try:
             self.language = settings['localization']['language']
         except KeyError:
