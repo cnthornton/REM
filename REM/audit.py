@@ -1,5 +1,5 @@
 """
-REM configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
+REM transaction audit configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
 """
 import datetime
 import os
@@ -36,21 +36,46 @@ class AuditRules:
     def __init__(self, cnfg):
 
         # Audit parameters
-        audit_rules = cnfg['audit_rules']
-        self.rules = []
-        for audit_rule in audit_rules:
-            self.rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
+        audit_param = cnfg.audit_rules
 
-    def print_rules(self):
+        self.rules = []
+        if audit_param is not None:
+            try:
+                audit_name = audit_param['name']
+            except KeyError:
+                win2.popup_error('Error: audit_rules: the parameter "name" is a required field')
+                sys.exit(1)
+            else:
+                self.name = audit_name
+
+            try:
+                self.title = audit_param['title']
+            except KeyError:
+                self.title = audit_name
+
+            try:
+                audit_rules = audit_param['rules']
+            except KeyError:
+                win2.popup_error('Error: audit_rules: the parameter "rules" is a required field')
+                sys.exit(1)
+
+            for audit_rule in audit_rules:
+                self.rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
+
+    def print_rules(self, title=True):
         """
         Return name of all audit rules defined in configuration file.
         """
-        return [i.name for i in self.rules]
+        if title is True:
+            return [i.title for i in self.rules]
+        else:
+            return [i.name for i in self.rules]
 
-    def fetch_rule(self, name):
+    def fetch_rule(self, name, title=True):
         """
+        Fetch a given rule from the rule set by its name or title.
         """
-        rule_names = self.print_rules()
+        rule_names = self.print_rules(title=title)
         try:
             index = rule_names.index(name)
         except IndexError:
@@ -77,6 +102,8 @@ class AuditRule:
 
         name (str): audit rule name.
 
+        title (str): audit rule title.
+
         element_key (str): GUI element key.
 
         permissions (str): permissions required to view the audit. Default: user.
@@ -92,6 +119,11 @@ class AuditRule:
 
         self.name = name
         self.element_key = lo.as_key(name)
+        try:
+            self.title = adict['Title']
+        except KeyError:
+            self.title = name
+
         try:
             self.permissions = adict['Permissions']
         except KeyError:  # default permission for an audit is 'user'
@@ -254,7 +286,7 @@ class AuditRule:
         spacer = layout_width - 124 if layout_width > 124 else 0
 
         # Audit parameters
-        audit_name = self.name
+        audit_name = self.title
         params = self.parameters
 
         # Layout elements

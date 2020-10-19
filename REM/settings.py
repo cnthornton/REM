@@ -7,7 +7,6 @@ import gettext
 import os
 import PySimpleGUI as sg
 import REM.constants as const
-import sys
 
 
 class ProgramSettings:
@@ -29,25 +28,19 @@ class ProgramSettings:
         # Supported locales
         self._locales = ['en_US', 'en_UK', 'th_TH']
 
-        try:
-            settings = cnfg['settings']
-        except KeyError:
-            print('Error: the "settings" parameter is a required field')
-            sys.exit(1)
-
         # User parameters
         try:
-            self.username = settings['user']['username']
+            self.username = cnfg['user']['username']
         except KeyError:
             self.username = 'username'
 
         # Localization parameters
         try:
-            self.language = settings['localization']['language']
+            self.language = cnfg['localization']['language']
         except KeyError:
             self.language = 'en'
         try:
-            cnfg_locale = settings['localization']['locale']
+            cnfg_locale = cnfg['localization']['locale']
         except KeyError:
             cnfg_locale = 'en_US'
         self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
@@ -59,7 +52,7 @@ class ProgramSettings:
 
         # Display parameters
         try:
-            logo_name = settings['display']['logo']
+            logo_name = cnfg['display']['logo']
         except KeyError:
             logo_file = os.path.join(dirname, 'docs', 'images', 'logo.png')
         else:
@@ -77,7 +70,7 @@ class ProgramSettings:
             fh.close()
 
         try:
-            report_template = settings['display']['report_template']
+            report_template = cnfg['display']['report_template']
         except KeyError:
             self.report_template = os.path.join(dirname, 'templates', 'report.html')
         else:
@@ -87,7 +80,7 @@ class ProgramSettings:
                 self.report_template = report_template
 
         try:
-            report_style = settings['display']['report_stylesheet']
+            report_style = cnfg['display']['report_stylesheet']
         except KeyError:
             self.report_css = os.path.join(dirname, 'static', 'css', 'report.css')
         else:
@@ -98,7 +91,7 @@ class ProgramSettings:
 
         # Dependencies
         try:
-            wkhtmltopdf = settings['dependencies']['wkhtmltopdf']
+            wkhtmltopdf = cnfg['dependencies']['wkhtmltopdf']
         except KeyError:
             self.wkhtmltopdf = os.path.join(dirname, 'data', 'wkhtmltopdf', 'bin', 'wkhtmltopdf.exe')
         else:
@@ -108,17 +101,60 @@ class ProgramSettings:
                 self.wkhtmltopdf = wkhtmltopdf
 
         # Database parameters
-        ddict = settings['database']
-        self.driver = ddict['odbc_driver']
-        self.server = ddict['odbc_server']
-        self.port = ddict['odbc_port']
-        self.dbname = ddict['database']
-        self.prog_db = ddict['rem_database']
-        self.date_format = ddict['date_format']
         try:
-            self.alt_dbs = ddict['alternative_databases']
+            self.driver = cnfg['database']['odbc_driver']
+        except KeyError:
+            self.driver = 'SQL Server'
+        try:
+            self.server = cnfg['database']['odbc_server']
+        except KeyError:
+            self.server = 'localhost'
+        try:
+            self.port = cnfg['database']['odbc_port']
+        except KeyError:
+            self.port = '1433'
+        try:
+            self.dbname = cnfg['database']['default_database']
+        except KeyError:
+            self.dbname = 'REM'
+        try:
+            self.prog_db = cnfg['database']['odbc_database']
+        except KeyError:
+            self.prog_db = 'REM'
+        try:
+            self.date_format = cnfg['database']['date_format']
+        except KeyError:
+            self.date_format = 'YYYY-MM-DD HH:MI:SS'
+        try:
+            self.alt_dbs = cnfg['database']['alternative_databases']
         except KeyError:
             self.alt_dbs = []
+
+        # Configuration parameters
+        try:
+            self.mongod_port = cnfg['configuration']['mongod_port']
+        except KeyError:
+            self.mongod_port = 27017
+        try:
+            self.mongod_server = cnfg['configuration']['mongod_server']
+        except KeyError:
+            self.mongod_server = 'localhost'
+        try:
+            self.mongod_database = cnfg['configuration']['mongod_database']
+        except KeyError:
+            self.mongod_database = 'REM'
+        try:
+            self.mongod_config = cnfg['configuration']['mongod_config']
+        except KeyError:
+            self.mongod_config = 'configuration'
+        try:
+            self.mongod_user = cnfg['configuration']['mongod_user']
+        except KeyError:
+            self.mongod_user = 'mongo'
+        try:
+            self.mongod_pwd = cnfg['configuration']['mongod_pwd']
+        except KeyError:
+            self.mongod_pwd = ''
 
     def translate(self):
         """
@@ -169,19 +205,19 @@ class ProgramSettings:
         select_col = const.SELECT_TEXT_COL
 
         layout = [[sg.Frame('Localization', [
-                      [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
-                      [sg.Text('Language:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                               background_color=bg_col),
-                       sg.Combo(list(set([i.split('_')[0] for i in self._locales])), key='-LANGUAGE-',
-                                size=(dd_size, 1),
-                                pad=(pad_el, pad_el), default_value=self.language, auto_size_text=False,
-                                background_color=in_col)],
-                      [sg.Text('Locale:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                               background_color=bg_col),
-                       sg.Combo(self._locales, key='-LOCALE-', size=(dd_size, 1), pad=(pad_el, pad_el),
-                                default_value=self.locale,
-                                auto_size_text=False, background_color=in_col)],
-                      [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+            [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+            [sg.Text('Language:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                     background_color=bg_col),
+             sg.Combo(list(set([i.split('_')[0] for i in self._locales])), key='-LANGUAGE-',
+                      size=(dd_size, 1),
+                      pad=(pad_el, pad_el), default_value=self.language, auto_size_text=False,
+                      background_color=in_col)],
+            [sg.Text('Locale:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                     background_color=bg_col),
+             sg.Combo(self._locales, key='-LOCALE-', size=(dd_size, 1), pad=(pad_el, pad_el),
+                      default_value=self.locale,
+                      auto_size_text=False, background_color=in_col)],
+            [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
                             pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
                             title_color=select_col, relief='groove')],
                   [sg.Frame('Display', [
@@ -197,7 +233,7 @@ class ProgramSettings:
                                 font=main_font, background_color=in_col),
                        sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
                       [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
-                  pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                            pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
                             title_color=select_col, relief='groove')],
                   [sg.Frame('Database', [
                       [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
@@ -217,7 +253,7 @@ class ProgramSettings:
                        sg.Text('', size=spacer, background_color=bg_col, pad=(0, pad_el)),
                        sg.Text('Database:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
                                background_color=bg_col),
-                       sg.Combo(self.alt_dbs, default_value=self.dbname, key='-DATABASE-', size=(in_size-1, 1),
+                       sg.Combo(self.alt_dbs, default_value=self.dbname, key='-DATABASE-', size=(in_size - 1, 1),
                                 pad=((pad_el, pad_frame), pad_el), font=main_font, background_color=in_col)],
                       [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
                             pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,

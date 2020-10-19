@@ -1157,7 +1157,22 @@ def importer_layout(db_tables, win_size: tuple = None):
 
 
 # Panel layouts
-def action_layout(audit_rules):
+def home_screen(win_size: tuple = None):
+    """
+    Create layout for the home screen.
+    """
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width*0.6), int(height*0.6)))]], key='-HOME-',
+                    element_justification='c', vertical_alignment='c')
+
+    return layout
+
+
+def action_layout(account_methods):
     """
     Create layout for the home panel.
     """
@@ -1167,13 +1182,15 @@ def action_layout(audit_rules):
     pad_el = const.ELEM_PAD
     pad_v = const.VERT_PAD
 
-    rule_names = audit_rules.print_rules()
-
     # Button layout
     buttons = [[sg.Text('', pad=(pad_frame, 0), size=(0, 0), background_color=bg_col)]]
 
-    for rule_name in rule_names:
-        rule_el = [B1(rule_name, pad=(pad_frame, pad_el), disabled=True)]
+    for account_method in account_methods:
+        menu = [account_method.name]
+        for rule in account_method.rules:
+            menu.append(rule.title)
+
+        rule_el = [BM1(account_method.name, menu, pad=(pad_frame, pad_el), disabled=True)]
         buttons.append(rule_el)
 
     other_bttns = [[sg.HorizontalSeparator(pad=(pad_frame, pad_v))],

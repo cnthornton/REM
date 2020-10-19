@@ -3,14 +3,16 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '0.5.7'
+__version__ = '0.6.1'
 
 import datetime
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
 import REM.audit as audit
+import REM.bank as bank
+import REM.cash as cash
 import REM.data_manipulation as dm
-from REM.config import cnfg, settings
+from REM.config import Config, settings
 import REM.layouts as lo
 import REM.secondary as win2
 import REM.constants as const
@@ -24,21 +26,30 @@ class ToolBar:
     Toolbar object.
     """
 
-    def __init__(self, audit_rules):
+    def __init__(self, account_methods):
         """
         Initialize toolbar parameters.
         """
-        audit_names = audit_rules.print_rules()
+        acct_menu = []
+        for account_method in account_methods:
+            acct_menu.append(('', account_method.title))
+
+            rules = []
+            for rule in account_method.rules:
+                rules.append(('!', rule.title))
+
+            acct_menu.append(rules)
 
         self.name = 'toolbar'
         self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
-        self.audit_menu = {'name': '&Audits', 'items': [('!', i) for i in audit_names]}
-        self.reports_menu = {'name': '&Reports',
-                             'items': [('!', 'Summary S&tatistics'), ('!', '&Summary Reports')]}
+        self.acct_menu = {'name': '&Audits', 'items': acct_menu}
+        self.reports_menu = {'name': 'Reports',
+                             'items': [('!', 'Summary S&tatistics'), ('!', 'Summary &Reports')]}
         self.user_menu = {'name': '&User',
-                          'items': [('!', '&Manage Accounts'), ('', '---'), ('', 'Sign &In'), ('!', 'Sign &Out')]}
+                          'items': [('!', '&Manage Accounts'), ('!', 'M&essages'), ('', '---'), ('', 'Sign &In'),
+                                    ('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
-                          'items': [('!', '&Configure'), ('', '&Debug'), ('', '---'), ('', '&Help'),
+                          'items': [('!', '&Settings'), ('', '&Debug'), ('', '---'), ('', '&Help'),
                                     ('', 'A&bout'), ('', '---'), ('', '&Quit')]}
 
     def key_lookup(self, element):
@@ -89,7 +100,8 @@ class ToolBar:
                            justification='l', background_color=header_col),
                     sg.Canvas(key='-CANVAS_WIDTH-', size=(width - 260, 0), visible=True),
                     sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', pad=(padding, padding), image_data=user_ico,
-                                           button_color=(text_col, header_col), tooltip=_('User Settings')),
+                                           button_color=(text_col, header_col),
+                                           tooltip=_('User Settings')),
                              sg.ButtonMenu('', menu_menu, key='-MMENU-', pad=(padding, padding), image_data=menu_ico,
                                            button_color=(text_col, header_col),
                                            tooltip=_('Help and program settings'))]],
@@ -108,9 +120,8 @@ class ToolBar:
         element_key = '-UMENU-'
 
         # Update menu list to include the username
-        user_menu = {'name': '&User',
-                     'items': [('', username), ('', '---'), ('!', '&Manage Accounts'), ('', '---'),
-                               ('!', 'Sign &In'), ('', 'Sign &Out')]}
+        user_items = [('', username), ('', '---')] + self.user_menu['items']
+        user_menu = {'name': '&User', 'items': user_items}
 
         menu_def = self.menu_definition('umenu', menu=user_menu)
 
@@ -124,7 +135,7 @@ class ToolBar:
         """
         Return the menu definition for a menu.
         """
-        menus = {'amenu': self.audit_menu, 'rmenu': self.reports_menu,
+        menus = {'amenu': self.acct_menu, 'rmenu': self.reports_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
         if menu is None:
@@ -136,7 +147,17 @@ class ToolBar:
         else:
             menu_object = menu
 
-        menu_def = [menu_object['name'], ['{}{}'.format(*i) for i in menu_object['items']]]
+        menu_items = []
+        for item in menu_object['items']:
+            if isinstance(item, tuple):
+                menu_items.append('{}{}'.format(*item))
+            elif isinstance(item, list):
+                sub_list = []
+                for sub_item in item:
+                    sub_list.append('{}{}'.format(*sub_item))
+                menu_items.append(sub_list)
+
+        menu_def = [menu_object['name'], menu_items]
 
         return menu_def
 
@@ -144,32 +165,45 @@ class ToolBar:
         """
         Enable / disable menu items.
         """
-        menus = {'amenu': self.audit_menu, 'rmenu': self.reports_menu,
+        menus = {'amenu': self.acct_menu, 'rmenu': self.reports_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
         try:
-            menus[menu.lower()]
+            select_menu = menus[menu.lower()]
         except KeyError:
             print('Error: selected menu {} not list of available menus'.format(menu))
             return False
 
         status = '' if value == 'enable' else '!'
 
-        menu_items = menus[menu]['items']
-        items_clean = [i[1].replace('&', '').lower() for i in menu_items]
-        try:
-            index = items_clean.index(menu_item.lower())
-        except IndexError:
-            print('Error: selected menu item {MENU} not found in {MENUS} item list'.format(MENU=menu_item, MENUS=menu))
-            return False
+        new_menu = []
+        menu_items = select_menu['items']
+        for item in menu_items:
+            if isinstance(item, tuple):
+                clean_item = item[1].replace('&', '')
+                if menu_item in (clean_item, clean_item.lower()):
+                    item_name = item[1]
 
-        # Set status of menu item
-        item = menu_items[index]
-        new_item = (status, item[1])
+                    # Replace menu item with updated status
+                    new_menu.append((status, item_name))
+                else:
+                    new_menu.append(item)
+            elif isinstance(item, list):
+                sub_menu = []
+                for sub_item in item:
+                    clean_item = sub_item[1].replace('&', '')
+                    if menu_item in (clean_item, clean_item.lower()):
+                        item_name = sub_item[1]
+
+                        # Replace menu item with updated status
+                        sub_menu.append((status, item_name))
+                    else:
+                        sub_menu.append(sub_item)
+
+                new_menu.append(sub_menu)
 
         # Replace menu item with updated status
-        menu_items[index] = new_item
-        menus[menu.lower()]['items'] = menu_items
+        select_menu['items'] = new_menu
 
         # Update window to reflect updated status of the menu item
         element_key = self.key_lookup(menu.lower())
@@ -179,7 +213,7 @@ class ToolBar:
 
 
 # General functions
-def get_panels(audit_rules, win_size: tuple = None):
+def get_panels(account_methods, win_size: tuple = None):
     """
     """
     if win_size:
@@ -188,19 +222,21 @@ def get_panels(audit_rules, win_size: tuple = None):
         width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
     # Home page action panel
-    panels = [lo.action_layout(audit_rules)]
+#    panels = [lo.action_layout(account_methods)]
+    panels = [lo.home_screen()]
 
     # Add Audit rule with summary panel
-    for audit_rule in audit_rules.rules:
-        panels.append(audit_rule.layout())
-        panels.append(audit_rule.summary.layout())
-
-    # Add cash reconciliation panel
-    # Add bank reconciliation panel
+    for account_method in account_methods:
+        for rule in account_method.rules:
+            panels.append(rule.layout())
+            try:
+                panels.append(rule.summary.layout())
+            except AttributeError:
+                continue
 
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
-            sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False, border_width=0,
+            sg.Col([[sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0,
                              relief='flat')]], pad=(0, 10), justification='c', element_justification='c')]
 
     return pane
@@ -261,7 +297,7 @@ def reset_to_default(window, rule, current: bool = False):
     # Disable current panel
     window[current_key].update(visible=False)
     window[summ_panel_key].update(visible=False)
-    window['-ACTIONS-'].update(visible=True)
+    window['-HOME-'].update(visible=True)
 
     # Reset 'Start' element in case audit was in progress
     start_key = rule.key_lookup('Start')
@@ -316,11 +352,11 @@ def reset_to_default(window, rule, current: bool = False):
         window[tab.element_key].update(visible=visible)
 
     if current:
-        window['-ACTIONS-'].update(visible=False)
+        window['-HOME-'].update(visible=False)
         window[current_key].update(visible=True)
         return current_key
     else:
-        return '-ACTIONS-'
+        return '-HOME-'
 
 
 def main():
@@ -361,10 +397,21 @@ def main():
     else:
         current_h = screen_h
 
-    # Configure GUI layout
+    # Load the program configuration
+    cnfg = Config()
+    cnfg.load_configuration()
+
     audit_rules = audit.AuditRules(cnfg)
-    toolbar = ToolBar(audit_rules)
-    layout = [toolbar.layout(win_size=(current_w, current_h)), get_panels(audit_rules, win_size=(current_w, current_h))]
+    cash_rules = cash.CashRules(cnfg)
+    bank_rules = bank.BankRules(cnfg)
+    startup_msgs = cnfg.startup_msgs
+
+    # Configure GUI layout
+    toolbar = ToolBar([audit_rules, cash_rules, bank_rules])
+#    layout = [toolbar.layout(win_size=(current_w, current_h)),
+#              get_panels([audit_rules, cash_rules, bank_rules], win_size=(current_w, current_h))]
+    layout = [toolbar.layout(win_size=(current_w, current_h)),
+              get_panels([audit_rules], win_size=(current_w, current_h))]
 
     # Element keys and names
     audit_names = audit_rules.print_rules()
@@ -409,7 +456,7 @@ def main():
     resized = False
 
     # Event Loop
-    action_panel = current_panel = '-ACTIONS-'
+    home_panel = current_panel = '-HOME-'
     while True:
         event, values = window.read(timeout=100)
 
@@ -418,13 +465,13 @@ def main():
             break
 
         # Resize screen
-        if resized and current_panel != action_panel:
+        if resized and current_panel != home_panel:
             window[current_panel].update(visible=False)
-            window['-ACTIONS-'].update(visible=True)
+            window['-HOME-'].update(visible=True)
 
             window.refresh()
 
-            window['-ACTIONS-'].update(visible=False)
+            window['-HOME-'].update(visible=False)
             window[current_panel].update(visible=True)
 
             resized = False
@@ -461,34 +508,34 @@ def main():
                 admin = user.admin
                 if admin:
                     # Database administration
-                    window['-DB-'].update(disabled=False)
+#                    window['-DB-'].update(disabled=False)
                     window['-DBMENU-'].update(disabled=False)
 
                     # Reports and statistics
                     toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='enable')
                     toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='enable')
 
-                    window['-STATS-'].update(disabled=False)
-                    window['-REPORTS-'].update(disabled=False)
+#                    window['-STATS-'].update(disabled=False)
+#                    window['-REPORTS-'].update(disabled=False)
 
                     # User
                     toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
 
                     # Menu
-                    toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
+                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
 
                 # Enable permissions on per audit rule basis defined in config
                 for rule_name in audit_names:
                     if admin:
                         toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-                        window[rule_name].update(disabled=False)
+#                        window[rule_name].update(disabled=False)
 
                     rule = audit_rules.fetch_rule(rule_name)
 
                     perms = rule.permissions
                     if perms != 'admin':
                         toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-                        window[rule_name].update(disabled=False)
+#                        window[rule_name].update(disabled=False)
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
@@ -521,28 +568,28 @@ def main():
 
             # Disable all actions and menus
             # Database administration
-            window['-DB-'].update(disabled=True)
+#            window['-DB-'].update(disabled=True)
             window['-DBMENU-'].update(disabled=True)
 
             # Reports and statistics
             toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='disable')
             toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='disable')
-            window['-STATS-'].update(disabled=True)
-            window['-REPORTS-'].update(disabled=True)
+#            window['-STATS-'].update(disabled=True)
+#            window['-REPORTS-'].update(disabled=True)
 
             # User
             toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='disable')
 
             # Menu
-            toolbar.toggle_menu(window, 'mmenu', 'configure', value='disable')
+            toolbar.toggle_menu(window, 'mmenu', 'settings', value='disable')
 
             # Audit rules
             for rule_name in audit_names:
-                window[rule_name].update(disabled=True)
+#                window[rule_name].update(disabled=True)
                 toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
 
         # Display the edit settings window
-        if values['-MMENU-'] == 'Configure':
+        if values['-MMENU-'] == 'Settings':
             win2.edit_settings(win_size=window.size)
             continue
 
@@ -573,7 +620,7 @@ def main():
 
         # Switch to home panel when audit is not in progress
         if not audit_in_progress and event in cancel_keys:
-            toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
+            toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
             current_panel = reset_to_default(window, rule)
             rule = None
             continue
@@ -587,7 +634,7 @@ def main():
 
             if selection == 'OK':
                 # Reset to defaults
-                toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
+                toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
                 audit_in_progress = False
                 summary_panel_active = False
                 current_panel = reset_to_default(window, rule)
@@ -608,7 +655,7 @@ def main():
             rule = audit_rules.fetch_rule(action_value)
 
             current_panel = rule.element_key
-            window['-ACTIONS-'].update(visible=False)
+            window['-HOME-'].update(visible=False)
             window[current_panel].update(visible=True)
 
             tab_windows = [i.name for i in rule.tabs]
@@ -726,7 +773,7 @@ def main():
                     rule.toggle_parameters(window, 'disable')
 
                     # Disable user ability to modify settings while audit is in progress
-                    toolbar.toggle_menu(window, 'mmenu', 'configure', value='disable')
+                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='disable')
                 else:
                     for tab in rule.tabs:
                         tab.reset_dynamic_attributes()
@@ -946,7 +993,7 @@ def main():
                     win2.popup_error(msg)
                 else:
                     # Reset audit elements
-                    toolbar.toggle_menu(window, 'mmenu', 'configure', value='enable')
+                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
                     audit_in_progress = False
                     summary_panel_active = False
                     rule_summ.reset_attributes()
