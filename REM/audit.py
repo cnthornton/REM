@@ -1,5 +1,5 @@
 """
-REM configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
+REM transaction audit configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
 """
 import datetime
 import os
@@ -36,16 +36,22 @@ class AuditRules:
     def __init__(self, cnfg):
 
         # Audit parameters
-        audit_rules = cnfg['audit_rules']
+        audit_param = cnfg.audit_rules
+
         self.rules = []
-        for audit_rule in audit_rules:
-            self.rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
+        if audit_param is not None:
+            self.name = audit_param['name']
+            self.title = audit_param['title']
+
+            audit_rules = audit_param['rules']
+            for audit_rule in audit_rules:
+                self.rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
 
     def print_rules(self):
         """
         Return name of all audit rules defined in configuration file.
         """
-        return [i.name for i in self.rules]
+        return [i.title for i in self.rules]
 
     def fetch_rule(self, name):
         """
@@ -77,6 +83,8 @@ class AuditRule:
 
         name (str): audit rule name.
 
+        title (str): audit rule title.
+
         element_key (str): GUI element key.
 
         permissions (str): permissions required to view the audit. Default: user.
@@ -92,6 +100,11 @@ class AuditRule:
 
         self.name = name
         self.element_key = lo.as_key(name)
+        try:
+            self.title = adict['Title']
+        except KeyError:
+            self.title = name
+
         try:
             self.permissions = adict['Permissions']
         except KeyError:  # default permission for an audit is 'user'

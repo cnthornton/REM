@@ -44,9 +44,6 @@ class UserAccount:
     """
 
     def __init__(self):
-        """
-        """
-        # User account attributes
         self.uid = None
         self.pwd = None
         self.logged_in = False
