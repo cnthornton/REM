@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '0.6.0'
+__version__ = '0.6.1'
 
 import datetime
 from multiprocessing import freeze_support

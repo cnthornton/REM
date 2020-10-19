@@ -21,7 +21,7 @@ Copyright:
 from setuptools import setup
 
 setup(name='REM',
-      version='0.6.0',
+      version='0.6.1',
       packages=['REM', ],
       description='',
       classifiers=[
@@ -42,7 +42,7 @@ setup(name='REM',
       license='GPLv3',
       include_package_data=True,
       zip_safe=False,
-      install_requires=['numpy', 'pandas', 'PySimpleGUI', 'pyodbc'],
+      install_requires=['numpy', 'pandas', 'PySimpleGUI', 'pyodbc', 'pymongo', 'pdfkit', 'Jinja2', 'PyYAML'],
       entry_points={
           'console_scripts': [
               'REM = REM.main:main',
