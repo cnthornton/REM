@@ -34,8 +34,8 @@ class Config:
         Connect to the NoSQL database using the pymongo driver.
         """
         connection_info = {'username': settings.mongod_user, 'password': settings.mongod_pwd,
-                           'host': settings.mongod_server, 'port': settings.mongod_port, 'authSource': 'admin',
-                           'connectTimeoutMS': timeout}
+                           'host': settings.mongod_server, 'port': settings.mongod_port,
+                           'authSource': settings.mongod_database, 'connectTimeoutMS': timeout}
         try:
             cnx = MongoClient(**connection_info)
         except errors.ConnectionFailure as e:

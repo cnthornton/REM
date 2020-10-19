@@ -132,21 +132,21 @@ class ProgramSettings:
 
         # Configuration parameters
         try:
-            self.mongod_port = cnfg['configuration']['monod_port']
+            self.mongod_port = cnfg['configuration']['mongod_port']
         except KeyError:
             self.mongod_port = 27017
         try:
-            self.mongod_server = cnfg['configuration']['monod_server']
+            self.mongod_server = cnfg['configuration']['mongod_server']
         except KeyError:
             self.mongod_server = 'localhost'
         try:
-            self.mongod_database = cnfg['configuration']['monod_database']
+            self.mongod_database = cnfg['configuration']['mongod_database']
         except KeyError:
             self.mongod_database = 'REM'
         try:
             self.mongod_config = cnfg['configuration']['mongod_config']
         except KeyError:
-            self.mongod_config = 'config'
+            self.mongod_config = 'configuration'
         try:
             self.mongod_user = cnfg['configuration']['mongod_user']
         except KeyError:
