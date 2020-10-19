@@ -40,23 +40,42 @@ class BankRules:
 
         self.rules = []
         if bank_param is not None:
-            self.name = bank_param['name']
-            self.title = bank_param['title']
+            try:
+                bank_name = bank_param['name']
+            except KeyError:
+                win2.popup_error('Error: audit_rules: the parameter "name" is a required field')
+                sys.exit(1)
+            else:
+                self.name = bank_name
 
-            bank_rules = bank_param['rules']
+            try:
+                self.title = bank_param['title']
+            except KeyError:
+                self.title = bank_name
+
+            try:
+                bank_rules = bank_param['rules']
+            except KeyError:
+                win2.popup_error('Error: audit_rules: the parameter "rules" is a required field')
+                sys.exit(1)
+
             for rule_name in bank_rules:
                 self.rules.append(BankRule(rule_name, bank_rules[rule_name]))
 
-    def print_rules(self):
+    def print_rules(self, title=True):
         """
-        Return name of all audit rules defined in configuration file.
+        Return name of all bank rules defined in configuration file.
         """
-        return [i.title for i in self.rules]
+        if title is True:
+            return [i.title for i in self.rules]
+        else:
+            return [i.name for i in self.rules]
 
-    def fetch_rule(self, name):
+    def fetch_rule(self, name, title=True):
         """
+        Fetch a given rule from the rule set by its name or title.
         """
-        rule_names = self.print_rules()
+        rule_names = self.print_rules(title=title)
         try:
             index = rule_names.index(name)
         except IndexError:

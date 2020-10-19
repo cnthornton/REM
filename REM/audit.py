@@ -40,23 +40,42 @@ class AuditRules:
 
         self.rules = []
         if audit_param is not None:
-            self.name = audit_param['name']
-            self.title = audit_param['title']
+            try:
+                audit_name = audit_param['name']
+            except KeyError:
+                win2.popup_error('Error: audit_rules: the parameter "name" is a required field')
+                sys.exit(1)
+            else:
+                self.name = audit_name
 
-            audit_rules = audit_param['rules']
+            try:
+                self.title = audit_param['title']
+            except KeyError:
+                self.title = audit_name
+
+            try:
+                audit_rules = audit_param['rules']
+            except KeyError:
+                win2.popup_error('Error: audit_rules: the parameter "rules" is a required field')
+                sys.exit(1)
+
             for audit_rule in audit_rules:
                 self.rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
 
-    def print_rules(self):
+    def print_rules(self, title=True):
         """
         Return name of all audit rules defined in configuration file.
         """
-        return [i.title for i in self.rules]
+        if title is True:
+            return [i.title for i in self.rules]
+        else:
+            return [i.name for i in self.rules]
 
-    def fetch_rule(self, name):
+    def fetch_rule(self, name, title=True):
         """
+        Fetch a given rule from the rule set by its name or title.
         """
-        rule_names = self.print_rules()
+        rule_names = self.print_rules(title=title)
         try:
             index = rule_names.index(name)
         except IndexError:
@@ -267,7 +286,7 @@ class AuditRule:
         spacer = layout_width - 124 if layout_width > 124 else 0
 
         # Audit parameters
-        audit_name = self.name
+        audit_name = self.title
         params = self.parameters
 
         # Layout elements
