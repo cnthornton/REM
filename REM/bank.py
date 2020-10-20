@@ -36,14 +36,14 @@ class BankRules:
     def __init__(self, cnfg):
 
         # Audit parameters
-        bank_param = cnfg.bank_recon
+        bank_param = cnfg.bank_rules
 
         self.rules = []
         if bank_param is not None:
             try:
                 bank_name = bank_param['name']
             except KeyError:
-                win2.popup_error('Error: audit_rules: the parameter "name" is a required field')
+                win2.popup_error('Error: bank_rules: the parameter "name" is a required field')
                 sys.exit(1)
             else:
                 self.name = bank_name
@@ -56,7 +56,7 @@ class BankRules:
             try:
                 bank_rules = bank_param['rules']
             except KeyError:
-                win2.popup_error('Error: audit_rules: the parameter "rules" is a required field')
+                win2.popup_error('Error: bank_rules: the parameter "rules" is a required field')
                 sys.exit(1)
 
             for rule_name in bank_rules:

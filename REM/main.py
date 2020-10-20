@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '0.6.1'
+__version__ = '0.6.2'
 
 import datetime
 from multiprocessing import freeze_support
@@ -406,15 +406,17 @@ def main():
     bank_rules = bank.BankRules(cnfg)
     startup_msgs = cnfg.startup_msgs
 
+    acct_methods = [audit_rules, cash_rules]
+
     # Configure GUI layout
     toolbar = ToolBar([audit_rules, cash_rules, bank_rules])
-#    layout = [toolbar.layout(win_size=(current_w, current_h)),
-#              get_panels([audit_rules, cash_rules, bank_rules], win_size=(current_w, current_h))]
     layout = [toolbar.layout(win_size=(current_w, current_h)),
-              get_panels([audit_rules], win_size=(current_w, current_h))]
+              get_panels(acct_methods, win_size=(current_w, current_h))]
 
     # Element keys and names
     audit_names = audit_rules.print_rules()
+    cash_names = cash_rules.print_rules()
+    bank_names = bank_rules.print_rules()
 
     cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
@@ -433,10 +435,10 @@ def main():
     stats_tx = 'Summary Statistics'
 
     # Event modifiers
-    audit_in_progress = False
+    action_in_progress = False
     summary_panel_active = False
     current_tab = None
-    rule = None
+    current_rule = None
     debug_win = None
 
     # Initialize main window and login window
@@ -508,15 +510,11 @@ def main():
                 admin = user.admin
                 if admin:
                     # Database administration
-#                    window['-DB-'].update(disabled=False)
                     window['-DBMENU-'].update(disabled=False)
 
                     # Reports and statistics
                     toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='enable')
                     toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='enable')
-
-#                    window['-STATS-'].update(disabled=False)
-#                    window['-REPORTS-'].update(disabled=False)
 
                     # User
                     toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
@@ -525,17 +523,15 @@ def main():
                     toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
 
                 # Enable permissions on per audit rule basis defined in config
-                for rule_name in audit_names:
-                    if admin:
-                        toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-#                        window[rule_name].update(disabled=False)
-
-                    rule = audit_rules.fetch_rule(rule_name)
-
-                    perms = rule.permissions
-                    if perms != 'admin':
-                        toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-#                        window[rule_name].update(disabled=False)
+                for acct_method in acct_methods:
+                    for acct_rule in acct_method.rules:
+                        rule_name = acct_rule.title
+                        if admin:
+                            toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
+                        else:
+                            perms = acct_rule.permissions
+                            if perms != 'admin':
+                                toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
@@ -552,9 +548,9 @@ def main():
             if selection == 'Cancel':
                 continue
 
-            audit_in_progress = False
+            action_in_progress = False
             current_panel = reset_to_default(window, rule)  # reset to home screen
-            rule = None
+            current_rule = None
 
             # Reset User attributes
             user.logout()
@@ -568,14 +564,11 @@ def main():
 
             # Disable all actions and menus
             # Database administration
-#            window['-DB-'].update(disabled=True)
             window['-DBMENU-'].update(disabled=True)
 
             # Reports and statistics
             toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='disable')
             toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='disable')
-#            window['-STATS-'].update(disabled=True)
-#            window['-REPORTS-'].update(disabled=True)
 
             # User
             toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='disable')
@@ -584,9 +577,10 @@ def main():
             toolbar.toggle_menu(window, 'mmenu', 'settings', value='disable')
 
             # Audit rules
-            for rule_name in audit_names:
-#                window[rule_name].update(disabled=True)
-                toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
+            for acct_method in acct_methods:
+                for acct_rule in acct_method.rules:
+                    rule_name = acct_rule.title
+                    toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
 
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
@@ -599,7 +593,7 @@ def main():
             continue
 
         # Display the database update window
-        if event in ('-DB-', '-DBMENU-'):
+        if event == '-DBMENU-':
             win2.database_importer_window(user)
             continue
 
@@ -607,6 +601,7 @@ def main():
         if not debug_win and values['-MMENU-'] == 'Debug':
             debug_win = win2.debugger()
             debug_win.finalize()
+
             print('Info: starting debugger')
             continue
         elif debug_win:
@@ -618,16 +613,16 @@ def main():
             else:
                 debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
 
-        # Switch to home panel when audit is not in progress
-        if not audit_in_progress and event in cancel_keys:
+        # Switch to home panel when no current action
+        if not action_in_progress and event in cancel_keys:
             toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
             current_panel = reset_to_default(window, rule)
-            rule = None
+            current_rule = None
             continue
 
-        # Switch to home panel when audit is in progress
-        if audit_in_progress and (event in ('-DB-', '-DBMENU-') or event in cancel_keys
-                                  or values['-AMENU-'] in audit_names or values['-RMENU-'] in (report_tx, stats_tx)):
+        # Switch to home panel when ongoing action
+        if action_in_progress and (event == '-DBMENU-' or event in cancel_keys or values['-AMENU-'] in audit_names
+                                   or values['-RMENU-'] in (report_tx, stats_tx)):
 
             msg = _('Audit is currently running. Are you sure you would like to exit?')
             selection = win2.popup_confirm(msg)
@@ -635,45 +630,52 @@ def main():
             if selection == 'OK':
                 # Reset to defaults
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                audit_in_progress = False
+                action_in_progress = False
                 summary_panel_active = False
                 current_panel = reset_to_default(window, rule)
-                rule = None
+                current_rule = None
             else:
                 continue
 
-        # Switch panels when audit not in progress
-        if rule and (event in ('-DB-', '-DBMENU-') or event in cancel_keys or values['-AMENU-'] in audit_names or
-                     values['-RMENU-'] in (report_tx, stats_tx)):
+        # Switch to home panel when no current action
+        if current_rule and (event == '-DBMENU-' or event in cancel_keys or values['-AMENU-'] or
+                             values['-RMENU-'] in (report_tx, stats_tx)):
             current_panel = reset_to_default(window, rule)
-            rule = None
+            current_rule = None
 
         # Activate appropriate audit panel
-        if values['-AMENU-'] or event in audit_names:
-            # Obtain the selected audit rule object
-            action_value = values['-AMENU-'] if values['-AMENU-'] else event
-            rule = audit_rules.fetch_rule(action_value)
+        selected_action = values['-AMENU-']
+        if selected_action in audit_names:
+            # Obtain the selected rule object
+            current_rule = audit_rules.fetch_rule(selected_action)
 
-            current_panel = rule.element_key
+            current_panel = current_rule.element_key
             window['-HOME-'].update(visible=False)
             window[current_panel].update(visible=True)
 
-            tab_windows = [i.name for i in rule.tabs]
+            tab_windows = [i.name for i in current_rule.tabs]
             final_index = len(tab_windows) - 1
 
             # Set up variables for updating date parameter fields
-            date_param = rule.fetch_parameter('date', by_type=True)
+            date_param = current_rule.fetch_parameter('date', by_type=True)
             try:
-                date_key = rule.key_lookup(date_param.name)
+                date_key = current_rule.key_lookup(date_param.name)
             except AttributeError:
                 date_key = None
 
             date_str = []
 
-            print('Info: the panel in view is {} with tabs {}'.format(rule.name, ', '.join(tab_windows)))
+            print('Info: the panel in view is {} with tabs {}'.format(current_rule.name, ', '.join(tab_windows)))
+        elif selected_action in cash_names:
+            # Obtain the selected rule object
+            current_rule = cash_rules.fetch_rule(selected_action)
+        elif values['-AMENU-'] in bank_names:
+            # Obtain the selected rule object
+            current_rule = bank_rules.fetch_rule(selected_action)
+            pass
 
-        # Format date parameter field, if used in audit rule
-        if event == date_key:
+        # Format date parameter field, if used in a given rule set
+        if current_rule and event == date_key:
             elem_value = values[date_key]
             try:
                 input_value = strptime(elem_value, '%Y-%m-%d')
@@ -709,13 +711,13 @@ def main():
 
         # Start the selected audit
         try:
-            start_key = rule.key_lookup('Start')
+            start_key = current_rule.key_lookup('Start')
         except AttributeError:
             start_key = None
 
         if event == start_key:
             # Check if all rule parameters elements have input
-            params = rule.parameters
+            params = current_rule.parameters
             inputs = []
             for param in params:
                 param.set_value(values)
@@ -733,13 +735,13 @@ def main():
                 # Initialize audit
                 initialized = True
                 tab_keys = []  # to track tabs displayed
-                for tab in rule.tabs:
+                for tab in current_rule.tabs:
                     tab_key = tab.element_key
                     tab_keys.append(tab_key)
 
                     # Prepare the filter rules to filter query results
                     main_table = [i for i in tab.db_tables][0]
-                    rule_params = rule.parameters  # to filter data tables
+                    rule_params = current_rule.parameters  # to filter data tables
                     filters = [i.filter_statement(table=main_table) for i in rule_params]
 
                     # Check for tab-specific query parameters
@@ -763,30 +765,30 @@ def main():
                     tab.toggle_actions(window, 'enable')
 
                 if initialized:
-                    audit_in_progress = True
+                    action_in_progress = True
                     print('Info: {} audit in progress with parameters {}'
-                          .format(rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
+                          .format(current_rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
                     # Disable start button and parameter elements
-                    start_key = rule.key_lookup('Start')
+                    start_key = current_rule.key_lookup('Start')
                     window[start_key].update(disabled=True)
-                    rule.toggle_parameters(window, 'disable')
+                    current_rule.toggle_parameters(window, 'disable')
 
                     # Disable user ability to modify settings while audit is in progress
                     toolbar.toggle_menu(window, 'mmenu', 'settings', value='disable')
                 else:
-                    for tab in rule.tabs:
+                    for tab in current_rule.tabs:
                         tab.reset_dynamic_attributes()
 
         action_performed = False
         # Scan for missing data if applicable
-        if audit_in_progress and not summary_panel_active:
-            tg_key = rule.key_lookup('TG')
+        if action_in_progress and not summary_panel_active:
+            tg_key = current_rule.key_lookup('TG')
             previous_tab = current_tab
             current_tab = window[tg_key].Get()
 
             # Get current tab in view
-            tab = rule.fetch_tab(current_tab, by_key=True)
+            tab = current_rule.fetch_tab(current_tab, by_key=True)
 
             # Refresh audit table
             if current_tab != previous_tab:
@@ -861,7 +863,7 @@ def main():
 
                 # Run schema action methods
                 print('Info: running audit on the {NAME} data'.format(NAME=tab.name))
-                params = rule.parameters
+                params = current_rule.parameters
                 tab.run_audit(window, account=user, parameters=params)
 
                 # Update information elements - most actions modify tab data 
@@ -880,14 +882,14 @@ def main():
 
             # Enable the finalize button when all actions have been performed
             # on all tabs.
-            final_key = rule.key_lookup('Finalize')
-            summary_key = rule.summary.element_key
+            final_key = current_rule.key_lookup('Finalize')
+            summary_key = current_rule.summary.element_key
             if tab.audit_performed and current_index == final_index:
                 window[final_key].update(disabled=False)
 
             if event == final_key:  # display summary panel
                 summary_panel_active = True
-                rule_summ = rule.summary
+                rule_summ = current_rule.summary
 
                 # Update summary tables with the current audit's parameter values
                 rule_summ.update_title(window, rule)
@@ -909,15 +911,15 @@ def main():
                 current_panel = summary_key
 
                 # Reset tab table column widths
-                for tab in rule.tabs:
+                for tab in current_rule.tabs:
                     tab.resize_elements(window, win_size=window.size)
 
         # Summary Panel
-        if audit_in_progress and summary_panel_active:
+        if action_in_progress and summary_panel_active:
             # Get current tab in view
-            tg_key = rule.summary.key_lookup('TG')
+            tg_key = current_rule.summary.key_lookup('TG')
             current_tab = window[tg_key].Get()
-            summ_tab = rule.summary.fetch_tab(current_tab, by_key=True)
+            summ_tab = current_rule.summary.fetch_tab(current_tab, by_key=True)
 
             # Add a row to the records table
             add_key = summ_tab.key_lookup('Add')
@@ -949,12 +951,12 @@ def main():
                 continue
 
             # Return to the Audit Panel
-            back_key = rule.summary.key_lookup('Back')
+            back_key = current_rule.summary.key_lookup('Back')
             if event == back_key:
                 summary_panel_active = False
 
                 # Return to tab display
-                current_panel = rule.element_key
+                current_panel = current_rule.element_key
                 window[summary_key].update(visible=False)
                 window[current_panel].update(visible=True)
 
@@ -966,10 +968,10 @@ def main():
                 window[tg_key].Widget.select(0)
 
             # Save results of the audit
-            save_key = rule.summary.key_lookup('Save')
+            save_key = current_rule.summary.key_lookup('Save')
             if event == save_key:
                 # Save summary to excel or csv file
-                title = rule.summary.title.replace(' ', '_')
+                title = current_rule.summary.title.replace(' ', '_')
                 outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
                                             default_extension='pdf', no_window=True,
                                             file_types=(('PDF - Portable Document Format', '*.pdf'),))
@@ -987,14 +989,14 @@ def main():
 
                 # Save summary to the program database
                 try:
-                    rule_summ.save_to_database(user, rule.parameters)
+                    rule_summ.save_to_database(user, current_rule.parameters)
                 except Exception as e:
                     msg = _('Save to database failed - {}').format(e)
                     win2.popup_error(msg)
                 else:
                     # Reset audit elements
                     toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                    audit_in_progress = False
+                    action_in_progress = False
                     summary_panel_active = False
                     rule_summ.reset_attributes()
                     rule_summ.resize_elements(window, win_size=window.size)

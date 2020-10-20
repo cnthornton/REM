@@ -286,11 +286,11 @@ class AuditRule:
         spacer = layout_width - 124 if layout_width > 124 else 0
 
         # Audit parameters
-        audit_name = self.title
         params = self.parameters
 
         # Layout elements
-        layout_els = [[sg.Col([[sg.Text(audit_name, pad=(0, (pad_v, pad_frame)), font=font_h)]],
+        panel_title = self.title
+        layout_els = [[sg.Col([[sg.Text(panel_title, pad=(0, (pad_v, pad_frame)), font=font_h)]],
                               justification='c', element_justification='c')]]
 
         # Control elements
@@ -509,7 +509,7 @@ class SummaryPanel:
         title_key = self.key_lookup('Title')
         layout_els = [[sg.Col([[sg.Text(self.rule_name, pad=(0, (pad_v, pad_frame)), font=font_h)]],
                               justification='c', element_justification='c')],
-                      [sg.Text(self.title, key=title_key, pad=(0, (0, pad_v)), font=font_h)]]
+                      [sg.Text(self.title, key=title_key, size=(40, 0), pad=(0, (0, pad_v)), font=font_h)]]
 
         ## Main screen
         tg_key = self.key_lookup('TG')

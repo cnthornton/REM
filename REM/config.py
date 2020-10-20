@@ -25,8 +25,8 @@ class Config:
 
         # Program configuration parameters
         self.audit_rules = None
-        self.cash_recon = None
-        self.bank_recon = None
+        self.cash_rules = None
+        self.bank_rules = None
         self.startup_msgs = None
 
     def connect(self, timeout=2000):
@@ -35,7 +35,7 @@ class Config:
         """
         connection_info = {'username': settings.mongod_user, 'password': settings.mongod_pwd,
                            'host': settings.mongod_server, 'port': settings.mongod_port,
-                           'authSource': settings.mongod_database, 'connectTimeoutMS': timeout}
+                           'authSource': settings.mongod_authdb, 'connectTimeoutMS': timeout}
         try:
             cnx = MongoClient(**connection_info)
         except errors.ConnectionFailure as e:
@@ -108,8 +108,8 @@ class Config:
             sys.exit(1)
         else:
             self.audit_rules = collection.find_one({'name': 'audit_rules'})
-            self.cash_recon = collection.find_one({'name': 'cash_rules'})
-            self.bank_recon = collection.find_one({'name': 'bank_rules'})
+            self.cash_rules = collection.find_one({'name': 'cash_rules'})
+            self.bank_rules = collection.find_one({'name': 'bank_rules'})
             self.startup_msgs = collection.find_one({'name': 'startup_messages'})
 
 

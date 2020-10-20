@@ -155,6 +155,10 @@ class ProgramSettings:
             self.mongod_pwd = cnfg['configuration']['mongod_pwd']
         except KeyError:
             self.mongod_pwd = ''
+        try:
+            self.mongod_authdb = cnfg['configuration']['mongod_authdb']
+        except KeyError:
+            self.mongod_authdb = 'REM'
 
     def translate(self):
         """
