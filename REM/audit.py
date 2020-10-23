@@ -131,7 +131,7 @@ class AuditRule:
 
         self.parameters = []
         self.tabs = []
-        self.elements = ['TG', 'Cancel', 'Start', 'Finalize', 'Fill']
+        self.elements = ['TG', 'Cancel', 'Start', 'Finalize', 'FrameWidth']
 
         try:
             params = adict['RuleParameters']
@@ -233,12 +233,18 @@ class AuditRule:
         """
         Generate a GUI layout for the audit rule.
         """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
         # Element parameters
         inactive_col = const.INACTIVE_COL
         bg_col = const.ACTION_COL
         default_col = const.DEFAULT_COL
         text_col = const.TEXT_COL
         font_h = const.HEADER_FONT
+        header_col = const.HEADER_COL
 
         pad_el = const.ELEM_PAD
         pad_v = const.VERT_PAD
@@ -247,10 +253,23 @@ class AuditRule:
         # Audit parameters
         params = self.parameters
 
+        # Element sizes
+        layout_width = width - 120 if width >= 120 else width
+        layout_height = height * 0.8
+
         # Layout elements
+        layout_els = []
+
+        # Title
         panel_title = self.title
-        layout_els = [[sg.Col([[sg.Text(panel_title, pad=(0, (pad_v, pad_frame)), font=font_h)]],
-                              justification='c', element_justification='c')]]
+        width_key = self.key_lookup('FrameWidth')
+        title_layout = [sg.Col([
+            [sg.Canvas(key=width_key, size=(layout_width, 1), pad=(0, pad_v), visible=True,
+                       background_color=header_col)],
+            [sg.Text(panel_title, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
+            pad=(0, 0), justification='l', background_color=header_col, expand_x=True)]
+
+        layout_els.append(title_layout)
 
         # Control elements
         nparam = len(params)
@@ -266,15 +285,21 @@ class AuditRule:
 
             param_elements += param_layout
 
-        layout_els.append(param_elements)
+        param_layout = [
+            [sg.Col([param_elements], background_color=bg_col, vertical_alignment='c')],
+            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
+
+        layout_els.append([sg.Col(param_layout, pad=(pad_frame, pad_frame), background_color=bg_col,
+                                  justification='l', expand_x=True)])
 
         # Tab elements
         tabgroub_key = self.key_lookup('TG')
         audit_layout = [sg.TabGroup([lo.tab_layout(self.tabs, win_size=win_size)],
-                                    key=tabgroub_key, pad=(pad_v, (pad_frame, pad_v)),
+                                    key=tabgroub_key, pad=(pad_v, pad_v),
                                     tab_background_color=inactive_col, selected_title_color=text_col,
-                                    selected_background_color=bg_col, background_color=default_col)]
-        layout_els.append(audit_layout)
+                                    selected_background_color=bg_col, background_color=bg_col)]
+
+        layout_els.append([sg.Col([audit_layout], pad=(pad_frame, pad_frame))])
 
         # Standard elements
         cancel_key = self.key_lookup('Cancel')
@@ -286,11 +311,11 @@ class AuditRule:
                    justification='l', expand_x=True),
             sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
             sg.Col([[lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)), disabled=True,
-                     tooltip='Finalize audit and generate summary report')]], justification='r')]
-        layout_els.append(bttn_layout)
+                           tooltip='Finalize audit and generate summary report')]], justification='r')]
 
         # Pane elements must be columns
-        layout = sg.Col(layout_els, key=self.element_key, visible=False)
+        layout = sg.Col([[sg.Frame('', layout_els, relief='raised', background_color=bg_col)],
+                         bttn_layout], key=self.element_key, visible=False)
 
         return layout
 
@@ -308,6 +333,10 @@ class AuditRule:
         layout_pad = 120
         win_diff = width - const.WIN_WIDTH
         layout_pad = layout_pad + (win_diff / 5)
+        layout_width = width - layout_pad
+
+        width_key = self.key_lookup('FrameWidth')
+        window[width_key].set_size((layout_width, None))
 
         # Resize tab elements
         tabs = self.tabs
@@ -438,7 +467,7 @@ class SummaryPanel:
 
         self.rule_name = rule_name
         self.element_key = lo.as_key('{} Summary'.format(rule_name))
-        self.elements = ['Cancel', 'Back', 'Save', 'Title', 'Fill', 'TG']
+        self.elements = ['Cancel', 'Back', 'Save', 'Title', 'TG', 'FrameWidth']
 
         self.summary_items = []
 
@@ -556,49 +585,74 @@ class SummaryPanel:
         default_col = const.DEFAULT_COL
         inactive_col = const.INACTIVE_COL
         text_col = const.TEXT_COL
+        header_col = const.HEADER_COL
 
         font_h = const.HEADER_FONT
 
         summary_items = self.summary_items
 
-        layout_width = width - 120 if width >= 200 else width
-#        spacer = layout_width - 124 if layout_width > 124 else 0
+        frame_width = width - 120
 
         # Layout elements
-        ## Title
+        layout_els = []
+
+        # Title
+        width_key = self.key_lookup('FrameWidth')
+        title_layout = sg.Col([
+            [sg.Canvas(key=width_key, size=(frame_width, 1), pad=(0, pad_v), visible=True,
+                       background_color=header_col)],
+            [sg.Text(self.rule_name, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
+            pad=(0, 0), justification='l', background_color=header_col, expand_x=True)
+
+        layout_els.append([title_layout])
+
+        # Panel heading layout
         title_key = self.key_lookup('Title')
-        layout_els = [[sg.Col([[sg.Text(self.rule_name, pad=(0, (pad_v, pad_frame)), font=font_h)]],
-                              justification='c', element_justification='c')],
-                      [sg.Text(self.title, key=title_key, size=(40, 0), pad=(0, (0, pad_v)), font=font_h)]]
+        header_layout = [
+            [sg.Col([[sg.Text(self.title, key=title_key, size=(40, 1), pad=(0, 0), font=font_h,
+                              background_color=bg_col)]], vertical_alignment='c', background_color=bg_col)],
+            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
 
-        ## Main screen
+        layout_els.append([sg.Col(header_layout, pad=(pad_frame, pad_frame), background_color=bg_col,
+                                  justification='l', expand_x=True)])
+
+        # Main screen
         tg_key = self.key_lookup('TG')
-        summ_layout = [sg.TabGroup([lo.tab_layout(summary_items, win_size=win_size, initial_visibility='all')],
-                                   key=tg_key, pad=(pad_v, (pad_frame, pad_v)), background_color=default_col,
-                                   tab_background_color=inactive_col, selected_background_color=bg_col,
-                                   selected_title_color=text_col)]
+        summ_layout = [[sg.TabGroup([lo.tab_layout(summary_items, win_size=win_size, initial_visibility='all')],
+                                    key=tg_key, pad=(pad_v, pad_v), background_color=bg_col,
+                                    tab_background_color=inactive_col, selected_background_color=bg_col,
+                                    selected_title_color=text_col)]]
 
-        layout_els.append(summ_layout)
+        layout_els.append([sg.Col(summ_layout, pad=(pad_frame, pad_frame))])
 
-        ## Control buttons
+        # Control buttons
         b1_key = self.key_lookup('Cancel')
         b2_key = self.key_lookup('Back')
         b3_key = self.key_lookup('Save')
-#        fill_key = self.key_lookup('Fill')
         bttn_layout = [sg.Col([[lo.B2('Cancel', key=b1_key, pad=((0, pad_el), (pad_v, 0)),
                                       tooltip='Return to home screen'),
-                       lo.B2('Back', key=b2_key, pad=((pad_el, 0), (pad_v, 0)), tooltip='Return to audit')]],
+                                lo.B2('Back', key=b2_key, pad=((pad_el, 0), (pad_v, 0)), tooltip='Return to audit')]],
                               justification='l', expand_x=True),
                        sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
                        sg.Col([[lo.B2('Save', key=b3_key, pad=(0, (pad_v, 0)), tooltip='Save audit results')]],
                               justification='r')]
 
-        layout_els.append(bttn_layout)
-
         # Pane elements must be columns
-        layout = sg.Col(layout_els, key=self.element_key, visible=False)
+        layout = sg.Col([[sg.Frame('', layout_els, relief='raised', background_color=bg_col)],
+                         bttn_layout], key=self.element_key, visible=False)
 
         return layout
+
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Resize summary items tables
+        """
+        win_size = win_size if win_size else window.size
+
+        summary_items = self.summary_items
+        for summary_item in summary_items:
+            # Reset summary item attributes
+            summary_item.resize_elements(window, win_size=win_size)
 
     def update_display(self, window):
         """
@@ -679,17 +733,6 @@ class SummaryPanel:
         for summary_item in summary_items:
             # Reset summary item attributes
             summary_item.reset_dynamic_attributes()
-
-    def resize_elements(self, window, win_size: tuple = None):
-        """
-        Resize summary items tables
-        """
-        win_size = win_size if win_size else window.size
-
-        summary_items = self.summary_items
-        for summary_item in summary_items:
-            # Reset summary item attributes
-            summary_item.resize_elements(window, win_size=win_size)
 
     def update_totals(self, rule):
         """
@@ -996,7 +1039,7 @@ class SummaryItem:
         self.rule_name = rule_name
         self.name = name
         self.element_key = lo.as_key('{} {} Summary'.format(rule_name, name))
-        self.elements = ['Totals', 'Table', 'Add', 'Total', 'Remainder']
+        self.elements = ['Totals', 'Table', 'Add', 'Delete', 'Total', 'Remainder', 'TabHeight']
         self.type = None
 
         try:
@@ -1039,6 +1082,8 @@ class SummaryItem:
                 win2.popup_error('Configuration Error: rule {RULE}, name {NAME}: SumColumn {SUM} not in list of table '
                                  'columns'.format(RULE=rule_name, NAME=name, SUM=records['SumColumn']))
                 sys.exit(1)
+        if 'DisplayHeader' not in records:
+            records['DisplayHeader'] = ''
         if 'DisplayColumns' not in records:
             win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
             sys.exit(1)
@@ -1065,6 +1110,8 @@ class SummaryItem:
         if 'TableColumns' not in totals:
             win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
             sys.exit(1)
+        if 'DisplayHeader' not in totals:
+            totals['DisplayHeader'] = ''
         if 'DisplayColumns' not in totals:
             win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
             sys.exit(1)
@@ -1216,63 +1263,6 @@ class SummaryItem:
 
         return comp_value
 
-    def resize_elements(self, window, win_size: tuple = None):
-        """
-        Reset Table Columns widths to default when resized.
-        """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
-
-        tbl_key = self.key_lookup('Table')
-        totals_key = self.key_lookup('Totals')
-#        fill_key = self.key_lookup('Fill')
-        element_key = self.element_key  # TabGroup key
-
-        # Reset table size
-        # For every five-pixel increase in window size, increase tab size by one
-        tab_pad = 120
-        win_diff = width - const.WIN_WIDTH
-        tab_pad = tab_pad + (win_diff / 5)
-
-        tab_width = width - tab_pad if tab_pad > 0 else width
-        height = height * 0.5
-        nrows = int(height / 60)
-
-        # Resize the tab frame
-        window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
-
-#        fill = 278
-        # For every ten pixel increase in window size, increase fill size by one
-#        tab_fill = tab_width - fill if tab_width > fill else 0
-#        window[fill_key].set_size((tab_fill, None))
-
-        # Reset table column sizes
-        record_columns = self.records['DisplayColumns']
-        header = list(record_columns.keys())
-        lengths = dm.calc_column_widths(header, width=tab_width, pixels=True)
-        for col_index, col_name in enumerate(header):
-            col_width = lengths[col_index]
-            window[tbl_key].Widget.column(col_name, width=col_width)
-
-        window[tbl_key].expand((True, True))
-        window[tbl_key].table_frame.pack(expand=True, fill='both')
-
-        totals_columns = self.totals['DisplayColumns']
-        totals_header = list(totals_columns.keys())
-        lengths = dm.calc_column_widths(totals_header, width=tab_width, pixels=True)
-        for col_index, col_name in enumerate(totals_header):
-            col_width = lengths[col_index]
-            window[totals_key].Widget.column(col_name, width=col_width)
-
-        window[totals_key].expand((True, True))
-        window[totals_key].table_frame.pack(expand=True, fill='both')
-
-        window.refresh()
-
-        window[tbl_key].update(num_rows=nrows)
-
     def layout(self, win_size: tuple = None):
         """
         GUI layout for the summary item.
@@ -1292,50 +1282,106 @@ class SummaryItem:
         pad_frame = const.FRAME_PAD
         pad_el = const.ELEM_PAD
 
-        tbl_pad = (pad_frame, (pad_el, pad_frame))
+        tbl_pad = (0, 0)
+        pad_v = const.VERT_PAD
 
-        header = list(display_columns.keys())
+        records_header = list(display_columns.keys())
         totals_header = list(totals_columns.keys())
 
+        records_title = self.records['DisplayHeader']
+        totals_title = self.totals['DisplayHeader']
+
         totals_data = dm.create_empty_table(nrow=1, ncol=len(totals_header))
-        data = dm.create_empty_table(nrow=5, ncol=len(header))
-
-        # Set Tab size
-        tab_pad = 120
-        win_diff = width - const.WIN_WIDTH
-        tab_pad = tab_pad + (win_diff / 5)
-        tab_width = width - tab_pad if tab_pad > 0 else width
-
-        fill = 278
-        tab_fill = tab_width - fill if tab_width > fill else 0
+        data = dm.create_empty_table(nrow=5, ncol=len(records_header))
 
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
-        fill_key = self.key_lookup('Fill')
         add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
         remain_key = self.key_lookup('Remainder')
         total_key = self.key_lookup('Total')
-        layout = [[sg.Col([[sg.Text('Totals', pad=(0, (pad_frame, pad_el)), font=font_b, background_color=bg_col)]],
-                          justification='c', background_color=bg_col)],
-                  [lo.create_table_layout(totals_data, totals_header, totals_key, events=True, height=height,
-                                          width=width, nrow=1, pad=tbl_pad)],
-                  [sg.Text('Total:', size=(10, 1), pad=((pad_frame, pad_el), (0, pad_frame)), font=font_b,
-                           background_color=bg_col, justification='r'),
-                   sg.Text('', key=total_key, size=(14, 1), pad=(0, (0, pad_frame)), font=font,
-                           background_color=bg_col, justification='r', relief='sunken')],
-                  [sg.Canvas(size=(0, 20), visible=True, background_color=bg_col)],
-                  [sg.Col([[sg.Text('Records', pad=(0, (0, pad_el)), background_color=bg_col, font=font_b)]],
-                          justification='c', background_color=bg_col)],
-                  [lo.create_table_layout(data, header, tbl_key, events=True, height=height, width=width, pad=tbl_pad)],
-                  [sg.Text('Remainder:', size=(10, 1), pad=((pad_frame, pad_el), (0, pad_frame)), font=font_b,
-                           background_color=bg_col, justification='r'),
-                   sg.Text('', key=remain_key, size=(14, 1), pad=(0, (0, pad_frame)), font=font,
-                           background_color=bg_col, justification='r', relief='sunken'),
-                   sg.Canvas(key=fill_key, size=(tab_fill, 0), visible=True, background_color=bg_col),
-                   lo.B2('Add', key=add_key, pad=((0, pad_frame), (0, pad_frame)), disabled=False)],
-                  [sg.Canvas(size=(0, 20), visible=True, background_color=bg_col)]]
+        main_layout = [
+            [lo.create_table_layout(totals_data, totals_header, totals_key, bind=True, height=height,
+                                    width=width, nrow=1, pad=tbl_pad, table_name=totals_title)],
+            [sg.Col([[sg.Text('Total:', pad=((0, pad_el), 0), font=font_b, background_color=bg_col),
+                      sg.Text('', key=total_key, size=(14, 1), pad=((pad_el, 0), 0), font=font,
+                              background_color=bg_col, justification='r', relief='sunken')]],
+                    pad=(0, pad_v), background_color=bg_col, justification='r')],
+            [sg.Canvas(size=(0, 20), visible=True, background_color=bg_col)],
+            [lo.create_table_layout(data, records_header, tbl_key, bind=True, height=height, width=width,
+                                    pad=tbl_pad, add_key=add_key, delete_key=delete_key,
+                                    table_name=records_title)],
+            [sg.Col([[sg.Text('Remainder:', pad=((0, pad_el), 0), font=font_b, background_color=bg_col),
+                      sg.Text('', key=remain_key, size=(14, 1), pad=((pad_el, 0), 0), font=font,
+                              background_color=bg_col, justification='r', relief='sunken')]],
+                    pad=(0, pad_v), background_color=bg_col, justification='r')],
+            [sg.Canvas(size=(0, 20), visible=True, background_color=bg_col)]]
+
+        height_key = self.key_lookup('TabHeight')
+        frame_height = height * 0.8
+        layout = [[sg.Canvas(key=height_key, size=(0, frame_height * 0.75)),
+                   sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', background_color=bg_col,
+                          expand_x=True)]]
 
         return layout
+
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Reset Table Columns widths to default when resized.
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+        tbl_key = self.key_lookup('Table')
+        totals_key = self.key_lookup('Totals')
+        element_key = self.element_key  # TabGroup key
+
+        # Reset table size
+        # For every five-pixel increase in window size, increase tab size by one
+        tab_pad = 120
+        win_diff = width - const.WIN_WIDTH
+        tab_pad = tab_pad + (win_diff / 5)
+
+        frame_width = width - tab_pad if tab_pad > 0 else width
+        tab_width = frame_width - 40
+        window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
+
+        frame_height = height * 0.8
+        tab_height = frame_height * 0.70
+        height_key = self.key_lookup('TabHeight')
+        window[height_key].set_size((None, tab_height))
+
+        # Reset table column sizes
+        record_columns = self.records['DisplayColumns']
+        header = list(record_columns.keys())
+
+        tbl_width = tab_width - 40
+        lengths = dm.calc_column_widths(header, width=tbl_width, pixels=True)
+        for col_index, col_name in enumerate(header):
+            col_width = lengths[col_index]
+            window[tbl_key].Widget.column(col_name, width=col_width)
+
+        window[tbl_key].expand((True, True))
+        window[tbl_key].table_frame.pack(expand=True, fill='both')
+
+        totals_columns = self.totals['DisplayColumns']
+        totals_header = list(totals_columns.keys())
+        lengths = dm.calc_column_widths(totals_header, width=tbl_width, pixels=True)
+        for col_index, col_name in enumerate(totals_header):
+            col_width = lengths[col_index]
+            window[totals_key].Widget.column(col_name, width=col_width)
+
+        window[totals_key].expand((True, True))
+        window[totals_key].table_frame.pack(expand=True, fill='both')
+
+        window.refresh()
+
+        tbl_height = tab_height * 0.50
+        nrows = int(tbl_height / 30)
+        window[totals_key].update(num_rows=1)
+        window[tbl_key].update(num_rows=nrows)
 
     def create_id(self, rule):
         """
@@ -1838,6 +1884,7 @@ class AuditParameterCombo(AuditParameter):
         pad_v = const.VERT_PAD
         font = const.MID_FONT
         in_col = const.INPUT_COL
+        bg_col = const.ACTION_COL
 
         key = self.element_key
         desc = '{}:'.format(self.description)
@@ -1845,7 +1892,7 @@ class AuditParameterCombo(AuditParameter):
 
         width = max([len(i) for i in values]) + padding
 
-        layout = [sg.Text(desc, font=font, pad=((0, pad_el), (0, pad_v))),
+        layout = [sg.Text(desc, pad=((0, pad_el), (0, pad_v)), font=font, background_color=bg_col),
                   sg.Combo(values, font=font, key=key, enable_events=True, size=(width, 1), pad=(0, (0, pad_v)),
                            background_color=in_col)]
 
@@ -1875,11 +1922,12 @@ class AuditParameterDate(AuditParameter):
         date_ico = const.CALENDAR_ICON
         font = const.MID_FONT
         in_col = const.INPUT_COL
+        bg_col = const.ACTION_COL
 
         desc = '{}:'.format(self.description)
 
         key = self.element_key
-        layout = [sg.Text(desc, font=font, pad=((0, pad_el), (0, pad_v))),
+        layout = [sg.Text(desc, pad=((0, pad_el), (0, pad_v)), font=font, background_color=bg_col),
                   sg.Input('', key=key, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)), font=font,
                            background_color=in_col,
                            tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
@@ -1961,6 +2009,7 @@ class AuditParameterDateRange(AuditParameterDate):
         date_ico = const.CALENDAR_ICON
         font = const.MID_FONT
         in_col = const.INPUT_COL
+        bg_col = const.ACTION_COL
 
         desc = self.description
 
@@ -1969,13 +2018,13 @@ class AuditParameterDateRange(AuditParameterDate):
         key_from = self.element_key
         key_to = self.element_key2
 
-        layout = [sg.Text(desc_from, font=font, pad=((0, pad_el), (0, pad_v))),
+        layout = [sg.Text(desc_from, pad=((0, pad_el), (0, pad_v)), font=font, background_color=bg_col),
                   sg.Input('', key=key_from, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)), font=font,
                            background_color=in_col,
                            tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, size=(2, 1),
                                     pad=(0, (0, pad_v)), tooltip=_('Select date from calendar menu')),
-                  sg.Text(desc_to, font=font, pad=((pad_h, pad_el), (0, pad_v))),
+                  sg.Text(desc_to, pad=((pad_h, pad_el), (0, pad_v)), font=font, background_color=bg_col),
                   sg.Input('', key=key_to, size=(16, 1), enable_events=True, pad=((0, pad_el), (0, pad_v)),
                            background_color=in_col,
                            tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),

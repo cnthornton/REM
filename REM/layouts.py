@@ -21,7 +21,7 @@ class TabItem:
         element_name = "{RULE} {TAB}".format(RULE=rule_name, TAB=name)
         self.element_name = element_name
         self.element_key = as_key(element_name)
-        self.data_elements = ['Table', 'Summary', 'Width', 'Fill']
+        self.data_elements = ['Table', 'Summary', 'TabWidth', 'TabHeight']
         self.action_elements = ['Audit', 'Input', 'Add']
         self._actions = ['scan', 'filter']
 
@@ -474,13 +474,17 @@ class TabItem:
 
         pad_frame = const.FRAME_PAD
         pad_el = const.ELEM_PAD
-        pad_h = const.HORZ_PAD
+        pad_v = pad_h = const.HORZ_PAD
+
+
         font_l = const.LARGE_FONT
         font_m = const.MID_FONT
         in_col = const.INPUT_COL
 
-        tab_width = width - 120 if width >= 200 else width
-#        tab_fill = tab_width - 832 if tab_width > 832 else 0
+        layout_width = width - 120 if width >= 120 else width
+        layout_height = height * 0.8
+        tab_width = layout_width - 40
+        tab_height = layout_height * 0.8
 
         header = self.df.columns.values.tolist()
         data = self.df.values.tolist()
@@ -490,23 +494,34 @@ class TabItem:
         table_key = self.key_lookup('Table')
         add_key = self.key_lookup('Add')
         input_key = self.key_lookup('Input')
-#        fill_key = self.key_lookup('Fill')
-        layout = [[create_table_layout(data, header, table_key, bind=True, height=height, width=tab_width)],
-                  [sg.Col([[sg.Frame(_('Summary'), [[sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=summary_key,
-                                                         disabled=True, background_color=bg_col)]], font=font_l,
-                            pad=((pad_frame, 0), (0, pad_frame)), background_color=bg_col, element_justification='l')]],
-                          background_color=bg_col, justification='l', expand_x=True),
-                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                   sg.Col([[
-                       sg.Input('', key=input_key, font=font_l, size=(20, 1), pad=(pad_el, 0), do_not_clear=False,
-                                background_color=in_col, disabled=True,
-                                tooltip=_('Input document number to add a transaction to the table')),
-                       B2(_('Add'), key=add_key, pad=((0, pad_h), 0), tooltip=_('Add order to the table'),
-                          disabled=True),
-                       B2(_('Audit'), key=audit_key, disabled=True, pad=((0, pad_frame), 0),
-                          tooltip=_('Run Audit methods'))
-                   ]], justification='r', vertical_alignment='top', background_color=bg_col)
-                   ]]
+        main_layout = [[create_table_layout(data, header, table_key, bind=True, pad=(0, 0), height=height,
+                                            width=tab_width)],
+                       [sg.Col([
+                           [sg.Frame('Summary', [
+                               [sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=summary_key,
+                                             disabled=True, background_color=bg_col)]
+                           ], font=font_l, pad=(0, (pad_v, 0)), background_color=bg_col,
+                                     element_justification='l')]
+                       ],
+                           background_color=bg_col, justification='l', expand_x=True),
+                           sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                                  background_color=bg_col, justification='c', expand_x=True),
+                           sg.Col([[
+                               sg.Input('', key=input_key, font=font_l, size=(20, 1), pad=(pad_el, 0),
+                                        do_not_clear=False, background_color=in_col, disabled=True,
+                                        tooltip=_('Input document number to add a transaction to the table')),
+                               B2(_('Add'), key=add_key, pad=((0, pad_h), 0), tooltip=_('Add order to the table'),
+                                  disabled=True),
+                               B2(_('Audit'), key=audit_key, disabled=True, pad=(0, 0),
+                                  tooltip=_('Run Audit methods'))
+                           ]], pad=(0, (pad_v, 0)), justification='r', vertical_alignment='top', background_color=bg_col)
+                       ]]
+
+        height_key = self.key_lookup('TabHeight')
+        frame_height = height * 0.8
+        layout = [[sg.Canvas(key=height_key, size=(0, frame_height * 0.75)),
+                   sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
+                          background_color=bg_col, expand_x=True)]]
 
         return layout
 
@@ -527,17 +542,22 @@ class TabItem:
         win_diff = width - const.WIN_WIDTH
         tab_pad = tab_pad + (win_diff / 5)
 
-        tab_width = width - tab_pad if tab_pad > 0 else width
-        height = height * 0.5
-        nrows = int(height / 40)
-
+        layout_width = width - tab_pad if tab_pad >= 0 else width
+        layout_height = height * 0.8
+        tab_width = layout_width - 40
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
+
+        frame_height = height * 0.8
+        tab_height = frame_height * 0.70
+        height_key = self.key_lookup('TabHeight')
+        window[height_key].set_size((None, tab_height))
 
         # Reset table column size
         tbl_key = self.key_lookup('Table')
 
         header = list(self.display_columns.keys())
-        lengths = dm.calc_column_widths(header, width=tab_width, pixels=True)
+        tbl_width = tab_width - 40
+        lengths = dm.calc_column_widths(header, width=tbl_width, pixels=True)
         for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
             window[tbl_key].Widget.column(col_name, width=col_width)
@@ -545,7 +565,14 @@ class TabItem:
         window[tbl_key].expand((True, True))
         window[tbl_key].table_frame.pack(expand=True, fill='both')
 
+        tbl_height = tab_height * 0.7
+        nrows = int(tbl_height / 40)
         window[tbl_key].update(num_rows=nrows)
+
+        # Resize summary list
+        summary_key = self.key_lookup('Summary')
+        list_height = (tab_height * 0.2) / 13
+        window[summary_key].set_size((None, list_height))
 
     def row_ids(self):
         """

@@ -115,7 +115,7 @@ class CashRule:
         self.name = name
         self.element_key = lo.as_key(name)
         self.elements = ['Cancel', 'Save', 'TransNo', 'Date', 'Deposit', 'ExpenseTable', 'ExpenseTotals', 'AddExpense',
-                         'RemoveExpense', 'EntryList', 'EntryTable', 'EntryTotals', 'Width', 'Height',
+                         'RemoveExpense', 'EntryList', 'EntryTable', 'EntryTotals', 'FrameWidth', 'Height',
                          'InfoWidth', 'ExpenseWidth', 'EntryWidth', 'EntryHeight', 'InfoHeight', 'ExpenseHeight',
                          'HeaderHeight', 'Pad1Height', 'Pad2Height']
 
@@ -252,6 +252,7 @@ class CashRule:
         pad_v = const.VERT_PAD
         pad_frame = const.FRAME_PAD
 
+        # Element sizes
         layout_width = width - 120 if width >= 120 else width
         layout_height = height * 0.8
         frame_width = layout_width - 40
@@ -267,7 +268,7 @@ class CashRule:
 
         # Layout elements
         panel_title = self.title
-        width_key = self.key_lookup('Width')
+        width_key = self.key_lookup('FrameWidth')
         layout_els = []
 
         title_layout = sg.Col([
@@ -450,7 +451,7 @@ class CashRule:
         layout_width = width - layout_pad if layout_pad > 0 else width
         layout_height = height * 0.75
 
-        width_key = self.key_lookup('Width')
+        width_key = self.key_lookup('FrameWidth')
         window[width_key].set_size((layout_width, None))
 
         # Resize frames
