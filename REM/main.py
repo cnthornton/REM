@@ -891,37 +891,45 @@ def main():
             # Save results of the audit
             save_key = current_rule.summary.key_lookup('Save')
             if event == save_key:
-                # Save summary to excel or csv file
+                # Get output file from user
                 title = current_rule.summary.title.replace(' ', '_')
                 outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
                                             default_extension='pdf', no_window=True,
                                             file_types=(('PDF - Portable Document Format', '*.pdf'),))
 
                 if not outfile:
+                    msg = _('Please select an output file before continuing')
+                    win2.popup_error(msg)
                     continue
                 else:
                     print('Info: saving summary report to {}'.format(outfile))
 
+                # Save summary to the program database
+                try:
+                    save_status = rule_summ.save_to_database(user, current_rule.parameters)
+                except Exception as e:
+                    msg = _('Database save failed - {}').format(e)
+                    win2.popup_error(msg)
+                else:
+                    if save_status is True:
+                        # Reset audit elements
+                        toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
+                        action_in_progress = False
+                        summary_panel_active = False
+                        rule_summ.reset_attributes()
+                        rule_summ.resize_elements(window, win_size=window.size)
+                        current_panel = current_rule.reset_rule(window, current=True)
+                    else:
+                        msg = _('Database save failed.')
+                        win2.popup_error(msg)
+                        continue
+
+                # Save summary to excel or csv file
                 try:
                     rule_summ.save_report(outfile)
                 except Exception as e:
                     msg = _('Save to file {} failed due to {}').format(outfile, e)
                     win2.popup_error(msg)
-
-                # Save summary to the program database
-                try:
-                    rule_summ.save_to_database(user, current_rule.parameters)
-                except Exception as e:
-                    msg = _('Save to database failed - {}').format(e)
-                    win2.popup_error(msg)
-                else:
-                    # Reset audit elements
-                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                    action_in_progress = False
-                    summary_panel_active = False
-                    rule_summ.reset_attributes()
-                    rule_summ.resize_elements(window, win_size=window.size)
-                    current_panel = current_rule.reset_rule(window, current=True)
 
     window.close()
 
