@@ -89,7 +89,8 @@ class ToolBar:
         header_col = const.HEADER_COL
         text_col = const.TEXT_COL
 
-        toolbar = [[sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
+        toolbar = [[sg.Canvas(key='-CANVAS_WIDTH-', size=(width, 0), visible=True)],
+                   [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
                                            button_color=(text_col, header_col), pad=(padding, padding)),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
                                            button_color=(text_col, header_col),
@@ -97,8 +98,9 @@ class ToolBar:
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
                                        disabled=True)]],
-                           justification='l', background_color=header_col),
-                    sg.Canvas(key='-CANVAS_WIDTH-', size=(width - 260, 0), visible=True),
+                           justification='l', background_color=header_col, expand_x=True),
+                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                           justification='c', background_color=header_col, expand_x=True),
                     sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', pad=(padding, padding), image_data=user_ico,
                                            button_color=(text_col, header_col),
                                            tooltip=_('User Settings')),
@@ -222,7 +224,6 @@ def get_panels(account_methods, win_size: tuple = None):
         width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
     # Home page action panel
-#    panels = [lo.action_layout(account_methods)]
     panels = [lo.home_screen()]
 
     # Add Audit rule with summary panel
@@ -250,9 +251,8 @@ def resize_elements(window, rules, win_size: tuple = None):
     width, height = win_size
 
     # Update toolbar and pane elements
-    menu_size = 260
     window['-CANVAS_HEIGHT-'].set_size((None, height))
-    window['-CANVAS_WIDTH-'].set_size((width - menu_size, None))
+    window['-CANVAS_WIDTH-'].set_size((width, None))
 
     # Update audit rule elements
     for rule in rules:
@@ -396,12 +396,7 @@ def main():
 
         # Resize screen
         if resized and current_panel != home_panel:
-            window[current_panel].update(visible=False)
-            window['-HOME-'].update(visible=True)
-
             window.refresh()
-
-            window['-HOME-'].update(visible=False)
             window[current_panel].update(visible=True)
 
             resized = False
