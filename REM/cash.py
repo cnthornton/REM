@@ -536,8 +536,6 @@ class CashRule:
         window[list_key].expand((True, True))
         window[list_key].table_frame.pack(expand=True, fill='both')
 
-        window.refresh()
-
         window[records_key].update(num_rows=nrows)
         window[list_key].update(num_rows=nrows)
         window[expenses_key].update(num_rows=2)

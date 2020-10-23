@@ -172,50 +172,6 @@ class TabItem:
         self.audit_performed = False
         self.id_components = []
 
-    def resize_elements(self, window, win_size: tuple = None):
-        """
-        Reset Table Columns widths to default when resized.
-        """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
-
-        tbl_key = self.key_lookup('Table')
-        fill_key = self.key_lookup('Fill')
-        element_key = self.element_key
-
-        # Reset table size
-        # for every five-pixel increase in window size, increase tab size by one
-        tab_pad = 120
-        win_diff = width - const.WIN_WIDTH
-        tab_pad = tab_pad + (win_diff / 5)
-
-        tab_width = width - tab_pad if tab_pad > 0 else width
-        height = height * 0.5
-        nrows = int(height / 40)
-
-        window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
-
-        fill = 832
-        # for every ten pixel increase in window size, increase fill size by one
-        tab_fill = tab_width - fill if tab_width > fill else 0
-        window[fill_key].set_size((tab_fill, None))
-
-        # Reset table column size
-        header = list(self.display_columns.keys())
-        lengths = dm.calc_column_widths(header, width=tab_width, pixels=True)
-        for col_index, col_name in enumerate(header):
-            col_width = lengths[col_index]
-            window[tbl_key].Widget.column(col_name, width=col_width)
-
-        window[tbl_key].expand((True, True))
-        window[tbl_key].table_frame.pack(expand=True, fill='both')
-
-        window.refresh()
-
-        window[tbl_key].update(num_rows=nrows)
-
     def update(self, window, element_tup):
         """
         """
@@ -524,7 +480,7 @@ class TabItem:
         in_col = const.INPUT_COL
 
         tab_width = width - 120 if width >= 200 else width
-        tab_fill = tab_width - 832 if tab_width > 832 else 0
+#        tab_fill = tab_width - 832 if tab_width > 832 else 0
 
         header = self.df.columns.values.tolist()
         data = self.df.values.tolist()
@@ -534,12 +490,13 @@ class TabItem:
         table_key = self.key_lookup('Table')
         add_key = self.key_lookup('Add')
         input_key = self.key_lookup('Input')
-        fill_key = self.key_lookup('Fill')
+#        fill_key = self.key_lookup('Fill')
         layout = [[create_table_layout(data, header, table_key, bind=True, height=height, width=tab_width)],
-                  [sg.Frame(_('Summary'), [[sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=summary_key,
+                  [sg.Col([[sg.Frame(_('Summary'), [[sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=summary_key,
                                                          disabled=True, background_color=bg_col)]], font=font_l,
-                            pad=((pad_frame, 0), (0, pad_frame)), background_color=bg_col, element_justification='l'),
-                   sg.Canvas(key=fill_key, size=(tab_fill, 0), visible=True),
+                            pad=((pad_frame, 0), (0, pad_frame)), background_color=bg_col, element_justification='l')]],
+                          background_color=bg_col, justification='l', expand_x=True),
+                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
                    sg.Col([[
                        sg.Input('', key=input_key, font=font_l, size=(20, 1), pad=(pad_el, 0), do_not_clear=False,
                                 background_color=in_col, disabled=True,
@@ -548,10 +505,47 @@ class TabItem:
                           disabled=True),
                        B2(_('Audit'), key=audit_key, disabled=True, pad=((0, pad_frame), 0),
                           tooltip=_('Run Audit methods'))
-                   ]], vertical_alignment='top', background_color=bg_col)
+                   ]], justification='r', vertical_alignment='top', background_color=bg_col)
                    ]]
 
         return layout
+
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Reset Table Columns widths to default when resized.
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+        # Reset tab element sizes
+        # for every five-pixel increase in window size, increase tab size by one
+        element_key = self.element_key
+
+        tab_pad = 120
+        win_diff = width - const.WIN_WIDTH
+        tab_pad = tab_pad + (win_diff / 5)
+
+        tab_width = width - tab_pad if tab_pad > 0 else width
+        height = height * 0.5
+        nrows = int(height / 40)
+
+        window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
+
+        # Reset table column size
+        tbl_key = self.key_lookup('Table')
+
+        header = list(self.display_columns.keys())
+        lengths = dm.calc_column_widths(header, width=tab_width, pixels=True)
+        for col_index, col_name in enumerate(header):
+            col_width = lengths[col_index]
+            window[tbl_key].Widget.column(col_name, width=col_width)
+
+        window[tbl_key].expand((True, True))
+        window[tbl_key].table_frame.pack(expand=True, fill='both')
+
+        window[tbl_key].update(num_rows=nrows)
 
     def row_ids(self):
         """

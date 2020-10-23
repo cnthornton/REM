@@ -187,39 +187,6 @@ class AuditRule:
 
         return key
 
-    def resize_elements(self, window, win_size: tuple = None):
-        """
-        Resize Audit Rule GUI elements based on window size
-        """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
-
-        # Resize space between action buttons
-        # For every five-pixel increase in window size, increase tab size by one
-        layout_pad = 120
-        win_diff = width - const.WIN_WIDTH
-        layout_pad = layout_pad + (win_diff / 5)
-
-        layout_width = width - layout_pad if layout_pad > 0 else width
-        spacer = layout_width - 124 if layout_width > 124 else 0
-
-        fill_key = self.key_lookup('Fill')
-        window[fill_key].set_size((spacer, None))
-
-        # Resize tab elements
-        tabs = self.tabs
-        for tab in tabs:
-            tab.resize_elements(window, win_size)
-
-        # Resize summary elements
-        summary = self.summary
-        summary_fill_key = summary.key_lookup('Fill')
-        window[summary_fill_key].set_size((spacer, None))
-        for summary_item in summary.summary_items:
-            summary_item.resize_elements(window, win_size)
-
     def fetch_tab(self, name, by_key: bool = False):
         """
         """
@@ -266,11 +233,6 @@ class AuditRule:
         """
         Generate a GUI layout for the audit rule.
         """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
-
         # Element parameters
         inactive_col = const.INACTIVE_COL
         bg_col = const.ACTION_COL
@@ -281,9 +243,6 @@ class AuditRule:
         pad_el = const.ELEM_PAD
         pad_v = const.VERT_PAD
         pad_frame = const.FRAME_PAD
-
-        layout_width = width - 120 if width >= 200 else width
-        spacer = layout_width - 124 if layout_width > 124 else 0
 
         # Audit parameters
         params = self.parameters
@@ -320,19 +279,45 @@ class AuditRule:
         # Standard elements
         cancel_key = self.key_lookup('Cancel')
         start_key = self.key_lookup('Start')
-        fill_key = self.key_lookup('Fill')
         report_key = self.key_lookup('Finalize')
-        bttn_layout = [lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)), tooltip='Cancel current action'),
-                       lo.B2('Start', key=start_key, pad=((pad_el, 0), (pad_v, 0)), tooltip='Start audit'),
-                       sg.Canvas(key=fill_key, size=(spacer, 0), visible=True),
-                       lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)), disabled=True,
-                             tooltip='Finalize audit and generate summary report')]
+        bttn_layout = [
+            sg.Col([[lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)), tooltip='Return to home screen'),
+                     lo.B2('Start', key=start_key, pad=((pad_el, 0), (pad_v, 0)), tooltip='Start audit')]],
+                   justification='l', expand_x=True),
+            sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
+            sg.Col([[lo.B2('Finalize', key=report_key, pad=(0, (pad_v, 0)), disabled=True,
+                     tooltip='Finalize audit and generate summary report')]], justification='r')]
         layout_els.append(bttn_layout)
 
         # Pane elements must be columns
         layout = sg.Col(layout_els, key=self.element_key, visible=False)
 
         return layout
+
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Resize Audit Rule GUI elements based on window size
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+        # Resize space between action buttons
+        # For every five-pixel increase in window size, increase tab size by one
+        layout_pad = 120
+        win_diff = width - const.WIN_WIDTH
+        layout_pad = layout_pad + (win_diff / 5)
+
+        # Resize tab elements
+        tabs = self.tabs
+        for tab in tabs:
+            tab.resize_elements(window, win_size)
+
+        # Resize summary elements
+        summary = self.summary
+        for summary_item in summary.summary_items:
+            summary_item.resize_elements(window, win_size)
 
     def reset_rule(self, window, current: bool = False):
         """
@@ -577,7 +562,7 @@ class SummaryPanel:
         summary_items = self.summary_items
 
         layout_width = width - 120 if width >= 200 else width
-        spacer = layout_width - 124 if layout_width > 124 else 0
+#        spacer = layout_width - 124 if layout_width > 124 else 0
 
         # Layout elements
         ## Title
@@ -599,14 +584,14 @@ class SummaryPanel:
         b1_key = self.key_lookup('Cancel')
         b2_key = self.key_lookup('Back')
         b3_key = self.key_lookup('Save')
-        fill_key = self.key_lookup('Fill')
-        bttn_layout = [lo.B2(_('Cancel'), key=b1_key,
-                             tooltip=_('Cancel audit'), pad=((0, pad_el), (pad_v, 0))),
-                       lo.B2(_('Back'), key=b2_key,
-                             tooltip=_('Back to transactions'), pad=((pad_el, 0), (pad_v, 0))),
-                       sg.Canvas(key=fill_key, size=(spacer, 0), visible=True),
-                       lo.B2(_('Save'), key=b3_key,
-                             tooltip=_('Save summary'), pad=(0, (pad_v, 0)))]
+#        fill_key = self.key_lookup('Fill')
+        bttn_layout = [sg.Col([[lo.B2('Cancel', key=b1_key, pad=((0, pad_el), (pad_v, 0)),
+                                      tooltip='Return to home screen'),
+                       lo.B2('Back', key=b2_key, pad=((pad_el, 0), (pad_v, 0)), tooltip='Return to audit')]],
+                              justification='l', expand_x=True),
+                       sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
+                       sg.Col([[lo.B2('Save', key=b3_key, pad=(0, (pad_v, 0)), tooltip='Save audit results')]],
+                              justification='r')]
 
         layout_els.append(bttn_layout)
 
@@ -1011,7 +996,7 @@ class SummaryItem:
         self.rule_name = rule_name
         self.name = name
         self.element_key = lo.as_key('{} {} Summary'.format(rule_name, name))
-        self.elements = ['Totals', 'Table', 'Fill', 'Add', 'Total', 'Remainder']
+        self.elements = ['Totals', 'Table', 'Add', 'Total', 'Remainder']
         self.type = None
 
         try:
@@ -1242,7 +1227,7 @@ class SummaryItem:
 
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
-        fill_key = self.key_lookup('Fill')
+#        fill_key = self.key_lookup('Fill')
         element_key = self.element_key  # TabGroup key
 
         # Reset table size
@@ -1258,10 +1243,10 @@ class SummaryItem:
         # Resize the tab frame
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
 
-        fill = 278
+#        fill = 278
         # For every ten pixel increase in window size, increase fill size by one
-        tab_fill = tab_width - fill if tab_width > fill else 0
-        window[fill_key].set_size((tab_fill, None))
+#        tab_fill = tab_width - fill if tab_width > fill else 0
+#        window[fill_key].set_size((tab_fill, None))
 
         # Reset table column sizes
         record_columns = self.records['DisplayColumns']
@@ -1516,7 +1501,7 @@ class SummaryItem:
             elif is_datetime_dtype(dtype):
                 col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
                                                          relativedelta(years=+date_offset)).strftime(date_fmt)
-                                                        if pd.notnull(x) else '')
+                if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
