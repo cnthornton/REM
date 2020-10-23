@@ -228,9 +228,9 @@ def get_panels(account_methods, win_size: tuple = None):
     # Add Audit rule with summary panel
     for account_method in account_methods:
         for rule in account_method.rules:
-            panels.append(rule.layout())
+            panels.append(rule.layout(win_size=win_size))
             try:
-                panels.append(rule.summary.layout())
+                panels.append(rule.summary.layout(win_size=win_size))
             except AttributeError:
                 continue
 
@@ -242,7 +242,7 @@ def get_panels(account_methods, win_size: tuple = None):
     return pane
 
 
-def resize_elements(window, audit_rules, win_size: tuple = None):
+def resize_elements(window, rules, win_size: tuple = None):
     """
     Resize GUI elements when window is resized
     """
@@ -255,9 +255,12 @@ def resize_elements(window, audit_rules, win_size: tuple = None):
     window['-CANVAS_WIDTH-'].set_size((width - menu_size, None))
 
     # Update audit rule elements
-    for audit_rule in audit_rules:
-        audit_rule.resize_elements(window, win_size=win_size)
-        audit_rule.summary.resize_elements(window, win_size=win_size)
+    for rule in rules:
+        rule.resize_elements(window, win_size=win_size)
+        try:
+            rule.summary.resize_elements(window, win_size=win_size)
+        except AttributeError:
+            continue
 
 
 def format_date_element(date_str):
@@ -280,83 +283,6 @@ def format_date_element(date_str):
             buff.append(char)
 
     return ''.join(buff)
-
-
-def reset_to_default(window, rule, current: bool = False):
-    """
-    Reset main window to program defaults.
-    """
-    if not rule:
-        return None
-
-    win_width, win_height = window.size
-
-    current_key = rule.element_key
-    summ_panel_key = rule.summary.element_key
-
-    # Disable current panel
-    window[current_key].update(visible=False)
-    window[summ_panel_key].update(visible=False)
-    window['-HOME-'].update(visible=True)
-
-    # Reset 'Start' element in case audit was in progress
-    start_key = rule.key_lookup('Start')
-    window[start_key].update(disabled=False)
-
-    # Reset 'Generate Report' element in case audit was nearly complete
-    end_key = rule.key_lookup('Finalize')
-    window[end_key].update(disabled=True)
-
-    # Switch to first tab in summary panel
-    tg_key = rule.summary.key_lookup('TG')
-    window[tg_key].Widget.select(0)
-
-    # Reset rule item attributes, including tab, summary, and parameter
-    rule.reset_attributes()
-
-    # Reset audit parameters. Audit specific parameters include actions
-    # buttons Scan and Confirm, for instance.
-    rule.toggle_parameters(window, 'enable')
-
-    # Reset parameter element values
-    params = rule.parameters
-    for param in params:
-        print('Info: resetting rule parameter element {} to default'.format(param.name))
-        window[param.element_key].update(value='')
-        try:
-            window[param.element_key2].update(vaue='')
-        except AttributeError:
-            pass
-
-    # Reset tab-specific element values
-    for i, tab in enumerate(rule.tabs):
-        # Reset displays
-
-        ## Reset table element
-        table_key = tab.key_lookup('Table')
-        window[table_key].update(values=tab.df.values.tolist())
-
-        tab.resize_elements(window, win_size=(win_width, win_height))
-
-        ## Reset summary element
-        summary_key = tab.key_lookup('Summary')
-        window[summary_key].update(value='')
-
-        # Reset action buttons
-        tab.toggle_actions(window, 'disable')
-
-        # Reset visible tabs
-        visible = True if i == 0 else False
-        print('Info: tab {TAB}, rule {RULE}: re-setting visibility to {STATUS}'
-              .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
-        window[tab.element_key].update(visible=visible)
-
-    if current:
-        window['-HOME-'].update(visible=False)
-        window[current_key].update(visible=True)
-        return current_key
-    else:
-        return '-HOME-'
 
 
 def main():
@@ -420,6 +346,7 @@ def main():
 
     cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
+    cancel_keys += [i.key_lookup('Cancel') for i in cash_rules.rules]
     #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
     summ_tbl_keys = []
@@ -454,7 +381,8 @@ def main():
     user_image = tk.PhotoImage(data=const.USER_ICON)
     userin_image = tk.PhotoImage(data=const.USERIN_ICON)
 
-    resize_elements(window, audit_rules.rules, win_size=(current_w, current_h))
+    all_rules = [i for acct_method in acct_methods for i in acct_method.rules]
+    resize_elements(window, all_rules, win_size=(current_w, current_h))
     resized = False
 
     # Event Loop
@@ -485,7 +413,7 @@ def main():
             print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            resize_elements(window, audit_rules.rules, win_size=(win_w, win_h))
+            resize_elements(window, all_rules, win_size=(win_w, win_h))
 
             current_w, current_h = (win_w, win_h)
             resized = True
@@ -549,7 +477,7 @@ def main():
                 continue
 
             action_in_progress = False
-            current_panel = reset_to_default(window, rule)  # reset to home screen
+            current_panel = current_rule.reset_rule(window)  # reset to home screen
             current_rule = None
 
             # Reset User attributes
@@ -613,35 +541,26 @@ def main():
             else:
                 debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
 
-        # Switch to home panel when no current action
-        if not action_in_progress and event in cancel_keys:
-            toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-            current_panel = reset_to_default(window, rule)
-            current_rule = None
-            continue
+        # Switch to home panel
+        if current_panel != '-HOME-' and (event in cancel_keys or values['-AMENU-'] or values['-RMENU-']):
+            if action_in_progress:  # ask to switch first
+                msg = _('Current action is ongoing. Are you sure you would like to exit without saving?')
+                selection = win2.popup_confirm(msg)
 
-        # Switch to home panel when ongoing action
-        if action_in_progress and (event == '-DBMENU-' or event in cancel_keys or values['-AMENU-'] in audit_names
-                                   or values['-RMENU-'] in (report_tx, stats_tx)):
-
-            msg = _('Audit is currently running. Are you sure you would like to exit?')
-            selection = win2.popup_confirm(msg)
-
-            if selection == 'OK':
-                # Reset to defaults
+                if selection == 'OK':
+                    # Reset to defaults
+                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
+                    action_in_progress = False
+                    summary_panel_active = False
+                    current_panel = current_rule.reset_rule(window)
+                    current_rule = None
+                else:
+                    continue
+            else:  # no action being taken so ok to switch without asking
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                action_in_progress = False
-                summary_panel_active = False
-                current_panel = reset_to_default(window, rule)
+                print(current_rule, current_panel)
+                current_panel = current_rule.reset_rule(window)
                 current_rule = None
-            else:
-                continue
-
-        # Switch to home panel when no current action
-        if current_rule and (event == '-DBMENU-' or event in cancel_keys or values['-AMENU-'] or
-                             values['-RMENU-'] in (report_tx, stats_tx)):
-            current_panel = reset_to_default(window, rule)
-            current_rule = None
 
         # Activate appropriate audit panel
         selected_action = values['-AMENU-']
@@ -666,9 +585,17 @@ def main():
             date_str = []
 
             print('Info: the panel in view is {} with tabs {}'.format(current_rule.name, ', '.join(tab_windows)))
+
         elif selected_action in cash_names:
             # Obtain the selected rule object
             current_rule = cash_rules.fetch_rule(selected_action)
+
+            current_panel = current_rule.element_key
+            window['-HOME-'].update(visible=False)
+            window[current_panel].update(visible=True)
+
+            print('Info: the panel in view is {}'.format(current_rule.name))
+
         elif values['-AMENU-'] in bank_names:
             # Obtain the selected rule object
             current_rule = bank_rules.fetch_rule(selected_action)
@@ -701,7 +628,7 @@ def main():
                 date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
             elif len(input_value) < len(date_str):  # remove character
-                removed_char = date_str.pop()
+                date_str.pop()
 
                 date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
@@ -780,7 +707,6 @@ def main():
                     for tab in current_rule.tabs:
                         tab.reset_dynamic_attributes()
 
-        action_performed = False
         # Scan for missing data if applicable
         if action_in_progress and not summary_panel_active:
             tg_key = current_rule.key_lookup('TG')
@@ -1000,7 +926,7 @@ def main():
                     summary_panel_active = False
                     rule_summ.reset_attributes()
                     rule_summ.resize_elements(window, win_size=window.size)
-                    current_panel = reset_to_default(window, rule, current=True)
+                    current_panel = current_rule.reset_rule(window, current=True)
 
     window.close()
 

@@ -114,8 +114,10 @@ class CashRule:
 
         self.name = name
         self.element_key = lo.as_key(name)
-        self.elements = ['Cancel', 'Save', 'Create', 'Edit', 'TransNo', 'Date', 'Deposit', 'Expense', 'ExpenseTotals',
-                         'EntryList', 'EntryTable', 'EntryTotals']
+        self.elements = ['Cancel', 'Save', 'TransNo', 'Date', 'Deposit', 'ExpenseTable', 'ExpenseTotals', 'AddExpense',
+                         'RemoveExpense', 'EntryList', 'EntryTable', 'EntryTotals', 'Width', 'Height',
+                         'InfoWidth', 'ExpenseWidth', 'EntryWidth', 'EntryHeight', 'InfoHeight', 'ExpenseHeight',
+                         'HeaderHeight', 'Pad1Height', 'Pad2Height']
 
         try:
             self.title = adict['Title']
@@ -126,6 +128,31 @@ class CashRule:
             self.permissions = adict['Permissions']
         except KeyError:  # default permission for a cash rule is 'user'
             self.permissions = 'user'
+
+        try:
+            table = adict['DatabaseTable']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}: missing required field "DatabaseTable".').format(RULE=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.table = table
+
+        try:
+            self.pkey = adict['PrimaryKey']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}: missing required field "PrimaryKey".').format(RULE=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        try:
+            table_columns = adict['TableColumns']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}: missing required field "TableColumns".').format(RULE=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.table_columns = table_columns
 
         try:
             trans_info = adict['TransactionInfo']
@@ -152,6 +179,8 @@ class CashRule:
                 win2.popup_error(msg)
                 sys.exit(1)
 
+            element['Value'] = element.get('DefaultValue', '')
+
         self.info = trans_info
 
         try:
@@ -172,6 +201,12 @@ class CashRule:
         else:
             self.records = CashRecords(name, records)
 
+        # Dynamic attributes
+        self.df = pd.DataFrame(columns=table_columns)
+        self.id = ''
+        self.date = datetime.datetime.now().strftime(settings.format_date_str())
+        self.amount = 0
+
     def key_lookup(self, element):
         """
         Lookup element key for input control element.
@@ -185,7 +220,7 @@ class CashRule:
 
     def layout(self, win_size: tuple = None):
         """
-        Generate a GUI layout for the audit rule.
+        Generate a GUI layout for the cash rule.
         """
         if win_size:
             width, height = win_size
@@ -194,51 +229,97 @@ class CashRule:
 
         # Rule parameters
         tbl_header = list(self.records.display_columns.keys())
+        entry_header = list(self.records.reference_columns.keys())
         expense_header = list(self.expenses.display_columns.keys())
+
+        tbl_title = self.records.display_header
+        entry_title = self.records.reference_header
+        expense_title = self.expenses.display_header
+
         trans_elements = self.info['Elements']
 
         # Element parameters
-        header_col = const.HEADER_COL
-        inactive_col = const.INACTIVE_COL
-        bg_col = const.ACTION_COL
-        default_col = const.DEFAULT_COL
-        text_col = const.TEXT_COL
+        header_col = input_col = const.HEADER_COL
         select_col = const.SELECT_TEXT_COL
+        bg_col = const.ACTION_COL
+        text_col = const.TEXT_COL
+
         font_h = const.HEADER_FONT
         font_main = const.MAIN_FONT
+        bold_font = const.BOLD_FONT
 
         pad_el = const.ELEM_PAD
         pad_v = const.VERT_PAD
         pad_frame = const.FRAME_PAD
 
-        layout_width = width - 120 if width >= 200 else width
-        spacer = layout_width - 124 if layout_width > 124 else 0
-        bwidth = 0.5
+        layout_width = width - 120 if width >= 120 else width
+        layout_height = height * 0.8
+        frame_width = layout_width - 40
+        frame_height = layout_height * 0.4
+        pad_height = layout_height * 0.05
+
+        expense_width = int((frame_width - 100) * 0.6)
+        info_width = int((frame_width - 100) * 0.4)
+        entry_width = int((frame_width - 120) * 0.62)
+        list_width = int((frame_width - 120) * 0.38)
+
+        bwidth = 1
 
         # Layout elements
         panel_title = self.title
-        layout_els = [[sg.Col([[sg.Text(panel_title, pad=(0, (pad_v, pad_frame)), font=font_h)]],
-                              justification='c', element_justification='c')]]
+        width_key = self.key_lookup('Width')
+        layout_els = []
+
+        title_layout = sg.Col([
+            [sg.Canvas(key=width_key, size=(layout_width, 1), pad=(0, pad_v), visible=True,
+                       background_color=header_col)],
+            [sg.Text(panel_title, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
+            pad=(0, 0), justification='l', background_color=header_col, expand_x=True)
 
         # Panel heading layout
         trans_key = self.key_lookup('TransNo')
         date_key = self.key_lookup('Date')
         deposit_key = self.key_lookup('Deposit')
-        header_layout = [[sg.Text('Transaction Number'), sg.Input('', key=trans_key, border_width=0),
-                          sg.Text('Date'), sg.Input('', key=date_key, border_width=0),
-                          sg.Text('Deposit Amount'), sg.Input('', key=deposit_key, border_width=bwidth)]]
+        header_layout = [
+            [sg.Col([[sg.Text('Transaction Number:', pad=((0, pad_el), 0), font=bold_font, background_color=bg_col),
+                      sg.Input('', key=trans_key, size=(16, 1), pad=((pad_el, pad_el), 0), border_width=0,
+                               disabled_readonly_background_color=bg_col, disabled=True),
+                      sg.Text('Date:', pad=((pad_el, pad_el), 0), font=bold_font, background_color=bg_col),
+                      sg.Input('', key=date_key, size=(16, 1), pad=((pad_el, 0), 0), border_width=0,
+                               disabled_readonly_background_color=bg_col, disabled=True)]],
+                    justification='l', background_color=bg_col, expand_x=True),
+             sg.Col([[sg.Canvas(size=(0, 0), visible=True, background_color=bg_col)]],
+                    justification='c', background_color=bg_col, expand_x=True),
+             sg.Col([[sg.Text('Deposit Amount:', pad=((pad_frame, pad_el), 0), font=bold_font, background_color=bg_col),
+                      sg.Input('', key=deposit_key, size=(14, 1), pad=((pad_el, 0), 0), background_color=input_col,
+                               border_width=1, disabled=True)]],
+                    justification='r', background_color=bg_col)],
+            [sg.HorizontalSeparator(pad=(0, pad_v), color=const.INACTIVE_COL)]]
 
         # Transaction Information frame layout
         info_keys = {i: self.key_lookup(i) for i in trans_elements}
+        if len(info_keys) > 5:
+            scroll = True
+        else:
+            scroll = False
+
+        text_sizes = []
+        for element_name in trans_elements:
+            element = trans_elements[element_name]
+            element_title = element['Title']
+            text_sizes.append(len(element_title))
+        text_size = max(text_sizes)
+
         info_layout = []
         for element_name in trans_elements:
             element = trans_elements[element_name]
             element_type = element['ElementType']
             element_title = element['Title']
             if element_type == 'input':
-                info_layout += [sg.Text('{}:'.format(element_title), pad=((0, pad_el), 0), background_color=bg_col),
-                                sg.Input('', key=info_keys[element_name], pad=((pad_el, 0), 0),
-                                         background_color=select_col)]
+                info_layout.append([sg.Text('{}:'.format(element_title), size=(text_size, 1), pad=((0, pad_el), pad_el),
+                                            background_color=bg_col),
+                                    sg.Input('', key=info_keys[element_name], size=(15, 1), pad=((pad_el, 0), pad_el),
+                                             background_color=input_col)])
             elif element_type == 'dropdown':
                 try:
                     values = element['Values']
@@ -250,88 +331,247 @@ class CashRule:
                 except KeyError:
                     default = values[0]
 
-                info_layout += [sg.Text('{}:'.format(element_title), pad=((0, pad_el), 0), background_color=bg_col),
-                                sg.Combo(values, key=info_keys[element_name], default_value=default,
-                                         pad=((pad_el, 0), 0), background_color=select_col)]
+                info_layout.append([sg.Text('{}:'.format(element_title), size=(text_size, 1), pad=((0, pad_el), pad_el),
+                                            background_color=bg_col),
+                                    sg.Combo(values, key=info_keys[element_name], size=(14, 1), default_value=default,
+                                             pad=((pad_el, 0), pad_el), background_color=input_col)])
 
         # Expense frame layout
-        expense_key = self.key_lookup('Expense')
+        expense_key = self.key_lookup('ExpenseTable')
         expense_totals_key = self.key_lookup('ExpenseTotals')
-        add_key = self.key_lookup('Add')
-        expense_layout = [[lo.create_table_layout([[]], expense_header, expense_key, events=True, pad=(0, 0),
-                                                  nrow=4, width=layout_width * 0.95,
-                                                  tooltip='Click on a row to edit the row fields')],
-                          [sg.Text('Totals:', pad=((0, pad_el), pad_el), background_color=bg_col),
-                           sg.Input('', key=expense_totals_key, pad=((pad_el, 0), pad_el), background_color=select_col),
-                           lo.B2('Add', key=add_key)]]
+        add_key = self.key_lookup('AddExpense')
+        minus_key = self.key_lookup('RemoveExpense')
+        expense_layout = [
+            [lo.create_table_layout([[]], expense_header, expense_key, events=True, pad=(0, 0), nrow=2,
+                                    width=expense_width, add_key=add_key, delete_key=minus_key,
+                                    table_name=expense_title, tooltip='Click on a row to edit the row fields')],
+            [sg.Col([
+                [sg.Text('Total:', pad=((0, pad_el), (pad_v, 0)), background_color=bg_col, font=bold_font),
+                 sg.Input('', key=expense_totals_key, size=(14, 1), pad=((pad_el, 0), (pad_v, 0)),
+                          background_color=input_col, disabled=True)]
+            ], background_color=bg_col, justification='r')]]
 
         # Entries frame layout
         list_key = self.key_lookup('EntryList')
         tbl_key = self.key_lookup('EntryTable')
         totals_key = self.key_lookup('EntryTotals')
-        entries_layout = [[
-            sg.Col([
-                [sg.Listbox(values=[], key=list_key, size=(25, 8), pad=(0, 0), font=font_main,
-                            background_color=bg_col, bind_return_key=True,
-                            tooltip='Double-click on a column name to add the column to the table')]],
-                pad=(pad_frame, 0), justification='l', background_color=bg_col),
-            sg.Col([
-                [lo.create_table_layout([[]], tbl_header, tbl_key, events=True, pad=(0, 0), nrow=4,
-                                        width=layout_width * 0.65, tooltip='Click on a row to edit the row fields')],
-                [sg.Text('Total:', pad=((0, pad_el), pad_el), background_color=bg_col),
-                 sg.Input('', key=totals_key, pad=((pad_el, 0), pad_el), border_width=bwidth,
-                          background_color=select_col)]],
-                pad=(pad_frame, 0), justification='r', background_color=bg_col)]]
+        entries_layout = [
+            [sg.Col([
+                [lo.create_table_layout([[]], entry_header, list_key, events=True, pad=((0, pad_frame), 0),
+                                        nrow=6, width=list_width, table_name=entry_title,
+                                        tooltip='Double-click on row to add to table')]
+            ], pad=(0, 0), justification='l', vertical_alignment='t', background_color=bg_col),
+                sg.Col([
+                    [lo.create_table_layout([[]], tbl_header, tbl_key, events=True, pad=(0, 0), nrow=6,
+                                            width=entry_width, table_name=tbl_title, delete_key='',
+                                            tooltip='Click on a row to edit the row fields')],
+                    [sg.Col([
+                        [sg.Text('Total:', pad=((0, pad_el), (pad_v, 0)), background_color=bg_col, font=bold_font),
+                         sg.Input('', key=totals_key, size=(14, 1), pad=((pad_el, 0), (pad_v, 0)), border_width=bwidth,
+                                  background_color=input_col, disabled=True)]],
+                        background_color=bg_col, justification='r')]
+                ], pad=((pad_frame, 0), 0), justification='r', vertical_alignment='t', background_color=bg_col)]]
 
         # Main panel layout
-        main_layout = [[sg.Col(header_layout, pad=(pad_frame, pad_frame), justification='l', background_color=bg_col)],
+        info_w_key = self.key_lookup('InfoWidth')
+        expense_w_key = self.key_lookup('ExpenseWidth')
+        info_h_key = self.key_lookup('InfoHeight')
+        expense_h_key = self.key_lookup('ExpenseHeight')
+        entry_w_key = self.key_lookup('EntryWidth')
+        entry_h_key = self.key_lookup('EntryHeight')
+        pad1_h_key = self.key_lookup('Pad1Height')
+        pad2_h_key = self.key_lookup('Pad2Height')
+        header_h_key = self.key_lookup('HeaderHeight')
+        main_layout = [[title_layout],
+                       [sg.Canvas(key=header_h_key, size=(0, frame_height * 0.3), background_color=bg_col),
+                        sg.Col(header_layout, pad=(pad_frame, 0), justification='l',
+                               background_color=bg_col, vertical_alignment='c', expand_x=True)],
                        [sg.Frame('Transaction Info', [
-                           [sg.Canvas(size=(layout_width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
-                           [sg.Col([info_layout], pad=(pad_frame, 0), background_color=bg_col)],
-                           [sg.Canvas(size=(layout_width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]
-                       ],
-                                 pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
-                                 title_color=select_col, relief='groove')],
-                       [sg.Frame('Expenses', [
-                           [sg.Canvas(size=(layout_width, 0), pad=(0, pad_v), visible=True,
+                           [sg.Canvas(key=info_w_key, size=(info_width, 0), pad=(0, pad_v), visible=True,
                                       background_color=bg_col)],
-                           [sg.Col(expense_layout, pad=(pad_frame, 0), background_color=bg_col)],
-                           [sg.Canvas(size=(layout_width, 0), pad=(0, pad_v), visible=True,
-                                      background_color=bg_col)]
-                       ],
-                                 pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
-                                 title_color=select_col,
-                                 relief='groove')],
-                       [sg.Frame('Transaction Entries', [
-                           [sg.Canvas(size=(layout_width, 0), pad=(0, pad_v), visible=True,
+                           [sg.Canvas(key=info_h_key, size=(0, frame_height), pad=(0, 0), visible=True,
+                                      background_color=bg_col),
+                            sg.Col(info_layout, pad=(pad_frame, pad_v), background_color=bg_col,
+                                   vertical_alignment='t', expand_y=True, expand_x=True, vertical_scroll_only=True,
+                                   scrollable=scroll)]],
+                                 pad=(pad_frame, 0), border_width=bwidth, background_color=bg_col,
+                                 title_color=select_col, element_justification='l', relief='solid'),
+                        sg.Frame('Expenses', [
+                            [sg.Canvas(key=expense_w_key, size=(frame_width, 0), pad=(0, 0), visible=True,
+                                       background_color=bg_col)],
+                            [sg.Canvas(key=expense_h_key, size=(0, frame_height), pad=(0, pad_v), visible=True,
+                                       background_color=bg_col),
+                             sg.Col(expense_layout, pad=(pad_frame, pad_v), background_color=bg_col)]],
+                                 pad=(pad_frame, 0), border_width=bwidth, background_color=bg_col,
+                                 title_color=select_col, relief='solid')],
+                       [sg.Canvas(key=pad1_h_key, size=(0, pad_height), background_color=bg_col)],
+                       [sg.Frame('Records', [
+                           [sg.Canvas(key=entry_w_key, size=(layout_width, 0), pad=(0, 0), visible=True,
                                       background_color=bg_col)],
-                           [sg.Col(entries_layout, pad=(pad_frame, 0), background_color=bg_col)],
-                           [sg.Canvas(size=(layout_width, 0), pad=(0, pad_v), visible=True,
-                                      background_color=bg_col)]
+                           [sg.Canvas(key=entry_h_key, size=(0, frame_height), pad=(0, pad_v), visible=True,
+                                      background_color=bg_col),
+                            sg.Col(entries_layout, pad=(pad_frame, pad_v), background_color=bg_col)],
                        ],
-                                 pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
-                                 title_color=select_col,
-                                 relief='groove')]]
+                                 pad=(pad_frame, 0), border_width=bwidth, background_color=bg_col,
+                                 title_color=select_col, relief='solid')],
+                       [sg.Canvas(key=pad2_h_key, size=(0, pad_height), background_color=bg_col)]]
 
-        layout_els.append([sg.Col(main_layout, background_color=bg_col, vertical_alignment='c')])
+        layout_els.append([sg.Frame('', main_layout, relief='raised', background_color=bg_col)])
 
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        create_key = self.key_lookup('Create')
-        edit_key = self.key_lookup('Edit')
-        fill_key = self.key_lookup('Fill')
-        bttn_layout = [lo.B2('Create', key=create_key, pad=((0, pad_el), (pad_v, 0)), tooltip=''),
-                       lo.B2('Edit', key=edit_key, pad=((pad_el, 0), (pad_v, 0)), tooltip='Start audit'),
-                       sg.Canvas(key=fill_key, size=(spacer, 0), visible=True),
-                       lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), (pad_v, 0)), tooltip='Cancel current action'),
-                       lo.B2('Save', key=save_key, pad=(0, (pad_v, 0)), disabled=True,
-                             tooltip='Finalize audit and generate summary report')]
+        bttn_layout = [sg.Col([[lo.B2('Cancel', key=cancel_key, pad=(0, (pad_v, pad_frame)),
+                                      tooltip='Return to home screen')]], justification='l', expand_x=True),
+                       sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
+                       sg.Col([[lo.B2('Save', key=save_key, pad=(0, (pad_v, pad_frame)), disabled=True,
+                                      tooltip='Save transaction')]], justification='r')]
         layout_els.append(bttn_layout)
 
         # Pane elements must be columns
-        layout = sg.Col(layout_els, key=self.element_key, visible=False)
+        layout = sg.Col([[sg.Col(layout_els, vertical_alignment='t')]], key=self.element_key, visible=False)
 
         return layout
+
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Resize Audit Rule GUI elements based on window size
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+        # Resize space between action buttons
+        # For every five-pixel increase in window size, increase panel size by one
+        layout_pad = 120
+        width_diff = width - const.WIN_WIDTH
+        layout_pad = layout_pad + (width_diff / 5)
+
+        layout_width = width - layout_pad if layout_pad > 0 else width
+        layout_height = height * 0.75
+
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size((layout_width, None))
+
+        # Resize frames
+        frame_width = layout_width - 40
+
+        expense_width = int((frame_width - 100) * 0.6)
+        info_width = int((frame_width - 100) * 0.4)
+        entry_width = int((frame_width - 120) * 0.62)
+        list_width = int((frame_width - 120) * 0.38)
+
+        info_w_key = self.key_lookup('InfoWidth')
+        expense_w_key = self.key_lookup('ExpenseWidth')
+        entry_w_key = self.key_lookup('EntryWidth')
+        window[info_w_key].set_size((info_width, None))
+        window[expense_w_key].set_size((expense_width, None))
+        window[entry_w_key].set_size((entry_width, None))
+
+        info_height = expense_height = layout_height * 0.25
+        entry_height = layout_height * 0.35
+        header_height = layout_height * 0.12
+        pad_height = layout_height * 0.05
+
+        entry_h_key = self.key_lookup('EntryHeight')
+        info_h_key = self.key_lookup('InfoHeight')
+        expense_h_key = self.key_lookup('ExpenseHeight')
+        header_h_key = self.key_lookup('HeaderHeight')
+        pad1_h_key = self.key_lookup('Pad1Height')
+        pad2_h_key = self.key_lookup('Pad2Height')
+        window[header_h_key].set_size((None, header_height))
+        window[entry_h_key].set_size((None, entry_height))
+        window[info_h_key].set_size((None, info_height))
+        window[expense_h_key].set_size((None, expense_height))
+        window[pad1_h_key].set_size((None, pad_height))
+        window[pad2_h_key].set_size((None, pad_height))
+
+        # Expand transaction info elements
+        trans_elements = self.info['Elements']
+        info_keys = {i: self.key_lookup(i) for i in trans_elements}
+        for element_name in trans_elements:
+            element_key = info_keys[element_name]
+            window[element_key].expand(expand_x=True, expand_row=True)
+
+        # Reset table sizes
+        # Add one row for every 100-pixel increase in window height
+        height_diff = int(height - const.WIN_HEIGHT)
+        nrows = 4 + int(height_diff / 100) if int(height_diff / 100) > - 2 else 4
+        print(height_diff, nrows)
+        #        expense_width = frame_width - 60
+        #        entry_width = (frame_width - 120) / 2
+
+        # Expenses table
+        expenses_key = self.key_lookup('ExpenseTable')
+        expense_columns = self.expenses.display_columns
+        expense_header = list(expense_columns.keys())
+        lengths = dm.calc_column_widths(expense_header, width=expense_width, pixels=True)
+        for col_index, col_name in enumerate(expense_header):
+            col_width = lengths[col_index]
+            window[expenses_key].Widget.column(col_name, width=col_width)
+
+        window[expenses_key].expand((True, True))
+        window[expenses_key].table_frame.pack(expand=True, fill='both')
+
+        # Records table
+        records_key = self.key_lookup('EntryTable')
+        records_columns = self.records.display_columns
+        records_header = list(records_columns.keys())
+        lengths = dm.calc_column_widths(records_header, width=entry_width, pixels=True)
+        for col_index, col_name in enumerate(records_header):
+            col_width = lengths[col_index]
+            window[records_key].Widget.column(col_name, width=col_width)
+
+        window[records_key].expand((True, True))
+        window[records_key].table_frame.pack(expand=True, fill='both')
+
+        list_key = self.key_lookup('EntryList')
+        list_columns = self.records.reference_columns
+        list_header = list(list_columns.keys())
+        lengths = dm.calc_column_widths(list_header, width=list_width, pixels=True)
+        for col_index, col_name in enumerate(list_header):
+            col_width = lengths[col_index]
+            window[list_key].Widget.column(col_name, width=col_width)
+
+        window[list_key].expand((True, True))
+        window[list_key].table_frame.pack(expand=True, fill='both')
+
+        window.refresh()
+
+        window[records_key].update(num_rows=nrows)
+        window[list_key].update(num_rows=nrows)
+        window[expenses_key].update(num_rows=2)
+
+    def reset_rule(self, window, current: bool = False):
+        """
+        reset rule to default.
+        """
+        win_width, win_height = window.size
+
+        current_key = self.element_key
+
+        # Disable current panel
+        window[current_key].update(visible=False)
+        window['-HOME-'].update(visible=True)
+
+        # Reset rule attributes
+        self.reset_attributes()
+
+        if current:
+            window['-HOME-'].update(visible=False)
+            window[current_key].update(visible=True)
+
+            next_key = current_key
+        else:
+            next_key = '-HOME-'
+
+        return next_key
+
+    def reset_attributes(self):
+        """
+        Reset rule attributes.
+        """
+        pass
 
 
 class CashExpenses:
@@ -380,12 +620,19 @@ class CashExpenses:
             sys.exit(1)
 
         try:
-            self.table_columns = edict['TableColumns']
+            table_columns = edict['TableColumns']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "TableColumns".') \
                 .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
+        else:
+            self.table_columns = table_columns
+
+        try:
+            self.display_header = edict['DisplayHeader']
+        except KeyError:
+            self.display_header = ''
 
         try:
             self.display_columns = edict['DisplayColumns']
@@ -402,6 +649,9 @@ class CashExpenses:
                 .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
+
+        # Dynamic attributes
+        self.df = pd.DataFrame(columns=table_columns)
 
 
 class CashRecords:
@@ -436,7 +686,7 @@ class CashRecords:
         try:
             self.database = rdict['DatabaseTable']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, Records: missing required field "DatabaseTable".')\
+            msg = _('Configuration Error: rule {RULE}, Records: missing required field "DatabaseTable".') \
                 .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -450,12 +700,40 @@ class CashRecords:
             sys.exit(1)
 
         try:
-            self.table_columns = rdict['TableColumns']
+            table_columns = rdict['TableColumns']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "TableColumns".') \
                 .format(RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
+        else:
+            self.table_columns = table_columns
+
+        try:
+            self.reference_header = rdict['ReferenceHeader']
+        except KeyError:
+            self.reference_header = ''
+
+        try:
+            reference_columns = rdict['ReferenceColumns']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}, Records: missing required field "TableColumns".') \
+                .format(RULE=rule_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        for column_alias in reference_columns:
+            column_name = reference_columns[column_alias]
+            if column_name not in table_columns:
+                win2.popup_notice('Configuration Warning: rule {RULE}, Records: {COL} not in list of table columns'
+                                  .format(RULE=rule_name, COL=column_name))
+                del reference_columns[column_alias]
+        self.reference_columns = reference_columns
+
+        try:
+            self.display_header = rdict['DisplayHeader']
+        except KeyError:
+            self.display_header = ''
 
         try:
             self.display_columns = rdict['DisplayColumns']
@@ -473,3 +751,6 @@ class CashRecords:
             win2.popup_error(msg)
             sys.exit(1)
 
+        # Dynamic attributes
+        self.df = pd.DataFrame(columns=table_columns)
+        self.entries = []

@@ -334,6 +334,81 @@ class AuditRule:
 
         return layout
 
+    def reset_rule(self, window, current: bool = False):
+        """
+        reset rule to default.
+        """
+        win_width, win_height = window.size
+
+        current_key = self.element_key
+        summ_panel_key = self.summary.element_key
+
+        # Disable current panel
+        window[current_key].update(visible=False)
+        window[summ_panel_key].update(visible=False)
+        window['-HOME-'].update(visible=True)
+
+        # Reset 'Start' element in case audit was in progress
+        start_key = self.key_lookup('Start')
+        window[start_key].update(disabled=False)
+
+        # Reset 'Generate Report' element in case audit was nearly complete
+        end_key = self.key_lookup('Finalize')
+        window[end_key].update(disabled=True)
+
+        # Switch to first tab in summary panel
+        tg_key = self.summary.key_lookup('TG')
+        window[tg_key].Widget.select(0)
+
+        # Reset rule item attributes, including tab, summary, and parameter
+        self.reset_attributes()
+
+        # Reset audit parameters. Audit specific parameters include actions
+        # buttons Scan and Confirm, for instance.
+        self.toggle_parameters(window, 'enable')
+
+        # Reset parameter element values
+        params = self.parameters
+        for param in params:
+            print('Info: resetting rule parameter element {} to default'.format(param.name))
+            window[param.element_key].update(value='')
+            try:
+                window[param.element_key2].update(vaue='')
+            except AttributeError:
+                pass
+
+        # Reset tab-specific element values
+        for i, tab in enumerate(self.tabs):
+            # Reset displays
+            ## Reset table element
+            table_key = tab.key_lookup('Table')
+            window[table_key].update(values=tab.df.values.tolist())
+
+            tab.resize_elements(window, win_size=(win_width, win_height))
+
+            ## Reset summary element
+            summary_key = tab.key_lookup('Summary')
+            window[summary_key].update(value='')
+
+            # Reset action buttons
+            tab.toggle_actions(window, 'disable')
+
+            # Reset visible tabs
+            visible = True if i == 0 else False
+            print('Info: tab {TAB}, rule {RULE}: re-setting visibility to {STATUS}'
+                  .format(TAB=tab.name, RULE=tab.rule_name, STATUS=visible))
+            window[tab.element_key].update(visible=visible)
+
+        if current:
+            window['-HOME-'].update(visible=False)
+            window[current_key].update(visible=True)
+
+            next_key = current_key
+        else:
+            next_key = '-HOME-'
+
+        return next_key
+
     def reset_attributes(self):
         """
         Reset rule item attributes.
@@ -1168,7 +1243,7 @@ class SummaryItem:
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
         fill_key = self.key_lookup('Fill')
-        element_key = self.element_key
+        element_key = self.element_key  # TabGroup key
 
         # Reset table size
         # For every five-pixel increase in window size, increase tab size by one
@@ -1180,10 +1255,11 @@ class SummaryItem:
         height = height * 0.5
         nrows = int(height / 60)
 
+        # Resize the tab frame
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
 
         fill = 278
-        # for every ten pixel increase in window size, increase fill size by one
+        # For every ten pixel increase in window size, increase fill size by one
         tab_fill = tab_width - fill if tab_width > fill else 0
         window[fill_key].set_size((tab_fill, None))
 

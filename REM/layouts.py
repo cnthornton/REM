@@ -949,7 +949,8 @@ def B2(*args, **kwargs):
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
-                        nrow: int = None, height: int = 800, width: int = 1200, font: tuple = None, pad: tuple = None):
+                        nrow: int = None, height: int = 800, width: int = 1200, font: tuple = None, pad: tuple = None,
+                        add_key: str = '', delete_key: str = '', table_name: str = ''):
     """
     Create table elements that have consistency in layout.
     """
@@ -958,16 +959,18 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     alt_col = const.TBL_ALT_COL
     bg_col = const.TBL_BG_COL
     select_col = const.TBL_SELECT_COL
+    header_col = const.HEADER_COL
 
     pad_frame = const.FRAME_PAD
 
     pad = pad if pad else (pad_frame, pad_frame)
 
     font = font if font else const.MID_FONT
+    bold_font = const.BOLD_FONT
     font_size = font[1]
 
     # Arguments
-    row_height = const.TBL_HEIGHT
+    row_height = const.TBL_ROW_HEIGHT
     width = width
     height = height * 0.5
     nrow = nrow if nrow else int(height / 40)
@@ -979,12 +982,37 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
               'These parameters are mutually exclusive.')
 
     lengths = dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
-    layout = sg.Table(data, key=keyname, headings=header, pad=pad, num_rows=nrow, row_height=row_height,
-                      alternating_row_color=alt_col, background_color=bg_col,
+
+    header_layout = []
+    balance_layout = []
+    if add_key:
+        header_layout.append(sg.Button('', key=add_key, image_data=const.ADD_ICON, border_width=2,
+                                       button_color=(text_col, alt_col), tooltip='Add new row to table'))
+        balance_layout.append(sg.Canvas(size=(24, 0), visible=True, background_color=header_col))
+    if delete_key:
+        header_layout.append(sg.Button('', key=delete_key, image_data=const.MINUS_ICON, border_width=2,
+                                       button_color=(text_col, alt_col), tooltip='Remove selected row from table'))
+        balance_layout.append(sg.Canvas(size=(24, 0), visible=True, background_color=header_col))
+
+    if table_name or len(header_layout) > 0:
+        layout = sg.Frame('', [
+            [sg.Col([header_layout], justification='l', background_color=header_col, expand_x=True),
+             sg.Col([[sg.Text(table_name, pad=(0, 0), font=bold_font, background_color=alt_col)]],
+                    justification='c', background_color=header_col, expand_x=True),
+             sg.Col([balance_layout], justification='r', background_color=header_col)],
+            [sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
+                      row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                       text_color=text_col, selected_row_colors=(text_col, select_col), font=font,
                       display_row_numbers=False, auto_size_columns=False, col_widths=lengths,
-                      enable_events=events, bind_return_key=bind, tooltip=tooltip,
-                      vertical_scroll_only=False)
+                      enable_events=events, bind_return_key=bind, tooltip=tooltip, vertical_scroll_only=False)]
+        ], pad=pad, element_justification='l', vertical_alignment='t', background_color=alt_col, relief='ridge')
+    else:
+        layout = sg.Table(data, key=keyname, headings=header, pad=pad, num_rows=nrow, row_height=row_height,
+                          alternating_row_color=alt_col, background_color=bg_col,
+                          text_color=text_col, selected_row_colors=(text_col, select_col), font=font,
+                          display_row_numbers=False, auto_size_columns=False, col_widths=lengths,
+                          enable_events=events, bind_return_key=bind, tooltip=tooltip,
+                          vertical_scroll_only=False)
 
     return layout
 
@@ -1110,7 +1138,8 @@ def importer_layout(db_tables, win_size: tuple = None):
     p3 = [[sg.Frame('Preview', [
         [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
         [sg.Col([
-            [create_table_layout([[]], ['{}'.format(i) for i in range(1)], '-PREVIEW-', pad=(0, 0), nrow=15, width=width * 0.94)]],
+            [create_table_layout([[]], ['{}'.format(i) for i in range(1)], '-PREVIEW-', pad=(0, 0), nrow=15,
+                                 width=width * 0.94)]],
             pad=(pad_frame, 0), background_color=bg_col)],
         [sg.Canvas(size=(int(width * 0.85), 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
                     pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col, title_color=select_col,
@@ -1166,7 +1195,7 @@ def home_screen(win_size: tuple = None):
     else:
         width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
-    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width*0.6), int(height*0.6)))]], key='-HOME-',
+    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width * 0.6), int(height * 0.6)))]], key='-HOME-',
                     element_justification='c', vertical_alignment='c')
 
     return layout
