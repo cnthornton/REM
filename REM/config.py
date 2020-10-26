@@ -29,13 +29,13 @@ class Config:
         self.bank_rules = None
         self.startup_msgs = None
 
-    def connect(self, timeout=2000):
+    def connect(self, timeout=5000):
         """
         Connect to the NoSQL database using the pymongo driver.
         """
         connection_info = {'username': settings.mongod_user, 'password': settings.mongod_pwd,
                            'host': settings.mongod_server, 'port': settings.mongod_port,
-                           'authSource': settings.mongod_authdb, 'connectTimeoutMS': timeout}
+                           'authSource': settings.mongod_authdb, 'serverSelectionTimeoutMS': timeout}
         try:
             cnx = MongoClient(**connection_info)
         except errors.ConnectionFailure as e:
@@ -105,6 +105,7 @@ class Config:
             print(self.cnx.server_info())
         except Exception as e:
             popup_error('Unable to load configuration from database - {}'.format(e))
+            print(e)
             sys.exit(1)
         else:
             self.audit_rules = collection.find_one({'name': 'audit_rules'})

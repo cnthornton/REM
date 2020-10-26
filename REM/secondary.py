@@ -516,6 +516,50 @@ def database_importer_window(user):
     return True
 
 
+def data_import_window(df, parameters):
+    """
+    Display the import data window.
+    """
+    display_header = [i.description for i in parameters]
+    display_data = df.values.tolist()
+
+    # Window and element size parameters
+    layout = lo.import_data_layout(display_header, display_data, parameters)
+
+    param_values = {i.element_key: '' for i in parameters}
+
+    window = sg.Window(_('Import Data'), layout, modal=True, resizable=False)
+
+    while True:
+        event, values = window.read(timeout=1000)
+
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            break
+
+        # Filter table rows based on parameters
+        if event in param_values:
+            subset_list = ['{KEY} == {VAL}'.format(KEY=i, VAL=param_values[i]) for i in param_values if param_values[i]]
+            subset_rule = ' AND '.join(subset_list)
+            display_df = dm.subset_dataframe(df, subset_rule)
+            window['-TABLE-'].update(values=display_df.values.tolist())
+
+        if event == '-OK-':  # click 'OK' button
+            # retrieve selected row
+            row = values['-TABLE-']
+            if not row:  # no row of existing data selected for import
+                msg = 'No row selected for import'
+                popup_notice(msg)
+                continue
+            else:
+                break
+
+    window.close()
+
+    import_data = df.iloc[row]
+
+    return import_data
+
+
 def import_window(df, win_size: tuple = None):
     """
     Display the transaction importer window.

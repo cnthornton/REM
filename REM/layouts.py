@@ -138,7 +138,6 @@ class TabItem:
 
         # Dynamic attributes
         header = [dm.colname_from_query(i) for i in all_columns]
-        print(header)
         ncol = len(header)
         self.df = pd.DataFrame(dm.create_empty_table(nrow=20, ncol=ncol), columns=header)  # initialize with empty table
 
@@ -515,7 +514,8 @@ class TabItem:
                                   disabled=True),
                                B2(_('Audit'), key=audit_key, disabled=True, pad=(0, 0),
                                   tooltip=_('Run Audit methods'))
-                           ]], pad=(0, (pad_v, 0)), justification='r', vertical_alignment='top', background_color=bg_col)
+                           ]], pad=(0, (pad_v, 0)), justification='r', vertical_alignment='top',
+                               background_color=bg_col)
                        ]]
 
         height_key = self.key_lookup('TabHeight')
@@ -1028,6 +1028,41 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
                           display_row_numbers=False, auto_size_columns=False, col_widths=lengths,
                           enable_events=events, bind_return_key=bind, tooltip=tooltip,
                           vertical_scroll_only=False)
+
+    return layout
+
+
+def import_data_layout(header, data, parameters):
+    """
+    Create the layout for the import data window.
+    """
+    # Layout settings
+    bg_col = const.ACTION_COL
+
+    pad_v = const.VERT_PAD
+    pad_frame = const.FRAME_PAD
+
+    # Layout
+    # Import filters
+    param_layout = []
+    for parameter in parameters:
+        param_layout.append(parameter.layout())
+
+    # Import data table
+    main_layout = [create_table_layout(data, header, '-TABLE-', events=False, width=800, nrow=20)]
+
+    # Control buttons
+    bttn_layout = [sg.Col([[B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
+                          pad=((pad_frame, 0), (pad_v, pad_frame)), background_color=bg_col, justification='l',
+                          expand_x=True),
+                   sg.Col([[sg.Canvas(size=(0, 0), background_color=bg_col, visible=True)]],
+                          background_color=bg_col, justification='c', expand_x=True),
+                   sg.Col([[B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
+                          pad=((0, pad_frame), (pad_v, pad_frame)), justification='r')]
+
+    layout = [sg.Col([param_layout], background_color=bg_col, justification='c', expand_y=True),
+              main_layout,
+              bttn_layout]
 
     return layout
 

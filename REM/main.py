@@ -31,20 +31,26 @@ class ToolBar:
         Initialize toolbar parameters.
         """
         acct_menu = []
+        acct_reports = []
         for account_method in account_methods:
             acct_menu.append(('', account_method.title))
+            acct_reports.append(('', account_method.title))
 
             rules = []
+            reports = []
             for rule in account_method.rules:
                 rules.append(('!', rule.title))
+                summary_key = '{}_SUMMARY'.format(rule.title.upper())
+                reports.append(('!', '{NAME}::{KEY}'.format(NAME=rule.title, KEY=summary_key)))
 
             acct_menu.append(rules)
+            acct_reports.append(reports)
 
         self.name = 'toolbar'
         self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
         self.acct_menu = {'name': '&Audits', 'items': acct_menu}
         self.reports_menu = {'name': 'Reports',
-                             'items': [('!', 'Summary S&tatistics'), ('!', 'Summary &Reports')]}
+                             'items': [('!', 'Summary S&tatistics'), ('', 'Summary &Reports'), acct_reports]}
         self.user_menu = {'name': '&User',
                           'items': [('!', '&Manage Accounts'), ('!', 'M&essages'), ('', '---'), ('', 'Sign &In'),
                                     ('!', 'Sign &Out')]}
@@ -156,7 +162,13 @@ class ToolBar:
             elif isinstance(item, list):
                 sub_list = []
                 for sub_item in item:
-                    sub_list.append('{}{}'.format(*sub_item))
+                    if isinstance(sub_item, tuple):
+                        sub_list.append('{}{}'.format(*sub_item))
+                    elif isinstance(sub_item, list):
+                        sub_sub_list = []
+                        for sub_sub_item in sub_item:
+                            sub_sub_list.append('{}{}'.format(*sub_sub_item))
+                        sub_list.append(sub_sub_list)
                 menu_items.append(sub_list)
 
         menu_def = [menu_object['name'], menu_items]
@@ -193,19 +205,34 @@ class ToolBar:
             elif isinstance(item, list):
                 sub_menu = []
                 for sub_item in item:
-                    clean_item = sub_item[1].replace('&', '')
-                    if menu_item in (clean_item, clean_item.lower()):
-                        item_name = sub_item[1]
+                    if isinstance(sub_item, tuple):
+                        clean_item = sub_item[1].replace('&', '')
+                        if menu_item in (clean_item, clean_item.lower()):
+                            item_name = sub_item[1]
 
-                        # Replace menu item with updated status
-                        sub_menu.append((status, item_name))
-                    else:
-                        sub_menu.append(sub_item)
+                            # Replace menu item with updated status
+                            sub_menu.append((status, item_name))
+                        else:
+                            sub_menu.append(sub_item)
+                    elif isinstance(sub_item, list):
+                        sub_sub_menu = []
+                        for sub_sub_item in sub_item:
+                            clean_item = sub_sub_item[1].replace('&', '')
+                            if menu_item in (clean_item, clean_item.lower()):
+                                item_name = sub_sub_item[1]
+
+                                # Replace menu item with updated status
+                                sub_sub_menu.append((status, item_name))
+                            else:
+                                sub_sub_menu.append(sub_sub_item)
+
+                        sub_menu.append(sub_sub_menu)
 
                 new_menu.append(sub_menu)
 
         # Replace menu item with updated status
         select_menu['items'] = new_menu
+        name = select_menu['name']
 
         # Update window to reflect updated status of the menu item
         element_key = self.key_lookup(menu.lower())
@@ -349,6 +376,10 @@ def main():
     cancel_keys += [i.key_lookup('Cancel') for i in cash_rules.rules]
     #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
+    report_keys = {'{}_SUMMARY'.format(i.title.upper()): i.summary.element_key for acct_method in acct_methods for i in
+                   acct_method.rules}
+    print(report_keys)
+
     summ_tbl_keys = []
     for rule in audit_rules.rules:
         for summary_item in rule.summary.summary_items:
@@ -358,8 +389,6 @@ def main():
     date_key = None
 
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
-    report_tx = 'Summary Report'
-    stats_tx = 'Summary Statistics'
 
     # Event modifiers
     action_in_progress = False
@@ -436,7 +465,6 @@ def main():
                     window['-DBMENU-'].update(disabled=False)
 
                     # Reports and statistics
-                    toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='enable')
                     toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='enable')
 
                     # User
@@ -445,12 +473,14 @@ def main():
                     # Menu
                     toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
 
-                # Enable permissions on per audit rule basis defined in config
+                # Enable rule and summary report permissions on per rule basis defined in config
                 for acct_method in acct_methods:
                     for acct_rule in acct_method.rules:
                         rule_name = acct_rule.title
+                        report_name = '{}::{}_SUMMARY'.format(rule_name, rule_name.upper())
                         if admin:
                             toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
+                            toolbar.toggle_menu(window, 'rmenu', report_name, value='enable')
                         else:
                             perms = acct_rule.permissions
                             if perms != 'admin':
@@ -503,7 +533,9 @@ def main():
             for acct_method in acct_methods:
                 for acct_rule in acct_method.rules:
                     rule_name = acct_rule.title
+                    report_name = '{}::{}_SUMMARY'.format(rule_name, rule_name.upper())
                     toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
+                    toolbar.toggle_menu(window, 'rmenu', report_name, value='disable')
 
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
