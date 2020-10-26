@@ -137,10 +137,10 @@ class TabItem:
             sys.exit(1)
 
         # Dynamic attributes
-        display_header = list(display_columns.keys())
-        ncol = len(display_header)
-        self.df = pd.DataFrame(dm.create_empty_table(nrow=20, ncol=ncol),
-                               columns=display_header)  # initialize with empty table
+        header = [dm.colname_from_query(i) for i in all_columns]
+        print(header)
+        ncol = len(header)
+        self.df = pd.DataFrame(dm.create_empty_table(nrow=20, ncol=ncol), columns=header)  # initialize with empty table
 
         self.nerr = 0
         self.audit_performed = False
@@ -164,10 +164,11 @@ class TabItem:
         """
         Reset class dynamic attributes to default.
         """
-        headers = list(self.display_columns.keys())
-        ncol = len(headers)
+        header = [dm.colname_from_query(i) for i in self.db_columns]
+        ncol = len(header)
         data = dm.create_empty_table(nrow=20, ncol=ncol)
-        self.df = pd.DataFrame(data, columns=headers)
+
+        self.df = pd.DataFrame(data, columns=header)
         self.nerr = 0
         self.audit_performed = False
         self.id_components = []
@@ -246,6 +247,8 @@ class TabItem:
                   .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col))
 
             try:
+                print(display_df[alias_col])
+                print(list(alias_map.keys()), list(alias_map.values()))
                 display_df[alias_col].replace(alias_map, inplace=True)
             except KeyError:
                 print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
@@ -476,7 +479,6 @@ class TabItem:
         pad_el = const.ELEM_PAD
         pad_v = pad_h = const.HORZ_PAD
 
-
         font_l = const.LARGE_FONT
         font_m = const.MID_FONT
         in_col = const.INPUT_COL
@@ -484,10 +486,10 @@ class TabItem:
         layout_width = width - 120 if width >= 120 else width
         layout_height = height * 0.8
         tab_width = layout_width - 40
-        tab_height = layout_height * 0.8
+        tab_height = layout_height * 0.7
 
-        header = self.df.columns.values.tolist()
-        data = self.df.values.tolist()
+        header = list(self.display_columns.keys())
+        data = dm.create_empty_table(nrow=20, ncol=len(header))
 
         summary_key = self.key_lookup('Summary')
         audit_key = self.key_lookup('Audit')
@@ -500,10 +502,9 @@ class TabItem:
                            [sg.Frame('Summary', [
                                [sg.Multiline('', border_width=0, size=(52, 6), font=font_m, key=summary_key,
                                              disabled=True, background_color=bg_col)]
-                           ], font=font_l, pad=(0, (pad_v, 0)), background_color=bg_col,
-                                     element_justification='l')]
+                           ], font=font_l, pad=(0, (pad_v, 0)), background_color=bg_col)]
                        ],
-                           background_color=bg_col, justification='l', expand_x=True),
+                           background_color=bg_col, justification='l', expand_x=True, expand_y=True),
                            sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
                                   background_color=bg_col, justification='c', expand_x=True),
                            sg.Col([[
@@ -518,8 +519,7 @@ class TabItem:
                        ]]
 
         height_key = self.key_lookup('TabHeight')
-        frame_height = height * 0.8
-        layout = [[sg.Canvas(key=height_key, size=(0, frame_height * 0.75)),
+        layout = [[sg.Canvas(key=height_key, size=(0, tab_height)),
                    sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
                           background_color=bg_col, expand_x=True)]]
 
@@ -547,8 +547,7 @@ class TabItem:
         tab_width = layout_width - 40
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
 
-        frame_height = height * 0.8
-        tab_height = frame_height * 0.70
+        tab_height = layout_height * 0.70
         height_key = self.key_lookup('TabHeight')
         window[height_key].set_size((None, tab_height))
 
@@ -573,6 +572,7 @@ class TabItem:
         summary_key = self.key_lookup('Summary')
         list_height = (tab_height * 0.2) / 13
         window[summary_key].set_size((None, list_height))
+        window[summary_key].expand(expand_y=True)
 
     def row_ids(self):
         """
@@ -599,14 +599,8 @@ class TabItem:
         params = self.tab_parameters
 
         filters = []
-        for param in params:
-            param_rule = params[param]
-
-            param_col = dm.get_query_from_header(param, self.db_columns)
-            if not param_col:
-                print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} not found in TableColumns'
-                      .format(RULE=self.rule_name, NAME=self.name, PARAM=param))
-                continue
+        for param_col in params:
+            param_rule = params[param_col]
 
             param_oper = None
             param_values = []

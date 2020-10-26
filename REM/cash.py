@@ -421,10 +421,10 @@ class CashRule:
 
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        bttn_layout = [sg.Col([[lo.B2('Cancel', key=cancel_key, pad=(0, (pad_v, pad_frame)),
+        bttn_layout = [sg.Col([[lo.B2('Cancel', key=cancel_key, pad=(0, (pad_v, 0)),
                                       tooltip='Return to home screen')]], justification='l', expand_x=True),
                        sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                       sg.Col([[lo.B2('Save', key=save_key, pad=(0, (pad_v, pad_frame)), disabled=True,
+                       sg.Col([[lo.B2('Save', key=save_key, pad=(0, (pad_v, 0)), disabled=True,
                                       tooltip='Save transaction')]], justification='r')]
         layout_els.append(bttn_layout)
 
@@ -449,7 +449,7 @@ class CashRule:
         layout_pad = layout_pad + (width_diff / 5)
 
         layout_width = width - layout_pad if layout_pad > 0 else width
-        layout_height = height * 0.75
+        layout_height = height * 0.8
 
         width_key = self.key_lookup('FrameWidth')
         window[width_key].set_size((layout_width, None))
@@ -472,7 +472,7 @@ class CashRule:
         info_height = expense_height = layout_height * 0.25
         entry_height = layout_height * 0.35
         header_height = layout_height * 0.12
-        pad_height = layout_height * 0.05
+        pad_height = layout_height * 0.04
 
         entry_h_key = self.key_lookup('EntryHeight')
         info_h_key = self.key_lookup('InfoHeight')

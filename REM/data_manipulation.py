@@ -114,6 +114,25 @@ def get_column_from_header(column, header):
     return alias
 
 
+def colname_from_query(query_column):
+    """
+    Extract the column name or alias component of a query column.
+    """
+    try:
+        table_comp, col_comp = query_column.split('.')
+    except ValueError:  # use main table as table portion of full name
+        col_comp = query_column
+
+    try:
+        col_alias = col_comp.rsplit('AS', 1)[-1]  # use alias name if exists
+    except ValueError:
+        col_alias = col_comp.strip()
+    else:
+        col_alias.strip()
+
+    return col_alias
+
+
 def get_column_from_oper(df, condition):
     """
     Extract the column name from a condition rule
