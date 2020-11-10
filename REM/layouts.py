@@ -54,7 +54,7 @@ class TabItem:
         try:
             all_columns = tdict['TableColumns']
         except KeyError:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".') \
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "TableColumns".') \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -78,7 +78,7 @@ class TabItem:
                 if action in self._actions:
                     self.actions.append(action)
                 else:
-                    print('Configuration Warning: tab {NAME}, rule {RULE}: unknown audit method specified {METHOD}'
+                    print('Configuration Warning: rule {RULE}, tab {NAME}: unknown audit method specified {METHOD}'
                           .format(NAME=name, RULE=rule_name, METHOD=action))
 
         try:
@@ -153,8 +153,8 @@ class TabItem:
         if element in elements:
             key = as_key('{} {}'.format(self.element_name, element))
         else:
-            print('Warning: tab {TAB}, rule {RULE}: element {ELEM} not found in list of sub-elements'
-                  .format(TAB=self.name, RULE=self.rule_name, ELEM=element))
+            print('Warning: rule {RULE}, tab {NAME}: element {ELEM} not found in list of sub-elements'
+                  .format(NAME=self.name, RULE=self.rule_name, ELEM=element))
             key = None
 
         return key
@@ -181,10 +181,10 @@ class TabItem:
                 expression = "window['{}'].update({})".format(element_key, new_param)
                 eval(expression)
 
-                print('Info: tab {NAME}, rule {RULE}: updated element {ELEM} to {VAL}'
+                print('Info: rule {RULE}, tab {NAME}: updated element {ELEM} to {VAL}'
                       .format(NAME=self.name, RULE=self.rule_name, ELEM=element, VAL=new_param))
             else:
-                print('Layout Warning: tab {NAME}, rule {RULE}: element {ELEM} not found in list of sub-elements'
+                print('Layout Warning: rule {RULE}, tab {NAME}: element {ELEM} not found in list of sub-elements'
                       .format(NAME=self.name, RULE=self.rule_name, ELEM=element))
 
     def get_column_name(self, column):
@@ -197,7 +197,7 @@ class TabItem:
         elif column.lower() in header:
             col_name = column.lower()
         else:
-            print('Warning: tab {NAME}, rule {RULE}: column {COL} not in list of table columns'
+            print('Warning: rule {RULE}, tab {NAME}: column {COL} not in list of table columns'
                   .format(NAME=self.name, RULE=self.rule_name, COL=column))
             col_name = None
 
@@ -238,19 +238,17 @@ class TabItem:
             alias_map = self.aliases[alias_col]  # dictionary of mapped values
 
             if alias_col not in display_header:
-                print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
+                print('Warning: rule {RULE}, tab {NAME}: alias {ALIAS} not found in the list of display columns'
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
-            print('Info: tab {NAME}, rule {RULE}: applying aliases {MAP} to {COL}'
+            print('Info: rule {RULE}, tab {NAME}: applying aliases {MAP} to {COL}'
                   .format(NAME=self.name, RULE=self.rule_name, MAP=alias_map, COL=alias_col))
 
             try:
-                print(display_df[alias_col])
-                print(list(alias_map.keys()), list(alias_map.values()))
                 display_df[alias_col].replace(alias_map, inplace=True)
             except KeyError:
-                print('Warning: tab {NAME}, rule {RULE}: alias {ALIAS} not found in the list of display columns'
+                print('Warning: rule {RULE}, tab {NAME}: alias {ALIAS} not found in the list of display columns'
                       .format(NAME=self.name, RULE=self.rule_name, ALIAS=alias_col))
                 continue
 
@@ -285,7 +283,7 @@ class TabItem:
         self.id_components = []
 
         last_index = 0
-        print('Info: tab {NAME}, rule {RULE}: ID is formatted as {FORMAT}' \
+        print('Info: rule {RULE}, tab {NAME}: ID is formatted as {FORMAT}' \
               .format(NAME=self.name, RULE=self.rule_name, FORMAT=id_format))
         param_fields = [i.name for i in parameters]
         for component in id_format:
@@ -317,7 +315,7 @@ class TabItem:
 
             last_index += component_len
 
-        print('Info: tab {NAME}, rule {RULE}: ID updated with components {COMP}'
+        print('Info: rule {RULE}, tab {NAME}: ID updated with components {COMP}'
               .format(NAME=self.name, RULE=self.rule_name, COMP=self.id_components))
 
     def format_id(self, number, date=None):
@@ -331,7 +329,7 @@ class TabItem:
 
             if comp_name == 'date':  # component is datestr
                 if not date:
-                    print('Warning: tab {NAME}, rule {RULE}: no date provided for ID number {NUM} ... reverting to '
+                    print('Warning: rule {RULE}, tab {NAME}: no date provided for ID number {NUM} ... reverting to '
                           'today\'s date'.format(NAME=self.name, RULE=self.rule_name, NUM=number))
                     value = datetime.datetime.now().strftime(comp_value)
                 else:
@@ -357,8 +355,8 @@ class TabItem:
                 try:
                     comp_value = identifier[comp_index[0]: comp_index[1]]
                 except IndexError:
-                    print('Warning: ID component {COMP} cannot be found in identifier {IDENT}'
-                          .format(COMP=component, IDENT=identifier))
+                    print('Warning: rule {RULE}, tab {NAME}: ID component {COMP} cannot be found in identifier {IDENT}'
+                          .format(RULE=self.rule_name, NAME=self.name, COMP=component, IDENT=identifier))
 
                 break
 
@@ -410,7 +408,7 @@ class TabItem:
                 try:
                     subset_df = dm.subset_dataframe(df, summ_rule['Subset'])
                 except Exception as e:
-                    print('Warning: tab {NAME}, rule {RULE}: unable to subset dataframe with subset rule {SUB} - {ERR}'
+                    print('Warning: rule {RULE}, tab {NAME}: unable to subset dataframe with subset rule {SUB} - {ERR}'
                           .format(NAME=self.name, RULE=self.rule_name, SUB=summ_rule['Subset'], ERR=e))
                     break
             else:
@@ -437,7 +435,7 @@ class TabItem:
                     try:  # component is a number
                         float(component)
                     except ValueError:  # component is an unsupported character
-                        print('Warning: tab {NAME}, rule {RULE}: unsupported character "{ITEM}" found in summary rule '
+                        print('Warning: rule {RULE}, tab {NAME}: unsupported character "{ITEM}" found in summary rule '
                               '"{SUMM}"'.format(NAME=self.name, RULE=self.rule_name, ITEM=component, SUMM=rule_name))
                         rule_values = [0]
                         break
@@ -543,10 +541,10 @@ class TabItem:
         tab_pad = tab_pad + (win_diff / 5)
 
         layout_width = width - tab_pad if tab_pad >= 0 else width
-        layout_height = height * 0.8
         tab_width = layout_width - 40
         window.bind("<Configure>", window[element_key].Widget.config(width=tab_width))
 
+        layout_height = height * 0.8
         tab_height = layout_height * 0.70
         height_key = self.key_lookup('TabHeight')
         window[height_key].set_size((None, tab_height))
@@ -584,7 +582,7 @@ class TabItem:
             try:
                 row_ids = list(self.df[self.db_key.lower()])
             except KeyError:
-                print('Warning: tab {TAB}, rule {RULE}: missing database key {KEY} in column headers'
+                print('Warning: rule {RULE}, tab {NAME}: missing database key {KEY} in column headers'
                       .format(TAB=self.name, RULE=self.rule_name, KEY=self.db_key))
                 row_ids = []
 
@@ -597,6 +595,8 @@ class TabItem:
         operators = {'>', '>=', '<', '<=', '=', '!=', 'IN', 'in', 'In'}
 
         params = self.tab_parameters
+        if params is None:
+            return []
 
         filters = []
         for param_col in params:
@@ -612,14 +612,14 @@ class TabItem:
                     else:
                         print(
                             'Error: rule {RULE}, tab {NAME}: only one operator allowed in tab parameters for parameter '
-                            '{PARAM}'.format(RULE=self.rule_name, NAME=self.name, PARAM=param))
+                            '{PARAM}'.format(RULE=self.rule_name, NAME=self.name, PARAM=param_col))
                         break
                 else:
                     param_values.append(component)
 
             if not (param_oper and param_values):
                 print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} requires both an operator and a value'
-                      .format(RULE=self.rule_name, NAME=self.name, PARAM=param))
+                      .format(RULE=self.rule_name, NAME=self.name, PARAM=param_col))
                 break
 
             if param_oper.upper() == 'IN':
@@ -631,7 +631,7 @@ class TabItem:
                     filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0],)))
                 else:
                     print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} has too many values {COND}'
-                          .format(RULE=self.rule_name, NAME=self.name, PARAM=param, COND=param_rule))
+                          .format(RULE=self.rule_name, NAME=self.name, PARAM=param_col, COND=param_rule))
                     break
 
         return filters
@@ -675,7 +675,7 @@ class TabItem:
 
             trans_id_fmt = self.format_id(trans_number_comp, date=trans_date_comp)
             if trans_id != trans_id_fmt:
-                print('Info: tab {NAME}, rule {RULE}: transaction ID {ID} does not comply with format specified in the '
+                print('Info: rule {RULE}, tab {NAME}: transaction ID {ID} does not comply with format specified in the '
                       'configuration'.format(NAME=self.name, RULE=self.rule_name, ID=trans_id))
                 if index not in errors:
                     errors.append(index)
@@ -689,14 +689,14 @@ class TabItem:
                       'filter': self.filter_transactions}
 
         for action in self.actions:
-            print('Info: tab {NAME}, rule {RULE}: running audit method {METHOD}'
+            print('Info: rule {RULE}, tab {NAME}: running audit method {METHOD}'
                   .format(NAME=self.name, RULE=self.rule_name, METHOD=action))
 
             action_function = method_map[action]
             try:
                 df = action_function(*args, **kwargs)
             except Exception as e:
-                print('Warning: tab {NAME}, rule {RULE}: method {METHOD} failed due to {E}'
+                print('Warning: rule {RULE}, tab {NAME}: method {METHOD} failed due to {E}'
                       .format(NAME=self.name, RULE=self.rule_name, METHOD=action, E=e))
             else:
                 self.df = df
@@ -747,7 +747,8 @@ class TabItem:
         else:
             first_number_comp = int(self.get_id_component(first_id, 'variable'))
             first_date_comp = self.get_id_component(first_id, 'date')
-            print('Info: {NAME} Audit: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
+            print('Info: rule {RULE}, tab {NAME}: first transaction ID is {ID}'
+                  .format(RULE=self.rule_name, NAME=self.name, ID=first_id))
 
         if audit_date and first_id:
             ## Find date of last transaction
@@ -758,8 +759,8 @@ class TabItem:
             try:
                 unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
             except TypeError:
-                print('Warning: {NAME} Audit: date {DATE} is not formatted correctly as a datetime object'
-                      .format(NAME=self.name, DATE=audit_date_iso))
+                print('Warning: rule {RULE}, tab {NAME}: date {DATE} is not formatted correctly as a datetime object'
+                      .format(RULE=self.rule_name, NAME=self.name, DATE=audit_date_iso))
                 return df
 
             unq_dates_iso.sort()
@@ -767,25 +768,25 @@ class TabItem:
             try:
                 current_date_index = unq_dates_iso.index(audit_date_iso)
             except ValueError:
-                print('Warning: {NAME} Audit: no transactions for audit date {DATE} found in list {DATES}'
-                      .format(NAME=self.name, DATE=audit_date_iso, DATES=unq_dates_iso))
+                print('Warning: rule {RULE}, tab {NAME}: no transactions for audit date {DATE} found in list {DATES}'
+                      .format(RULE=self.rule_name, NAME=self.name, DATE=audit_date_iso, DATES=unq_dates_iso))
                 return df
 
             try:
                 prev_date = dparse(unq_dates_iso[current_date_index - 1], yearfirst=True)
             except IndexError:
-                print('Warning: {NAME} Audit: no date found prior to current audit date {DATE}'
-                      .format(NAME=self.name, DATE=audit_date_iso))
+                print('Warning: rule {RULE}, tab {NAME}: no date found prior to current audit date {DATE}'
+                      .format(RULE=self.rule_name, NAME=self.name, DATE=audit_date_iso))
                 prev_date = None
             except ValueError:
-                print('Warning: {NAME} Audit: unknown format {DATE} provided'
-                      .format(NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
+                print('Warning: rule {RULE}, tab {NAME}: unknown format {DATE} provided'
+                      .format(RULE=self.rule_name, NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
                 prev_date = None
 
             ## Query last transaction from previous date
             if prev_date:
-                print('Info: {NAME} Audit: searching for most recent transaction created in {DATE}'
-                      .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
+                print('Info: rule {RULE}, tab {NAME}: searching for most recent transaction created in {DATE}'
+                      .format(RULE=self.rule_name, NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 filters = ('{} = ?'.format(date_col_full), (prev_date.strftime(date_fmt),))
                 last_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
@@ -806,8 +807,8 @@ class TabItem:
                         break
 
                 if last_id:
-                    print('Info: {NAME} Audit: last transaction ID is {ID} from {DATE}' \
-                          .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
+                    print('Info: rule {RULE}, tab {NAME}: last transaction ID is {ID} from {DATE}' \
+                          .format(RULE=self.rule_name, NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
 
                     if first_date_comp != prev_date_comp:  # start of new month
                         if first_number_comp != 1:
@@ -859,8 +860,8 @@ class TabItem:
 
                 prev_number = trans_number
 
-        print('Info: {NAME} Audit: potentially missing transactions: {MISS}'
-              .format(NAME=self.name, MISS=missing_transactions))
+        print('Info: rule {RULE}, tab {NAME}: potentially missing transactions: {MISS}'
+              .format(RULE=self.rule_name, NAME=self.name, MISS=missing_transactions))
 
         # Query database for the potentially missing transactions
         if missing_transactions:
@@ -888,7 +889,8 @@ class TabItem:
             if not import_df.empty:
                 df = dm.append_to_table(self.df, import_df)
 
-        print('Info: new size of {0} dataframe is {1} rows and {2} columns'.format(self.name, *df.shape))
+        print('Info: rule {RULE}, tab {NAME}: new size of dataframe is {NROW} rows and {NCOL} columns'
+              .format(RULE=self.rule_name, NAME=self.name, NROW=df.shape[0], NCOL=df.shape[1]))
 
         return df
 
@@ -903,7 +905,7 @@ class TabItem:
         if df.empty or not filter_rules:
             return df
 
-        print('Info: tab {NAME}, rule {RULE}: running filter duplicates method with filter rules {RULES}'
+        print('Info: rule {RULE}, tab {NAME}: running filter duplicates method with filter rules {RULES}'
               .format(NAME=self.name, RULE=self.rule_name, RULES=list(filter_rules.values())))
 
         for filter_number in filter_rules:
@@ -916,7 +918,7 @@ class TabItem:
             try:
                 filter_cond = dm.evaluate_rule(df, filter_rule, as_list=False)
             except Exception as e:
-                print('Info: tab {NAME}, rule {RULE}: filtering duplicates with rule {NO} failed due to {ERR}'
+                print('Info: rule {RULE}, tab {NAME}: filtering duplicates with rule {NO} failed due to {ERR}'
                       .format(NAME=self.name, RULE=self.rule_name, NO=filter_number, ERR=e))
                 continue
 
@@ -926,10 +928,9 @@ class TabItem:
                 cond_str = '(filter_cond)'.format(KEY=filter_key, RES=filter_cond)
 
             try:
-                print(cond_str)
                 failed = eval('df[{}].index'.format(cond_str))
             except Exception as e:
-                print('Info: tab {NAME}, rule {RULE}: filtering duplicates with rule {NO} failed due to {ERR}'
+                print('Info: rule {RULE}, tab {NAME}: filtering duplicates with rule {NO} failed due to {ERR}'
                       .format(NAME=self.name, RULE=self.rule_name, NO=filter_number, ERR=e))
                 continue
 
@@ -1011,10 +1012,10 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
 
     if table_name or len(header_layout) > 0:
         layout = sg.Frame('', [
-            [sg.Col([header_layout], justification='l', background_color=header_col, expand_x=True),
+            [sg.Col([balance_layout], justification='r', background_color=header_col, expand_x=True),
              sg.Col([[sg.Text(table_name, pad=(0, 0), font=bold_font, background_color=alt_col)]],
                     justification='c', background_color=header_col, expand_x=True),
-             sg.Col([balance_layout], justification='r', background_color=header_col)],
+             sg.Col([header_layout], justification='l', background_color=header_col)],
             [sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
                       row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                       text_color=text_col, selected_row_colors=(text_col, select_col), font=font,
@@ -1032,37 +1033,47 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     return layout
 
 
-def import_data_layout(header, data, parameters):
+def import_data_layout(header, data, parameters, create_new: bool = False):
     """
     Create the layout for the import data window.
     """
     # Layout settings
     bg_col = const.ACTION_COL
 
+    pad_el = const.ELEM_PAD
     pad_v = const.VERT_PAD
     pad_frame = const.FRAME_PAD
 
     # Layout
     # Import filters
     param_layout = []
+    pairs = []
     for parameter in parameters:
-        param_layout.append(parameter.layout())
+        if len(pairs) == 2:
+            param_layout.append([sg.Col([pairs], pad=(0, pad_v), background_color=bg_col)])
+            pairs = []
+
+        pairs.append(parameter.layout(text_size=(14, 1), size=(14, 1), padding=40))
+
+    param_layout.append([sg.Col([pairs], pad=(0, pad_v), background_color=bg_col)])
+    param_layout.append([sg.HorizontalSeparator(pad=(0, 0), color=const.INACTIVE_COL)])
 
     # Import data table
-    main_layout = [create_table_layout(data, header, '-TABLE-', events=False, width=800, nrow=20)]
+    main_layout = [[create_table_layout(data, header, '-TABLE-', events=False, width=800, nrow=20, pad=(0, 0))]]
 
     # Control buttons
-    bttn_layout = [sg.Col([[B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
-                          pad=((pad_frame, 0), (pad_v, pad_frame)), background_color=bg_col, justification='l',
-                          expand_x=True),
-                   sg.Col([[sg.Canvas(size=(0, 0), background_color=bg_col, visible=True)]],
-                          background_color=bg_col, justification='c', expand_x=True),
-                   sg.Col([[B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
-                          pad=((0, pad_frame), (pad_v, pad_frame)), justification='r')]
+    bttn_layout = [[sg.Col([[B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
+                           pad=(0, 0), justification='l', expand_x=True),
+                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                           justification='c', expand_x=True),
+                    sg.Col([[B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=create_new, tooltip='Create new record'),
+                             B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
+                           pad=(0, 0), justification='r')]]
 
-    layout = [sg.Col([param_layout], background_color=bg_col, justification='c', expand_y=True),
-              main_layout,
-              bttn_layout]
+    layout = [[sg.Col(param_layout, pad=(pad_frame, 0), background_color=bg_col, justification='c',
+                      element_justification='c', expand_x=True, expand_y=True)],
+              [sg.Col(main_layout, pad=(pad_frame, pad_frame), background_color=bg_col, justification='c')],
+              [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
 
     return layout
 
@@ -1202,6 +1213,10 @@ def importer_layout(db_tables, win_size: tuple = None):
               sg.Col(p3, key='-P3-', background_color=bg_col, vertical_alignment='c', visible=False, expand_y=True,
                      expand_x=True)]
 
+    panel_layout = [[sg.Col([[sg.Canvas(size=(0, height * 0.8), background_color=bg_col)]], background_color=bg_col),
+                     sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False,
+                                      border_width=0, relief='flat')]], pad=(0, pad_v), expand_x=True)]]
+
     bttn_layout = [[B2(_('Back'), key='-BACK-', pad=(pad_el, 0), disabled=True, tooltip=_('Return to last step')),
                     B2(_('Next'), key='-NEXT-', pad=(pad_el, 0), disabled=False, tooltip=_('Proceed to next step')),
                     B2(_('Import'), bind_return_key=True, key='-IMPORT-', pad=(pad_el, 0), disabled=True,
@@ -1218,10 +1233,6 @@ def importer_layout(db_tables, win_size: tuple = None):
                  [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large),
                   sg.Text('Preview', key='-PN3-', pad=((pad_el, pad_frame), pad_el), font=font_main)]],
                 background_color=def_col, element_justification='l', vertical_alignment='t', expand_y=True)]]
-
-    panel_layout = [[sg.Col([[sg.Canvas(size=(0, height * 0.8), background_color=bg_col)]], background_color=bg_col),
-                     sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False,
-                                      border_width=0, relief='flat')]], pad=(0, pad_v), expand_x=True)]]
 
     layout = [[sg.Col([[sg.Text('Import into Database Table', pad=(pad_frame, (pad_frame, pad_v)),
                                 font=font_h, background_color=header_col)]],
@@ -1247,43 +1258,6 @@ def home_screen(win_size: tuple = None):
 
     layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width * 0.6), int(height * 0.6)))]], key='-HOME-',
                     element_justification='c', vertical_alignment='c')
-
-    return layout
-
-
-def action_layout(account_methods):
-    """
-    Create layout for the home panel.
-    """
-    # Layout settings
-    bg_col = const.ACTION_COL
-    pad_frame = const.FRAME_PAD
-    pad_el = const.ELEM_PAD
-    pad_v = const.VERT_PAD
-
-    # Button layout
-    buttons = [[sg.Text('', pad=(pad_frame, 0), size=(0, 0), background_color=bg_col)]]
-
-    for account_method in account_methods:
-        menu = [account_method.name]
-        for rule in account_method.rules:
-            menu.append(rule.title)
-
-        rule_el = [BM1(account_method.name, menu, pad=(pad_frame, pad_el), disabled=True)]
-        buttons.append(rule_el)
-
-    other_bttns = [[sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
-                   #                   [B1(_('Update Database'), key='-DB-', pad=(pad_frame, pad_el), disabled=True)],
-                   [B1(_('Update Database'), key='-DB-', pad=(pad_frame, pad_el), disabled=True)],
-                   [sg.HorizontalSeparator(pad=(pad_frame, pad_v))],
-                   [B1(_('Summary Statistics'), key='-STATS-', pad=(pad_frame, pad_el), disabled=True)],
-                   [B1(_('Summary Reports'), key='-REPORTS-', pad=(pad_frame, pad_el), disabled=True)],
-                   [sg.Text('', pad=(pad_frame, 0), size=(0, 0), background_color=bg_col)]]
-
-    buttons += other_bttns
-
-    layout = sg.Col([[sg.Frame('', buttons, element_justification='center', relief='raised', background_color=bg_col)]],
-                    key='-ACTIONS-', vertical_alignment='b', justification='c', expand_y=True)
 
     return layout
 
