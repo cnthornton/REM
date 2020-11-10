@@ -143,7 +143,7 @@ class UserAccount:
 
     def database_tables(self, database, timeout: int = 2):
         """
-        Get table schema information.
+        Get database schema information.
         """
         try:
             conn = self.db_connect(database=database, timeout=timeout)
@@ -295,14 +295,11 @@ class UserAccount:
 
             tables (dict): database tables to query.
 
-            columns: list or string containing the columns to select from the
-                database table.
+            columns: list or string containing the column(s) to select from the database table.
 
-            filter_rules: tuple or list of tuples containing where clause and 
-                value tuple for a given filter rule.
+            filter_rules: tuple or list of tuples containing where clause and value tuple for a given filter rule.
 
-            order: string or tuple of strings containing columns to sort
-                results by.
+            order: string or tuple of strings containing columns to sort results by.
 
            prog_db (bool): query from program database.
         """
@@ -322,7 +319,7 @@ class UserAccount:
         colnames = ', '.join(columns) if type(columns) in (type(list()), type(tuple())) else columns
 
         # Define table component of query statement
-        table_names = [i for i in tables] if type(tables) == type(dict()) else [tables]
+        table_names = [i for i in tables] if isinstance(tables, dict) else [tables]
         first_table = table_names[0]
         if len(table_names) > 1:
             table_rules = [first_table]
@@ -484,7 +481,24 @@ class UserAccount:
             print('Deletion Error: unknown values type {}'.format(type(values)))
             return False
 
-        pair_list = ['{}=?'.format(colname) for colname in columns]
+#        pair_list = ['{}=?'.format(colname) for colname in columns]
+        pairs = {}
+        for colname in columns:
+            if colname in pairs:
+                pairs[colname].append('?')
+            else:
+                pairs[colname] = ['?']
+
+        pair_list = []
+        for colname in pairs:
+            col_params = pairs[colname]
+            if len(col_params) > 1:
+                pair_list.append('{COL} IN ({VALS})'.format(COL=colname, VALS=', '.join(col_params)))
+            elif len(col_params) == 1:
+                pair_list.append('{COL}=?'.format(COL=colname))
+            else:
+                print('Deletion Warning: column {} has no associated parameters'.format(colname))
+                continue
 
         delete_str = 'DELETE FROM {TABLE} WHERE {PAIRS}'.format(TABLE=table, PAIRS=' AND '.join(pair_list))
         print('Info: deletion string is: {}'.format(delete_str))
