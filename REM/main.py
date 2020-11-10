@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '0.6.2'
+__version__ = '0.7.1'
 
 import datetime
 from multiprocessing import freeze_support
@@ -257,10 +257,6 @@ def get_panels(account_methods, win_size: tuple = None):
     for account_method in account_methods:
         for rule in account_method.rules:
             panels.append(rule.layout(win_size=win_size))
-            try:
-                panels.append(rule.summary.layout(win_size=win_size))
-            except AttributeError:
-                continue
 
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
@@ -284,10 +280,6 @@ def resize_elements(window, rules, win_size: tuple = None):
     # Update audit rule elements
     for rule in rules:
         rule.resize_elements(window, win_size=win_size)
-        try:
-            rule.summary.resize_elements(window, win_size=win_size)
-        except AttributeError:
-            continue
 
 
 def format_date_element(date_str):
@@ -331,7 +323,7 @@ def main():
                    input_text_color=text_col, text_color=text_col,
                    text_element_background_color=default_col,
                    input_elements_background_color=action_col,
-                   button_color=(text_col, default_col))
+                   button_color=(text_col, default_col), tooltip_font=(const.TOOLTIP_FONT))
 
     # Original window size
     root = tk.Tk()
@@ -382,9 +374,9 @@ def main():
 
     summ_tbl_keys = []
     for rule in audit_rules.rules:
-        for summary_item in rule.summary.summary_items:
-            summ_tbl_keys.append(summary_item.key_lookup('Table'))
-            summ_tbl_keys.append(summary_item.key_lookup('Totals'))
+        for tab in rule.summary.tabs:
+            summ_tbl_keys.append(tab.key_lookup('Table'))
+            summ_tbl_keys.append(tab.key_lookup('Totals'))
 
     date_key = None
 
@@ -425,10 +417,18 @@ def main():
 
         # Resize screen
         if resized and current_panel != home_panel:
-            window.refresh()
-            window[current_panel].update(visible=True)
+            if current_rule is not None:
+                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=False)
+                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=True)
+                window[current_rule.element_key].update(visible=False)
 
-            resized = False
+                window.refresh()
+
+                window[current_rule.element_key].update(visible=True)
+                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=False)
+                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
+
+                resized = False
 
         # Resize screen
         ## Get window dimensions
@@ -580,14 +580,13 @@ def main():
                     action_in_progress = False
                     summary_panel_active = False
                     current_panel = current_rule.reset_rule(window)
-                    current_rule = None
+                    current_rule = None if not values['-AMENU-'] else values['-AMENU-']
                 else:
                     continue
             else:  # no action being taken so ok to switch without asking
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                print(current_rule, current_panel)
                 current_panel = current_rule.reset_rule(window)
-                current_rule = None
+                current_rule = None if not values['-AMENU-'] else values['-AMENU-']
 
         # Activate appropriate audit panel
         selected_action = values['-AMENU-']
@@ -595,9 +594,11 @@ def main():
             # Obtain the selected rule object
             current_rule = audit_rules.fetch_rule(selected_action)
 
+            window[current_panel].update(visible=False)
+
             current_panel = current_rule.element_key
-            window['-HOME-'].update(visible=False)
             window[current_panel].update(visible=True)
+            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
 
             tab_windows = [i.name for i in current_rule.tabs]
             final_index = len(tab_windows) - 1
@@ -605,23 +606,44 @@ def main():
             # Set up variables for updating date parameter fields
             date_param = current_rule.fetch_parameter('date', by_type=True)
             try:
-                date_key = current_rule.key_lookup(date_param.name)
+                date_key = date_param.element_key
             except AttributeError:
                 date_key = None
 
             date_str = []
 
+            current_panel = current_rule.element_key
+
             print('Info: the panel in view is {} with tabs {}'.format(current_rule.name, ', '.join(tab_windows)))
+            continue
 
         elif selected_action in cash_names:
             # Obtain the selected rule object
             current_rule = cash_rules.fetch_rule(selected_action)
 
-            current_panel = current_rule.element_key
-            window['-HOME-'].update(visible=False)
-            window[current_panel].update(visible=True)
+            window[current_panel].update(visible=False)
 
-            print('Info: the panel in view is {}'.format(current_rule.name))
+            import_panel = current_rule.load_from_database(user)
+            print(import_panel)
+            if import_panel == '-HOME-':
+                current_rule = None
+                window[import_panel].update(visible=True)
+            else:
+                df = current_rule.df
+                print(df)
+                for param in current_rule.parameters:
+                    value = df.at[0, param.name]
+                    if value:
+                        print(param.name, value)
+                        element_key = param.element_key
+                        window[element_key].update(value=value)
+                window[current_panel].update(visible=False)
+                window[import_panel].update(visible=True)
+
+                current_panel = import_panel
+                print('Info: the panel in view is {}'.format(current_rule.name))
+
+            continue
 
         elif values['-AMENU-'] in bank_names:
             # Obtain the selected rule object
@@ -630,7 +652,7 @@ def main():
 
         # Format date parameter field, if used in a given rule set
         if current_rule and event == date_key:
-            elem_value = values[date_key]
+            elem_value = values[event]
             try:
                 input_value = strptime(elem_value, '%Y-%m-%d')
             except ValueError:
@@ -686,6 +708,16 @@ def main():
 
             # Start Audit
             if all(inputs):  # all rule parameters have input
+                # Verify that the audit has not already been performed with these parameters
+                audit_exists = current_rule.summary.load_from_database(user, current_rule.parameters)
+                if audit_exists is True:
+                    continue_audit = win2.popup_confirm('An audit has already been performed using these parameters. '
+                                                        'Only an admin may edit an existing audit. Are you sure you '
+                                                        'would like to continue?')
+                    if continue_audit == 'Cancel':
+                        current_rule.reset_rule(window, current=True)
+                        continue
+
                 # Initialize audit
                 initialized = True
                 tab_keys = []  # to track tabs displayed
@@ -723,9 +755,13 @@ def main():
                     print('Info: {} audit in progress with parameters {}'
                           .format(current_rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
-                    # Disable start button and parameter elements
+                    # Enable/Disable control buttons and parameter elements
                     start_key = current_rule.key_lookup('Start')
+                    next_key = current_rule.key_lookup('Next')
+                    back_key = current_rule.key_lookup('Back')
+                    save_key = current_rule.key_lookup('Save')
                     window[start_key].update(disabled=True)
+
                     current_rule.toggle_parameters(window, 'disable')
 
                     # Disable user ability to modify settings while audit is in progress
@@ -835,33 +871,42 @@ def main():
 
             # Enable the finalize button when all actions have been performed
             # on all tabs.
-            final_key = current_rule.key_lookup('Finalize')
-            summary_key = current_rule.summary.element_key
+            next_key = current_rule.key_lookup('Next')
+            back_key = current_rule.key_lookup('Back')
+            save_key = current_rule.key_lookup('Save')
             if tab.audit_performed and current_index == final_index:
-                window[final_key].update(disabled=False)
+                window[next_key].update(disabled=False)
 
-            if event == final_key:  # display summary panel
+            if event == next_key:  # display summary panel
+                next_subpanel = current_rule.current_panel + 1
+
                 summary_panel_active = True
                 rule_summ = current_rule.summary
 
-                # Update summary tables with the current audit's parameter values
-                rule_summ.update_title(window, rule)
+                # Update summary table title with the current audit's parameter values
+                rule_summ.update_static_fields(window, current_rule)
 
                 # Update summary totals with tab summary totals
-                rule_summ.update_totals(rule)
+                rule_summ.update_totals(current_rule)
 
-                # update summary elements with mapped tab values
-                rule_summ.initialize_tables(rule)
+                # Update summary elements with mapped tab values
+                rule_summ.initialize_tables(current_rule)
 
                 # Format tables for displaying
+                window.refresh()
                 rule_summ.update_display(window)
 
                 # Hide tab panel and un-hide summary panel
-                window[current_panel].update(visible=False)
-                window[summary_key].update(visible=True)
+                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=False)
+                window[current_rule.panel_keys[next_subpanel]].update(visible=True)
 
                 # Switch the current panel element key to the summary panel
-                current_panel = summary_key
+                current_rule.current_panel = next_subpanel
+
+                if next_subpanel == current_rule.last_panel:
+                    window[next_key].update(disabled=True)
+                    window[back_key].update(disabled=False)
+                    window[save_key].update(disabled=False)
 
                 # Reset tab table column widths
                 for tab in current_rule.tabs:
@@ -904,24 +949,56 @@ def main():
                 continue
 
             # Return to the Audit Panel
-            back_key = current_rule.summary.key_lookup('Back')
+            back_key = current_rule.key_lookup('Back')
             if event == back_key:
                 summary_panel_active = False
+                prev_subpanel = current_rule.current_panel - 1
 
                 # Return to tab display
-                current_panel = current_rule.element_key
-                window[summary_key].update(visible=False)
-                window[current_panel].update(visible=True)
+                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=False)
+                window[current_rule.panel_keys[prev_subpanel]].update(visible=True)
+
+                window[next_key].update(disabled=False)
+                window[back_key].update(disabled=True)
 
                 # Reset summary values
-                rule_summ.reset_attributes()
+#                rule_summ.reset_attributes()
                 rule_summ.resize_elements(window, win_size=window.size)
 
                 # Switch to first tab
                 window[tg_key].Widget.select(0)
 
+                current_rule.current_panel = prev_subpanel
+
+                if prev_subpanel == current_rule.first_panel:
+                    window[next_key].update(disabled=False)
+                    window[back_key].update(disabled=True)
+                    window[save_key].update(disabled=True)
+
+            # Add note to current summary panel
+            note_key = summ_tab.key_lookup('Note')
+            if event == note_key:
+                # Display notes window
+                for id_field in summ_tab.ids:
+                    id_param = summ_tab.ids[id_field]
+                    if id_param['IsPrimary'] is True:
+                        tab_title = id_param['Title']
+                        break
+
+                notes_title = summ_tab.notes['Title']
+                note_text = win2.notes_window(summ_tab.id, summ_tab.notes['Value'], record=tab_title,
+                                              title=notes_title).strip()
+                summ_tab.notes['Value'] = note_text
+
+                # Change edit note button to be highlighted if note field not empty
+                print('the note text is: {}'.format(note_text))
+                if note_text:
+                    window[event].update(image_data=const.EDIT_ICON)
+                else:
+                    window[event].update(image_data=const.NOTES_ICON)
+
             # Save results of the audit
-            save_key = current_rule.summary.key_lookup('Save')
+            save_key = current_rule.key_lookup('Save')
             if event == save_key:
                 # Get output file from user
                 title = current_rule.summary.title.replace(' ', '_')
@@ -938,7 +1015,7 @@ def main():
 
                 # Save summary to the program database
                 try:
-                    save_status = rule_summ.save_to_database(user, current_rule.parameters)
+                    save_status = rule_summ.save_to_database(user)
                 except Exception as e:
                     msg = _('Database save failed - {}').format(e)
                     win2.popup_error(msg)
@@ -957,11 +1034,11 @@ def main():
                         continue
 
                 # Save summary to excel or csv file
-                try:
-                    rule_summ.save_report(outfile)
-                except Exception as e:
-                    msg = _('Save to file {} failed due to {}').format(outfile, e)
-                    win2.popup_error(msg)
+#                try:
+#                    rule_summ.save_report(outfile)
+#                except Exception as e:
+#                    msg = _('Save to file {} failed due to {}').format(outfile, e)
+#                    win2.popup_error(msg)
 
     window.close()
 
