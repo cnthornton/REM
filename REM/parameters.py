@@ -20,11 +20,11 @@ class AuditParameter:
 
         self.name = name
         self.rule_name = rule_name
-        self.element_key = lo.as_key('{} {}'.format(rule_name, name))
+        self.element_key = lo.as_key('{RULE} Parameter {NAME} '.format(RULE=rule_name, NAME=name))
         try:
             self.description = cdict['Description']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Description".') \
+            msg = _('Configuration Error: rule {RULE}, RuleParameter {NAME}: missing required parameter "Description".') \
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -32,10 +32,17 @@ class AuditParameter:
         try:
             self.type = cdict['ElementType']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "ElementType".') \
+            msg = _('Configuration Error: rule {RULE}, RuleParameter {NAME}: missing required parameter "ElementType".') \
                 .format(RULE=rule_name, NAME=name)
             win2.popup_error(msg)
             sys.exit(1)
+
+        try:
+            editable = cdict['Editable']
+        except KeyError:
+            self.editable = True
+        else:
+            self.editable = bool(editable)
 
         try:
             self.alias = cdict['Alias']
@@ -96,8 +103,42 @@ class AuditParameter:
         return statement
 
 
+class AuditParameterInput(AuditParameter):
+    """
+    Input style parameter object.
+    """
+
+    def layout(self, text_size: tuple = (None, None), size: tuple = (14, 1), padding: int = None):
+        """
+        Create a layout for rule parameter element 'input'.
+        """
+        pad_el = const.ELEM_PAD
+        padding = const.HORZ_PAD if padding is None else padding
+
+        font = const.MID_FONT
+        bold_font = const.BOLD_FONT
+
+        in_col = const.INPUT_COL
+        bg_col = const.ACTION_COL
+
+        key = self.element_key
+        desc = '{}:'.format(self.description)
+
+        disabled = False if self.editable is True else True
+
+        layout = [sg.Text(desc, size=text_size, pad=((0, pad_el), 0), justification='r', font=bold_font,
+                          background_color=bg_col),
+                  sg.Input('', key=key, size=size, enable_events=True, pad=((0, pad_el), 0), font=font,
+                           background_color=in_col, disabled=disabled,
+                           tooltip=_('Input value for {}'.format(self.description))),
+                  sg.Canvas(size=(padding, 0), visible=True, background_color=bg_col)]
+
+        return sg.Col([layout], pad=(0, 0), background_color=bg_col)
+
+
 class AuditParameterCombo(AuditParameter):
     """
+    DropDown parameter element object.
     """
 
     def __init__(self, rule_name, name, cdict):
@@ -111,12 +152,12 @@ class AuditParameterCombo(AuditParameter):
 
             self.combo_values = []
 
-    def layout(self, padding: int = 8):
+    def layout(self, text_size: tuple = (None, None), size: tuple = None, padding: int = None):
         """
         Create a layout for rule parameter element 'dropdown'.
         """
         pad_el = const.ELEM_PAD
-        pad_h = const.HORZ_PAD
+        padding = const.HORZ_PAD if padding is None else padding
 
         font = const.MID_FONT
         bold_font = const.BOLD_FONT
@@ -128,18 +169,23 @@ class AuditParameterCombo(AuditParameter):
         desc = '{}:'.format(self.description)
         values = self.combo_values
 
-        width = max([len(i) for i in values]) + padding
+        width = max([len(i) for i in values]) + 1
+        size = (width, 1) if size is None else size
 
-        layout = [sg.Text(desc, pad=((0, pad_el), 0), font=bold_font, background_color=bg_col),
-                  sg.Combo(values, font=font, key=key, enable_events=True, size=(width, 1), pad=(0, 0),
-                           background_color=in_col),
-                  sg.Canvas(size=(pad_h, 0), visible=True, background_color=bg_col)]
+        disabled = False if self.editable is True else True
+
+        layout = [sg.Text(desc, size=text_size, pad=((0, pad_el), 0), justification='r', font=bold_font,
+                          background_color=bg_col),
+                  sg.Combo(values, key=key, size=size, pad=(0, 0), font=font, background_color=in_col,
+                           enable_events=True, disabled=disabled),
+                  sg.Canvas(size=(padding, 0), visible=True, background_color=bg_col)]
 
         return sg.Col([layout], pad=(0, 0), background_color=bg_col)
 
 
 class AuditParameterDate(AuditParameter):
     """
+    Date parameter element object.
     """
 
     def __init__(self, rule_name, name, cdict):
@@ -152,28 +198,34 @@ class AuditParameterDate(AuditParameter):
             win2.popup_notice(msg)
             self.format = "%Y-%m-%d"
 
-    def layout(self):
+    def layout(self, text_size: tuple = (None, None), size: tuple = (14, 1), padding: int = None):
         """
         Layout for the rule parameter element 'date'.
         """
         pad_el = const.ELEM_PAD
-        pad_h = const.HORZ_PAD
+        padding = const.HORZ_PAD if padding is None else padding
+
         date_ico = const.CALENDAR_ICON
         font = const.MID_FONT
         bold_font = const.BOLD_FONT
+
         in_col = const.INPUT_COL
         bg_col = const.ACTION_COL
 
         desc = '{}:'.format(self.description)
 
-        key = self.element_key
-        layout = [sg.Text(desc, pad=((0, pad_el), 0), font=bold_font, background_color=bg_col),
-                  sg.Input('', key=key, size=(16, 1), enable_events=True, pad=((0, pad_el), 0), font=font,
-                           background_color=in_col,
+        disabled = False if self.editable is True else True
+
+        input_key = self.element_key
+        date_key = lo.as_key('{RULE} Parameter {NAME} Button'.format(RULE=self.rule_name, NAME=self.name))
+        layout = [sg.Text(desc, size=text_size, pad=((0, pad_el), 0), justification='r', font=bold_font,
+                          background_color=bg_col),
+                  sg.Input('', key=input_key, size=size, enable_events=True, pad=((0, pad_el), 0), font=font,
+                           background_color=in_col, disabled=disabled,
                            tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
-                  sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, pad=(0, 0),
-                                    font=font, border_width=0, tooltip=_('Select date from calendar menu')),
-                  sg.Canvas(size=(pad_h, 0), visible=True, background_color=bg_col)]
+                  sg.CalendarButton('', key=date_key, format='%Y-%m-%d', image_data=date_ico, pad=(0, 0), font=font,
+                                    border_width=0, disabled=disabled, tooltip=_('Select date from calendar menu')),
+                  sg.Canvas(size=(padding, 0), visible=True, background_color=bg_col)]
 
         return sg.Col([layout], pad=(0, 0), background_color=bg_col)
 
@@ -232,7 +284,7 @@ class AuditParameterDate(AuditParameter):
 
 class AuditParameterDateRange(AuditParameterDate):
     """
-    Layout for the rule parameter element 'date_range'.
+    Date range parameter element object.
     """
 
     def __init__(self, rule_name, name, cdict):
@@ -259,18 +311,20 @@ class AuditParameterDateRange(AuditParameterDate):
         key_from = self.element_key
         key_to = self.element_key2
 
+        disabled = False if self.editable is True else True
+
         layout = [[sg.Text(desc_from, pad=((0, pad_el), 0), font=bold_font, background_color=bg_col),
                    sg.Input('', key=key_from, size=(16, 1), enable_events=True, pad=((0, pad_el), 0), font=font,
-                            background_color=in_col,
+                            background_color=in_col, disabled=disabled,
                             tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
-                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0,
-                                     pad=(0, 0), tooltip=_('Select date from calendar menu')),
+                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, pad=(0, 0),
+                                     disabled=disabled, tooltip=_('Select date from calendar menu')),
                    sg.Text(desc_to, pad=((pad_h, pad_el), 0), font=bold_font, background_color=bg_col),
                    sg.Input('', key=key_to, size=(16, 1), enable_events=True, pad=((0, pad_el), 0),
-                            background_color=in_col,
+                            background_color=in_col, disabled=disabled,
                             tooltip=_('Input date as YYYY-MM-DD or use the calendar button to select the date')),
-                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0,
-                                     pad=(0, 0), tooltip=_('Select date from calendar menu')),
+                   sg.CalendarButton('', format='%Y-%m-%d', image_data=date_ico, border_width=0, pad=(0, 0),
+                                     disabled=disabled, tooltip=_('Select date from calendar menu')),
                    sg.Canvas(size=(pad_h, 1), visible=True, background_color=bg_col)]]
 
         return sg.Col(layout, pad=(0, 0), background_color=bg_col)
