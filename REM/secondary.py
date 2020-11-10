@@ -17,8 +17,7 @@ import textwrap
 
 # Popups
 def popup_confirm(msg):
-    """Display popup asking user if they would like to continue without 
-    completing the current action.
+    """Display popup asking user if they would like to continue without completing the current action.
     """
     font = const.MID_FONT
     return sg.popup_ok_cancel(textwrap.fill(msg, width=40), font=font, title='')
@@ -26,8 +25,7 @@ def popup_confirm(msg):
 
 def popup_notice(msg):
     """
-    Display popup notifying user that an action is required or couldn't
-    be undertaken.
+    Display popup notifying user that an action is required or couldn't be undertaken.
     """
     font = const.MID_FONT
     return sg.popup_ok(textwrap.fill(msg, width=40), font=font, title='')
@@ -218,6 +216,72 @@ def login_window():
     window.close()
 
     return account
+
+
+def notes_window(docno, note, record='DocNo', title='Note'):
+    """
+    Display the note-taking window.
+    """
+    # Window and element size parameters
+    pad_frame = const.FRAME_PAD
+    pad_v = const.VERT_PAD
+    pad_el = const.ELEM_PAD
+
+    bg_col = const.ACTION_COL
+    default_col = const.DEFAULT_COL
+    input_col = const.INPUT_COL
+    text_col = const.TEXT_COL
+    header_col = const.HEADER_COL
+
+    main_font = const.MAIN_FONT
+    header_font = const.HEADER_FONT
+    bold_font = const.BOLD_MID_FONT
+
+    width = 80
+    height = 20
+
+    # GUI layout
+    title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
+                    [sg.Text('Add Note to Record', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
+                             background_color=header_col)]]
+
+    header_layout = [
+        [sg.Text('{}:'.format(record), pad=((pad_el*2, pad_el), pad_el*2), font=bold_font, background_color=bg_col),
+         sg.Text(docno, size=(12, 1), pad=((pad_el, pad_el*2), pad_el*2), justification='l', font=main_font,
+                 background_color=bg_col, auto_size_text=True, border_width=0)]]
+
+    note_layout = [[sg.Text('{}:'.format(title), pad=(0, (0, pad_el)), background_color=bg_col, font=bold_font)],
+                   [sg.Multiline(default_text=note, key='-NOTE-', size=(width, height), pad=(0, 0),
+                                 background_color=bg_col, text_color=text_col, border_width=1, focus=False)]]
+
+    main_layout = [[sg.Frame('', header_layout, pad=(pad_frame, pad_frame), background_color=header_col,
+                             border_width=1, relief='raised')],
+                   [sg.Col(note_layout, pad=(pad_frame, (0, pad_frame)), background_color=input_col, justification='l')]]
+
+    bttn_layout = [[lo.B2('Cancel', key='-CANCEL-', pad=((0, pad_el), 0), tooltip='Cancel'),
+                    lo.B2('Save', key='-SAVE-', pad=((pad_el, 0), 0), tooltip='Save note')]]
+
+    layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+              [sg.Frame('', main_layout, pad=(pad_frame, 0), background_color=bg_col)],
+              [sg.Col(bttn_layout, pad=(0, (pad_v, pad_frame)), background_color=default_col, justification='c')]]
+
+    window = sg.Window('', layout, font=main_font, modal=True, keep_on_top=True, return_keyboard_events=True)
+    window.finalize()
+
+    # Event window
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window
+            break
+
+        if event == '-SAVE-':
+            note = values['-NOTE-']
+            break
+
+    window.close()
+
+    return note
 
 
 def database_importer_window(user):
@@ -516,7 +580,7 @@ def database_importer_window(user):
     return True
 
 
-def data_import_window(df, parameters):
+def data_import_window(df, parameters, create_new: bool = False):
     """
     Display the import data window.
     """
@@ -524,16 +588,20 @@ def data_import_window(df, parameters):
     display_data = df.values.tolist()
 
     # Window and element size parameters
-    layout = lo.import_data_layout(display_header, display_data, parameters)
+    layout = lo.import_data_layout(display_header, display_data, parameters, create_new=create_new)
 
     param_values = {i.element_key: '' for i in parameters}
 
-    window = sg.Window(_('Import Data'), layout, modal=True, resizable=False)
+    window = sg.Window(_('Import Data'), layout, modal=False, resizable=False)
+    window.finalize()
 
+    import_data = None
     while True:
         event, values = window.read(timeout=1000)
 
+        #        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            import_data = None
             break
 
         # Filter table rows based on parameters
@@ -543,6 +611,10 @@ def data_import_window(df, parameters):
             display_df = dm.subset_dataframe(df, subset_rule)
             window['-TABLE-'].update(values=display_df.values.tolist())
 
+        if event == '-NEW-':  # click 'NEW' button
+            import_data = pd.DataFrame(columns=df.columns.values.tolist())
+            break
+
         if event == '-OK-':  # click 'OK' button
             # retrieve selected row
             row = values['-TABLE-']
@@ -551,11 +623,10 @@ def data_import_window(df, parameters):
                 popup_notice(msg)
                 continue
             else:
+                import_data = df.iloc[row]
                 break
 
     window.close()
-
-    import_data = df.iloc[row]
 
     return import_data
 
@@ -600,7 +671,7 @@ def import_window(df, win_size: tuple = None):
               [sg.Frame('', [[lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width,
                                                      pad=(0, 0))]],
                         background_color=bg_col, element_justification='c', pad=(pad_frame, 0), border_width=0)],
-              [sg.Col(bttn_layout, justification='r', pad=(pad_frame, (pad_v, pad_frame)))]]
+              [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
 
     window = sg.Window(_('Import Data'), layout, font=main_font, modal=True, resizable=False)
 
@@ -802,33 +873,25 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     else:
         width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
 
-    # Format dataframe as list for input into sg
+    # Format dataframe as a list for the gui
     row = df.iloc[index]
-    data = row.tolist()
     header = df.columns.values.tolist()
 
     if header_map is None:
         header_map = {i: i for i in header}
 
     display_header = []
-    for column in header:
-        if column in header_map:
-            mapped_column = header_map[column]
+    for column in header_map:
+        if column in header:
+            display_header.append(column)
         else:
             continue
 
-        display_header.append(mapped_column)
-
     edit_keys = {}
-    edit_keys_mapped = {}
     for column in edit_cols:
         element_key = lo.as_key(column)
+        print('element key for column {} is {}'.format(column, element_key))
         edit_keys[column] = element_key
-
-        try:
-            edit_keys_mapped[header_map[column]] = element_key
-        except KeyError:
-            continue
 
     # Window and element size parameters
     main_font = const.MAIN_FONT
@@ -859,28 +922,29 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
 
     tbl_layout = []
     for i, display_column in enumerate(display_header):
-        col_width = lengths[i]
-        column = header[i]
-        column_layout = [[sg.Text(display_column, size=(col_width, 1), auto_size_text=False, border_width=1,
-                                  relief='sunken', background_color=header_col, justification='c', font=main_font,
-                                  tooltip=display_column)]]
+        display_name = header_map[display_column]
 
-        field_val = data[i]
-        if display_column in edit_keys_mapped:
-            element_key = edit_keys_mapped[display_column]
+        col_width = lengths[i]
+        column_layout = [[sg.Text(display_name, size=(col_width, 1), auto_size_text=False, border_width=1,
+                                  relief='sunken', background_color=header_col, justification='c', font=main_font,
+                                  tooltip=display_name)]]
+
+        field_val = row[display_column]
+        if display_column in edit_keys:
+            element_key = edit_keys[display_column]
             readonly = False
             try:
-                column_type = edit_cols[column]['ElementType']
+                column_type = edit_cols[display_column]['ElementType']
             except KeyError:
                 column_type = 'string'
         else:
-            element_key = lo.as_key(column)
+            element_key = lo.as_key(display_column)
             readonly = True
             column_type = 'string'
 
         if column_type == 'dropdown':
             try:
-                values = edit_cols[column]['Values']
+                values = edit_cols[display_column]['Values']
             except KeyError:
                 values = [field_val]
             column_layout.append([sg.DropDown(values, default_value=field_val, key=element_key, size=(col_width - 2, 1),
@@ -891,17 +955,17 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
                                            font=main_font, justification='r', readonly=readonly,
                                            background_color=in_col, tooltip=field_val)])
 
-        tbl_layout.append(sg.Col(column_layout, ))
+        tbl_layout.append(sg.Col(column_layout, pad=(0, 0), expand_x=True))
 
     layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, (pad_frame, 0)))],
-              [sg.Col(bttn_layout, justification='r', pad=(pad_frame, (pad_v, pad_frame)))]]
+              [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
 
     window = sg.Window(_('Modify Record'), layout, modal=True, resizable=False)
     window.finalize()
 
     for display_column in display_header:
-        if display_column in edit_keys_mapped:
-            element_key = edit_keys_mapped[display_column]
+        if display_column in edit_keys:
+            element_key = edit_keys[display_column]
             window[element_key].expand(expand_x=True)
 
     # Start event loop
