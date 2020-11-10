@@ -33,6 +33,22 @@ class ProgramSettings:
             self.username = cnfg['user']['username']
         except KeyError:
             self.username = 'username'
+        try:
+            self.creator_code = cnfg['user']['creator_code_field']
+        except KeyError:
+            self.creator_code = 'CreatorCode'
+        try:
+            self.creation_date = cnfg['user']['creation_date_field']
+        except KeyError:
+            self.creation_date = 'CreationDateTime'
+        try:
+            self.editor_code = cnfg['user']['editor_code_field']
+        except KeyError:
+            self.editor_code = 'LastEditor'
+        try:
+            self.edit_date = cnfg['user']['edit_date_field']
+        except KeyError:
+            self.edit_date = 'LastEditTime'
 
         # Localization parameters
         try:
@@ -46,6 +62,11 @@ class ProgramSettings:
         self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
         self.localedir = os.path.join(dirname, 'locale')
         self.domain = 'base'
+
+        try:
+            self.display_date_format = cnfg['localization']['display_date']
+        except KeyError:
+            self.display_date_format = 'DD-MM-YYYY'
 
         self.translation = self.change_locale()
         self.translation.install('base')  # bind gettext to _() in __builtins__ namespace
@@ -283,6 +304,17 @@ class ProgramSettings:
             trans = gettext
 
         return trans
+
+    def format_display_date(self, date):
+        """
+        Format a datetime object for displaying based on configured date format.
+        """
+        date = self.apply_date_offset(date)
+        date_str = self.format_date_str(date_str=self.display_date_format)
+
+        date_formatted = date.strftime(date_str)
+
+        return date_formatted
 
     def format_date_str(self, date_str: str = None):
         """
