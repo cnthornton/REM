@@ -927,7 +927,7 @@ class SummaryPanel:
         """
         report_def = self.report
 
-        tabs = {}
+        tabs = []
         for tab_name in report_def:
             reference_tab = self.fetch_tab(tab_name)
             notes = reference_tab.notes
@@ -936,6 +936,7 @@ class SummaryPanel:
             section_def = report_def[tab_name]
             sections = []
             for section_name in section_def:
+                print('generating layout for section {} in tab {}'.format(section_name, tab_name))
                 section = section_def[section_name]
                 title = section['Title']
 
@@ -948,6 +949,8 @@ class SummaryPanel:
                     continue
                 else:
                     if reference_df.empty:
+                        print('Warning: rule {RULE}, Summary Report, tab {NAME}: no records found'
+                              .format(RULE=self.rule_name, NAME=tab_name))
                         continue
 
                 # Subset rows based on subset rules in configuration
@@ -961,6 +964,8 @@ class SummaryPanel:
                     continue
                 else:
                     if subset_df.empty:
+                        print('Warning: rule {RULE}, Summary Report, tab {NAME}: subsetting rule for section {SECTION} '
+                              'removed all records'.format(RULE=self.rule_name, NAME=tab_name, SECTION=section_name))
                         continue
 
                 # Select columns from list in configuration
@@ -982,6 +987,9 @@ class SummaryPanel:
                 html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
                                               sparsify=True, na_rep='')
 
+                print('the final report dataframe for section {} in tab {} is:'.format(section_name, tab_name))
+                print(grouped_df)
+
                 # Highlight errors in html string
                 error_col = const.TBL_ERROR_COL
                 errors = reference_tab.search_for_errors(dataframe=grouped_df)
@@ -993,13 +1001,18 @@ class SummaryPanel:
                           .format(RULE=self.rule_name, NAME=reference_tab.name, ERR=e))
                     html_out = html_str
 
+                print('the output HTML for section {} in tab {} is:'.format(section_name, tab_name))
                 print(html_out)
-                print(grouped_df)
 
                 sections.append((title, html_out))
 
+            print('all sections are:')
+            print(sections)
+
             tab_dict['sections'] = sections
-            tabs[tab_name] = tab_dict
+            tabs.append(tab_dict)
+        print('final tab report items is:')
+        print(tabs)
 
         css_url = settings.report_css
         template_vars = {'title': self.title, 'report_tabs': tabs}

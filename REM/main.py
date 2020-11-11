@@ -30,8 +30,12 @@ class ToolBar:
         """
         Initialize toolbar parameters.
         """
+        self.name = 'toolbar'
+        self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
+
         acct_menu = []
         acct_reports = []
+        report_keys = []
         for account_method in account_methods:
             acct_menu.append(('', account_method.title))
             acct_reports.append(('', account_method.title))
@@ -40,14 +44,16 @@ class ToolBar:
             reports = []
             for rule in account_method.rules:
                 rules.append(('!', rule.title))
-                summary_key = '{}_SUMMARY'.format(rule.title.upper())
-                reports.append(('!', '{NAME}::{KEY}'.format(NAME=rule.title, KEY=summary_key)))
+                report_element = '{} Report'.format(rule.title)
+
+                report_key = lo.as_key(report_element)
+                report_keys.append(report_key)
+                reports.append(('!', '{RULE}::{KEY}'.format(RULE=rule.title, KEY=report_key)))
 
             acct_menu.append(rules)
             acct_reports.append(reports)
 
-        self.name = 'toolbar'
-        self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
+        self.report_keys = report_keys
         self.acct_menu = {'name': '&Audits', 'items': acct_menu}
         self.reports_menu = {'name': 'Reports',
                              'items': [('!', 'Summary S&tatistics'), ('', 'Summary &Reports'), acct_reports]}
@@ -368,9 +374,7 @@ def main():
     cancel_keys += [i.key_lookup('Cancel') for i in cash_rules.rules]
     #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
-    report_keys = {'{}_SUMMARY'.format(i.title.upper()): i.summary.element_key for acct_method in acct_methods for i in
-                   acct_method.rules}
-    print(report_keys)
+    report_keys = toolbar.report_keys
 
     summ_tbl_keys = []
     for rule in audit_rules.rules:
@@ -477,7 +481,8 @@ def main():
                 for acct_method in acct_methods:
                     for acct_rule in acct_method.rules:
                         rule_name = acct_rule.title
-                        report_name = '{}::{}_SUMMARY'.format(rule_name, rule_name.upper())
+                        report_key = lo.as_key('{} Report'.format(rule_name))
+                        report_name = '{RULE}::{KEY}'.format(RULE=rule_name, KEY=report_key)
                         if admin:
                             toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
                             toolbar.toggle_menu(window, 'rmenu', report_name, value='enable')
@@ -1020,25 +1025,26 @@ def main():
                     msg = _('Database save failed - {}').format(e)
                     win2.popup_error(msg)
                 else:
-                    if save_status is True:
-                        # Reset audit elements
-                        toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                        action_in_progress = False
-                        summary_panel_active = False
-                        rule_summ.reset_attributes()
-                        rule_summ.resize_elements(window, win_size=window.size)
-                        current_panel = current_rule.reset_rule(window, current=True)
-                    else:
+                    if save_status is False:
                         msg = _('Database save failed.')
                         win2.popup_error(msg)
                         continue
 
                 # Save summary to excel or csv file
-#                try:
-#                    rule_summ.save_report(outfile)
-#                except Exception as e:
-#                    msg = _('Save to file {} failed due to {}').format(outfile, e)
-#                    win2.popup_error(msg)
+                try:
+                    rule_summ.save_report(outfile)
+                except Exception as e:
+                    print(e)
+                    msg = _('Save to file {} failed due to {}').format(outfile, e)
+                    win2.popup_error(msg)
+
+                # Reset audit elements
+                toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
+                action_in_progress = False
+                summary_panel_active = False
+                rule_summ.reset_attributes()
+                rule_summ.resize_elements(window, win_size=window.size)
+                current_panel = current_rule.reset_rule(window, current=True)
 
     window.close()
 
