@@ -2,6 +2,7 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
+import gc
 import numpy as np
 import pandas as pd
 import pyodbc
@@ -12,7 +13,10 @@ import REM.constants as const
 import REM.data_manipulation as dm
 import REM.layouts as lo
 from REM.main import __version__
+import math
+import sys
 import textwrap
+import time
 
 
 # Popups
@@ -214,6 +218,9 @@ def login_window():
                     break
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
     return account
 
@@ -280,6 +287,9 @@ def notes_window(docno, note, record='DocNo', title='Note'):
             break
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
     return note
 
@@ -576,40 +586,196 @@ def database_importer_window(user):
             continue
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
     return True
 
 
-def data_import_window(df, parameters, create_new: bool = False):
+def select_data(to_df, from_df, pkey, column_map: dict = None, to_title: str = None, from_title: str = None):
     """
-    Display the import data window.
+    Select data from one table to add to another table.
     """
-    display_header = [i.description for i in parameters]
-    display_data = df.values.tolist()
+    width = const.WIN_WIDTH - 40
+
+    to_title = 'Collection' if to_title is None else to_title
+    from_title = 'Source' if from_title is None else from_title
+
+    column_map = column_map if column_map is not None else {i: i for i in to_df.columns.values.tolist()}
+    column_header = list(column_map.values())
+
+    to_df = to_df.copy()
+    from_df = from_df.copy()
+
+    to_df.rename(columns=column_map, inplace=True)
+    from_df.rename(columns=column_map, inplace=True)
 
     # Window and element size parameters
-    layout = lo.import_data_layout(display_header, display_data, parameters, create_new=create_new)
+    pad_frame = const.FRAME_PAD
+    pad_v = const.VERT_PAD
+    pad_el = const.ELEM_PAD
 
-    param_values = {i.element_key: '' for i in parameters}
+    bg_col = const.ACTION_COL
+    header_col = const.HEADER_COL
 
-    window = sg.Window(_('Import Data'), layout, modal=False, resizable=False)
-    window.finalize()
+    main_font = const.MAIN_FONT
+    header_font = const.HEADER_FONT
+
+    # Layout
+    title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
+                    [sg.Text('Select data', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
+                             background_color=header_col)]]
+
+    main_layout = [[lo.create_table_layout(dm.format_display_table(from_df, column_map).values.tolist(),
+                                           column_header, '-FROM-', events=True,
+                                           tooltip='Double-click row to add row to the collection', nrow=10,
+                                           width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
+                                           table_name=from_title),
+                    lo.create_table_layout(dm.format_display_table(to_df, column_map).values.tolist(), column_header,
+                                           '-TO-', events=True,
+                                           tooltip='Double-click row to remove row from the collection', nrow=10,
+                                           width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
+                                           table_name=to_title)]]
+
+    bttn_layout = [[sg.Col([[lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel selections')]],
+                           pad=(0, 0), justification='l', expand_x=True),
+                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
+                    sg.Col([[lo.B2('Save', key='-SAVE-', pad=((0, pad_el), 0), tooltip='Save selections')]],
+                           pad=(0, 0), justification='r')]]
+
+    layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+              [sg.Col(main_layout, pad=(pad_frame, 0), background_color=bg_col, justification='c')],
+              [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
+
+    window = sg.Window('', layout, modal=False, resizable=False)
+
+    select_rows = to_df[column_map[pkey]].tolist()
+    while True:
+        event, values = window.read(close=False)
+
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            select_rows = []
+            break
+
+        if event == '-FROM-':  # click to add row to collection
+            row_index = values['-FROM-'][0]
+
+            # Add row ID to list of selected rows
+            row_id = from_df.at[row_index, column_map[pkey]]
+            select_rows.append(row_id)
+
+            # Add row to collection
+            to_df = to_df.append(from_df.iloc[row_index], ignore_index=True)
+            to_df.reset_index(drop=True, inplace=True)
+
+            # Remove row from source
+            from_df.drop(row_index, axis=0, inplace=True)
+            from_df.reset_index(drop=True, inplace=True)
+
+            # Update display tables
+            window['-FROM-'].update(values=dm.format_display_table(from_df, column_map).values.tolist())
+            window['-TO-'].update(values=dm.format_display_table(to_df, column_map).values.tolist())
+
+            continue
+
+        if event == '-TO-':  # click to remove row from collection
+            row_index = values['-TO-'][0]
+
+            # Remove row ID from list of selected rows
+            row_id = to_df.at[row_index, column_map[pkey]]
+            try:
+                select_rows.remove(row_id)
+            except ValueError:
+                continue
+
+            # Add row to source
+            from_df = from_df.append(to_df.iloc[row_index], ignore_index=True)
+            from_df.reset_index(drop=True, inplace=True)
+
+            # Remove row from collection
+            to_df.drop(row_index, axis=0, inplace=True)
+            to_df.reset_index(drop=True, inplace=True)
+
+            print(to_df.dtypes)
+
+            # Update display tables
+            window['-FROM-'].update(values=dm.format_display_table(from_df, column_map).values.tolist())
+            window['-TO-'].update(values=dm.format_display_table(to_df, column_map).values.tolist())
+
+            continue
+
+        if event == '-SAVE-':  # click 'Save' button
+            # Add selected rows to the to_df
+            break
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return select_rows
+
+
+def data_import_window(df, parameters, create_new: bool = False):
+    """
+    Display the import from database window.
+    """
+    display_df = df.copy()
+
+    # Filter data by default parameters
+    filter_params = []
+    for param in parameters:
+        if param.filterable is False:
+            continue
+        else:
+            filter_params.append(param.element_key)
+
+        if param.hidden is False:
+            continue
+
+        param_value = param.value
+        if param_value:
+            display_df = display_df[display_df[param.name] == param_value]
+
+    # Window and element size parameters
+    layout = lo.import_data_layout(display_df, parameters, create_new=create_new)
+
+    window = sg.Window('', layout, modal=True, resizable=False)
 
     import_data = None
     while True:
-        event, values = window.read(timeout=1000)
+        event, values = window.read(timeout=1000, close=False)
 
-        #        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             import_data = None
             break
 
         # Filter table rows based on parameters
-        if event in param_values:
-            subset_list = ['{KEY} == {VAL}'.format(KEY=i, VAL=param_values[i]) for i in param_values if param_values[i]]
-            subset_rule = ' AND '.join(subset_list)
-            display_df = dm.subset_dataframe(df, subset_rule)
+        if event in filter_params:
+            display_df = df.copy()
+            for param in parameters:
+                if param.filterable is False:
+                    continue
+
+                if param.hidden is True:
+                    param_value = param.value
+                else:
+                    param_value = values[param.element_key]
+
+                if param_value:
+                    display_df = display_df[display_df[param.name] == param_value]
             window['-TABLE-'].update(values=display_df.values.tolist())
+
+            continue
+
+        # Enable the OK button if a record is selected
+        if values['-TABLE-']:
+            window['-OK-'].update(disabled=False)
+
+        # Disable the OK button if no record is selected
+        if not values['-TABLE-']:
+            window['-OK-'].update(disabled=True)
 
         if event == '-NEW-':  # click 'NEW' button
             import_data = pd.DataFrame(columns=df.columns.values.tolist())
@@ -617,23 +783,24 @@ def data_import_window(df, parameters, create_new: bool = False):
 
         if event == '-OK-':  # click 'OK' button
             # retrieve selected row
-            row = values['-TABLE-']
-            if not row:  # no row of existing data selected for import
-                msg = 'No row selected for import'
-                popup_notice(msg)
+            try:
+                row = values['-TABLE-'][0]
+            except IndexError:
                 continue
-            else:
-                import_data = df.iloc[row]
-                break
+            import_data = df.iloc[row]
+            break
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
     return import_data
 
 
 def import_window(df, win_size: tuple = None):
     """
-    Display the transaction importer window.
+    Display the audit importer window.
     """
     if win_size:
         width, height = [i * 0.8 for i in win_size]
@@ -730,6 +897,9 @@ def import_window(df, win_size: tuple = None):
                 break
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
     return vfy_orders
 
@@ -780,6 +950,9 @@ def about():
             break
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
 
 def edit_settings(win_size: tuple = None):
@@ -836,6 +1009,9 @@ def edit_settings(win_size: tuple = None):
             break
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
 
 def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple = None, edit: bool = True):
@@ -890,7 +1066,6 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     edit_keys = {}
     for column in edit_cols:
         element_key = lo.as_key(column)
-        print('element key for column {} is {}'.format(column, element_key))
         edit_keys[column] = element_key
 
     # Window and element size parameters
@@ -1065,5 +1240,8 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
                 continue
 
     window.close()
+    layout = None
+    window = None
+    gc.collect()
 
     return df

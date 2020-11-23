@@ -3,6 +3,7 @@ REM Layout classes and functions.
 """
 import datetime
 import dateutil
+import math
 import PySimpleGUI as sg
 import pandas as pd
 import re
@@ -1033,10 +1034,15 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     return layout
 
 
-def import_data_layout(header, data, parameters, create_new: bool = False):
+def import_data_layout(df, parameters, create_new: bool = False):
     """
     Create the layout for the import data window.
     """
+    width = const.WIN_WIDTH * 0.8
+
+    header = df.columns.values.tolist()
+    data = df.values.tolist()
+
     # Layout settings
     bg_col = const.ACTION_COL
 
@@ -1044,34 +1050,47 @@ def import_data_layout(header, data, parameters, create_new: bool = False):
     pad_v = const.VERT_PAD
     pad_frame = const.FRAME_PAD
 
+    layout_params = []
+    for param in parameters:
+        if param.filterable is True and param.hidden is False:
+            layout_params.append(param)
+
     # Layout
     # Import filters
     param_layout = []
-    pairs = []
-    for parameter in parameters:
-        if len(pairs) == 2:
-            param_layout.append([sg.Col([pairs], pad=(0, pad_v), background_color=bg_col)])
-            pairs = []
+    elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
+    if len(layout_params) > 2:
+        nrow = math.ceil(len(layout_params) / 2)
+    else:
+        nrow = 1
+    print('number of rows to display: {}'.format(nrow))
+    for parameter in layout_params:
+        row_size = len(elem_col) - 1
+        print('current rows in column: {}'.format(row_size))
 
-        pairs.append(parameter.layout(text_size=(14, 1), size=(14, 1), padding=40))
+        if row_size == nrow:
+            param_layout.append(sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='l', vertical_alignment='t'))
+            elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
 
-    param_layout.append([sg.Col([pairs], pad=(0, pad_v), background_color=bg_col)])
-    param_layout.append([sg.HorizontalSeparator(pad=(0, 0), color=const.INACTIVE_COL)])
+        elem_col.append([sg.Col([parameter.layout(text_size=(14, 1), size=(14, 1), padding=40, default=False)],
+                                background_color=bg_col, justification='l', expand_x=True)])
+
+    param_layout.append(sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='r', vertical_alignment='t'))  # include last pair in series
 
     # Import data table
-    main_layout = [[create_table_layout(data, header, '-TABLE-', events=False, width=800, nrow=20, pad=(0, 0))]]
+    main_layout = [[create_table_layout(data, header, '-TABLE-', events=False, width=width, nrow=20, pad=(0, 0))]]
 
     # Control buttons
     bttn_layout = [[sg.Col([[B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
                            pad=(0, 0), justification='l', expand_x=True),
-                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-                           justification='c', expand_x=True),
+                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
                     sg.Col([[B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=create_new, tooltip='Create new record'),
                              B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
                            pad=(0, 0), justification='r')]]
 
-    layout = [[sg.Col(param_layout, pad=(pad_frame, 0), background_color=bg_col, justification='c',
-                      element_justification='c', expand_x=True, expand_y=True)],
+    layout = [[sg.Col([param_layout, [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]],
+                      pad=(pad_frame, 0), background_color=bg_col, justification='c',
+                      expand_x=True, expand_y=True)],
               [sg.Col(main_layout, pad=(pad_frame, pad_frame), background_color=bg_col, justification='c')],
               [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
 
