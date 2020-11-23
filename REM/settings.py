@@ -9,9 +9,9 @@ import PySimpleGUI as sg
 import REM.constants as const
 
 
-class ProgramSettings:
+class UserSettings:
     """
-    Class to store and manage program configuration settings.
+    Class to store and manage user-specific configuration settings.
 
     Arguments:
 
