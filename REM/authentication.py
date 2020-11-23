@@ -209,6 +209,7 @@ class UserAccount:
                 sg.popup_animated(const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
 
                 if future.done():
+                    sg.popup_animated(image_source=None)
                     print('Info: database process {} completed'.format(operation))
                     try:
                         result = future.result()
@@ -216,7 +217,6 @@ class UserAccount:
                         print('Info: database process failed due to {}'.format(e))
                         result = alt_result
 
-                    sg.popup_animated(image_source=None)
                     break
             else:
                 try:
@@ -440,7 +440,7 @@ class UserAccount:
         pair_list = ['{}=?'.format(colname) for colname in columns]
 
         where_clause, filter_params = self.construct_where_clause(filters)
-        if isinstance(filter_params, tuple):
+        if filter_params is not None:  # filter parameters go at end of parameter list
             params = params + filter_params
 
         update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}'\
@@ -511,10 +511,9 @@ class UserAccount:
 
     def construct_where_clause(self, filter_rules):
         """
-        Construct an SQL statement where clause for querying and updating 
-        database tables.
+        Construct an SQL statement where clause for querying and updating database tables.
         """
-        if filter_rules is None:  # no filtering rules
+        if filter_rules is None or len(filter_rules) == 0:  # no filtering rules
             return ('', None)
 
         # Construct filtering rules
