@@ -1011,6 +1011,17 @@ def main():
                 rule_summ.update_display(window)
                 continue
 
+            # Remove a row from the records table
+            if event == current_rule.key_lookup('Delete'):
+                # Get selected row
+                tbl_index = values[current_rule.key_lookup('Table')]
+                print('selected index is {}'.format(tbl_index))
+
+                current_rule.remove_row(tbl_index)
+                current_rule.update_display(window)
+
+                continue
+
             # Edit row in either the totals or records table
             if event in summ_tbl_keys:
                 rule_summ.update_display(window)

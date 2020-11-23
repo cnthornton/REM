@@ -18,7 +18,7 @@ import REM.data_manipulation as dm
 import REM.layouts as lo
 import REM.parameters as param_els
 import REM.secondary as win2
-from REM.config import settings
+from REM.config import configuration, current_tbl_pkeys, settings
 
 
 class AuditRules:
@@ -285,7 +285,8 @@ class AuditRule:
         param_elements = []
         for param in params:
             element_layout = param.layout()
-            param_elements.append(element_layout)
+#            param_elements.append(element_layout)
+            param_elements += element_layout
 
         param_layout = [
             [sg.Col([param_elements], pad=(0, (0, pad_v)), background_color=bg_col, vertical_alignment='c',
@@ -692,6 +693,9 @@ class SummaryPanel:
             window[no_key].set_size((elem_size, None))
             window[no_key].update(value=doc_no)
 
+            # Reset column data types
+            tab.set_datatypes()
+
             # Modify records tables for displaying
             print('Info: rule {RULE}, summary {NAME}: formatting records table for displaying'
                   .format(RULE=self.rule_name, NAME=tab.name))
@@ -700,9 +704,6 @@ class SummaryPanel:
 
             tbl_key = tab.key_lookup('Table')
             window[tbl_key].update(values=data)
-
-            # Reset column data types
-            tab.set_datatypes()
 
             # Modify totals tables for displaying
             print('Info: rule {RULE}, summary {NAME}: formatting totals table for displaying'
@@ -936,7 +937,6 @@ class SummaryPanel:
             section_def = report_def[tab_name]
             sections = []
             for section_name in section_def:
-                print('generating layout for section {} in tab {}'.format(section_name, tab_name))
                 section = section_def[section_name]
                 title = section['Title']
 
@@ -987,9 +987,6 @@ class SummaryPanel:
                 html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
                                               sparsify=True, na_rep='')
 
-                print('the final report dataframe for section {} in tab {} is:'.format(section_name, tab_name))
-                print(grouped_df)
-
                 # Highlight errors in html string
                 error_col = const.TBL_ERROR_COL
                 errors = reference_tab.search_for_errors(dataframe=grouped_df)
@@ -1001,18 +998,10 @@ class SummaryPanel:
                           .format(RULE=self.rule_name, NAME=reference_tab.name, ERR=e))
                     html_out = html_str
 
-                print('the output HTML for section {} in tab {} is:'.format(section_name, tab_name))
-                print(html_out)
-
                 sections.append((title, html_out))
-
-            print('all sections are:')
-            print(sections)
 
             tab_dict['sections'] = sections
             tabs.append(tab_dict)
-        print('final tab report items is:')
-        print(tabs)
 
         css_url = settings.report_css
         template_vars = {'title': self.title, 'report_tabs': tabs}
@@ -1408,8 +1397,7 @@ class SummaryItem:
                           list(records['StaticColumns'].keys()) + list(records['EditColumns'].keys())))
 #        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
 #        header = [dm.colname_from_query(i) for i in all_columns]
-        self.df = pd.DataFrame(columns=header)
-        self.import_df = pd.DataFrame(columns=header)
+        self.df = self.import_df = self.removed_df = pd.DataFrame(columns=header)
 
         totals_header = list(set(list(totals['MappingColumns'].keys()) + list(totals['EditColumns'].keys())))
 #        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
@@ -1426,8 +1414,7 @@ class SummaryItem:
 #        header = [dm.colname_from_query(i) for i in self.db_columns]
         header = list(set(list(self.ids.keys()) + list(self.records['MappingColumns'].keys()) +
                           list(self.records['StaticColumns'].keys()) + list(self.records['EditColumns'].keys())))
-        self.df = pd.DataFrame(columns=header)
-        self.import_df = pd.DataFrame(columns=header)
+        self.df = self.import_df = self.removed_df = pd.DataFrame(columns=header)
 
 #        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
 #                         for i in self.totals["TableColumns"]]
@@ -1701,7 +1688,7 @@ class SummaryItem:
 
     def create_id(self, rule, id_param, prev_ids):
         """
-        Create a new ID from based on a list of previous IDs.
+        Create a new ID based on a list of previous IDs.
         """
         param_fields = [i.name for i in rule.parameters]
         id_format = id_param['Format']
@@ -1770,14 +1757,10 @@ class SummaryItem:
         # Create identifiers as defined in the configuration
         for id_field in self.ids:
             id_param = self.ids[id_field]
+            db_table = id_param['DatabaseTable']
 
-            all_ids = id_param['CurrentIDs']
+            all_ids = current_tbl_pkeys[db_table]
             current_ids = df[id_field].dropna().unique().tolist()
-
-            if len(current_ids) > 0:
-                id_list = current_ids
-            else:
-                id_list = all_ids
 
             print('INFO: rule {RULE}, summary {NAME}: list of currents IDs for ID {ID} is {LIST}'
                   .format(RULE=self.rule_name, NAME=self.name, ID=id_field, LIST=current_ids))
@@ -1785,14 +1768,18 @@ class SummaryItem:
                   .format(RULE=self.rule_name, NAME=self.name, ID=id_field, LIST=all_ids))
 
             if id_param['IsUnique'] is True:
-                record_id = self.create_id(rule, id_param, id_list)
-                all_ids.append(record_id)
+                record_id = self.create_id(rule, id_param, all_ids)
+                print(
+                    'Info: saving new record {ID} to list of table {TBL} IDs'.format(ID=record_id, TBL=db_table))
+                current_tbl_pkeys[db_table].append(record_id)
             else:
                 if len(current_ids) > 0:
                     record_id = current_ids[0]
                 else:
-                    record_id = self.create_id(rule, id_param, id_list)
-                    all_ids.append(record_id)
+                    record_id = self.create_id(rule, id_param, all_ids)
+                    print(
+                        'Info: saving new record {ID} to list of table {TBL} IDs'.format(ID=record_id, TBL=db_table))
+                    current_tbl_pkeys[db_table].append(record_id)
 
             df.at[index, id_field] = record_id
 
@@ -1839,7 +1826,17 @@ class SummaryItem:
         # Display the add row window
         display_map = {display_columns[i]: i for i in display_columns}
         df = win2.modify_record(df, new_index, edit_columns, header_map=display_map, win_size=win_size, edit=False)
-        print('Added new row: {}'.format(df.iloc[new_index]))
+
+        # Remove IDs from list of table IDs if record creation cancelled
+        if nrow + 1 != df.shape[0]:  # new record creation cancelled
+            for id_field in self.ids:
+                id_param = self.ids[id_field]
+                db_table = id_param['DatabaseTable']
+
+                # Remove from list of used IDs
+                record_id = current_tbl_pkeys[db_table].pop(-1)
+                print('Info: removed cancelled record {ID} from list of table {TBL} IDs'
+                      .format(ID=record_id, TBL=db_table))
 
         self.df = df
 
@@ -1869,6 +1866,43 @@ class SummaryItem:
             self.df = df
         elif table == 'totals':
             self.totals_df = df
+
+    def remove_row(self, index):
+        """
+        Remove row from tab records table.
+        """
+        df = self.df.copy()
+        removed_df = self.removed_df.copy()
+
+        # Remove IDs of the deleted record from the list of table IDs if not already saved in database
+        for id_field in self.ids:
+            id_param = self.ids[id_field]
+            db_table = id_param['DatabaseTable']
+
+            record_ids = df[id_field][index]
+            existing_expenses = self.import_df[id_field].values.tolist()
+            for record_id in record_ids:
+                if record_id not in existing_expenses:
+                    try:
+                        current_tbl_pkeys[db_table].remove(record_id)
+                    except ValueError:
+                        print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
+                              'table {TBL} IDs'.format(ID=record_id, TBL=db_table))
+                        continue
+                    else:
+                        print('Info: removed ID {ID} from the list of database table {TBL} IDs'
+                              .format(ID=record_id, TBL=db_table))
+
+        # Add row to the dataframe of removed expenses
+        removed_df = removed_df.append(df.iloc[index], ignore_index=True)
+        removed_df.reset_index(drop=True, inplace=True)
+
+        # Drop row from the dataframe of included expenses
+        df.drop(index, axis=0, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+
+        self.removed_df = removed_df
+        self.df = df
 
     def format_display_table(self, table: str = 'records', date_fmt: str = None):
         """
@@ -2081,7 +2115,7 @@ class SummaryItem:
                     continue
 
                 if element_type in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                    df[edit_column].fillna(datetime.datetime.now().strftime(settings.format_date_str()), inplace=True)
+                    df[edit_column].fillna(datetime.datetime.now(), inplace=True)
                 elif element_type in ('int', 'integer', 'bit'):
                     df[edit_column].fillna(0, inplace=True)
                 elif element_type in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
