@@ -19,7 +19,7 @@ import REM.data_manipulation as dm
 import REM.layouts as lo
 import REM.parameters as param_els
 import REM.secondary as win2
-from REM.config import settings
+from REM.config import configuration, current_tbl_pkeys, settings
 
 
 class CashRules:
@@ -322,7 +322,7 @@ class CashRule:
         panel_key = self.element_key
         current_key = self.panel_keys[self.current_panel]
 
-        # Reset current panel
+        # Reset current paneltable.remove(current_rule.id['Value'])
         self.current_panel = 0
 
         # Disable current panel
@@ -700,11 +700,10 @@ class CashRule:
 
         return display_df
 
-    def create_id(self, df):
+    def create_id(self):
         """
         Create new transaction ID.
         """
-        pkey = self.id['Column']
         id_format = self.id['Format']
         param_fields = [i.name for i in self.parameters]
 
@@ -719,8 +718,15 @@ class CashRule:
                 id_date = date.strftime(date_fmt)
 
         # Search list of used IDs occurring within the current date cycle
-        df = dm.sort_table(df, pkey)
-        prev_ids = df[pkey].tolist()
+        try:
+            prev_ids = current_tbl_pkeys[self.table]
+        except KeyError:
+            msg = 'Configuration Warning: missing an IDs entry for database table {}'.format(self.table)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            prev_ids.sort()
+
         if len(prev_ids) > 0:
             used_ids = []
             for prev_id in prev_ids:
@@ -817,20 +823,27 @@ class CashRule:
         Load previous cash transactions from the program database.
         """
         table = self.table
+
+        # Filter database results using static parameters
         filters = []
         for parameter in self.parameters:
             print(parameter.name, parameter.filterable, parameter.editable, parameter.value)
             if parameter.editable is False and parameter.filterable is True and parameter.value is not None:
                 filters.append(parameter.filter_statement(table=table))
 
+        # Query existing database entries
         import_df = user.query(table, columns=self.columns, filter_rules=filters, prog_db=True)
-
         trans_df = win2.data_import_window(import_df, self.parameters, create_new=True)
+
         if trans_df is None:  # user selected to cancel importing/creating a bank transaction
             return '-HOME-'
         elif trans_df.empty:  # user selected to create a new bank transaction record
             # Create and add new id to the transaction
-            trans_id = self.create_id(import_df)
+            trans_id = self.create_id()
+
+            # Add transaction to the list of transaction IDs
+            current_tbl_pkeys[self.table].append(trans_id)
+
             self.df.at[0, self.id['Column']] = trans_id
             self.id['Value'] = trans_id
 
@@ -1133,11 +1146,13 @@ class CashExpenses:
 
         self.ids = []
 
-    def add_row(self, user):
+    def add_row(self):
         """
         Add a new expense to the expenses table.
         """
         df = self.df.copy()
+        id_field = self.pkey
+
         edit_columns = self.edit_columns
         static_columns = self.static_columns
         display_columns = self.display_columns
@@ -1149,24 +1164,7 @@ class CashExpenses:
         df = df.append(pd.Series(), ignore_index=True)
 
         # Create an identifier for the new row
-        id_field = self.pkey
-        id_format = self.format
-
-        current_ids = df[id_field].dropna().unique().tolist()
-
-        if len(current_ids) > 0:
-            id_list = current_ids
-        else:
-            table = self.table
-            ids_df = user.query(table, columns=[id_field], prog_db=True)
-            try:
-                id_list = dm.sort_table(ids_df, id_field)[id_field].dropna().tolist()
-            except KeyError:
-                print('Error: rule {RULE}, Expenses: ID field "{FIELD}" not found in the database table {TBL}'
-                      .format(RULE=self.rule_name, FIELD=id_field, TBL=table))
-                sys.exit(1)
-
-        record_id = self.create_id(id_format, id_list)
+        record_id = self.create_id()
 
         df.at[new_index, id_field] = record_id
 
@@ -1230,6 +1228,10 @@ class CashExpenses:
         display_map = {display_columns[i]: i for i in display_columns}
         df = win2.modify_record(df, new_index, edit_columns, header_map=display_map, edit=False)
 
+        if nrow + 1 == df.shape[0]:  # record successfully saved
+            # Save to list of used IDs
+            current_tbl_pkeys[self.table].append(record_id)
+
         self.df = df
 
     def edit_row(self, index, win_size: tuple = None):
@@ -1263,10 +1265,12 @@ class CashExpenses:
         self.removed_df = removed_df
         self.df = df
 
-    def create_id(self, id_format, prev_ids):
+    def create_id(self):
         """
         Create a new ID based on a list of previous IDs.
         """
+        id_format = self.format
+
         # Determine date parameter of the new ID
         date = settings.apply_date_offset(datetime.datetime.now())
 
@@ -1278,6 +1282,15 @@ class CashExpenses:
                 id_date = date.strftime(date_fmt)
 
         # Search list of used IDs occurring within the current date cycle
+        try:
+            prev_ids = current_tbl_pkeys[self.table]
+        except KeyError:
+            msg = 'Configuration Warning: missing an IDs entry for database table {}'.format(self.table)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            prev_ids.sort()
+
         if len(prev_ids) > 0:
             print('current ids are: {}'.format(prev_ids))
             used_ids = []

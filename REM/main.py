@@ -12,7 +12,7 @@ import REM.audit as audit
 import REM.bank as bank
 import REM.cash as cash
 import REM.data_manipulation as dm
-from REM.config import Config, settings
+from REM.config import configuration, current_tbl_pkeys, settings
 import REM.layouts as lo
 import REM.secondary as win2
 import REM.constants as const
@@ -349,13 +349,10 @@ def main():
         current_h = screen_h
 
     # Load the program configuration
-    cnfg = Config()
-    cnfg.load_configuration()
-
-    audit_rules = audit.AuditRules(cnfg)
-    cash_rules = cash.CashRules(cnfg)
-    bank_rules = bank.BankRules(cnfg)
-    startup_msgs = cnfg.startup_msgs
+    audit_rules = audit.AuditRules(configuration)
+    cash_rules = cash.CashRules(configuration)
+    bank_rules = bank.BankRules(configuration)
+    startup_msgs = configuration.startup_msgs
 
     acct_methods = [audit_rules, cash_rules]
 
@@ -387,7 +384,9 @@ def main():
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
 
     # Event modifiers
-    action_in_progress = False
+    audit_in_progress = False
+    cr_in_progress = False
+    br_in_progress = False
     summary_panel_active = False
     current_tab = None
     current_rule = None
@@ -506,8 +505,10 @@ def main():
             if selection == 'Cancel':
                 continue
 
-            action_in_progress = False
-            current_panel = current_rule.reset_rule(window)  # reset to home screen
+            audit_in_progress = False
+            cr_in_progress = False
+            if current_rule is not None:
+                current_panel = current_rule.reset_rule(window)  # reset to home screen
             current_rule = None
 
             # Reset User attributes
@@ -573,17 +574,62 @@ def main():
             else:
                 debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
 
-        # Switch to home panel
+        # Switch to new panel
         if current_panel != '-HOME-' and (event in cancel_keys or values['-AMENU-'] or values['-RMENU-']):
-            if action_in_progress:  # ask to switch first
-                msg = _('Current action is ongoing. Are you sure you would like to exit without saving?')
+            if audit_in_progress:  # ask to switch first
+                msg = _('An audit is ongoing. Are you sure you would like to exit without saving?')
                 selection = win2.popup_confirm(msg)
 
                 if selection == 'OK':
                     # Reset to defaults
                     toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                    action_in_progress = False
+                    audit_in_progress = False
                     summary_panel_active = False
+                    # Remove from the list of used IDs any IDs created during the now cancelled audit
+
+                    # Reset the rule and update the panel
+                    current_panel = current_rule.reset_rule(window, current=True)
+                    current_rule = None if not values['-AMENU-'] else values['-AMENU-']
+                else:
+                    continue
+            elif cr_in_progress:  # ask to switch first
+                msg = _('Are you sure you would like to exit without saving the transaction?')
+                selection = win2.popup_confirm(msg)
+
+                if selection == 'OK':
+                    # Reset to defaults
+                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
+                    cr_in_progress = False
+
+                    # Remove from list of used IDs any IDs created/deleted during the now cancelled reconciliation
+                    # Remove transaction ID from list if not already saved in database
+                    if current_rule.exists is False:  # newly created transaction
+                        # Remove transaction ID from list of transaction IDs
+                        try:
+                            current_tbl_pkeys[current_rule.table].remove(current_rule.id['Value'])
+                        except ValueError:
+                            print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
+                                  'table {TBL} IDs'.format(ID=current_rule.id['Value'], TBL=current_rule.expenses.table))
+                        else:
+                            print('Info: removed ID {ID} from the list of database table {TBL} IDs'
+                                  .format(ID=current_rule.id['Value'], TBL=current_rule.table))
+
+                    # Remove those expense IDs not already saved in the database from the list
+                    all_expenses = current_rule.expenses.df[current_rule.expenses.pkey].values.tolist()
+                    existing_expenses = current_rule.expenses.import_df[current_rule.expenses.pkey].values.tolist()
+                    created_expenses = set(all_expenses).difference(set(existing_expenses))
+                    for expense_id in created_expenses:
+                        try:
+                            current_tbl_pkeys[current_rule.expenses.table].remove(expense_id)
+                        except ValueError:
+                            print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
+                                  'table {TBL} IDs'.format(ID=expense_id, TBL=current_rule.expenses.table))
+                            continue
+                        else:
+                            print('Info: removed ID {ID} from the list of database table {TBL} IDs'
+                                  .format(ID=expense_id, TBL=current_rule.expenses.table))
+
+                    # Reset rule and update the panel
                     current_panel = current_rule.reset_rule(window)
                     current_rule = None if not values['-AMENU-'] else values['-AMENU-']
                 else:
@@ -592,6 +638,9 @@ def main():
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
                 current_panel = current_rule.reset_rule(window)
                 current_rule = None if not values['-AMENU-'] else values['-AMENU-']
+
+            window.refresh()
+#            continue
 
         # Activate appropriate audit panel
         selected_action = values['-AMENU-']
@@ -626,27 +675,52 @@ def main():
             # Obtain the selected rule object
             current_rule = cash_rules.fetch_rule(selected_action)
 
-            window[current_panel].update(visible=False)
-
             import_panel = current_rule.load_from_database(user)
-            print(import_panel)
             if import_panel == '-HOME-':
                 current_rule = None
                 window[import_panel].update(visible=True)
-            else:
-                df = current_rule.df
-                print(df)
-                for param in current_rule.parameters:
-                    value = df.at[0, param.name]
-                    if value:
-                        print(param.name, value)
-                        element_key = param.element_key
-                        window[element_key].update(value=value)
-                window[current_panel].update(visible=False)
-                window[import_panel].update(visible=True)
+                continue
 
-                current_panel = import_panel
-                print('Info: the panel in view is {}'.format(current_rule.name))
+            # Update transaction ID field with the transaction number
+            elem_size = len(current_rule.id['Value']) + 1
+
+            id_key = current_rule.key_lookup('ID')
+            window[id_key].set_size((elem_size, None))
+            window[id_key].update(value=current_rule.id['Value'])
+
+            # Update parameter elements
+            for param in current_rule.parameters:
+                if param.hidden is True:
+                    continue
+                param_key = param.element_key
+                param_value = param.value
+                window[param_key].update(value=param_value)
+
+            current_rule.update_display(window)
+
+            window[current_panel].update(visible=False)
+            window[import_panel].update(visible=True)
+
+            # Query records database for any audit records unassociated with a transaction
+            ref_table = current_rule.records.table
+            ref_columns = list(current_rule.records.columns.keys())
+            filters = ('{COL} IS NULL'.format(COL=current_rule.records.refkey), None)
+            import_df = user.query(ref_table, ref_columns, filter_rules=filters, prog_db=True)
+
+            current_rule.records.unassociated_df = current_rule.records.set_datatypes(import_df)
+
+            # Set up variables for updating date parameter fields
+            date_param = current_rule.fetch_parameter('date', by_type=True)
+            try:
+                date_key = date_param.element_key
+            except AttributeError:
+                date_key = None
+
+            date_str = []
+
+            current_panel = import_panel
+            cr_in_progress = True
+            print('Info: the panel in view is {}'.format(current_rule.name))
 
             continue
 
@@ -690,7 +764,8 @@ def main():
                 date_str_fmt = format_date_element(date_str)
                 window[date_key].update(value=date_str_fmt)
 
-        # Start the selected audit
+        # Audit Rules
+        # Start an audit
         try:
             start_key = current_rule.key_lookup('Start')
         except AttributeError:
@@ -756,7 +831,7 @@ def main():
                     tab.toggle_actions(window, 'enable')
 
                 if initialized:
-                    action_in_progress = True
+                    audit_in_progress = True
                     print('Info: {} audit in progress with parameters {}'
                           .format(current_rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
@@ -776,7 +851,7 @@ def main():
                         tab.reset_dynamic_attributes()
 
         # Scan for missing data if applicable
-        if action_in_progress and not summary_panel_active:
+        if audit_in_progress and not summary_panel_active:
             tg_key = current_rule.key_lookup('TG')
             previous_tab = current_tab
             current_tab = window[tg_key].Get()
@@ -917,8 +992,8 @@ def main():
                 for tab in current_rule.tabs:
                     tab.resize_elements(window, win_size=window.size)
 
-        # Summary Panel
-        if action_in_progress and summary_panel_active:
+        # Audit summary panel
+        if audit_in_progress and summary_panel_active:
             # Get current tab in view
             tg_key = current_rule.summary.key_lookup('TG')
             current_tab = window[tg_key].Get()
@@ -1040,11 +1115,99 @@ def main():
 
                 # Reset audit elements
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                action_in_progress = False
+                audit_in_progress = False
                 summary_panel_active = False
                 rule_summ.reset_attributes()
                 rule_summ.resize_elements(window, win_size=window.size)
                 current_panel = current_rule.reset_rule(window, current=True)
+
+        # Cash Rules
+        if cr_in_progress:
+            # Add records to bank transaction
+            if event == current_rule.key_lookup('AddEntry'):
+                # Display window for adding records
+                current_rule.records.add_row()
+                current_rule.update_display(window)
+
+                continue
+
+            # Add an expense to the bank transaction
+            if event == current_rule.key_lookup('AddExpense'):
+                current_rule.expenses.add_row()
+                current_rule.update_display(window)
+
+                continue
+
+            # Remove a record from the bank transaction
+            if event == current_rule.key_lookup('RemoveEntry'):
+                # Get selected row
+                tbl_index = values[current_rule.key_lookup('EntryTable')]
+                print('selected index is {}'.format(tbl_index))
+
+                current_rule.records.remove_row(tbl_index)
+                current_rule.update_display(window)
+
+                continue
+
+            # Remove an expense from the bank transaction
+            if event == current_rule.key_lookup('RemoveExpense'):
+                # Get selected row
+                tbl_index = values[current_rule.key_lookup('ExpenseTable')]
+                print('selected index is {}'.format(tbl_index))
+
+                current_rule.expenses.remove_row(tbl_index)
+                current_rule.update_display(window)
+
+                continue
+
+            # Edit an expense
+            if event == current_rule.key_lookup('ExpenseTable'):
+                # Get selected row
+                tbl_index = values[current_rule.key_lookup('ExpenseTable')][0]
+                print('selected index is {}'.format(tbl_index))
+
+                current_rule.expenses.edit_row(tbl_index)
+                current_rule.update_display(window)
+
+                continue
+
+            # Save bank transaction to database
+            if event == current_rule.key_lookup('Save'):
+                # Set parameter values
+                all_params = True
+                for param in current_rule.parameters:
+                    if param.hidden is True:
+                        continue
+
+                    param.set_value(values)
+                    has_value = param.values_set()
+
+                    if has_value is False:
+                        print(param.name, param.value, has_value)
+                        param_desc = param.description
+                        msg = _('Correctly formatted input is required in the "{}" field').format(param_desc)
+                        win2.popup_notice(msg)
+
+                        all_params = False
+                        break
+
+                if all_params is not True:
+                    continue
+
+                # Add deposit amount to table
+                deposit_amount = current_rule.deposit['Value']
+                deposit_col = current_rule.deposit['Column']
+                current_rule.df[deposit_col] = deposit_amount
+
+                save_status = current_rule.save_to_database(user)
+                if save_status is False:
+                    msg = _('Database save failed.')
+                    win2.popup_error(msg)
+                    continue
+
+                cr_in_progress = False
+                summary_panel_active = False
+                current_panel = current_rule.reset_rule(window, current=False)
 
     window.close()
 
