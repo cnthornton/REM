@@ -980,20 +980,23 @@ class CashRule:
 
         # Update the cash expenses added to the transaction
         expenses_table = self.expenses.table
-        ref_key = self.expenses.pkey
-        import_expenses = self.expenses.import_df[ref_key].tolist()
+        expense_pkey = self.expenses.pkey
+        expense_refkey = self.expenses.refkey
+        import_expenses = self.expenses.import_df[expense_pkey].tolist()
         for index, row in self.expenses.df.iterrows():
-            row_id = row[ref_key]
+            row_id = row[expense_pkey]
             if row_id in import_expenses:
+                # Edit existing expense in database table
                 row[settings.editor_code] = user.uid
                 row[settings.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
                 row_columns = row.index.tolist()
                 row_values = row.values.tolist()
 
-                filters = ('{} = ?'.format(ref_key), (row_id,))
+                filters = ('{} = ?'.format(expense_pkey), (row_id,))
                 success = user.update(expenses_table, row_columns, row_values, filters)
             else:
+                # Create new entry for expense in database table
                 row[settings.creator_code] = user.uid
                 row[settings.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
@@ -1005,17 +1008,19 @@ class CashRule:
             if success is False:
                 print('Warning: Failed to update {}'.format(row_id))
 
-        # Update the cash expenses removed from the transaction
-        for index, row in self.expenses.removed_df.iterrows():
-            row_id = row[ref_key]
-            if row_id not in import_expenses:  # expense doesn't exist in database yet
+        # Handle removed expenses
+        removed_expenses = self.expenses.removed_df[expense_pkey].values.tolist()
+        for expense_id in removed_expenses:
+            if expense_id not in import_expenses:  # expense doesn't exist in database yet, no need to save
                 continue
 
-            filters = ('{} = ?'.format(ref_key), (row_id,))
-            success = user.update(expenses_table, ['IsCancel'], [1], filters)
+            # Update the cash expenses removed from the transaction
+            filters = ('{} = ?'.format(expense_pkey), (expense_id,))
+            success = user.update(expenses_table, [expense_refkey, 'IsCancel'], [None, 1], filters)
 
             if success is False:
-                print('Warning: Failed to update {}'.format(row_id))
+                win2.popup_error('Warning: Failed to update {ID}. Changes will not be saved to database table {TBL}'
+                                 .format(ID=expense_id, TBL=expenses_table))
 
         return True
 
@@ -1253,6 +1258,21 @@ class CashExpenses:
         """
         df = self.df.copy()
         removed_df = self.removed_df.copy()
+
+        # Remove the deleted expense ID from the list of table IDs if not already saved in database
+        record_ids = df[self.pkey][index]
+        existing_expenses = self.import_df[self.pkey].values.tolist()
+        for record_id in record_ids:
+            if record_id not in existing_expenses:
+                try:
+                    current_tbl_pkeys[self.table].remove(record_id)
+                except ValueError:
+                    print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
+                          'table {TBL} IDs'.format(ID=record_id, TBL=self.table))
+                    continue
+                else:
+                    print('Info: removed ID {ID} from the list of database table {TBL} IDs'
+                          .format(ID=record_id, TBL=self.table))
 
         # Add row to the dataframe of removed expenses
         removed_df = removed_df.append(df.iloc[index], ignore_index=True)
