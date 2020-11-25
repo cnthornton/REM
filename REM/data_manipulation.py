@@ -176,7 +176,8 @@ def fill_na(df, colname=None):
         if is_float_dtype(dtype):
             df[column].fillna(0.0, inplace=True)
         elif is_string_dtype(dtype):
-            df[column].fillna('', inplace=True)
+            continue
+#            df[column].fillna('', inplace=True)
         elif is_datetime_dtype(dtype):
             df[column].fillna(datetime.datetime.now(), inplace=True)
         elif is_bool_dtype(dtype):

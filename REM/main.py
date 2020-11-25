@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '0.7.1'
+__version__ = '1.0.1'
 
 import datetime
 from multiprocessing import freeze_support
@@ -586,10 +586,16 @@ def main():
                     audit_in_progress = False
                     summary_panel_active = False
                     # Remove from the list of used IDs any IDs created during the now cancelled audit
+                    for tab in current_rule.summary.tabs:
+                        tab.remove_unsaved_keys()
 
                     # Reset the rule and update the panel
-                    current_panel = current_rule.reset_rule(window, current=True)
-                    current_rule = None if not values['-AMENU-'] else values['-AMENU-']
+                    remain_in_panel = True if not values['-AMENU-'] else False
+                    if remain_in_panel is True:
+                        current_panel = current_rule.reset_rule(window, current=True)
+                    else:
+                        current_panel = current_rule.reset_rule(window, current=False)
+                    current_rule = current_rule if not values['-AMENU-'] else values['-AMENU-']
                 else:
                     continue
             elif cr_in_progress:  # ask to switch first
@@ -640,7 +646,6 @@ def main():
                 current_rule = None if not values['-AMENU-'] else values['-AMENU-']
 
             window.refresh()
-#            continue
 
         # Activate appropriate audit panel
         selected_action = values['-AMENU-']
@@ -765,12 +770,11 @@ def main():
                 window[date_key].update(value=date_str_fmt)
 
         # Audit Rules
-        # Start an audit
+        # Start the audit
         try:
             start_key = current_rule.key_lookup('Start')
         except AttributeError:
             start_key = None
-
         if event == start_key:
             # Check if all rule parameters elements have input
             params = current_rule.parameters
@@ -836,11 +840,7 @@ def main():
                           .format(current_rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
                     # Enable/Disable control buttons and parameter elements
-                    start_key = current_rule.key_lookup('Start')
-                    next_key = current_rule.key_lookup('Next')
-                    back_key = current_rule.key_lookup('Back')
-                    save_key = current_rule.key_lookup('Save')
-                    window[start_key].update(disabled=True)
+                    window[current_rule.key_lookup('Start')].update(disabled=True)
 
                     current_rule.toggle_parameters(window, 'disable')
 
@@ -881,8 +881,7 @@ def main():
                 continue
 
             # Add row to table based on user input
-            add_key = tab.key_lookup('Add')
-            if event == add_key:  # clicked the 'Add' button
+            if event == tab.key_lookup('Add'):  # clicked the 'Add' button
                 input_key = tab.key_lookup('Input')
 
                 # Extract transaction information from database
@@ -951,13 +950,10 @@ def main():
 
             # Enable the finalize button when all actions have been performed
             # on all tabs.
-            next_key = current_rule.key_lookup('Next')
-            back_key = current_rule.key_lookup('Back')
-            save_key = current_rule.key_lookup('Save')
             if tab.audit_performed and current_index == final_index:
-                window[next_key].update(disabled=False)
+                window[current_rule.key_lookup('Next')].update(disabled=False)
 
-            if event == next_key:  # display summary panel
+            if event == current_rule.key_lookup('Next'):  # display summary panel
                 next_subpanel = current_rule.current_panel + 1
 
                 summary_panel_active = True
@@ -984,9 +980,9 @@ def main():
                 current_rule.current_panel = next_subpanel
 
                 if next_subpanel == current_rule.last_panel:
-                    window[next_key].update(disabled=True)
-                    window[back_key].update(disabled=False)
-                    window[save_key].update(disabled=False)
+                    window[current_rule.key_lookup('Next')].update(disabled=True)
+                    window[current_rule.key_lookup('Back')].update(disabled=False)
+                    window[current_rule.key_lookup('Save')].update(disabled=False)
 
                 # Reset tab table column widths
                 for tab in current_rule.tabs:
@@ -1000,25 +996,24 @@ def main():
             summ_tab = current_rule.summary.fetch_tab(current_tab, by_key=True)
 
             # Add a row to the records table
-            add_key = summ_tab.key_lookup('Add')
-            if event == add_key:
+            if event == summ_tab.key_lookup('Add'):
                 rule_summ.update_display(window)
 
                 # Show the add row window to the user
-                summ_tab.add_row(rule, win_size=window.size)
+                summ_tab.add_row(win_size=window.size)
 
                 # Update display table
                 rule_summ.update_display(window)
                 continue
 
             # Remove a row from the records table
-            if event == current_rule.key_lookup('Delete'):
+            if event == summ_tab.key_lookup('Delete'):
                 # Get selected row
-                tbl_index = values[current_rule.key_lookup('Table')]
-                print('selected index is {}'.format(tbl_index))
+                tbl_index = values[summ_tab.key_lookup('Table')]
+                print('Info: the rows selected for removal are {}'.format(tbl_index))
 
-                current_rule.remove_row(tbl_index)
-                current_rule.update_display(window)
+                summ_tab.remove_row(tbl_index)
+                rule_summ.update_display(window)
 
                 continue
 
@@ -1040,8 +1035,7 @@ def main():
                 continue
 
             # Return to the Audit Panel
-            back_key = current_rule.key_lookup('Back')
-            if event == back_key:
+            if event == current_rule.key_lookup('Back'):
                 summary_panel_active = False
                 prev_subpanel = current_rule.current_panel - 1
 
@@ -1049,11 +1043,14 @@ def main():
                 window[current_rule.panel_keys[current_rule.current_panel]].update(visible=False)
                 window[current_rule.panel_keys[prev_subpanel]].update(visible=True)
 
-                window[next_key].update(disabled=False)
-                window[back_key].update(disabled=True)
+                window[current_rule.key_lookup('Next')].update(disabled=False)
+                window[current_rule.key_lookup('Back')].update(disabled=True)
 
                 # Reset summary values
-#                rule_summ.reset_attributes()
+                for tab in rule_summ.tabs:
+                    tab.remove_unsaved_keys()
+                    tab.reset_tables()
+
                 rule_summ.resize_elements(window, win_size=window.size)
 
                 # Switch to first tab
@@ -1062,13 +1059,12 @@ def main():
                 current_rule.current_panel = prev_subpanel
 
                 if prev_subpanel == current_rule.first_panel:
-                    window[next_key].update(disabled=False)
-                    window[back_key].update(disabled=True)
-                    window[save_key].update(disabled=True)
+                    window[current_rule.key_lookup('Next')].update(disabled=False)
+                    window[current_rule.key_lookup('Back')].update(disabled=True)
+                    window[current_rule.key_lookup('Save')].update(disabled=True)
 
             # Add note to current summary panel
-            note_key = summ_tab.key_lookup('Note')
-            if event == note_key:
+            if event == summ_tab.key_lookup('Note'):
                 # Display notes window
                 for id_field in summ_tab.ids:
                     id_param = summ_tab.ids[id_field]
@@ -1082,15 +1078,13 @@ def main():
                 summ_tab.notes['Value'] = note_text
 
                 # Change edit note button to be highlighted if note field not empty
-                print('the note text is: {}'.format(note_text))
                 if note_text:
                     window[event].update(image_data=const.EDIT_ICON)
                 else:
                     window[event].update(image_data=const.NOTES_ICON)
 
             # Save results of the audit
-            save_key = current_rule.key_lookup('Save')
-            if event == save_key:
+            if event == current_rule.key_lookup('Save'):
                 # Get output file from user
                 title = current_rule.summary.title.replace(' ', '_')
                 outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
@@ -1108,6 +1102,7 @@ def main():
                 try:
                     save_status = rule_summ.save_to_database(user)
                 except Exception as e:
+                    raise
                     msg = _('Database save failed - {}').format(e)
                     win2.popup_error(msg)
                 else:
@@ -1153,7 +1148,7 @@ def main():
             if event == current_rule.key_lookup('RemoveEntry'):
                 # Get selected row
                 tbl_index = values[current_rule.key_lookup('EntryTable')]
-                print('selected index is {}'.format(tbl_index))
+                print('Info: the rows selected for removal from the records table are {}'.format(tbl_index))
 
                 current_rule.records.remove_row(tbl_index)
                 current_rule.update_display(window)
@@ -1164,7 +1159,7 @@ def main():
             if event == current_rule.key_lookup('RemoveExpense'):
                 # Get selected row
                 tbl_index = values[current_rule.key_lookup('ExpenseTable')]
-                print('selected index is {}'.format(tbl_index))
+                print('Info: the rows selected for removal from the expense table are {}'.format(tbl_index))
 
                 current_rule.expenses.remove_row(tbl_index)
                 current_rule.update_display(window)
@@ -1175,7 +1170,7 @@ def main():
             if event == current_rule.key_lookup('ExpenseTable'):
                 # Get selected row
                 tbl_index = values[current_rule.key_lookup('ExpenseTable')][0]
-                print('selected index is {}'.format(tbl_index))
+                print('Info: row {} selected for editing'.format(tbl_index))
 
                 current_rule.expenses.edit_row(tbl_index)
                 current_rule.update_display(window)
@@ -1194,7 +1189,6 @@ def main():
                     has_value = param.values_set()
 
                     if has_value is False:
-                        print(param.name, param.value, has_value)
                         param_desc = param.description
                         msg = _('Correctly formatted input is required in the "{}" field').format(param_desc)
                         win2.popup_notice(msg)

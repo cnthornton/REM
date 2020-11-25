@@ -857,12 +857,13 @@ class SummaryPanel:
 
     def update_static_fields(self, window, rule):
         """
-        Update summary panel static fields to include audit.
+        Update summary panel static fields to include audit parameters.
         """
         aliases = self.aliases
 
         params = rule.parameters
 
+        # Update summary title with parameter values, if specified in title format
         try:
             title_components = re.findall(r'\{(.*?)\}', self._title)
         except TypeError:
@@ -916,9 +917,9 @@ class SummaryPanel:
         title_key = self.key_lookup('Title')
         window[title_key].update(value=summ_title)
 
-        # Update ID components to include audit parameters
+        # Add rule parameters to tab parameters
         for tab in self.tabs:
-            tab.update_id_components(params)
+            tab.parameters = params
 
         self.title = summ_title
 
@@ -1031,11 +1032,10 @@ class SummaryPanel:
 
         success = []
         for tab in tabs:
-            tables = tab.export_rules
-            if tables is None:
-                continue
-
             import_df = tab.import_df
+            nrow = tab.df.shape[0]
+
+            # Check if data already exists in database
             if not import_df.empty:
                 if user.admin:  # must be admin to update existing data
                     # Verify that user would like to update the database table
@@ -1052,9 +1052,81 @@ class SummaryPanel:
 
                     return False
 
-            nrow = tab.df.shape[0]
-            for table in tables:
-                table_fields = tables[table]
+            # Assign IDs to records when filter rules apply
+            for id_field in tab.ids:
+                id_entry = tab.ids[id_field]
+
+                if 'FilterRules' in id_entry:
+                    tbl_filter_param = id_entry['FilterRules']
+                    db_table = id_entry['DatabaseTable']
+                    db_id_field = id_entry['DatabaseField']
+
+                    import_ids = tab.import_df[id_field]
+
+                    current_results = dm.evaluate_rule_set(tab.df, tbl_filter_param)
+                    entry_ids = []
+                    for row_index, result in enumerate(current_results):
+                        # Determine if record already as an associated ID
+                        current_id = tab.df.at[row_index, id_field]
+
+                        if result is False and not pd.isna(current_id):  # row fails evaluation rule and has an ID
+                            # Check if the ID has been saved in the database
+                            if current_id in import_ids:  # row has an ID saved in the database table
+                                print('Info: rule {RULE}, summary {NAME}: removing ID {ID} from database table {TBL}'
+                                      .format(RULE=self.rule_name, NAME=tab.name, ID=current_id, TBL=db_table))
+                                # Delete record from database
+                                filters = ('{} = ?'.format(db_id_field), (current_id,))
+                                cancelled = user.update(db_table, ['IsCancel'], [1], filters)
+
+                                if cancelled is False:  # failed to update
+                                    win2.popup_error('Warning: Failed to remove {ID}. Changes will not be saved to the '
+                                                     'database table {TBL}'.format(ID=current_id, TBL=db_table))
+
+                            print('Info: current ID for ID field {}, row {} is {}'.format(id_field, row_index,
+                                                                                          current_id))
+                            entry_ids.append(None)
+                        elif result is False and pd.isna(current_id):  # row fails eval and does not have an ID
+                            entry_ids.append(None)
+                        elif result is True and not pd.isna(current_id):  # row passes eval and already has an ID
+                            print('Info: rule {RULE}, summary {NAME}: current ID for table {TBL}, row {ROW} is {ID}'
+                                  .format(RULE=self.rule_name, NAME=tab.name, TBL=db_table, ROW=row_index,
+                                          ID=current_id))
+                            entry_ids.append(current_id)
+                        else:  # row passes evaluation rule and does not currently have an assigned ID
+                            all_ids = current_tbl_pkeys[db_table]
+                            current_ids = tab.df[id_field].dropna().unique().tolist()
+
+                            print('INFO: rule {RULE}, summary {NAME}: list of currents IDs for ID {ID} is {LIST}'
+                                  .format(RULE=self.rule_name, NAME=tab.name, ID=id_field, LIST=current_ids))
+                            print('INFO: rule {RULE}, summary {NAME}: list of all IDs for ID {ID} is {LIST}'
+                                  .format(RULE=self.rule_name, NAME=tab.name, ID=id_field, LIST=all_ids))
+
+                            if id_entry['IsUnique'] is True:
+                                record_id = tab.create_id(id_entry, all_ids)
+                                print('Info: saving new record {ID} to list of table {TBL} IDs'
+                                      .format(ID=record_id, TBL=db_table))
+                                current_tbl_pkeys[db_table].append(record_id)
+                            else:
+                                if len(current_ids) > 0:
+                                    record_id = current_ids[0]
+                                else:
+                                    record_id = tab.create_id(id_entry, all_ids)
+                                    print('Info: saving new record {ID} to list of table {TBL} IDs'
+                                          .format(ID=record_id, TBL=db_table))
+                                    current_tbl_pkeys[db_table].append(record_id)
+
+                            entry_ids.append(record_id)
+
+                    # Add IDs to table
+                    tab.df[id_field] = entry_ids
+
+            # Iterate over output export rules
+            export_rules = tab.export_rules
+            if export_rules is None:  # tab exports no data
+                continue
+
+            for table in export_rules:
+                table_fields = export_rules[table]
 
                 references = table_fields['TableColumns']
                 if 'Options' in table_fields:
@@ -1072,7 +1144,7 @@ class SummaryPanel:
                 else:
                     is_audit = False
 
-                # Populate the output dataframe with column values stored in the totals and records tables
+                # Populate the output dataframe with defined column values stored in the totals and records tables
                 df = pd.DataFrame(columns=list(references.keys()))
 
                 for column in references:
@@ -1106,15 +1178,19 @@ class SummaryPanel:
                         continue
 
                     if is_audit is True:
-                        if len(ref_series.unique().tolist()) > 1:
+                        if len(ref_series.dropna().unique().tolist()) > 1:
+                            print(ref_series)
                             print('Warning: rule {RULE}, summary {NAME}: the "IsAuditTable" parameter was selected '
                                   'for output table {TABLE} but the reference column "{REF}" has more than one unique '
-                                  'value. Column "{COL}" will not be included in the output.'
+                                  'value. Using first value encountered in {COL}'
                                   .format(RULE=self.rule_name, NAME=tab.name, TABLE=table, REF=ref_col, COL=column))
-                        else:
-                            df[column] = ref_series.unique()
+
+                        ref_value = ref_series.dropna().iloc[0]
+                        df.at[0, column] = ref_value
                     else:
                         df[column] = ref_series
+
+                print(df)
 
                 # Add additional fields defined in config (reference IDs and static fields)
                 if 'AddNote' in options_param:
@@ -1128,61 +1204,81 @@ class SummaryPanel:
                         notes_value = tab.notes['Value']
                         df[notes_field] = notes_value
 
-                if import_df.empty:  # row doesn't exist in database yet
-                    # Add creator information
-                    df[settings.creator_code] = user.uid
-                    df[settings.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
+                # Prepare the ID mapping between database table and dataframe
+                db_id_field = None
+                import_id_field = None
+                for id_field in tab.ids:
+                    id_param = tab.ids[id_field]
+                    db_table = id_param['DatabaseTable']
+                    if db_table == table:
+                        db_id_field = id_param['DatabaseField']
+                        import_id_field = id_field
+                        break
 
-                    # Prepare insertion parameters
-                    columns = df.columns.values.tolist()
-                    values = df.values.tolist()
+                if db_id_field is None or import_id_field is None:
+                    msg = 'Configuration Error: rule {RULE}, summary {NAME}: Export Database table {TBL} is missing' \
+                          ' an entry in the IDs parameter'.format(RULE=tab.rule_name, NAME=tab.name, TBL=table)
+                    win2.popup_error(msg)
+                    sys.exit(1)
 
-                    # Insert new audit results
-                    success.append(user.insert(table, columns, values))
-
-                else:  # update existing values in table
-                    # Add creator information
-                    df[settings.creator_code] = import_df.at[0, settings.creator_code]
-                    df[settings.creation_date] = import_df.at[0, settings.creation_date]
-
-                    # Add editor information
-                    df[settings.editor_code] = user.uid
-                    df[settings.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
-
-                    # Prepare insertion parameters
-                    columns = df.columns.values.tolist()
-                    values = df.values.tolist()
-
-                    # Prepare deletion parameters
-                    db_id_field = None
-                    import_id_field = None
-                    for id_field in tab.ids:
-                        id_param = tab.ids[id_field]
-                        db_table = id_param['DatabaseTable']
-                        if db_table == table:
-                            db_id_field = id_param['DatabaseField']
-                            import_id_field = id_field
-                            break
-
-                    if db_id_field is None or import_id_field is None:
-                        msg = 'Configuration Error: rule {RULE}, summary {NAME}: Export Database table {TBL} is missing' \
-                              ' an entry in the IDs parameter'.format(RULE=tab.rule_name, NAME=tab.name, TBL=table)
-                        win2.popup_error(msg)
+                # Update database with records
+                import_record_ids = import_df[import_id_field].dropna().unique().tolist()
+                for index, row in df.iterrows():
+                    try:
+                        row_id = row[db_id_field]
+                    except KeyError:
+                        print('Error: rule {RULE}, summary {NAME}: cannot find column {COL} in summary records table'
+                              .format(RULE=self.rule_name, NAME=tab.name, COL=import_id_field))
+                        print(row)
                         sys.exit(1)
+                    else:
+                        if pd.isna(row_id):  # row has no associated primary key, don't save to database
+                            continue
 
-                    existing_ids = import_df[import_id_field].dropna().unique().tolist()
-                    existing_fields = [db_id_field for _ in range(len(existing_ids))]
+                        print('Info: rule {RULE}, summary {NAME}: saving record {ID} to database table {TBL}'
+                              .format(RULE=self.rule_name, NAME=tab.name, ID=row_id, TBL=table))
 
-                    # Delete results from previous audit
-                    deleted = user.delete(table, existing_fields, existing_ids)
-                    if deleted is False:
-                        msg = 'Update failed. Run with the debug window to learn more'
-                        win2.popup_notice(msg)
-                        success.append(False)
+                    if row_id in import_record_ids:  # record already exists in database table
+                        # Add editor information
+                        row[settings.editor_code] = user.uid
+                        row[settings.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
+
+                        # Prepare update parameters
+                        row_columns = row.index.tolist()
+                        row_values = row.replace({np.nan: None}).values.tolist()
+
+                        # Update existing record in table
+                        filters = ('{} = ?'.format(db_id_field), (row_id,))
+                        success.append(user.update(table, row_columns, row_values, filters))
+                    else:  # new record created
+                        # Add creator information
+                        row[settings.creator_code] = user.uid
+                        row[settings.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
+
+                        # Prepare insertion parameters
+                        row_columns = row.index.tolist()
+                        row_values = row.replace({np.nan: None}).values.tolist()
+
+                        # Insert new record into table
+                        success.append(user.insert(table, row_columns, row_values))
+
+                # Update removed records, if they already exist in the database table
+                removed_records = tab.removed_df[import_id_field].dropna().unique().tolist()
+                for record_id in removed_records:
+                    if record_id not in import_record_ids:  # expense doesn't exist in database yet, no need to save
                         continue
 
-                    # Insert updated audit results
-                    success.append(user.insert(table, columns, values))
+                    if record_id == tab.id:  # user's cannot delete the audit record through this mechanism
+                        continue
+
+                    # Update the records removed from the transaction
+                    filters = ('{} = ?'.format(db_id_field), (record_id,))
+                    cancelled = user.update(table, ['IsCancel'], [1], filters)
+
+                    if cancelled is False:
+                        win2.popup_error(
+                            'Warning: Failed to remove {ID}. Changes will not be saved to the database table {TBL}'
+                            .format(ID=record_id, TBL=table))
 
         return all(success)
 
@@ -1393,41 +1489,64 @@ class SummaryItem:
             self.tab_parameters = None
 
         # Dynamic attributes
-        header = list(set(list(ids.keys()) + list(records['MappingColumns'].keys()) +
-                          list(records['StaticColumns'].keys()) + list(records['EditColumns'].keys())))
-#        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
-#        header = [dm.colname_from_query(i) for i in all_columns]
-        self.df = self.import_df = self.removed_df = pd.DataFrame(columns=header)
+        self.df = self.import_df = self.removed_df = None
 
         totals_header = list(set(list(totals['MappingColumns'].keys()) + list(totals['EditColumns'].keys())))
-#        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
-#                         for i in self.totals["TableColumns"]]
         self.totals_df = pd.DataFrame(columns=totals_header)
 
         self.id = None
+        self.parameters = None
 
     def reset_dynamic_attributes(self):
         """
         Reset Summary values.
         """
-#        header = [dm.get_column_from_header(i, self.records['TableColumns']) for i in self.records['TableColumns']]
-#        header = [dm.colname_from_query(i) for i in self.db_columns]
-        header = list(set(list(self.ids.keys()) + list(self.records['MappingColumns'].keys()) +
-                          list(self.records['StaticColumns'].keys()) + list(self.records['EditColumns'].keys())))
+        header = self.df.columns.values
         self.df = self.import_df = self.removed_df = pd.DataFrame(columns=header)
 
-#        totals_header = [dm.get_column_from_header(i, self.totals["TableColumns"])
-#                         for i in self.totals["TableColumns"]]
-        totals_header = list(set(list(self.totals['MappingColumns'].keys()) + list(self.totals['EditColumns'].keys())))
+        totals_header = self.totals_df.columns.values
         self.totals_df = pd.DataFrame(columns=totals_header)
 
         self.id = None
+        self.parameters = None
+        self.notes['Value'] = ''
 
+    def reset_tables(self):
+        """
+        Reset Summary tables.
+        """
+        header = self.df.columns.values
+        self.df = self.removed_df = pd.DataFrame(columns=header)
+
+        totals_header = self.totals_df.columns.values
+        self.totals_df = pd.DataFrame(columns=totals_header)
+
+    def remove_unsaved_keys(self):
+        """
+        Remove unsaved IDs from the table IDs lists.
+        """
         for id_field in self.ids:
             id_param = self.ids[id_field]
-            id_param['CurrentIDs'] = []
+            db_table = id_param['DatabaseTable']
+            print('Removing created ids in tab {} from table {} with id field {}'.format(self.name, db_table, id_field))
 
-        self.notes['Value'] = ''
+            all_ids = self.df[id_field].dropna().unique().tolist()
+            existing_ids = self.import_df[id_field].dropna().unique().tolist()
+            created_ids = set(all_ids).difference(set(existing_ids))
+            print(all_ids)
+            print(existing_ids)
+            print(created_ids)
+
+            for record_id in created_ids:
+                try:
+                    current_tbl_pkeys[db_table].remove(record_id)
+                except ValueError:
+                    print('Warning: attempting to remove non-existent ID "{ID}" from the list of '
+                          'database table {TBL} IDs'.format(ID=record_id, TBL=db_table))
+                    continue
+                else:
+                    print('Info: removed ID {ID} from the list of database table {TBL} IDs'
+                          .format(ID=record_id, TBL=db_table))
 
     def key_lookup(self, element):
         """
@@ -1625,51 +1744,71 @@ class SummaryItem:
         window[totals_key].update(num_rows=1)
         window[tbl_key].update(num_rows=nrows)
 
-    def update_id_components(self, parameters):
+    def fetch_parameter(self, name, by_key: bool = False, by_type: bool = False):
+        """
+        """
+        if by_key and by_type:
+            print('Warning: rule {RULE}, summary {NAME}, parameter {PARAM}: the "by_key" and "by_type" arguments are '
+                  'mutually exclusive. Defaulting to "by_key".'.format(RULE=self.rule_name, NAME=self.name, PARAM=name))
+            by_type = False
+
+        if by_key:
+            names = [i.element_key for i in self.parameters]
+        elif by_type:
+            names = [i.type for i in self.parameters]
+        else:
+            names = [i.name for i in self.parameters]
+
+        try:
+            index = names.index(name)
+        except IndexError:
+            param = None
+        else:
+            param = self.parameters[index]
+
+        return param
+
+    def update_id_components(self, id_param):
         """
         Update the IDs attribute to include a list of component lengths.
         """
+        parameters = self.parameters
         param_fields = [i.name for i in parameters]
 
-        for id_field in self.ids:
-            id_param = self.ids[id_field]
+        id_format = id_param['Format']
 
-            id_format = id_param['Format']
-            print('Info: rule {RULE}, summary {NAME}: ID "{ID}" has format {FORMAT}' \
-                  .format(NAME=self.name, RULE=self.rule_name, ID=id_field, FORMAT=id_format))
+        last_index = 0
+        id_components = []
+        for component in id_format:
+            if len(component) > 1 and set(component).issubset(set('YMD-/ ')):  # component is datestr
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('date', component, index)
+            elif component in param_fields:
+                param = parameters[param_fields.index(component)]
+                value = param.value
+                component_len = len(value)
+                index = (last_index, last_index + component_len)
+                part_tup = (component, value, index)
+            elif component.isnumeric():  # component is an incrementing number
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('variable', component_len, index)
+            else:  # unknown component type, probably separator
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('separator', component, index)
 
-            last_index = 0
-            id_components = []
-            for component in id_format:
-                if len(component) > 1 and set(component).issubset(set('YMD-/ ')):  # component is datestr
-                    component_len = len(component)
-                    index = (last_index, last_index + component_len)
-                    part_tup = ('date', component, index)
-                elif component in param_fields:
-                    param = parameters[param_fields.index(component)]
-                    value = param.value
-                    component_len = len(value)
-                    index = (last_index, last_index + component_len)
-                    part_tup = (component, value, index)
-                elif component.isnumeric():  # component is an incrementing number
-                    component_len = len(component)
-                    index = (last_index, last_index + component_len)
-                    part_tup = ('variable', component_len, index)
-                else:  # unknown component type, probably separator
-                    component_len = len(component)
-                    index = (last_index, last_index + component_len)
-                    part_tup = ('separator', component, index)
+            id_components.append(part_tup)
+            last_index += component_len
 
-                id_components.append(part_tup)
-                last_index += component_len
-
-            id_param['Components'] = id_components
+        return id_components
 
     def get_id_component(self, identifier, component, id_param):
         """
         Extract the specified component values from the provided identifier.
         """
-        id_components = id_param['Components']
+        id_components = self.update_id_components(id_param)
 
         comp_value = ''
         for id_component in id_components:
@@ -1686,15 +1825,15 @@ class SummaryItem:
 
         return comp_value
 
-    def create_id(self, rule, id_param, prev_ids):
+    def create_id(self, id_param, prev_ids):
         """
         Create a new ID based on a list of previous IDs.
         """
-        param_fields = [i.name for i in rule.parameters]
+        param_fields = [i.name for i in self.parameters]
         id_format = id_param['Format']
 
         # Determine date parameter of the new ID
-        date_param = rule.fetch_parameter('date', by_type=True)
+        date_param = self.fetch_parameter('date', by_type=True)
         if date_param:
             date = settings.apply_date_offset(date_param.value_obj)
         else:
@@ -1733,7 +1872,7 @@ class SummaryItem:
             if len(component) > 1 and set(component).issubset(set('YMD-/ ')):  # component is datestr
                 id_parts.append(id_date)
             elif component in param_fields:
-                param = rule.fetch_parameter(component)
+                param = self.fetch_parameter(component)
                 if isinstance(param.value_obj, datetime.datetime):
                     value = param.value_obj.strftime('%Y%m%d')
                 else:
@@ -1750,14 +1889,19 @@ class SummaryItem:
 
         return ''.join(id_parts)
 
-    def assign_record_ids(self, rule, df, index):
+    def assign_record_ids(self, df, index, id_entries: list = None):
         """
         Create and assign new IDs for the audit summary item records.
         """
+        id_entries = id_entries if id_entries is not None else self.ids
+
         # Create identifiers as defined in the configuration
-        for id_field in self.ids:
-            id_param = self.ids[id_field]
+        for id_field in id_entries:
+            id_param = id_entries[id_field]
             db_table = id_param['DatabaseTable']
+
+            if 'FilterRules' in id_param:  # don't create IDs for entries with specified filter rules
+                continue
 
             all_ids = current_tbl_pkeys[db_table]
             current_ids = df[id_field].dropna().unique().tolist()
@@ -1768,7 +1912,7 @@ class SummaryItem:
                   .format(RULE=self.rule_name, NAME=self.name, ID=id_field, LIST=all_ids))
 
             if id_param['IsUnique'] is True:
-                record_id = self.create_id(rule, id_param, all_ids)
+                record_id = self.create_id(id_param, all_ids)
                 print(
                     'Info: saving new record {ID} to list of table {TBL} IDs'.format(ID=record_id, TBL=db_table))
                 current_tbl_pkeys[db_table].append(record_id)
@@ -1776,11 +1920,13 @@ class SummaryItem:
                 if len(current_ids) > 0:
                     record_id = current_ids[0]
                 else:
-                    record_id = self.create_id(rule, id_param, all_ids)
+                    record_id = self.create_id(id_param, all_ids)
                     print(
                         'Info: saving new record {ID} to list of table {TBL} IDs'.format(ID=record_id, TBL=db_table))
                     current_tbl_pkeys[db_table].append(record_id)
 
+            print('Info: rule {RULE}, summary {NAME}: adding record ID {ID} to the summary table row {INDEX}, column '
+                  '{COL}'.format(RULE=self.rule_name, NAME=self.name, ID=record_id, INDEX=index, COL=id_field))
             df.at[index, id_field] = record_id
 
             if id_param['IsPrimary'] is True and self.id is None:
@@ -1790,7 +1936,7 @@ class SummaryItem:
 
         return df
 
-    def add_row(self, rule, win_size: tuple = None):
+    def add_row(self, win_size: tuple = None):
         """
         Add a new row to the records table.
         """
@@ -1807,14 +1953,18 @@ class SummaryItem:
         df = df.append(pd.Series(), ignore_index=True)
 
         # Create identifiers for the new row
-        df = self.assign_record_ids(rule, df, new_index)
+        df = self.assign_record_ids(df, new_index)
+
+        id_map = {}
+        for id_field in self.ids:
+            id_map[id_field] = df.at[new_index, id_field]
 
         # Update the amounts column
         sum_column = self.records['SumColumn']
         df.at[new_index, sum_column] = 0.0
 
         # Fill in the parameters columns
-        params = rule.parameters
+        params = self.parameters
         for param in params:
             column = param.alias
             if column in header:
@@ -1833,10 +1983,23 @@ class SummaryItem:
                 id_param = self.ids[id_field]
                 db_table = id_param['DatabaseTable']
 
+                if id_param['IsPrimary'] is True:  # don't remove primary audit ID
+                    continue
+                else:
+                    id_value = id_map[id_field]
+
                 # Remove from list of used IDs
-                record_id = current_tbl_pkeys[db_table].pop(-1)
-                print('Info: removed cancelled record {ID} from list of table {TBL} IDs'
-                      .format(ID=record_id, TBL=db_table))
+                try:
+                    current_tbl_pkeys[db_table].remove(id_value)
+                except ValueError:
+                    print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
+                          'table {TBL} IDs'.format(ID=id_value, TBL=db_table))
+                    continue
+                else:
+                    print('Info: removed cancelled record {ID} from list of table {TBL} IDs'
+                          .format(ID=id_value, TBL=db_table))
+        else:
+            print(df.iloc[new_index])
 
         self.df = df
 
@@ -1992,28 +2155,13 @@ class SummaryItem:
         """
         Load previous audit (if exists) and IDs from the program database.
         """
-        # Load list of database IDs
+        # Find primary audit ID
         for id_field in self.ids:
             id_param = self.ids[id_field]
 
-            # Obtain list of previous IDs
-            db_field = id_param['DatabaseField']
-            table = id_param['DatabaseTable']
-
             if id_param['IsPrimary'] is True:
                 primary_id_field = id_field
-
-            import_df = user.query(table, columns=[db_field], prog_db=True)
-
-            try:
-                id_list = dm.sort_table(import_df, db_field)[db_field].dropna().tolist()
-            except KeyError:
-                print('Error: rule {RULE}, summary {NAME}: ID field "{FIELD}" not found in the database table {TBL}'
-                      .format(RULE=self.rule_name, NAME=self.name, FIELD=db_field, TBL=table))
-                sys.exit(1)
-            id_param['CurrentIDs'] = id_list
-
-        # Load database table data
+                break
 
         # Prepare the filter rules to filter query results
         main_table = [i for i in self.import_rules][0]
@@ -2024,6 +2172,9 @@ class SummaryItem:
 
         # Query database table for the selected parameters
         df = user.query(self.import_rules, columns=self.db_columns, filter_rules=filters, prog_db=True)
+
+        self.import_df = df
+        self.df = self.removed_df = pd.DataFrame(columns=df.columns.values)
 
         if df.empty:  # data does not exist in the database already
             return False
@@ -2043,9 +2194,6 @@ class SummaryItem:
                 note_value = note_series.dropna().unique().tolist()[0]
 
             self.notes['Value'] = note_value
-
-            # Save import table as attribute
-            self.import_df = df
 
             return True
 
@@ -2099,7 +2247,7 @@ class SummaryItem:
 
     def update_edit_columns(self, df):
         """
-        Update editable columns with default values.
+        Update empty table cells with editable column default values.
         """
         edit_columns = self.records['EditColumns']
         for edit_column in edit_columns:
@@ -2138,24 +2286,35 @@ class SummaryItem:
 
     def update_static_columns(self, df):
         """
-        Update static columns with default values.
+        Update empty table cells with static column default values.
         """
         static_columns = self.records['StaticColumns']
         for static_column in static_columns:
             static_entry = static_columns[static_column]
+            if static_column not in df.columns:
+                df[static_column] = None
+
             try:
                 default_rules = static_entry['DefaultRules']
             except KeyError:
-                print('Configuration Warning: rule {RULE}, summary {NAME}: the parameter "DefaultRules" is '
-                      'required for StaticColumn {COL}'.format(RULE=self.rule_name, NAME=self.name, COL=static_column))
-                continue
-
-            for default_value in default_rules:
-                static_rule = default_rules[default_value]
-                results = dm.evaluate_rule_set(df, {default_value: static_rule}, as_list=True)
-                for row, result in enumerate(results):
-                    if result is True:
-                        df.at[row, static_column] = default_value
+                try:
+                    default_value = static_entry['DefaultValue']
+                except KeyError:
+                    print('Configuration Warning: rule {RULE}, summary {NAME}: one of "DefaultRules" or "DefaultValue" '
+                          'is required for StaticColumn {COL}'
+                          .format(RULE=self.rule_name, NAME=self.name, COL=static_column))
+                    continue
+                else:
+                    for row_index in range(df.shape[0]):
+                        if pd.isna(df.at[row_index, static_column]) is True:
+                            df.at[row_index, static_column] = default_value
+            else:
+                for default_value in default_rules:
+                    static_rule = default_rules[default_value]
+                    results = dm.evaluate_rule_set(df, {default_value: static_rule}, as_list=True)
+                    for row_index, result in enumerate(results):
+                        if result is True and pd.isna(df.at[row_index, static_column]):
+                            df.at[row_index, static_column] = default_value
 
         return df
 
@@ -2172,21 +2331,17 @@ class SummaryItemAdd(SummaryItem):
         """
         Populate the summary item dataframe with added records.
         """
-        if not self.import_df.empty:
-            df = self.import_df
-            print('Info: rule {RULE}, summary {NAME}: updating table with existing data'
-                  .format(RULE=self.rule_name, NAME=self.name))
-        else:
-            df = self.df
-            print('Info: rule {RULE}, summary {NAME}: updating table with new data'
-                  .format(RULE=self.rule_name, NAME=self.name))
+        df = self.import_df.copy()
+        print('Info: rule {RULE}, summary {NAME}: updating table with existing data'
+              .format(RULE=self.rule_name, NAME=self.name))
 
+        if self.import_df.empty:  # no records for selected parameters in database
             # Add empty row to the dataframe
             if df.shape[0]:  # no rows in table
                 df = df.append(pd.Series(), ignore_index=True)
 
             # Create identifiers as defined in the configuration
-            df = self.assign_record_ids(rule, df, 0)
+            df = self.assign_record_ids(df, 0)
 
             # Set parameter values
             for param in rule.parameters:
@@ -2206,11 +2361,11 @@ class SummaryItemAdd(SummaryItem):
 
             df.at[0, sum_column] = totals_sum
 
-            # Update static columns with default values, if specified in rules
-            df = self.update_static_columns(df)
+        # Update static columns with default values, if specified in rules
+        df = self.update_static_columns(df)
 
-            # Update edit columns with default values, if specified in rules
-            df = self.update_edit_columns(df)
+        # Update edit columns with default values, if specified in rules
+        df = self.update_edit_columns(df)
 
         self.df = df
 
@@ -2227,7 +2382,7 @@ class SummaryItemSubset(SummaryItem):
         """
         Populate the summary item dataframe with rows from the TabItem dataframes specified in the configuration.
         """
-        df = import_df = self.import_df
+        df = import_df = self.import_df.copy()
 
         records = self.records
 
@@ -2293,7 +2448,7 @@ class SummaryItemSubset(SummaryItem):
                           .format(RULE=self.rule_name, NAME=self.name, ID=record_id))
                     rows_to_drop.append(record_id)
                 else:
-                    append_df = self.assign_record_ids(rule, append_df, record_index)
+                    append_df = self.assign_record_ids(append_df, record_index)
 
             # Filter records from dataframe of records to append that were marked for removal
             append_df = append_df[~append_df[id_column].isin(rows_to_drop)]
@@ -2304,7 +2459,7 @@ class SummaryItemSubset(SummaryItem):
         self.df = df
 
         # Set parameter values
-        for param in rule.parameters:
+        for param in self.parameters:
             colname = param.alias
             value = param.value_obj
             df[colname] = value

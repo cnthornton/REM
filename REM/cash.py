@@ -1235,6 +1235,7 @@ class CashExpenses:
 
         if nrow + 1 == df.shape[0]:  # record successfully saved
             # Save to list of used IDs
+            print('Info: saving new record {ID} to list of table {TBL} IDs'.format(ID=record_id, TBL=self.table))
             current_tbl_pkeys[self.table].append(record_id)
 
         self.df = df
@@ -1358,8 +1359,6 @@ class CashExpenses:
         """
         id_format = self.format
         id_field = self.pkey
-        print('Info: rule {RULE}, Expenses: ID "{ID}" has format {FORMAT}'
-              .format(RULE=self.rule_name, ID=id_field, FORMAT=id_format))
 
         last_index = 0
         id_components = []
