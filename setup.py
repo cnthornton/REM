@@ -21,7 +21,7 @@ Copyright:
 from setuptools import setup
 
 setup(name='REM',
-      version='1.0.1',
+      version='1.0.2',
       packages=['REM', ],
       description='',
       classifiers=[

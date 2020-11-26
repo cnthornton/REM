@@ -277,7 +277,6 @@ def subset_dataframe(df, subset_rule):
     cond_str = ' '.join(conditionals)
 
     try:
-        print('Info: subsetting evaluation string is {}'.format(cond_str))
         subset_df = eval('df[{}]'.format(cond_str))
     except SyntaxError:
         raise SyntaxError('invalid syntax for subset rule {NAME}'.format(NAME=subset_rule))

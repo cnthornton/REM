@@ -1098,21 +1098,20 @@ class SummaryPanel:
 
                             print('INFO: rule {RULE}, summary {NAME}: list of currents IDs for ID {ID} is {LIST}'
                                   .format(RULE=self.rule_name, NAME=tab.name, ID=id_field, LIST=current_ids))
-                            print('INFO: rule {RULE}, summary {NAME}: list of all IDs for ID {ID} is {LIST}'
-                                  .format(RULE=self.rule_name, NAME=tab.name, ID=id_field, LIST=all_ids))
 
                             if id_entry['IsUnique'] is True:
                                 record_id = tab.create_id(id_entry, all_ids)
-                                print('Info: saving new record {ID} to list of table {TBL} IDs'
-                                      .format(ID=record_id, TBL=db_table))
+                                print('Info: rule {RULE}, summary {NAME}: saving new record {ID} to list of table {TBL}'
+                                      ' IDs'.format(RULE=self.rule_name, NAME=tab.name, ID=record_id, TBL=db_table))
                                 current_tbl_pkeys[db_table].append(record_id)
                             else:
                                 if len(current_ids) > 0:
                                     record_id = current_ids[0]
                                 else:
                                     record_id = tab.create_id(id_entry, all_ids)
-                                    print('Info: saving new record {ID} to list of table {TBL} IDs'
-                                          .format(ID=record_id, TBL=db_table))
+                                    print('Info: rule {RULE}, summary {NAME}: saving new record {ID} to list of table '
+                                          '{TBL} IDs'.format(RULE=self.rule_name, NAME=tab.name, ID=record_id,
+                                                             TBL=db_table))
                                     current_tbl_pkeys[db_table].append(record_id)
 
                             entry_ids.append(record_id)
@@ -1528,14 +1527,12 @@ class SummaryItem:
         for id_field in self.ids:
             id_param = self.ids[id_field]
             db_table = id_param['DatabaseTable']
-            print('Removing created ids in tab {} from table {} with id field {}'.format(self.name, db_table, id_field))
+            print('Info: rule {RULE}, summary {NAME}: removing unsaved IDs created in cancelled audit from table '
+                  '{TBL}, column {ID}'.format(RULE=self.rule_name, NAME=self.name, TBL=db_table, ID=id_field))
 
             all_ids = self.df[id_field].dropna().unique().tolist()
             existing_ids = self.import_df[id_field].dropna().unique().tolist()
             created_ids = set(all_ids).difference(set(existing_ids))
-            print(all_ids)
-            print(existing_ids)
-            print(created_ids)
 
             for record_id in created_ids:
                 try:
@@ -1545,8 +1542,8 @@ class SummaryItem:
                           'database table {TBL} IDs'.format(ID=record_id, TBL=db_table))
                     continue
                 else:
-                    print('Info: removed ID {ID} from the list of database table {TBL} IDs'
-                          .format(ID=record_id, TBL=db_table))
+                    print('Info: rule {RULE}, summary {NAME}: removed ID {ID} from the list of database table {TBL} IDs'
+                          .format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
 
     def key_lookup(self, element):
         """
@@ -1832,6 +1829,8 @@ class SummaryItem:
         param_fields = [i.name for i in self.parameters]
         id_format = id_param['Format']
 
+        # Get parameter values of new ID
+
         # Determine date parameter of the new ID
         date_param = self.fetch_parameter('date', by_type=True)
         if date_param:
@@ -1846,17 +1845,44 @@ class SummaryItem:
 
                 id_date = date.strftime(date_fmt)
 
+        # Get parameter values of parameters composing the new ID
+        id_param_values = {}
+        for param_field in param_fields:
+            if param_field in id_format:  # parameter is a component of the ID
+                param = self.fetch_parameter(param_field)
+                if isinstance(param.value_obj, datetime.datetime):
+                    value = param.value_obj.strftime('%Y%m%d')
+                else:
+                    value = param.value
+
+                id_param_values[param_field] = value
+
         # Search list of used IDs occurring within the current date cycle
         if len(prev_ids) > 0:
             used_ids = []
             for prev_id in prev_ids:
                 prev_date = self.get_id_component(prev_id, 'date', id_param)
-                if prev_date == id_date:
+                if prev_date != id_date:
+                    continue
+
+                matching_params = []
+                for param_field in id_param_values:
+                    current_param_val = id_param_values[param_field]
+                    prev_param_val = self.get_id_component(prev_id, param_field, id_param)
+                    if current_param_val != prev_param_val:
+                        matching_params.append(False)
+                    else:
+                        matching_params.append(True)
+
+                if all(matching_params):
                     used_ids.append(prev_id)
+
+            print('Info: rule {RULE}, summary {NAME}: the IDs matching the parameter requirements are {LIST}'
+                  .format(RULE=self.rule_name, NAME=self.name, LIST=used_ids))
 
             if len(used_ids) > 0:
                 last_id = sorted(used_ids)[-1]
-                print('Info: rule {RULE}, summary {NAME}: last ID encountered is {ID}'
+                print('Info: rule {RULE}, summary {NAME}: most recent ID in list is {ID}'
                       .format(RULE=self.rule_name, NAME=self.name, ID=last_id))
                 try:
                     last_var = int(self.get_id_component(last_id, 'variable', id_param))
@@ -1906,23 +1932,21 @@ class SummaryItem:
             all_ids = current_tbl_pkeys[db_table]
             current_ids = df[id_field].dropna().unique().tolist()
 
-            print('INFO: rule {RULE}, summary {NAME}: list of currents IDs for ID {ID} is {LIST}'
+            print('Info: rule {RULE}, summary {NAME}: list of currents IDs for ID {ID} is {LIST}'
                   .format(RULE=self.rule_name, NAME=self.name, ID=id_field, LIST=current_ids))
-            print('INFO: rule {RULE}, summary {NAME}: list of all IDs for ID {ID} is {LIST}'
-                  .format(RULE=self.rule_name, NAME=self.name, ID=id_field, LIST=all_ids))
 
             if id_param['IsUnique'] is True:
                 record_id = self.create_id(id_param, all_ids)
-                print(
-                    'Info: saving new record {ID} to list of table {TBL} IDs'.format(ID=record_id, TBL=db_table))
+                print('Info: rule {RULE}, summary {NAME}: saving new record {ID} to list of table {TBL} IDs'
+                      .format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
                 current_tbl_pkeys[db_table].append(record_id)
             else:
                 if len(current_ids) > 0:
                     record_id = current_ids[0]
                 else:
                     record_id = self.create_id(id_param, all_ids)
-                    print(
-                        'Info: saving new record {ID} to list of table {TBL} IDs'.format(ID=record_id, TBL=db_table))
+                    print('Info: rule {RULE}, summary {NAME}: saving new record {ID} to list of table {TBL} IDs'
+                          .format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
                     current_tbl_pkeys[db_table].append(record_id)
 
             print('Info: rule {RULE}, summary {NAME}: adding record ID {ID} to the summary table row {INDEX}, column '
@@ -1988,6 +2012,9 @@ class SummaryItem:
                 else:
                     id_value = id_map[id_field]
 
+                if pd.isna(id_value):  # don't attempt to remove non-existent IDs
+                    continue
+
                 # Remove from list of used IDs
                 try:
                     current_tbl_pkeys[db_table].remove(id_value)
@@ -1996,8 +2023,8 @@ class SummaryItem:
                           'table {TBL} IDs'.format(ID=id_value, TBL=db_table))
                     continue
                 else:
-                    print('Info: removed cancelled record {ID} from list of table {TBL} IDs'
-                          .format(ID=id_value, TBL=db_table))
+                    print('Info: rule {RULE}, summary {NAME}: removed cancelled record {ID} from list of table {TBL} '
+                          'IDs'.format(RULE=self.rule_name, NAME=self.name, ID=id_value, TBL=db_table))
         else:
             print(df.iloc[new_index])
 
@@ -2042,10 +2069,16 @@ class SummaryItem:
             id_param = self.ids[id_field]
             db_table = id_param['DatabaseTable']
 
+            if id_param['IsPrimary'] is True:  # don't remove primary audit ID
+                continue
+
             record_ids = df[id_field][index]
-            existing_expenses = self.import_df[id_field].values.tolist()
+            existing_ids = self.import_df[id_field].values.tolist()
             for record_id in record_ids:
-                if record_id not in existing_expenses:
+                if pd.isna(record_id):  # don't attempt to remove non-existent IDs
+                    continue
+
+                if record_id not in existing_ids:
                     try:
                         current_tbl_pkeys[db_table].remove(record_id)
                     except ValueError:
@@ -2053,8 +2086,8 @@ class SummaryItem:
                               'table {TBL} IDs'.format(ID=record_id, TBL=db_table))
                         continue
                     else:
-                        print('Info: removed ID {ID} from the list of database table {TBL} IDs'
-                              .format(ID=record_id, TBL=db_table))
+                        print('Info: rule {RULE}, summary {NAME}: removed ID {ID} from the list of database table {TBL}'
+                              ' IDs'.format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
 
         # Add row to the dataframe of removed expenses
         removed_df = removed_df.append(df.iloc[index], ignore_index=True)
