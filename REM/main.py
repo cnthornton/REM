@@ -642,8 +642,13 @@ def main():
                     continue
             else:  # no action being taken so ok to switch without asking
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                current_panel = current_rule.reset_rule(window)
+                current_rule.reset_parameters(window)
+
+                window[current_rule.element_key].update(visible=False)
+                window['-HOME-'].update(visible=True)
+
                 current_rule = None if not values['-AMENU-'] else values['-AMENU-']
+                current_panel = '-HOME-'
 
             window.refresh()
 

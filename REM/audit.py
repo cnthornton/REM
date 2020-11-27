@@ -424,17 +424,6 @@ class AuditRule:
         # buttons Scan and Confirm, for instance.
         self.toggle_parameters(window, 'enable')
 
-        # Reset parameter element values
-        params = self.parameters
-        for param in params:
-            print('Info: rule {RULE}: resetting rule parameter element {PARAM} to default'
-                  .format(RULE=self.name, PARAM=param.name))
-            window[param.element_key].update(value='')
-            try:
-                window[param.element_key2].update(vaue='')
-            except AttributeError:
-                pass
-
         # Reset tab-specific element values
         for i, tab in enumerate(self.tabs):
             # Reset displays
@@ -467,6 +456,18 @@ class AuditRule:
             next_key = '-HOME-'
 
         return next_key
+
+    def reset_parameters(self, window):
+        """
+        Reset rule item parameter values.
+        """
+        # Reset Parameter attributes
+        for param in self.parameters:
+            param.reset_parameter()
+
+            # Update parameter window element
+            param_key = param.element_key
+            window[param_key].update(value='')
 
     def reset_attributes(self):
         """
