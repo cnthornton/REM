@@ -285,7 +285,7 @@ class AuditRule:
         param_elements = []
         for param in params:
             element_layout = param.layout()
-#            param_elements.append(element_layout)
+            #            param_elements.append(element_layout)
             param_elements += element_layout
 
         param_layout = [
@@ -419,6 +419,7 @@ class AuditRule:
 
         # Reset rule item attributes, including tab, summary, and parameter
         self.reset_attributes()
+        self.reset_parameters(window)
 
         # Reset audit parameters. Audit specific parameters include actions
         # buttons Scan and Confirm, for instance.
@@ -1278,7 +1279,7 @@ class SummaryPanel:
                     if cancelled is False:
                         win2.popup_error(
                             'Warning: Failed to remove {ID}. Changes will not be saved to the database table {TBL}'
-                            .format(ID=record_id, TBL=table))
+                                .format(ID=record_id, TBL=table))
 
         return all(success)
 
@@ -1392,7 +1393,7 @@ class SummaryItem:
         try:
             all_columns = sdict['TableColumns']
         except KeyError:
-            msg = 'Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns".'\
+            msg = 'Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns".' \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
@@ -1632,11 +1633,11 @@ class SummaryItem:
         note_key = self.key_lookup('Note')
         header_layout = [
             [sg.Frame('', [
-                     [sg.Text('{}:'.format(tab_title), pad=((pad_el*2, pad_el), pad_el*2), font=font_b,
-                              background_color=bg_col),
-                      sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, pad_el*2), pad_el*2), justification='l',
-                              font=font, background_color=bg_col, auto_size_text=True, border_width=0)]],
-                      pad=(0, 0), background_color=header_col, border_width=2, relief='raised'),
+                [sg.Text('{}:'.format(tab_title), pad=((pad_el * 2, pad_el), pad_el * 2), font=font_b,
+                         background_color=bg_col),
+                 sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, pad_el * 2), pad_el * 2), justification='l',
+                         font=font, background_color=bg_col, auto_size_text=True, border_width=0)]],
+                      pad=(0, 0), background_color=header_col, border_width=1, relief='ridge'),
              sg.Col([[sg.Button('', key=note_key, pad=(0, 0), image_data=const.NOTES_ICON, visible=True,
                                 button_color=(text_col, bg_col), border_width=0, tooltip=self.notes['Title'])]],
                     pad=(pad_v, 0), background_color=bg_col, vertical_alignment='c')]]
@@ -1994,6 +1995,14 @@ class SummaryItem:
             column = param.alias
             if column in header:
                 df.at[new_index, column] = param.value_obj
+
+        # Forward fill static columns
+        static_cols = list(self.records['StaticColumns'].keys())
+        df.loc[:, static_cols] = df.loc[:, static_cols].ffill(axis=0)
+
+        # Forward fill editable columns
+        edit_cols = list(self.records['EditColumns'].keys())
+        df.loc[:, edit_cols] = df.loc[:, edit_cols].ffill(axis=0)
 
         # Fill in other columns
         df = dm.fill_na(df)
