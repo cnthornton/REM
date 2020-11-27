@@ -14,6 +14,7 @@ TEXT_COL = '#000000'  # black
 SELECT_TEXT_COL = '#2A9DF4'  # blue
 HELP_TEXT_COL = '#616161'  # red
 HEADER_COL = INPUT_COL = '#F8FAFC'  # light blue-grey
+BORDER_COL = '#767676'  # dark grey
 
 # Element padding
 FRAME_PAD = 20

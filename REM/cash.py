@@ -147,10 +147,10 @@ class CashRule:
             sys.exit(1)
         msg = 'Configuration Error: rule {RULE}: missing required ID entry field "{FIELD}"'
         if 'Column' not in id_entry:
-            win2.popup_error(msg.format(RULE=name, Field='Column'))
+            win2.popup_error(msg.format(RULE=name, FIELD='Column'))
             sys.exit(1)
         if 'Format' not in id_entry:
-            win2.popup_error(msg.format(RULE=name, Field='Format'))
+            win2.popup_error(msg.format(RULE=name, FIELD='Format'))
             sys.exit(1)
         else:
             id_entry['Format'] = re.findall(r'\{(.*?)\}', id_entry['Format'])
@@ -167,13 +167,13 @@ class CashRule:
             sys.exit(1)
         msg = 'Configuration Error: rule {RULE}: missing required Date entry field "{FIELD}"'
         if 'Column' not in date_entry:
-            win2.popup_error(msg.format(RULE=name, Field='Column'))
+            win2.popup_error(msg.format(RULE=name, FIELD='Column'))
             sys.exit(1)
-        if 'Format' not in date_entry:
-            win2.popup_error(msg.format(RULE=name, Field='Format'))
+        if 'DateFormat' not in date_entry:
+            win2.popup_error(msg.format(RULE=name, FIELD='DateFormat'))
             sys.exit(1)
         else:
-            date_entry['Format'] = settings.format_date_str(date_entry['Format'])
+            date_entry['Format'] = settings.format_date_str(date_entry['DateFormat'])
         if 'Description' not in date_entry:
             date_entry['Description'] = 'Date'
         date_entry['Value'] = None
@@ -839,15 +839,28 @@ class CashRule:
         table = self.table
         display_mapping = self.display_columns
 
-        # Filter database results using static parameters
+        # Define the filter parameters
+        import_parameters = []
         filters = []
+
+        id_param = self.id
+        id_param['ElementType'] = 'input'
+        import_parameters.append(param_els.AuditParameterInput(self.name, id_param['Column'], id_param))
+
+        date_param = self.date
+        date_param['ElementType'] = 'date'
+        import_parameters.append(param_els.AuditParameterDate(self.name, date_param['Column'], date_param))
+
         for parameter in self.parameters:
             if parameter.editable is False and parameter.filterable is True and parameter.value is not None:
                 filters.append(parameter.filter_statement(table=table))
 
+            if parameter.filterable is True:
+                import_parameters.append(parameter)
+
         # Query existing database entries
         import_df = user.query(table, columns=self.columns, filter_rules=filters, prog_db=True)
-        trans_df = win2.data_import_window(import_df, self.parameters, header_map=display_mapping, create_new=True)
+        trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping, create_new=True)
 
         if trans_df is None:  # user selected to cancel importing/creating a bank transaction
             return '-HOME-'
