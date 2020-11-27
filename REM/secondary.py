@@ -729,7 +729,7 @@ def data_import_window(df, parameters, header_map: dict = None, create_new: bool
         header_map = {i: i for i in header}
 
     display_header = []
-    for column in header_map:
+    for column in header:
         try:
             display_header.append(header_map[column])
         except KeyError:
