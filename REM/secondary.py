@@ -593,9 +593,9 @@ def database_importer_window(user):
     return True
 
 
-def select_data(to_df, from_df, pkey, column_map: dict = None, to_title: str = None, from_title: str = None):
+def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str = None, from_title: str = None):
     """
-    Select data from one table to add to another table.
+    Associate data from one table with data in another table.
     """
     width = const.WIN_WIDTH - 40
 
@@ -624,7 +624,7 @@ def select_data(to_df, from_df, pkey, column_map: dict = None, to_title: str = N
 
     # Layout
     title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
-                    [sg.Text('Select data', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
+                    [sg.Text('Associate Data Records', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
                              background_color=header_col)]]
 
     main_layout = [[lo.create_table_layout(dm.format_display_table(from_df, column_map).values.tolist(),
@@ -717,11 +717,25 @@ def select_data(to_df, from_df, pkey, column_map: dict = None, to_title: str = N
     return select_rows
 
 
-def data_import_window(df, parameters, create_new: bool = False):
+def data_import_window(df, parameters, header_map: dict = None, create_new: bool = False):
     """
     Display the import from database window.
     """
     display_df = df.copy()
+    header = df.columns.values.tolist()
+    data = df.values.tolist()
+
+    if header_map is None:
+        header_map = {i: i for i in header}
+
+    display_header = []
+    for column in header_map:
+        try:
+            display_header.append(header_map[column])
+        except KeyError:
+            popup_error('Configuration Warning: display column {COL} not found in configured table columns'
+                        .format(COL=column))
+            display_header.append(column)
 
     # Filter data by default parameters
     filter_params = []
@@ -738,11 +752,73 @@ def data_import_window(df, parameters, create_new: bool = False):
         if param_value:
             display_df = display_df[display_df[param.name] == param_value]
 
+    # Layout
     # Window and element size parameters
-    layout = lo.import_data_layout(display_df, parameters, create_new=create_new)
+    width = const.WIN_WIDTH * 0.8
+
+    header_col = const.HEADER_COL
+    bg_col = const.ACTION_COL
+
+    header_font = const.HEADER_FONT
+
+    pad_el = const.ELEM_PAD
+    pad_v = const.VERT_PAD
+    pad_frame = const.FRAME_PAD
+
+    layout_params = []
+    for param in parameters:
+        if param.filterable is True and param.hidden is False:
+            layout_params.append(param)
+
+    # Title
+    title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
+                    [sg.Text('Import Database Records', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
+                             background_color=header_col)]]
+
+    # Import filters
+    param_layout = []
+    elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
+    if len(layout_params) > 2:
+        nrow = math.ceil(len(layout_params) / 2)
+    else:
+        nrow = 1
+    for parameter in layout_params:
+        row_size = len(elem_col) - 1
+
+        if row_size == nrow:
+            param_layout.append(sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='l',
+                                       vertical_alignment='t'))
+            elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
+
+        elem_col.append([sg.Col([parameter.layout(text_size=(14, 1), size=(14, 1), padding=40, default=False)],
+                                background_color=bg_col, justification='l', expand_x=True)])
+
+    param_layout.append(sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='r',
+                               vertical_alignment='t'))  # include last pair in series
+
+    # Import data table
+    main_layout = [[lo.create_table_layout(data, display_header, '-TABLE-', events=False, width=width, nrow=20,
+                                           pad=(0, 0))]]
+
+    # Control buttons
+    bttn_layout = [[sg.Col([[lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
+                           pad=(0, 0), justification='l', expand_x=True),
+                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
+                    sg.Col([[lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=create_new,
+                                   tooltip='Create new record'),
+                             lo.B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
+                           pad=(0, 0), justification='r')]]
+
+    layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+              [sg.Col([param_layout, [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]],
+                      pad=(pad_frame, 0), background_color=bg_col, justification='c',
+                      expand_x=True, expand_y=True)],
+              [sg.Col(main_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, justification='c')],
+              [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
 
     window = sg.Window('', layout, modal=True, resizable=False)
 
+    # Main loop
     import_data = None
     while True:
         event, values = window.read(timeout=1000, close=False)
@@ -1082,15 +1158,9 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     # GUI layout
     ## Buttons
     #    if edit is True and index > 0:
-    if edit is True:
-        bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                        lo.B2(_('Delete'), key='-DELETE-', pad=(pad_el, 0), tooltip=_('Permanently delete record')),
-                        lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip=_('Save changes'))]]
-    else:
-        bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                        lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip=_('Save changes'))]]
+    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
+                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                          tooltip=_('Save changes'))]]
 
     ## Table
     lengths = dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
@@ -1149,15 +1219,9 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             if edit is False:
-                print('attempting to drop index {}'.format(index))
-                print('number of rows is {}'.format(df.shape[0]))
                 df.drop(index, axis=0, inplace=True)
                 df.reset_index(drop=True, inplace=True)
-            break
 
-        if edit is True and event == '-DELETE-':  # selected to delete the record
-            df.drop(index, axis=0, inplace=True)
-            df.reset_index(drop=True, inplace=True)
             break
 
         if event == '-SAVE-':  # click 'Save' button
