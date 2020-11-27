@@ -203,6 +203,15 @@ class CashRule:
         else:
             self.columns = table_columns
 
+        try:
+            display_columns = adict['DisplayColumns']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}: missing required field "DisplayColumns".').format(RULE=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.display_columns = display_columns
+
         self.parameters = []
         try:
             params = adict['RuleParameters']
@@ -335,12 +344,7 @@ class CashRule:
         self.reset_attributes()
 
         # Reset rule parameters
-        for param in self.parameters:
-            param.reset_parameter()
-
-            if not param.hidden:
-                param_key = param.element_key
-                window[param_key].update(value='')
+        self.reset_parameters(window)
 
         if current:
             window['-HOME-'].update(visible=False)
@@ -352,6 +356,18 @@ class CashRule:
             next_key = '-HOME-'
 
         return next_key
+
+    def reset_parameters(self, window):
+        """
+        Reset rule item parameter values.
+        """
+        # Reset rule parameters
+        for param in self.parameters:
+            param.reset_parameter()
+
+            if not param.hidden:
+                param_key = param.element_key
+                window[param_key].update(value='')
 
     def reset_attributes(self):
         """
@@ -381,14 +397,14 @@ class CashRule:
         tbl_header = list(self.records.display_columns.keys())
         expense_header = list(self.expenses.display_columns.keys())
 
-        tbl_title = self.records.display_header
-        expense_title = self.expenses.display_header
+        tbl_title = self.records.title
+        expense_title = self.expenses.title
 
         params = self.parameters
 
         # Element parameters
         header_col = input_col = const.HEADER_COL
-        select_col = const.SELECT_TEXT_COL
+        border_col = const.BORDER_COL
         bg_col = const.ACTION_COL
         text_col = const.TEXT_COL
 
@@ -434,7 +450,6 @@ class CashRule:
                 left_elements += element_layout
 
         deposit_key = self.key_lookup('Deposit')
-        print('deposit element key is: {}'.format(deposit_key))
         deposit_layout = [sg.Text('{}:'.format(self.deposit['Description']), pad=((0, pad_el), 0), justification='r',
                                   font=bold_font, background_color=bg_col),
                           sg.Text('', key=deposit_key, size=(14, 1), enable_events=True, pad=((0, pad_el), 0),
@@ -442,7 +457,6 @@ class CashRule:
         right_elements += deposit_layout
 
         id_key = self.key_lookup('ID')
-        print('id element key is: {}'.format(id_key))
         id_title = self.id['Description']
         header_layout = [
             [sg.Frame('', [
@@ -450,7 +464,7 @@ class CashRule:
                               background_color=bg_col),
                       sg.Text('', key=id_key, size=(20, 1), pad=((pad_el, pad_el*2), pad_el*2), justification='l',
                               font=font_main, background_color=bg_col, auto_size_text=True, border_width=0)]],
-                      pad=(0, 0), background_color=header_col, border_width=2, relief='raised')],
+                      pad=(0, 0), background_color=header_col, border_width=1, relief='ridge')],
             [sg.Col([left_elements], pad=(0, pad_v), justification='l', background_color=bg_col, expand_x=True),
              sg.Col([[sg.Canvas(size=(0, 0), visible=True, background_color=bg_col)]],
                     justification='c', background_color=bg_col, expand_x=True),
@@ -823,17 +837,17 @@ class CashRule:
         Load previous cash transactions from the program database.
         """
         table = self.table
+        display_mapping = self.display_columns
 
         # Filter database results using static parameters
         filters = []
         for parameter in self.parameters:
-            print(parameter.name, parameter.filterable, parameter.editable, parameter.value)
             if parameter.editable is False and parameter.filterable is True and parameter.value is not None:
                 filters.append(parameter.filter_statement(table=table))
 
         # Query existing database entries
         import_df = user.query(table, columns=self.columns, filter_rules=filters, prog_db=True)
-        trans_df = win2.data_import_window(import_df, self.parameters, create_new=True)
+        trans_df = win2.data_import_window(import_df, self.parameters, header_map=display_mapping, create_new=True)
 
         if trans_df is None:  # user selected to cancel importing/creating a bank transaction
             return '-HOME-'
@@ -1105,11 +1119,6 @@ class CashExpenses:
             sys.exit(1)
         else:
             self.columns = table_columns
-
-        try:
-            self.display_header = edict['DisplayHeader']
-        except KeyError:
-            self.display_header = ''
 
         try:
             self.display_columns = edict['DisplayColumns']
@@ -1524,11 +1533,6 @@ class CashRecords:
         self.reference_columns = reference_columns
 
         try:
-            self.display_header = rdict['DisplayHeader']
-        except KeyError:
-            self.display_header = ''
-
-        try:
             self.display_columns = rdict['DisplayColumns']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "DisplayColumns".') \
@@ -1564,8 +1568,8 @@ class CashRecords:
         display_columns = {j: i for i, j in self.reference_columns.items()}
 
         # Display data selection window
-        selected_ids = win2.select_data(df, unassoc_df, pkey, column_map=display_columns,
-                                        to_title=self.display_header, from_title=self.reference_header)
+        selected_ids = win2.associate_data(df, unassoc_df, pkey, column_map=display_columns,
+                                        to_title=self.title, from_title=self.reference_header)
 
         if len(selected_ids) > 0:
             selected_indices = unassoc_df.index[unassoc_df[pkey].isin(selected_ids)].tolist()
