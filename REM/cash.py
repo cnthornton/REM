@@ -2,17 +2,13 @@
 REM cash reconciliation configuration classes and objects.
 """
 import datetime
-import os
 import re
 import sys
 
 import dateutil.parser
-from jinja2 import Environment, FileSystemLoader
 import numpy as np
 import pandas as pd
 import PySimpleGUI as sg
-import pdfkit
-import time
 
 import REM.constants as const
 import REM.data_manipulation as dm
@@ -404,13 +400,13 @@ class CashRule:
 
         # Element parameters
         header_col = input_col = const.HEADER_COL
-        border_col = const.BORDER_COL
         bg_col = const.ACTION_COL
         text_col = const.TEXT_COL
 
         font_h = const.HEADER_FONT
         font_main = const.MAIN_FONT
         bold_font = const.BOLD_FONT
+        bold_l_font = const.BOLD_MID_FONT
 
         pad_el = const.ELEM_PAD
         pad_v = const.VERT_PAD
@@ -459,12 +455,11 @@ class CashRule:
         id_key = self.key_lookup('ID')
         id_title = self.id['Description']
         header_layout = [
-            [sg.Frame('', [
-                     [sg.Text('{}:'.format(id_title), pad=((pad_el*2, pad_el), pad_el*2), font=bold_font,
+            [sg.Col([[sg.Text('{}:'.format(id_title), pad=((pad_el*2, pad_el), pad_el*2), font=bold_l_font,
                               background_color=bg_col),
                       sg.Text('', key=id_key, size=(20, 1), pad=((pad_el, pad_el*2), pad_el*2), justification='l',
-                              font=font_main, background_color=bg_col, auto_size_text=True, border_width=0)]],
-                      pad=(0, 0), background_color=header_col, border_width=1, relief='ridge')],
+                              font=bold_l_font, background_color=bg_col, auto_size_text=True, border_width=0)]],
+                pad=(0, 0), background_color=bg_col)],
             [sg.Col([left_elements], pad=(0, pad_v), justification='l', background_color=bg_col, expand_x=True),
              sg.Col([[sg.Canvas(size=(0, 0), visible=True, background_color=bg_col)]],
                     justification='c', background_color=bg_col, expand_x=True),
@@ -844,12 +839,14 @@ class CashRule:
         filters = []
 
         id_param = self.id
+        id_name = id_param['Column']
         id_param['ElementType'] = 'input'
-        import_parameters.append(param_els.AuditParameterInput(self.name, id_param['Column'], id_param))
+        import_parameters.append(param_els.AuditParameterInput(self.name, id_name, id_param))
 
         date_param = self.date
+        date_name = date_param['Column']
         date_param['ElementType'] = 'date'
-        import_parameters.append(param_els.AuditParameterDate(self.name, date_param['Column'], date_param))
+        import_parameters.append(param_els.AuditParameterDate(self.name, date_name, date_param))
 
         for parameter in self.parameters:
             if parameter.editable is False and parameter.filterable is True and parameter.value is not None:
@@ -859,7 +856,8 @@ class CashRule:
                 import_parameters.append(parameter)
 
         # Query existing database entries
-        import_df = user.query(table, columns=self.columns, filter_rules=filters, prog_db=True)
+        order_by = [date_name, id_name]
+        import_df = user.query(table, columns=self.columns, filter_rules=filters, order=order_by, prog_db=True)
         trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping, create_new=True)
 
         if trans_df is None:  # user selected to cancel importing/creating a bank transaction

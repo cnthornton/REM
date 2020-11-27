@@ -689,7 +689,7 @@ class SummaryPanel:
         for tab in tabs:
             # Update audit field with the tab document number
             doc_no = tab.id
-            elem_size = len(doc_no) + 1
+            elem_size = len(doc_no)
 
             no_key = tab.key_lookup('DocNo')
             window[no_key].set_size((elem_size, None))
@@ -1148,6 +1148,7 @@ class SummaryPanel:
                 # Populate the output dataframe with defined column values stored in the totals and records tables
                 df = pd.DataFrame(columns=list(references.keys()))
 
+                ref_col_map = {}
                 for column in references:
                     reference = references[column]
                     try:
@@ -1178,6 +1179,8 @@ class SummaryPanel:
                               .format(RULE=self.rule_name, TAB=tab.name, TBL=ref_tbl))
                         continue
 
+                    ref_col_map[ref_col] = column
+
                     if is_audit is True:
                         if len(ref_series.dropna().unique().tolist()) > 1:
                             print(ref_series)
@@ -1186,10 +1189,60 @@ class SummaryPanel:
                                   'value. Using first value encountered in {COL}'
                                   .format(RULE=self.rule_name, NAME=tab.name, TABLE=table, REF=ref_col, COL=column))
 
-                        ref_value = ref_series.dropna().iloc[0]
-                        df.at[0, column] = ref_value
+                        try:
+                            ref_value = ref_series.dropna().iloc[0]
+                        except IndexError:  # df is empty
+                            continue
+                        else:
+                            df.at[0, column] = ref_value
                     else:
                         df[column] = ref_series
+
+                # Add information if export dataframe is empty and table is the audit table
+                if df.empty and is_audit is True:
+                    print('Warning: rule {RULE}, summary {NAME}: no records exist for output table {TBL}'
+                          .format(RULE=self.rule_name, NAME=tab.name, TBL=table))
+                    # Add empty row to dataframe
+                    df = df.append(pd.Series(), ignore_index=True)
+
+                    # Add audit identifier to dataframe
+                    for id_field in tab.ids:
+                        id_param = tab.ids[id_field]
+
+                        if id_param['IsPrimary'] is True:
+                            pkey = id_param['DatabaseField']
+                            break
+
+                    primary_id = tab.id
+                    df.at[0, pkey] = primary_id
+
+                    # Add summary totals to column
+                    total_cols = tab.totals_df.columns.values.tolist()
+                    for total_col in total_cols:
+                        try:
+                            dbcolumn = ref_col_map[total_col]
+                        except KeyError:
+                            print('Info: rule {RULE}, summary {NAME}: summary total {COL} not found in the audit '
+                                  'reference columns'.format(RULE=self.rule_name, NAME=tab.name, COL=total_col))
+                            continue
+                        else:
+                            value = tab.totals_df.at[0, total_col]
+                            df.at[0, dbcolumn] = str(value)
+
+                    # Set parameter values
+                    for param in tab.parameters:
+                        try:
+                            dbcolumn = ref_col_map[param.alias]
+                        except KeyError:
+                            try:
+                                dbcolumn = ref_col_map[param.name]
+                            except KeyError:
+                                print('Info: rule {RULE}, summary {NAME}: parameter {COL} not found in the audit '
+                                      'reference columns'.format(RULE=self.rule_name, NAME=tab.name, COL=param.alias))
+                                continue
+
+                        value = param.value_obj
+                        df.at[0, dbcolumn] = value
 
                 print(df)
 
@@ -1631,16 +1684,28 @@ class SummaryItem:
 
         no_key = self.key_lookup('DocNo')
         note_key = self.key_lookup('Note')
+#        header_layout = [
+#            [sg.Frame('', [
+#                [sg.Text('{}:'.format(tab_title), pad=((pad_el * 2, pad_el), pad_el * 2), font=font_b,
+#                         background_color=bg_col),
+#                 sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, pad_el * 2), pad_el * 2), justification='l',
+#                         font=font, background_color=bg_col, auto_size_text=True, border_width=0)]],
+#                      pad=(0, 0), background_color=header_col, border_width=1, relief='ridge'),
+#             sg.Col([[sg.Button('', key=note_key, pad=(0, 0), image_data=const.NOTES_ICON, visible=True,
+#                                button_color=(text_col, bg_col), border_width=0, tooltip=self.notes['Title'])]],
+#                    pad=(pad_v, 0), background_color=bg_col, vertical_alignment='c')]]
+
         header_layout = [
-            [sg.Frame('', [
-                [sg.Text('{}:'.format(tab_title), pad=((pad_el * 2, pad_el), pad_el * 2), font=font_b,
+            [sg.Col([
+                [sg.Text('{}:'.format(tab_title), pad=((0, pad_el), 0), font=font_b,
                          background_color=bg_col),
-                 sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, pad_el * 2), pad_el * 2), justification='l',
-                         font=font, background_color=bg_col, auto_size_text=True, border_width=0)]],
-                      pad=(0, 0), background_color=header_col, border_width=1, relief='ridge'),
+                 sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, 0), 0), justification='l',
+                         font=font_b, background_color=bg_col, auto_size_text=True, border_width=0)],
+                [sg.HorizontalSeparator(pad=(0, (pad_el*2, 0)), color=const.HEADER_COL)]],
+                pad=(0, 0), background_color=bg_col, vertical_alignment='t'),
              sg.Col([[sg.Button('', key=note_key, pad=(0, 0), image_data=const.NOTES_ICON, visible=True,
                                 button_color=(text_col, bg_col), border_width=0, tooltip=self.notes['Title'])]],
-                    pad=(pad_v, 0), background_color=bg_col, vertical_alignment='c')]]
+                    pad=(pad_v, 0), background_color=bg_col, vertical_alignment='t')]]
 
         # Data tables
         records_header = list(display_columns.keys())
@@ -1942,6 +2007,8 @@ class SummaryItem:
                 print('Info: rule {RULE}, summary {NAME}: saving new record {ID} to list of table {TBL} IDs'
                       .format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
                 current_tbl_pkeys[db_table].append(record_id)
+            elif id_param['IsPrimary'] is True:
+                record_id = self.id
             else:
                 if len(current_ids) > 0:
                     record_id = current_ids[0]
@@ -2375,7 +2442,7 @@ class SummaryItemAdd(SummaryItem):
         Populate the summary item dataframe with added records.
         """
         df = self.import_df.copy()
-        print('Info: rule {RULE}, summary {NAME}: updating table with existing data'
+        print('Info: rule {RULE}, summary {NAME}: updating table'
               .format(RULE=self.rule_name, NAME=self.name))
 
         if self.import_df.empty:  # no records for selected parameters in database
@@ -2500,18 +2567,34 @@ class SummaryItemSubset(SummaryItem):
             df = dm.append_to_table(df, append_df)
 
         self.df = df
+        if df.empty:  # no records generated from database or tab summaries
+            # Create the primary identifier for the summary tab
+            for id_field in self.ids:
+                id_param = self.ids[id_field]
+                if id_param['IsPrimary'] is True:
+                    db_table = id_param['DatabaseTable']
+                    all_ids = current_tbl_pkeys[db_table]
 
-        # Set parameter values
-        for param in self.parameters:
-            colname = param.alias
-            value = param.value_obj
-            df[colname] = value
+                    pkey_param = id_param
 
-        # Update static columns with default values, if specified in rules
-        df = self.update_static_columns(df)
+                    break
 
-        # Update edit columns with default values, if specified in rules
-        df = self.update_edit_columns(df)
+            primary_id = self.create_id(pkey_param, all_ids)
+
+            self.id = primary_id
+            current_tbl_pkeys[db_table].append(primary_id)
+        else:
+            # Set parameter values
+            for param in self.parameters:
+                colname = param.alias
+                value = param.value_obj
+                df[colname] = value
+
+            # Update static columns with default values, if specified in rules
+            df = self.update_static_columns(df)
+
+            # Update edit columns with default values, if specified in rules
+            df = self.update_edit_columns(df)
 
         self.df = df
 

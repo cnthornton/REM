@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '1.0.2'
+__version__ = '1.0.3'
 
 import datetime
 from multiprocessing import freeze_support
@@ -804,7 +804,6 @@ def main():
                                                         'Only an admin may edit an existing audit. Are you sure you '
                                                         'would like to continue?')
                     if continue_audit == 'Cancel':
-                        current_rule.reset_rule(window, current=True)
                         continue
 
                 # Initialize audit

@@ -299,7 +299,7 @@ class UserAccount:
 
             filter_rules: tuple or list of tuples containing where clause and value tuple for a given filter rule.
 
-            order: string or tuple of strings containing columns to sort results by.
+            order: string or list of strings containing columns to sort results by.
 
            prog_db (bool): query from program database.
         """
@@ -310,7 +310,7 @@ class UserAccount:
         # Define sorting component of query statement
         if type(order) in (type(list()), type(tuple())):
             order_by = ' ORDER BY {}'.format(', '.join(order))
-        elif type(order) == type(str()):
+        elif isinstance(order, str):
             order_by = ' ORDER BY {}'.format(order)
         else:
             order_by = ''
