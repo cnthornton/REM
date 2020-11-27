@@ -1015,7 +1015,8 @@ def main():
             if event == summ_tab.key_lookup('Delete'):
                 # Get selected row
                 tbl_index = values[summ_tab.key_lookup('Table')]
-                print('Info: the rows selected for removal are {}'.format(tbl_index))
+                print('Info: rule {RULE}, summary {NAME}: the rows {IND} have been selected for removal'
+                      .format(RULE=summ_tab.rule_name, NAME=summ_tab.name, IND=tbl_index))
 
                 summ_tab.remove_row(tbl_index)
                 rule_summ.update_display(window)
@@ -1153,7 +1154,8 @@ def main():
             if event == current_rule.key_lookup('RemoveEntry'):
                 # Get selected row
                 tbl_index = values[current_rule.key_lookup('EntryTable')]
-                print('Info: the rows selected for removal from the records table are {}'.format(tbl_index))
+                print('Info: rule {RULE}, Records: the rows {IND} have been selected for removal'
+                      .format(RULE=current_rule.name, IND=tbl_index))
 
                 current_rule.records.remove_row(tbl_index)
                 current_rule.update_display(window)
@@ -1164,7 +1166,8 @@ def main():
             if event == current_rule.key_lookup('RemoveExpense'):
                 # Get selected row
                 tbl_index = values[current_rule.key_lookup('ExpenseTable')]
-                print('Info: the rows selected for removal from the expense table are {}'.format(tbl_index))
+                print('Info: rule {RULE}, Expenses: the rows {IND} have been selected for removal'
+                      .format(RULE=current_rule.name, IND=tbl_index))
 
                 current_rule.expenses.remove_row(tbl_index)
                 current_rule.update_display(window)
