@@ -399,7 +399,8 @@ class CashRule:
         params = self.parameters
 
         # Element parameters
-        header_col = input_col = const.HEADER_COL
+        header_col = const.HEADER_COL2
+        input_col = const.INPUT_COL
         bg_col = const.ACTION_COL
         text_col = const.TEXT_COL
 
