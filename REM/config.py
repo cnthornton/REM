@@ -49,6 +49,24 @@ class Config:
         except KeyError:
             self.mongod_authdb = 'REM'
 
+        # Table field parameters
+        try:
+            self.creator_code = cnfg['fields']['creator_code_field']
+        except KeyError:
+            self.creator_code = 'CreatorCode'
+        try:
+            self.creation_date = cnfg['fields']['creation_date_field']
+        except KeyError:
+            self.creation_date = 'CreationDateTime'
+        try:
+            self.editor_code = cnfg['fields']['editor_code_field']
+        except KeyError:
+            self.editor_code = 'LastEditor'
+        try:
+            self.edit_date = cnfg['fields']['edit_date_field']
+        except KeyError:
+            self.edit_date = 'LastEditTime'
+
         # Connection parameters
         self.cnx = None
         self.database = None

@@ -33,22 +33,6 @@ class UserSettings:
             self.username = cnfg['user']['username']
         except KeyError:
             self.username = 'username'
-        try:
-            self.creator_code = cnfg['user']['creator_code_field']
-        except KeyError:
-            self.creator_code = 'CreatorCode'
-        try:
-            self.creation_date = cnfg['user']['creation_date_field']
-        except KeyError:
-            self.creation_date = 'CreationDateTime'
-        try:
-            self.editor_code = cnfg['user']['editor_code_field']
-        except KeyError:
-            self.editor_code = 'LastEditor'
-        try:
-            self.edit_date = cnfg['user']['edit_date_field']
-        except KeyError:
-            self.edit_date = 'LastEditTime'
 
         # Localization parameters
         try:
@@ -150,36 +134,6 @@ class UserSettings:
             self.alt_dbs = cnfg['database']['alternative_databases']
         except KeyError:
             self.alt_dbs = []
-
-        # Configuration parameters
-        try:
-            self.mongod_port = cnfg['configuration']['mongod_port']
-        except KeyError:
-            self.mongod_port = 27017
-        try:
-            self.mongod_server = cnfg['configuration']['mongod_server']
-        except KeyError:
-            self.mongod_server = 'localhost'
-        try:
-            self.mongod_database = cnfg['configuration']['mongod_database']
-        except KeyError:
-            self.mongod_database = 'REM'
-        try:
-            self.mongod_config = cnfg['configuration']['mongod_config']
-        except KeyError:
-            self.mongod_config = 'configuration'
-        try:
-            self.mongod_user = cnfg['configuration']['mongod_user']
-        except KeyError:
-            self.mongod_user = 'mongo'
-        try:
-            self.mongod_pwd = cnfg['configuration']['mongod_pwd']
-        except KeyError:
-            self.mongod_pwd = ''
-        try:
-            self.mongod_authdb = cnfg['configuration']['mongod_authdb']
-        except KeyError:
-            self.mongod_authdb = 'REM'
 
     def translate(self):
         """

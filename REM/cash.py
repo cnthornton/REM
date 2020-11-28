@@ -958,8 +958,8 @@ class CashRule:
         if exists is True:  # updating existing transaction
             if user.admin:  # must be admin to update existing data
                 # Add editor information
-                df[settings.editor_code] = user.uid
-                df[settings.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
+                df[configuration.editor_code] = user.uid
+                df[configuration.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
                 # Prepare insertion parameters
                 columns = df.columns.values.tolist()
@@ -979,8 +979,8 @@ class CashRule:
                 return False
         else:  # new transaction
             # Add creator information to the transaction
-            df[settings.creator_code] = user.uid
-            df[settings.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
+            df[configuration.creator_code] = user.uid
+            df[configuration.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
             # Prepare insertion parameters
             columns = df.columns.values.tolist()
@@ -1024,8 +1024,8 @@ class CashRule:
             row_id = row[expense_pkey]
             if row_id in import_expenses:
                 # Edit existing expense in database table
-                row[settings.editor_code] = user.uid
-                row[settings.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
+                row[configuration.editor_code] = user.uid
+                row[configuration.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
                 row_columns = row.index.tolist()
                 row_values = row.values.tolist()
@@ -1034,8 +1034,8 @@ class CashRule:
                 success = user.update(expenses_table, row_columns, row_values, filters)
             else:
                 # Create new entry for expense in database table
-                row[settings.creator_code] = user.uid
-                row[settings.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
+                row[configuration.creator_code] = user.uid
+                row[configuration.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
                 row_columns = row.index.tolist()
                 row_values = row.values.tolist()
