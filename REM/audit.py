@@ -1294,8 +1294,8 @@ class SummaryPanel:
 
                     if row_id in import_record_ids:  # record already exists in database table
                         # Add editor information
-                        row[settings.editor_code] = user.uid
-                        row[settings.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
+                        row[configuration.editor_code] = user.uid
+                        row[configuration.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
                         # Prepare update parameters
                         row_columns = row.index.tolist()
@@ -1306,8 +1306,8 @@ class SummaryPanel:
                         success.append(user.update(table, row_columns, row_values, filters))
                     else:  # new record created
                         # Add creator information
-                        row[settings.creator_code] = user.uid
-                        row[settings.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
+                        row[configuration.creator_code] = user.uid
+                        row[configuration.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
                         # Prepare insertion parameters
                         row_columns = row.index.tolist()
@@ -2007,7 +2007,7 @@ class SummaryItem:
                 print('Info: rule {RULE}, summary {NAME}: saving new record {ID} to list of table {TBL} IDs'
                       .format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
                 current_tbl_pkeys[db_table].append(record_id)
-            elif id_param['IsPrimary'] is True:
+            elif id_param['IsPrimary'] is True and self.id is not None:
                 record_id = self.id
             else:
                 if len(current_ids) > 0:
