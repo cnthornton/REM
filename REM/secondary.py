@@ -717,13 +717,23 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     return select_rows
 
 
-def data_import_window(df, parameters, header_map: dict = None, create_new: bool = False):
+def data_import_window(df, parameters, header_map: dict = None, aliases: dict = None, create_new: bool = False):
     """
     Display the import from database window.
     """
     display_df = df.copy()
-    header = df.columns.values.tolist()
-    data = df.values.tolist()
+    header = display_df.columns.values.tolist()
+
+    # Map column values to the aliases specified in the configuration
+    for alias_col in aliases:
+        alias_map = aliases[alias_col]  # dictionary of mapped values
+
+        if alias_col not in header:
+            continue
+        else:
+            display_df[alias_col].replace(alias_map, inplace=True)
+
+    data = display_df.values.tolist()
 
     if header_map is None:
         header_map = {i: i for i in header}
@@ -827,9 +837,11 @@ def data_import_window(df, parameters, header_map: dict = None, create_new: bool
             import_data = None
             break
 
-        # Filter table rows based on parameters
+        # Filter table rows based on parameter values
         if event in filter_params:
             display_df = df.copy()
+
+            # Filter table
             for param in parameters:
                 if param.filterable is False:
                     continue
@@ -841,6 +853,16 @@ def data_import_window(df, parameters, header_map: dict = None, create_new: bool
 
                 if param_value:
                     display_df = display_df[display_df[param.name] == param_value]
+
+            # Map column values to the aliases specified in the configuration
+            for alias_col in aliases:
+                alias_map = aliases[alias_col]  # dictionary of mapped values
+
+                if alias_col not in header:
+                    continue
+                else:
+                    display_df[alias_col].replace(alias_map, inplace=True)
+
             window['-TABLE-'].update(values=display_df.values.tolist())
 
             continue

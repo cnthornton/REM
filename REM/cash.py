@@ -663,11 +663,9 @@ class CashRule:
         if table == 'records':
             dataframe = self.records.set_datatypes(self.records.df)
             display_columns = self.records.display_columns
-            display_header = list(display_columns.keys())
         else:
             dataframe = self.expenses.set_datatypes(self.expenses.df)
             display_columns = self.expenses.display_columns
-            display_header = list(display_columns.keys())
 
         # Localization specific options
         date_offset = settings.get_date_offset()
@@ -687,25 +685,6 @@ class CashRule:
                                                          relativedelta(years=+date_offset)).strftime(date_fmt)
                 if pd.notnull(x) else '')
             display_df[col_name] = col_to_add
-
-        # Map column values to the aliases specified in the configuration
-        for alias_col in self.aliases:
-            alias_map = self.aliases[alias_col]  # dictionary of mapped values
-
-            if alias_col not in display_header:
-                print('Warning: rule {RULE}: alias {ALIAS} not found in the list of display columns'
-                      .format(RULE=self.name, ALIAS=alias_col))
-                continue
-
-            print('Info: rule {RULE}: applying aliases {MAP} to {COL}'
-                  .format(RULE=self.name, MAP=alias_map, COL=alias_col))
-
-            try:
-                display_df[alias_col].replace(alias_map, inplace=True)
-            except KeyError:
-                print('Warning: rule {RULE}: alias {ALIAS} not found in the list of display columns'
-                      .format(RULE=self.name, ALIAS=alias_col))
-                continue
 
         return display_df
 
@@ -858,7 +837,8 @@ class CashRule:
         # Query existing database entries
         order_by = [date_name, id_name]
         import_df = user.query(table, columns=self.columns, filter_rules=filters, order=order_by, prog_db=True)
-        trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping, create_new=True)
+        trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping,
+                                           aliases=self.aliases, create_new=True)
 
         if trans_df is None:  # user selected to cancel importing/creating a bank transaction
             return '-HOME-'
