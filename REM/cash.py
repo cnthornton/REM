@@ -380,6 +380,37 @@ class CashRule:
         self.records.reset_dynamic_attributes()
         self.expenses.reset_dynamic_attributes()
 
+    def remove_unsaved_keys(self):
+        """
+        Remove unsaved IDs from the table IDs lists.
+        """
+        # Remove transaction ID from list if not already saved in database
+        if self.exists is False:  # newly created transaction
+            # Remove transaction ID from list of transaction IDs
+            try:
+                current_tbl_pkeys[self.table].remove(self.id['Value'])
+            except ValueError:
+                print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
+                      'table {TBL} IDs'.format(ID=self.id['Value'], TBL=self.expenses.table))
+            else:
+                print('Info: removed ID {ID} from the list of database table {TBL} IDs'
+                      .format(ID=self.id['Value'], TBL=self.table))
+
+        # Remove those expense IDs not already saved in the database from the list
+        all_expenses = self.expenses.df[self.expenses.pkey].values.tolist()
+        existing_expenses = self.expenses.import_df[self.expenses.pkey].values.tolist()
+        created_expenses = set(all_expenses).difference(set(existing_expenses))
+        for expense_id in created_expenses:
+            try:
+                current_tbl_pkeys[self.expenses.table].remove(expense_id)
+            except ValueError:
+                print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
+                      'table {TBL} IDs'.format(ID=expense_id, TBL=self.expenses.table))
+                continue
+            else:
+                print('Info: removed ID {ID} from the list of database table {TBL} IDs'
+                      .format(ID=expense_id, TBL=self.expenses.table))
+
     def layout(self, win_size: tuple = None):
         """
         Generate a GUI layout for the cash rule.

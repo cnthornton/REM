@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '1.0.3'
+__version__ = '1.0.4'
 
 import datetime
 from multiprocessing import freeze_support
@@ -499,17 +499,55 @@ def main():
         # User log-off
         if values['-UMENU-'] == 'Sign Out':  # user signs out
             # Confirm sign-out
-            msg = _('Are you sure you would like to sign-out?')
-            selection = win2.popup_confirm(msg)
+            if audit_in_progress:  # ask to switch first
+                msg = _('An audit is ongoing. Are you sure you would like to quit without saving?')
+                selection = win2.popup_confirm(msg)
 
-            if selection == 'Cancel':
-                continue
+                if selection == 'OK':
+                    # Reset to defaults
+                    audit_in_progress = False
+                    summary_panel_active = False
+                    # Remove from the list of used IDs any IDs created during the now cancelled audit
+                    for tab in current_rule.summary.tabs:
+                        tab.remove_unsaved_keys()
 
-            audit_in_progress = False
-            cr_in_progress = False
-            if current_rule is not None:
-                current_panel = current_rule.reset_rule(window)  # reset to home screen
-            current_rule = None
+                    # Reset the rule and update the panel
+                    current_panel = current_rule.reset_rule(window)
+                    current_rule = None
+                else:
+                    continue
+            elif cr_in_progress:  # ask to switch first
+                msg = _('Are you sure you would like to quit without saving the transaction?')
+                selection = win2.popup_confirm(msg)
+
+                if selection == 'OK':
+                    # Reset to defaults
+                    cr_in_progress = False
+
+                    # Remove from list of used IDs any IDs created/deleted during the now cancelled reconciliation
+                    current_rule.remove_unsaved_keys()
+
+                    # Reset rule and update the panel
+                    current_panel = current_rule.reset_rule(window)
+                    current_rule = None
+                else:
+                    continue
+            else:  # no action being taken so ok to switch without asking
+                msg = _('Are you sure you would like to sign-out?')
+                selection = win2.popup_confirm(msg)
+
+                if selection == 'Cancel':
+                    continue
+
+                try:
+                    current_rule.reset_parameters(window)
+                    window[current_rule.element_key].update(visible=False)
+                except AttributeError:
+                    pass
+
+                window['-HOME-'].update(visible=True)
+
+                current_panel = '-HOME-'
 
             # Reset User attributes
             user.logout()
@@ -577,7 +615,7 @@ def main():
         # Switch to new panel
         if current_panel != '-HOME-' and (event in cancel_keys or values['-AMENU-'] or values['-RMENU-']):
             if audit_in_progress:  # ask to switch first
-                msg = _('An audit is ongoing. Are you sure you would like to exit without saving?')
+                msg = _('An audit is ongoing. Are you sure you would like to quit without saving?')
                 selection = win2.popup_confirm(msg)
 
                 if selection == 'OK':
@@ -599,7 +637,7 @@ def main():
                 else:
                     continue
             elif cr_in_progress:  # ask to switch first
-                msg = _('Are you sure you would like to exit without saving the transaction?')
+                msg = _('Are you sure you would like to quit without saving the transaction?')
                 selection = win2.popup_confirm(msg)
 
                 if selection == 'OK':
@@ -608,32 +646,7 @@ def main():
                     cr_in_progress = False
 
                     # Remove from list of used IDs any IDs created/deleted during the now cancelled reconciliation
-                    # Remove transaction ID from list if not already saved in database
-                    if current_rule.exists is False:  # newly created transaction
-                        # Remove transaction ID from list of transaction IDs
-                        try:
-                            current_tbl_pkeys[current_rule.table].remove(current_rule.id['Value'])
-                        except ValueError:
-                            print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
-                                  'table {TBL} IDs'.format(ID=current_rule.id['Value'], TBL=current_rule.expenses.table))
-                        else:
-                            print('Info: removed ID {ID} from the list of database table {TBL} IDs'
-                                  .format(ID=current_rule.id['Value'], TBL=current_rule.table))
-
-                    # Remove those expense IDs not already saved in the database from the list
-                    all_expenses = current_rule.expenses.df[current_rule.expenses.pkey].values.tolist()
-                    existing_expenses = current_rule.expenses.import_df[current_rule.expenses.pkey].values.tolist()
-                    created_expenses = set(all_expenses).difference(set(existing_expenses))
-                    for expense_id in created_expenses:
-                        try:
-                            current_tbl_pkeys[current_rule.expenses.table].remove(expense_id)
-                        except ValueError:
-                            print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
-                                  'table {TBL} IDs'.format(ID=expense_id, TBL=current_rule.expenses.table))
-                            continue
-                        else:
-                            print('Info: removed ID {ID} from the list of database table {TBL} IDs'
-                                  .format(ID=expense_id, TBL=current_rule.expenses.table))
+                    current_rule.remove_unsaved_keys()
 
                     # Reset rule and update the panel
                     current_panel = current_rule.reset_rule(window)
