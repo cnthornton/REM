@@ -685,6 +685,8 @@ class SummaryPanel:
         greater_col = const.PASS_COL
         lesser_col = const.FAIL_COL
 
+        tbl_error_col = const.TBL_ERROR_COL
+
         tabs = self.tabs
         for tab in tabs:
             # Update audit field with the tab document number
@@ -701,16 +703,30 @@ class SummaryPanel:
             # Modify records tables for displaying
             print('Info: rule {RULE}, summary {NAME}: formatting records table for displaying'
                   .format(RULE=self.rule_name, NAME=tab.name))
-            display_df = tab.format_display_table(table='records')
-            data = display_df.values.tolist()
+
+            id_column = tab.records['IDColumn']
+            record_ids = tab.df[id_column].dropna().unique().tolist()
+            if len(record_ids) < 1:
+                print('Info: rule {RULE}, summary {NAME}: no records to display'
+                      .format(RULE=self.rule_name, NAME=tab.name))
+                data = []
+                error_colors = []
+            else:
+                display_df = tab.format_display_table(tab.df, columns=tab.records['DisplayColumns'])
+                data = display_df.values.tolist()
+
+                # Highlight rows with discrepancies
+                errors = tab.search_for_errors()
+                error_colors = [(i, tbl_error_col) for i in errors]
 
             tbl_key = tab.key_lookup('Table')
-            window[tbl_key].update(values=data)
+            window[tbl_key].update(values=data, row_colors=error_colors)
+            window.refresh()
 
             # Modify totals tables for displaying
             print('Info: rule {RULE}, summary {NAME}: formatting totals table for displaying'
                   .format(RULE=self.rule_name, NAME=tab.name))
-            totals_display_df = tab.format_display_table(table='totals')
+            totals_display_df = tab.format_display_table(tab.totals_df, columns=tab.totals['DisplayColumns'])
             totals_data = totals_display_df.values.tolist()
 
             totals_key = tab.key_lookup('Totals')
@@ -729,24 +745,20 @@ class SummaryPanel:
 
             sum_column = tab.records['SumColumn']
             records_sum = tab.df[sum_column].sum()
-            remainder = totals_sum - records_sum
+            remainder = int(totals_sum - records_sum)
             if remainder > 0:
+                print('Info: rule {RULE}, summary {NAME}: records are under-allocated by {AMOUNT}'
+                      .format(RULE=self.rule_name, NAME=tab.name, AMOUNT=remainder))
                 bg_color = greater_col
             elif remainder < 0:
+                print('Info: rule {RULE}, summary {NAME}: records are over-allocated by {AMOUNT}'
+                      .format(RULE=self.rule_name, NAME=tab.name, AMOUNT=abs(remainder)))
                 bg_color = lesser_col
             else:
                 bg_color = default_col
 
             remain_key = tab.key_lookup('Remainder')
             window[remain_key].update(value='{:,.2f}'.format(remainder), background_color=bg_color)
-
-            # Highlight rows with discrepancies
-            tbl_error_col = const.TBL_ERROR_COL
-
-            errors = tab.search_for_errors()
-            error_colors = [(i, tbl_error_col) for i in errors]
-            window[tbl_key].update(row_colors=error_colors)
-            window.refresh()
 
             # Change edit note button to be highlighted if note field not empty
             note_key = tab.key_lookup('Note')
@@ -979,13 +991,16 @@ class SummaryPanel:
                           .format(RULE=self.rule_name, NAME=section_name, ERR=e))
                     continue
 
+                # Format as display table
+                display_df = reference_tab.format_display_table(subset_df)
+
                 # Index rows using grouping list in configuration
                 try:
                     grouping = section['Group']
                 except KeyError:
-                    grouped_df = subset_df
+                    grouped_df = display_df
                 else:
-                    grouped_df = subset_df.set_index(grouping).sort_index()
+                    grouped_df = display_df.set_index(grouping).sort_index()
 
                 html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
                                               sparsify=True, na_rep='')
@@ -2177,7 +2192,7 @@ class SummaryItem:
         self.removed_df = removed_df
         self.df = df
 
-    def format_display_table(self, table: str = 'records', date_fmt: str = None):
+    def format_display_table(self, dataframe, columns: dict = None, date_fmt: str = None):
         """
         Format dataframe for displaying as a table.
         """
@@ -2188,14 +2203,8 @@ class SummaryItem:
 
         date_fmt = date_fmt if date_fmt is not None else settings.format_date_str(date_str=settings.display_date_format)
 
-        if table == 'records':
-            dataframe = self.df
-            display_columns = self.records['DisplayColumns']
-            display_header = list(display_columns.keys())
-        else:
-            dataframe = self.totals_df
-            display_columns = self.totals['DisplayColumns']
-            display_header = list(display_columns.keys())
+        display_columns = columns if columns is not None else {i: i for i in dataframe.columns.values.tolist()}
+        display_header = list(display_columns.keys())
 
         # Localization specific options
         date_offset = settings.get_date_offset()
