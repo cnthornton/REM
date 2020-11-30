@@ -208,6 +208,13 @@ class CashRule:
         else:
             self.display_columns = display_columns
 
+        try:
+            import_params = adict['ImportParameters']
+        except KeyError:
+            self.import_parameters = {}
+        else:
+            self.import_parameters = import_params
+
         self.parameters = []
         try:
             params = adict['RuleParameters']
@@ -866,6 +873,9 @@ class CashRule:
             if parameter.filterable is True:
                 import_parameters.append(parameter)
 
+        # Add configured import filters
+        filters += self.filter_statements()
+
         # Query existing database entries
         order_by = [date_name, id_name]
         import_df = user.query(table, columns=self.columns, filter_rules=filters, order=order_by, prog_db=True)
@@ -966,9 +976,7 @@ class CashRule:
                 values = df.values.tolist()[0]
 
                 # Prepare filter parameters
-                filters = self.filter_statement(self.id['Value'])
-                print(columns)
-                print(values)
+                filters = ('{} = ?'.format(self.id['Column']), (self.id['Value'],))
 
                 # Update existing transaction
                 saved = user.update(table, columns, values, filters)
@@ -1061,13 +1069,53 @@ class CashRule:
 
         return True
 
-    def filter_statement(self, value):
+    def filter_statements(self):
         """
-        Generate the filter clause for SQL querying.
+        Generate the filter statements for tab query parameters.
         """
-        statement = ('{} = ?'.format(self.id['Column']), (value,))
+        operators = {'>', '>=', '<', '<=', '=', '!=', 'IN', 'in', 'In'}
 
-        return statement
+        params = self.import_parameters
+        if params is None:
+            return []
+
+        filters = []
+        for param_col in params:
+            param_rule = params[param_col]
+
+            param_oper = None
+            param_values = []
+            conditional = dm.parse_operation_string(param_rule, equivalent=False)
+            for component in conditional:
+                if component in operators:
+                    if not param_oper:
+                        param_oper = component
+                    else:
+                        print(
+                            'Error: rule {RULE}: only one operator allowed in import parameters for parameter '
+                            '{PARAM}'.format(RULE=self.name, PARAM=param_col))
+                        break
+                else:
+                    param_values.append(component)
+
+            if not (param_oper and param_values):
+                print('Error: rule {RULE}: import parameter {PARAM} requires both an operator and a value'
+                      .format(RULE=self.name, PARAM=param_col))
+                break
+
+            if param_oper.upper() == 'IN':
+                vals_fmt = ', '.join(['?' for i in param_values])
+                filters.append(('{COL} {OPER} ({VALS})'.format(COL=param_col, OPER=param_oper, VALS=vals_fmt),
+                                (param_values,)))
+            else:
+                if len(param_values) == 1:
+                    filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0],)))
+                else:
+                    print('Error: rule {RULE}: import parameter {PARAM} has too many values {COND}'
+                          .format(RULE=self.name, PARAM=param_col, COND=param_rule))
+                    break
+
+        return filters
 
 
 class CashExpenses:
