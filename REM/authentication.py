@@ -326,15 +326,21 @@ class UserAccount:
             for table in table_names[1:]:
                 table_rule = tables[table]
                 try:
-                    tbl1_field, tbl2_field, join_clause = table_rule
+                    tbl1_field, tbl2_field, join_clause = table_rule[0:3]
                 except ValueError:
                     print('Query Error: table join rule {} requires three components'.format(table_rule))
                     continue
                 if join_clause not in joins:
                     print('Query Error: unknown join type {JOIN} in {RULE}'.format(JOIN=join_clause, RULE=table_rule))
                     continue
-                join_statement = '{JOIN} {TABLE} ON {F1}={F2}'.format(JOIN=join_clause, TABLE=table, F1=tbl1_field,
-                                                                      F2=tbl2_field)
+
+                opt_filters = ' AND '.join(table_rule[3:])
+                if opt_filters:
+                    join_statement = '{JOIN} {TABLE} ON {F1}={F2} AND {OPTS}'\
+                        .format(JOIN=join_clause, TABLE=table, F1=tbl1_field, F2=tbl2_field, OPTS=opt_filters)
+                else:
+                    join_statement = '{JOIN} {TABLE} ON {F1}={F2}'.format(JOIN=join_clause, TABLE=table, F1=tbl1_field,
+                                                                          F2=tbl2_field)
                 table_rules.append(join_statement)
             table_component = ' '.join(table_rules)
         else:
