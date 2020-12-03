@@ -760,7 +760,11 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
 
         param_value = param.value
         if param_value:
-            display_df = display_df[display_df[param.name] == param_value]
+            try:
+                display_df = display_df[display_df[param.name] == param_value]
+            except KeyError:
+                print('Configuration Warning: parameter {PARAM} not found in imported table'.format(PARAM=param.name))
+                continue
 
     # Layout
     # Window and element size parameters

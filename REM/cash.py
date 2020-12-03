@@ -729,7 +729,7 @@ class CashRule:
 
     def create_id(self):
         """
-        Create new transaction ID.
+        Create a new transaction ID.
         """
         id_format = self.id['Format']
         param_fields = [i.name for i in self.parameters]
@@ -744,11 +744,24 @@ class CashRule:
 
                 id_date = date.strftime(date_fmt)
 
+        # Get parameter values of parameters composing the new ID
+        id_param_values = {}
+        for param_field in param_fields:
+            if param_field in id_format:  # parameter is a component of the ID
+                param = self.fetch_parameter(param_field)
+                if isinstance(param.value_obj, datetime.datetime):
+                    value = param.value_obj.strftime('%Y%m%d')
+                else:
+                    value = param.value
+
+                id_param_values[param_field] = value
+
         # Search list of used IDs occurring within the current date cycle
         try:
             prev_ids = current_tbl_pkeys[self.table]
         except KeyError:
-            msg = 'Configuration Warning: missing an IDs entry for database table {}'.format(self.table)
+            msg = 'Configuration Warning: rule {RULE}: missing an IDs entry for database table {TBL}'\
+                .format(RULE=self.name, TBL=self.table)
             win2.popup_error(msg)
             sys.exit(1)
         else:
@@ -758,8 +771,23 @@ class CashRule:
             used_ids = []
             for prev_id in prev_ids:
                 prev_date = self.get_id_component(prev_id, 'date')
-                if prev_date == id_date:
+                if prev_date != id_date:
+                    continue
+
+                matching_params = []
+                for param_field in id_param_values:
+                    current_param_val = id_param_values[param_field]
+                    prev_param_val = self.get_id_component(prev_id, param_field)
+                    if current_param_val != prev_param_val:
+                        matching_params.append(False)
+                    else:
+                        matching_params.append(True)
+
+                if all(matching_params):
                     used_ids.append(prev_id)
+
+            print('Info: rule {RULE}: IDs matching the parameter requirements are {LIST}'
+                  .format(RULE=self.name, LIST=used_ids))
 
             if len(used_ids) > 0:
                 last_id = sorted(used_ids)[-1]
@@ -801,7 +829,9 @@ class CashRule:
         """
         id_format = self.id['Format']
         id_field = self.id['Column']
-        print('Info: rule {RULE}: ID "{ID}" has format {FORMAT}'.format(RULE=self.name, ID=id_field, FORMAT=id_format))
+
+        parameters = self.parameters
+        param_fields = [i.name for i in parameters]
 
         last_index = 0
         id_components = []
@@ -810,6 +840,12 @@ class CashRule:
                 component_len = len(component)
                 index = (last_index, last_index + component_len)
                 part_tup = ('date', component, index)
+            elif component in param_fields:
+                param = parameters[param_fields.index(component)]
+                value = param.value
+                component_len = len(value)
+                index = (last_index, last_index + component_len)
+                part_tup = (component, value, index)
             elif component.isnumeric():  # component is an incrementing number
                 component_len = len(component)
                 index = (last_index, last_index + component_len)
@@ -887,6 +923,7 @@ class CashRule:
         elif trans_df.empty:  # user selected to create a new bank transaction record
             # Create and add new id to the transaction
             trans_id = self.create_id()
+            print('Info: rule {RULE}: ID of the new transaction is {ID}'.format(RULE=self.name, ID=trans_id))
 
             # Add transaction to the list of transaction IDs
             current_tbl_pkeys[self.table].append(trans_id)
@@ -965,15 +1002,16 @@ class CashRule:
 
         # Update the transaction table
         exists = self.exists
+        export_df = df[[dm.colname_from_query(i) for i in self.columns]]
         if exists is True:  # updating existing transaction
             if user.admin:  # must be admin to update existing data
                 # Add editor information
-                df[configuration.editor_code] = user.uid
-                df[configuration.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
+                export_df[configuration.editor_code] = user.uid
+                export_df[configuration.edit_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
                 # Prepare insertion parameters
-                columns = df.columns.values.tolist()
-                values = df.values.tolist()[0]
+                columns = export_df.columns.values.tolist()
+                values = export_df.values.tolist()[0]
 
                 # Prepare filter parameters
                 filters = ('{} = ?'.format(self.id['Column']), (self.id['Value'],))
@@ -987,12 +1025,12 @@ class CashRule:
                 return False
         else:  # new transaction
             # Add creator information to the transaction
-            df[configuration.creator_code] = user.uid
-            df[configuration.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
+            export_df[configuration.creator_code] = user.uid
+            export_df[configuration.creation_date] = datetime.datetime.now().strftime(settings.format_date_str())
 
             # Prepare insertion parameters
-            columns = df.columns.values.tolist()
-            values = df.values.tolist()
+            columns = export_df.columns.values.tolist()
+            values = export_df.values.tolist()
 
             # Add new transaction to the database
             saved = user.insert(table, columns, values)
