@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '1.0.6'
+__version__ = '1.0.7'
 
 import datetime
 from multiprocessing import freeze_support
@@ -827,16 +827,17 @@ def main():
                     tab_keys.append(tab_key)
 
                     # Prepare the filter rules to filter query results
-                    main_table = [i for i in tab.db_tables][0]
+                    main_table = [i for i in tab.import_rules][0]
                     rule_params = current_rule.parameters  # to filter data tables
                     filters = [i.filter_statement(table=main_table) for i in rule_params]
 
                     # Check for tab-specific query parameters
                     filters += tab.filter_statements()
+                    print(filters)
 
                     # Extract data from database
                     try:
-                        df = user.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
+                        df = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
                     except Exception as e:
                         win2.popup_error('Error: audit failed due to {}'.format(e))
                         initialized = False
@@ -906,7 +907,7 @@ def main():
                 all_ids = tab.row_ids()
                 if new_id not in all_ids:
                     all_cols = tab.db_columns
-                    table = list(tab.db_tables.keys())[0]
+                    table = list(tab.import_rules.keys())[0]
                     for table_item in all_cols:
                         try:
                             table_name, column_name = table_item.split('.')
@@ -917,7 +918,7 @@ def main():
                                 table = table_name
                                 break
                     filters = ('{TABLE}.{COLUMN} = ?'.format(TABLE=table, COLUMN=tab.db_key), (new_id,))
-                    new_row = user.query(tab.db_tables, columns=tab.db_columns, filter_rules=filters)
+                    new_row = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
                 else:
                     msg = _("Warning: {} is already in the table").format(new_id)
                     win2.popup_notice(msg)

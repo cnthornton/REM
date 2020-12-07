@@ -1553,12 +1553,27 @@ class SummaryItem:
             self.aliases = []
 
         try:
-            self.tab_parameters = sdict['TabParameters']
+            import_parameters = sdict['ImportParameters']
         except KeyError:
-            self.tab_parameters = None
+            import_parameters = {}
+        for import_param in import_parameters:
+            param_entry = import_parameters[import_param]
+            if 'Statement' not in param_entry:
+                msg = 'Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Statement" for ' \
+                      'ImportParameters entry {ENTRY}'.format(RULE=rule_name, NAME=name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+            if 'Parameters' not in param_entry:
+                msg = 'Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Parameters" for ' \
+                  'ImportParameters entry {ENTRY}'.format(RULE=rule_name, NAME=name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        self.import_parameters = import_parameters
 
         # Dynamic attributes
-        self.df = self.import_df = self.removed_df = None
+        header = [dm.colname_from_query(i) for i in all_columns]
+        self.df = self.import_df = self.removed_df = pd.DataFrame(columns=header)
 
         totals_header = list(set(list(totals['MappingColumns'].keys()) + list(totals['EditColumns'].keys())))
         self.totals_df = pd.DataFrame(columns=totals_header)
@@ -2310,59 +2325,11 @@ class SummaryItem:
             except KeyError:
                 note_value = ''
             else:
-                note_value = note_series.dropna().unique().tolist()[0]
+                note_value = note_series.unique().tolist()[0]
 
             self.notes['Value'] = note_value
 
             return True
-
-    def filter_statements(self):
-        """
-        Generate the filter statements for tab query parameters.
-        """
-        operators = {'>', '>=', '<', '<=', '=', '!=', 'IN', 'in', 'In'}
-
-        params = self.tab_parameters
-        if params is None:
-            return []
-
-        filters = []
-        for param_col in params:
-            param_rule = params[param_col]
-
-            param_oper = None
-            param_values = []
-            conditional = dm.parse_operation_string(param_rule, equivalent=False)
-            for component in conditional:
-                if component in operators:
-                    if not param_oper:
-                        param_oper = component
-                    else:
-                        print(
-                            'Error: rule {RULE}, tab {NAME}: only one operator allowed in tab parameters for parameter '
-                            '{PARAM}'.format(RULE=self.rule_name, NAME=self.name, PARAM=param_col))
-                        break
-                else:
-                    param_values.append(component)
-
-            if not (param_oper and param_values):
-                print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} requires both an operator and a value'
-                      .format(RULE=self.rule_name, NAME=self.name, PARAM=param_col))
-                break
-
-            if param_oper.upper() == 'IN':
-                vals_fmt = ', '.join(['?' for i in param_values])
-                filters.append(('{COL} {OPER} ({VALS})'.format(COL=param_col, OPER=param_oper, VALS=vals_fmt),
-                                (param_values,)))
-            else:
-                if len(param_values) == 1:
-                    filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0],)))
-                else:
-                    print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} has too many values {COND}'
-                          .format(RULE=self.rule_name, NAME=self.name, PARAM=param_col, COND=param_rule))
-                    break
-
-        return filters
 
     def update_edit_columns(self, df):
         """
@@ -2436,6 +2403,31 @@ class SummaryItem:
                             df.at[row_index, static_column] = default_value
 
         return df
+
+    def filter_statements(self):
+        """
+        Generate the filter statements for import parameters.
+        """
+        params = self.import_parameters
+
+        if params is None:
+            return []
+
+        filters = []
+        for param_name in params:
+            param_entry = params[param_name]
+
+            statement = param_entry['Statement']
+            param_values = param_entry['Parameters']
+
+            if isinstance(param_values, list) or isinstance(param_values, tuple):
+                import_filter = (statement, param_values)
+            else:
+                import_filter = (statement, (param_values,))
+
+            filters.append(import_filter)
+
+        return filters
 
 
 class SummaryItemAdd(SummaryItem):

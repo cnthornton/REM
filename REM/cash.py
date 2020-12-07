@@ -209,11 +209,23 @@ class CashRule:
             self.display_columns = display_columns
 
         try:
-            import_params = adict['ImportParameters']
+            import_parameters = adict['ImportParameters']
         except KeyError:
-            self.import_parameters = {}
-        else:
-            self.import_parameters = import_params
+            import_parameters = {}
+        for import_param in import_parameters:
+            param_entry = import_parameters[import_param]
+            if 'Statement' not in param_entry:
+                msg = 'Configuration Error: rule {RULE}: missing required parameter "Statement" for ' \
+                      'ImportParameters entry {ENTRY}'.format(RULE=name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+            if 'Parameters' not in param_entry:
+                msg = 'Configuration Error: rule {RULE}: missing required parameter "Parameters" for ' \
+                      'ImportParameters entry {ENTRY}'.format(RULE=name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        self.import_parameters = import_parameters
 
         self.parameters = []
         try:
@@ -1109,49 +1121,26 @@ class CashRule:
 
     def filter_statements(self):
         """
-        Generate the filter statements for tab query parameters.
+        Generate the filter statements for import parameters.
         """
-        operators = {'>', '>=', '<', '<=', '=', '!=', 'IN', 'in', 'In'}
-
         params = self.import_parameters
+
         if params is None:
             return []
 
         filters = []
-        for param_col in params:
-            param_rule = params[param_col]
+        for param_name in params:
+            param_entry = params[param_name]
 
-            param_oper = None
-            param_values = []
-            conditional = dm.parse_operation_string(param_rule, equivalent=False)
-            for component in conditional:
-                if component in operators:
-                    if not param_oper:
-                        param_oper = component
-                    else:
-                        print(
-                            'Error: rule {RULE}: only one operator allowed in import parameters for parameter '
-                            '{PARAM}'.format(RULE=self.name, PARAM=param_col))
-                        break
-                else:
-                    param_values.append(component)
+            statement = param_entry['Statement']
+            param_values = param_entry['Parameters']
 
-            if not (param_oper and param_values):
-                print('Error: rule {RULE}: import parameter {PARAM} requires both an operator and a value'
-                      .format(RULE=self.name, PARAM=param_col))
-                break
-
-            if param_oper.upper() == 'IN':
-                vals_fmt = ', '.join(['?' for i in param_values])
-                filters.append(('{COL} {OPER} ({VALS})'.format(COL=param_col, OPER=param_oper, VALS=vals_fmt),
-                                (param_values,)))
+            if isinstance(param_values, list) or isinstance(param_values, tuple):
+                import_filter = (statement, param_values)
             else:
-                if len(param_values) == 1:
-                    filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0],)))
-                else:
-                    print('Error: rule {RULE}: import parameter {PARAM} has too many values {COND}'
-                          .format(RULE=self.name, PARAM=param_col, COND=param_rule))
-                    break
+                import_filter = (statement, (param_values,))
+
+            filters.append(import_filter)
 
         return filters
 

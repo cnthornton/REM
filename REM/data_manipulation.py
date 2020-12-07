@@ -286,6 +286,71 @@ def subset_dataframe(df, subset_rule):
     return subset_df
 
 
+def filter_statements(params, header):
+    """
+    Generate the filter statements for import parameters.
+    """
+    operators = {'>', '>=', '<', '<=', '=', '!=', 'IN', 'NOT'}
+
+    if params is None:
+        return []
+
+    filters = []
+    for param_rule in params:
+        param_oper = None
+        param_values = []
+        conditional = param_rule.split()
+
+        # Get the database column from the first component of the component list
+        try:
+            first_component = conditional[0]
+        except IndexError:
+            print('Configuration Error: import parameters {PARAM} has no components'.format(PARAM=param_rule))
+            continue
+        try:
+            db, colname = first_component.split('.')
+        except ValueError:
+            colname = first_component
+
+        if colname not in header:
+            print('Configuration Error: import parameters {PARAM} has no components'.format(PARAM=param_rule))
+            continue
+        else:
+            param_col = first_component
+
+        # Get operator and column filter values from the remaining components
+        for component in conditional[1:]:
+            if component.upper() in operators:
+                if not param_oper:
+                    param_oper = component
+                elif param_oper.upper() == 'NOT':
+                    param_oper = '{} {}'.format(param_oper, component)
+                else:
+                    print('Configuration Error: only one operator allowed in import parameters for {PARAM}'
+                          .format(PARAM=param_rule))
+                    break
+            else:
+                param_values.append(component)
+
+        if not (param_oper and param_values and param_col):
+            print('Configuration Error: import parameter {PARAM} requires a column name, operator, and at least one '
+                  'value'.format(PARAM=param_rule))
+            break
+
+        if param_oper.upper() in ('IN', 'NOT IN'):
+            vals_fmt = ', '.join(['?' for _ in param_values])
+            filters.append(('{COL} {OPER} ({VALS})'.format(COL=param_col, OPER=param_oper, VALS=vals_fmt),
+                            param_values))
+        else:
+            if len(param_values) == 1:
+                filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0],)))
+            else:
+                print('Configuration Error: import parameter {PARAM} has too many values {COND}'
+                      .format(PARAM=param_col, COND=param_rule))
+                break
+
+    return filters
+
 def generate_column_from_rule(dataframe, rule):
     """
     Generate the values of a dataframe column using the defined rule set.
@@ -434,7 +499,7 @@ def evaluate_rule(data, condition, as_list: bool = True):
     """
     Check whether rows in dataframe pass a given condition rule.
     """
-    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in'}
+    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in', 'not in'}
 
     if isinstance(data, pd.Series):
         header = data.index.tolist()

@@ -84,6 +84,7 @@ class Config:
         """
         Connect to the NoSQL database using the pymongo driver.
         """
+        print('Info: connecting to the configuration database')
         connection_info = {'username': self.mongod_user, 'password': self.mongod_pwd,
                            'host': self.mongod_server, 'port': self.mongod_port,
                            'authSource': self.mongod_authdb, 'serverSelectionTimeoutMS': timeout}
@@ -110,6 +111,7 @@ class Config:
         else:
             cnx = self.cnx
 
+        print('Info: loading the configuration database')
         try:
             database = cnx[self.mongod_database]
         except errors.InvalidName:
@@ -131,6 +133,7 @@ class Config:
         else:
             database = self.database
 
+        print('Info: loading the database collection')
         try:
             collection = database[self.mongod_config]
         except errors.InvalidName:
@@ -155,7 +158,7 @@ class Config:
         try:
             print(self.cnx.server_info())
         except Exception as e:
-            popup_error('Unable to load configuration from database - {}'.format(e))
+            popup_error('Unable to load the configuration from the database - {}'.format(e))
             print(e)
             sys.exit(1)
         else:
@@ -291,6 +294,7 @@ else:
     _prog_fh.close()
     del _prog_fh
 
+print('Info: loading the configuration')
 configuration = Config(_prog_cnfg)
 configuration.load_configuration()
 

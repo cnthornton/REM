@@ -35,13 +35,13 @@ class TabItem:
             self.title = name
 
         try:
-            tables = tdict['DatabaseTables']
+            tables = tdict['ImportRules']
         except KeyError:
-            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "DisplayColumns".') \
+            msg = ('Configuration Error: tab {NAME}, rule {RULE}: missing required field "ImportRules".') \
                 .format(NAME=name, RULE=rule_name)
             win2.popup_error(msg)
             sys.exit(1)
-        self.db_tables = tables
+        self.import_rules = tables
 
         try:
             pkey = tdict['IDField']
@@ -83,9 +83,23 @@ class TabItem:
                           .format(NAME=name, RULE=rule_name, METHOD=action))
 
         try:
-            self.tab_parameters = tdict['TabParameters']
+            import_parameters = tdict['ImportParameters']
         except KeyError:
-            self.tab_parameters = None
+            import_parameters = {}
+        for import_param in import_parameters:
+            param_entry = import_parameters[import_param]
+            if 'Statement' not in param_entry:
+                msg = 'Configuration Error: rule {RULE}, tab {NAME}: missing required parameter "Statement" for ' \
+                      'ImportParameters entry {ENTRY}'.format(RULE=rule_name, NAME=name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+            if 'Parameters' not in param_entry:
+                msg = 'Configuration Error: rule {RULE}, tab {NAME}: missing required parameter "Parameters" for ' \
+                      'ImportParameters entry {ENTRY}'.format(RULE=rule_name, NAME=name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        self.import_parameters = import_parameters
 
         try:
             self.aliases = tdict['Aliases']
@@ -589,54 +603,6 @@ class TabItem:
 
         return row_ids
 
-    def filter_statements(self):
-        """
-        Generate the filter statements for tab query parameters.
-        """
-        operators = {'>', '>=', '<', '<=', '=', '!=', 'IN', 'in', 'In'}
-
-        params = self.tab_parameters
-        if params is None:
-            return []
-
-        filters = []
-        for param_col in params:
-            param_rule = params[param_col]
-
-            param_oper = None
-            param_values = []
-            conditional = dm.parse_operation_string(param_rule, equivalent=False)
-            for component in conditional:
-                if component in operators:
-                    if not param_oper:
-                        param_oper = component
-                    else:
-                        print(
-                            'Error: rule {RULE}, tab {NAME}: only one operator allowed in tab parameters for parameter '
-                            '{PARAM}'.format(RULE=self.rule_name, NAME=self.name, PARAM=param_col))
-                        break
-                else:
-                    param_values.append(component)
-
-            if not (param_oper and param_values):
-                print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} requires both an operator and a value'
-                      .format(RULE=self.rule_name, NAME=self.name, PARAM=param_col))
-                break
-
-            if param_oper.upper() == 'IN':
-                vals_fmt = ', '.join(['?' for i in param_values])
-                filters.append(('{COL} {OPER} ({VALS})'.format(COL=param_col, OPER=param_oper, VALS=vals_fmt),
-                                (param_values,)))
-            else:
-                if len(param_values) == 1:
-                    filters.append(('{COL} {OPER} ?'.format(COL=param_col, OPER=param_oper), (param_values[0],)))
-                else:
-                    print('Error: rule {RULE}, tab {NAME}: tab parameter {PARAM} has too many values {COND}'
-                          .format(RULE=self.rule_name, NAME=self.name, PARAM=param_col, COND=param_rule))
-                    break
-
-        return filters
-
     def search_for_errors(self):
         """
         Use error rules specified in configuration file to annotate rows.
@@ -721,7 +687,7 @@ class TabItem:
         df = dm.sort_table(self.df, pkey)
 
         id_list = df[pkey].tolist()
-        main_table = [i for i in self.db_tables][0]
+        main_table = [i for i in self.import_rules][0]
 
         # Format audit parameters
         audit_date = None
@@ -790,7 +756,7 @@ class TabItem:
                       .format(RULE=self.rule_name, NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 filters = ('{} = ?'.format(date_col_full), (prev_date.strftime(date_fmt),))
-                last_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
+                last_df = user.query(self.import_rules, columns=self.db_columns, filter_rules=filters)
                 last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
                 last_id = None
@@ -831,7 +797,7 @@ class TabItem:
             ## Search for missed numbers at end of day
             last_id_of_df = id_list[-1]
             filters = ('{} = ?'.format(date_col_full), (audit_date.strftime(date_fmt),))
-            current_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters)
+            current_df = user.query(self.import_rules, columns=self.db_columns, filter_rules=filters)
             current_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
             current_ids = current_df[pkey].tolist()
@@ -868,15 +834,15 @@ class TabItem:
         if missing_transactions:
             pkey_fmt = dm.get_query_from_header(pkey, self.db_columns)
 
-            filter_values = ['?' for i in missing_transactions]
+            filter_values = ['?' for _ in missing_transactions]
             filter_str = '{PKEY} IN ({VALUES})'.format(PKEY=pkey_fmt, VALUES=', '.join(filter_values))
 
             filters = [(filter_str, tuple(missing_transactions))]
 
-            # Drop missing transactions if they don't meet tab parameter requirements
+            # Drop missing transactions if they don't meet the import parameter requirements
             filters += self.filter_statements()
 
-            missing_df = user.query(self.db_tables, columns=self.db_columns, filter_rules=filters, order=pkey_fmt)
+            missing_df = user.query(self.import_rules, columns=self.db_columns, filter_rules=filters, order=pkey_fmt)
         else:
             missing_df = pd.DataFrame(columns=df.columns)
 
@@ -906,20 +872,22 @@ class TabItem:
         if df.empty or not filter_rules:
             return df
 
-        print('Info: rule {RULE}, tab {NAME}: running filter duplicates method with filter rules {RULES}'
-              .format(NAME=self.name, RULE=self.rule_name, RULES=list(filter_rules.values())))
-
         for filter_number in filter_rules:
             filter_rule = filter_rules[filter_number]['Reference']
             try:
                 filter_key = filter_rules[filter_number]['Key']
+                print('Info: rule {RULE}, tab {NAME}: filtering table using filter rule {NUM}, '
+                      'defined as {REF}, with key {KEY}'.format(NAME=self.name, RULE=self.rule_name, NUM=filter_number,
+                                                                REF=filter_rule, KEY=filter_key))
             except KeyError:
                 filter_key = None
+                print('Info: rule {RULE}, tab {NAME}: filtering table using filter rule {NUM}, defined as '
+                      '{REF}'.format(NAME=self.name, RULE=self.rule_name, NUM=filter_number, REF=filter_rule))
 
             try:
                 filter_cond = dm.evaluate_rule(df, filter_rule, as_list=False)
             except Exception as e:
-                print('Info: rule {RULE}, tab {NAME}: filtering duplicates with rule {NO} failed due to {ERR}'
+                print('Info: rule {RULE}, tab {NAME}: filtering table using filter rule {NO} failed - {ERR}'
                       .format(NAME=self.name, RULE=self.rule_name, NO=filter_number, ERR=e))
                 continue
 
@@ -931,14 +899,43 @@ class TabItem:
             try:
                 failed = eval('df[{}].index'.format(cond_str))
             except Exception as e:
-                print('Info: rule {RULE}, tab {NAME}: filtering duplicates with rule {NO} failed due to {ERR}'
+                print('Info: rule {RULE}, tab {NAME}: filtering table with filter rule {NO} failed - {ERR}'
                       .format(NAME=self.name, RULE=self.rule_name, NO=filter_number, ERR=e))
                 continue
 
-            df.drop(failed, axis=0, inplace=True)
-            df.reset_index(drop=True, inplace=True)
+            if len(failed) > 0:
+                print('Info: rule {RULE}, tab {NAME}: rows {ROWS} removed due to filter rule {NO}'
+                      .format(RULE=self.rule_name, NAME=self.name, ROWS=failed.tolist(), NO=filter_number))
+
+                df.drop(failed, axis=0, inplace=True)
+                df.reset_index(drop=True, inplace=True)
 
         return df
+
+    def filter_statements(self):
+        """
+        Generate the filter statements for import parameters.
+        """
+        params = self.import_parameters
+
+        if params is None:
+            return []
+
+        filters = []
+        for param_name in params:
+            param_entry = params[param_name]
+
+            statement = param_entry['Statement']
+            param_values = param_entry['Parameters']
+
+            if isinstance(param_values, list) or isinstance(param_values, tuple):
+                import_filter = (statement, param_values)
+            else:
+                import_filter = (statement, (param_values,))
+
+            filters.append(import_filter)
+
+        return filters
 
 
 def as_key(key):
