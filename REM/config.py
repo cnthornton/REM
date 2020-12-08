@@ -78,6 +78,7 @@ class Config:
         self.bank_rules = None
         self.startup_msgs = None
         self.ids = None
+        self.db_records = None
         self.data_db = None
 
     def connect(self, timeout=5000):
@@ -166,6 +167,7 @@ class Config:
             self.cash_rules = collection.find_one({'name': 'cash_rules'})
             self.bank_rules = collection.find_one({'name': 'bank_rules'})
             self.startup_msgs = collection.find_one({'name': 'startup_messages'})
+            self.db_records = collection.find_one({'name': 'records'})
             self.ids = collection.find_one({'name': 'ids'})
 
 
