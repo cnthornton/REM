@@ -1504,6 +1504,8 @@ class AccountRecord:
 
         self.import_parameters = import_parameters
 
+        self.df = pd.DataFrame()
+
     def key_lookup(self, element):
         """
         Lookup element key for input control element.
@@ -1515,7 +1517,7 @@ class AccountRecord:
 
         return key
 
-    def layout(self, win_size: tuple = None, editable: bool = False, markable: bool = False):
+    def layout(self, win_size: tuple = None, editable: bool = False, markable: bool = False, deletable: bool = False):
         """
         Generate a GUI layout for the account record.
         """
@@ -1730,12 +1732,58 @@ class AccountRecord:
 
         return all(saved)
 
-    def delete_record(self):
+    def delete_record(self, user):
         """
         Delete record from database.
         """
-        # Check if one-to-one mapping with foreign keys and ask if user would like to delete foreign records as well
         pass
+        primary_entry = self.fetch_parameter(self.required_parameters['ID'])
+        primary_id = primary_entry.value
+
+        cancelled = []
+        # Update removed records
+        for id_field in self.ids:
+            id_entry = self.ids[id_field]
+            db_table = id_entry['DatabaseTable']
+            db_field = id_entry['DatabaseField'] if 'DatabaseField' in id_entry else id_field
+
+            record_id = self.df[id_field]
+
+            if id_entry['IsPrimary']:
+                # Remove primary record
+                filters = ('{} = ?'.format(id_field), (record_id,))
+            else:
+                # Check if one-to-one mapping with foreign keys. Ask if user would like to delete foreign records if not
+                dup_filter = ('{} = ?'.format(id_field), (record_id,))
+                duplicates_df = user.query(self.import_rules, columns=[id_field], filter_rules=dup_filter, prog_db=True)
+                if isinstance(duplicates_df, pd.DataFrame):
+                    ndups = duplicates_df.size[0]
+                elif isinstance(duplicates_df, pd.Series):
+                    ndups = duplicates_df.size
+                else:
+                    continue
+
+                if ndups > 1:  # don't ask to delete foreign record
+                    continue
+                else:  # only one foreign record found matching ID in selected record
+                    msg = 'Record {PKEY} is associated with ID {ID} from {TBL}, which is not associated with any ' \
+                          'other records. Would you like to delete {ID} from {TBL}'\
+                        .format(PKEY=primary_id, ID=record_id, TBL=db_table)
+                    to_delete = win2.popup_confirm(msg)
+                    if to_delete == 'Cancel':
+                        continue
+                    else:
+                        filters = ('{} = ?'.format(db_field), (record_id,))
+
+            # Remove record
+            success = user.update(db_table, ['IsCancel'], [1], filters)
+
+            if success is False:
+                win2.popup_error('Warning: Failed to remove {ID}. Changes will not be saved to the database table {TBL}'
+                                 .format(ID=record_id, TBL=db_table))
+            cancelled.append(success)
+
+        return all(cancelled)
 
 
 def load_account_record(user, record_group, record_name, record_entry):
@@ -1779,5 +1827,7 @@ def load_account_record(user, record_group, record_name, record_entry):
     values = {index: value for index, value in trans_df.items()}
     for param in db_record.parameters:
         param.set_value(values, by_key=False)
+
+    db_record.df = trans_df
 
     return db_record
