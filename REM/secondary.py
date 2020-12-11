@@ -888,6 +888,13 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
         else:
             print('Warning: cannot assign layout for filter parameter {PARAM}'.format(PARAM=parameter.name))
 
+    if len(right_cols) < 1:
+        right_cols.append([])
+    if len(left_cols) < 1:
+        left_cols.append([])
+    if len(center_cols) < 1:
+        center_cols.append([])
+
     pad_diff = 14 - max(left_sizes)
     param_pad_r = pad_frame + pad_diff * 13 if pad_diff > 0 else pad_frame
 
