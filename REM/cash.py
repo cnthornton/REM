@@ -552,8 +552,8 @@ class CashRule:
 
         deposit_layout = [sg.Text('{}:'.format(deposit_param.description), pad=((pad_v, pad_el), 0),
                                   justification='r', font=bold_font, auto_size_text=True, background_color=bg_col),
-                          sg.Input(deposit_param.value, key=deposit_param.element_key, size=(14, 1),
-                                   pad=((0, pad_el), 0), font=font_main, disabled=True, border_width=1)]
+                          sg.Text(deposit_param.value, key=deposit_param.element_key, size=(14, 1),
+                                  pad=((0, pad_el), 0), font=font_main, relief='sunken', border_width=1)]
         right_elements += deposit_layout
 
         # Header layout
