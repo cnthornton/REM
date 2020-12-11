@@ -856,7 +856,7 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
                              background_color=header_col)]]
 
     use_center = True
-    if len(layout_params) <= 2:
+    if len(layout_params) <= 2 or len(layout_params) == 4:
         use_center = False
 
     left_cols = []
@@ -880,6 +880,7 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
         elif use_center is True and index_mod == 0:
             right_cols.append(param_layout)
         elif use_center is False and index_mod == 1:
+            left_sizes.append(len(parameter.description))
             left_cols.append(param_layout)
             center_cols.append([sg.Canvas(size=(0, 0), visible=True)])
         elif use_center is False and index_mod == 0:
