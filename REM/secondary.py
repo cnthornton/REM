@@ -2,6 +2,8 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
+import datetime
+import dateutil
 import gc
 import numpy as np
 import pandas as pd
@@ -223,6 +225,55 @@ def login_window():
     gc.collect()
 
     return account
+
+
+def account_record_window(record):
+    """
+    Display the account record window.
+    """
+    # GUI layout
+    layout = record.layout(editable=True, markable=True)
+    if not layout:
+        return False
+
+    window = sg.Window('Database Record', layout, modal=True, keep_on_top=False, return_keyboard_events=True)
+    window.finalize()
+
+    note_param = record.fetch_parameter(record.required_parameters['Note'])
+    note_key = note_param.element_key
+    window[note_key].expand(expand_x=True)
+
+    cancel_key = record.key_lookup('Cancel')
+    save_key = record.key_lookup('Save')
+    delete_key = record.key_lookup('Delete')
+    # Event window
+    user_action = 'cancel'
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, cancel_key):  # selected close-window
+            break
+
+        if event == delete_key:
+            user_action = 'delete'
+            break
+
+        if event == save_key:
+            # Update parameter values
+            for param in record.parameters:
+                param.set_value(values)
+                print(param.name, param.value)
+
+            # Save updated parameters to the database
+            user_action = 'save'
+            break
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return user_action
 
 
 def notes_window(docno, note, record='DocNo', title='Note'):
@@ -721,8 +772,43 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
     """
     Display the import from database window.
     """
+    relativedelta = dateutil.relativedelta.relativedelta
+    strptime = datetime.datetime.strptime
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+    date_fmt = settings.format_date_str(date_str=settings.display_date_format)
+    date_offset = settings.get_date_offset()
+
     display_df = df.copy()
     header = display_df.columns.values.tolist()
+
+    if header_map is None:
+        header_map = {i: i for i in header}
+
+    display_header = []
+    display_indices = []
+    for column_index, column in enumerate(header):
+        try:
+            display_header.append(header_map[column])
+        except KeyError:
+            print('Configuration Warning: display column {COL} not found in configured table columns'
+                  .format(COL=column))
+        else:
+            display_indices.append(column_index)
+
+    # Filter data by default parameters
+    filter_params = []
+    for param in parameters:
+        filter_params.append(param.element_key)
+
+        param_value = param.value
+        if param_value:
+            try:
+                display_df = display_df[display_df[param.name] == param_value]
+            except KeyError:
+                print('Configuration Warning: parameter {PARAM} not found in imported table'.format(PARAM=param.name))
+                continue
 
     # Map column values to the aliases specified in the configuration
     for alias_col in aliases:
@@ -733,42 +819,22 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
         else:
             display_df[alias_col].replace(alias_map, inplace=True)
 
-    data = display_df.values.tolist()
+    for column in display_df.columns:
+        column_values = display_df[column]
+        dtype = column_values.dtype
+        if is_float_dtype(dtype):
+            column_values = column_values.apply('{:,.2f}'.format)
+        elif is_datetime_dtype(dtype):
+            column_values = column_values.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
+                                                         relativedelta(years=+date_offset)).strftime(date_fmt)
+                if pd.notnull(x) else '')
+        display_df[column] = column_values
 
-    if header_map is None:
-        header_map = {i: i for i in header}
-
-    display_header = []
-    for column in header:
-        try:
-            display_header.append(header_map[column])
-        except KeyError:
-            popup_error('Configuration Warning: display column {COL} not found in configured table columns'
-                        .format(COL=column))
-            display_header.append(column)
-
-    # Filter data by default parameters
-    filter_params = []
-    for param in parameters:
-        if param.filterable is False:
-            continue
-        else:
-            filter_params.append(param.element_key)
-
-        if param.hidden is False:
-            continue
-
-        param_value = param.value
-        if param_value:
-            try:
-                display_df = display_df[display_df[param.name] == param_value]
-            except KeyError:
-                print('Configuration Warning: parameter {PARAM} not found in imported table'.format(PARAM=param.name))
-                continue
+    data = display_df.iloc[:, display_indices].values.tolist()
 
     # Layout
     # Window and element size parameters
-    width = const.WIN_WIDTH * 0.8
+    width = const.WIN_WIDTH
 
     header_col = const.HEADER_COL
     bg_col = const.ACTION_COL
@@ -781,7 +847,7 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
 
     layout_params = []
     for param in parameters:
-        if param.filterable is True and param.hidden is False:
+        if param.hidden is False:
             layout_params.append(param)
 
     # Title
@@ -789,26 +855,50 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
                     [sg.Text('Import Database Records', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
                              background_color=header_col)]]
 
-    # Import filters
-    param_layout = []
-    elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
-    if len(layout_params) > 2:
-        nrow = math.ceil(len(layout_params) / 2)
-    else:
-        nrow = 1
-    for parameter in layout_params:
-        row_size = len(elem_col) - 1
+    use_center = True
+    if len(layout_params) <= 2:
+        use_center = False
 
-        if row_size == nrow:
-            param_layout.append(sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='l',
-                                       vertical_alignment='t'))
-            elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
+    left_cols = []
+    center_cols = []
+    right_cols = []
+    left_sizes = []
+    for i, parameter in enumerate(layout_params):
+        param_index = i + 1
+        if use_center is True:
+            index_mod = param_index % 3
+        else:
+            index_mod = param_index % 2
 
-        elem_col.append([sg.Col([parameter.layout(text_size=(14, 1), size=(14, 1), padding=40, default=False)],
-                                background_color=bg_col, justification='l', expand_x=True)])
+        param_layout = parameter.layout(padding=(0, pad_el * 2), size=(14, 1), text_size=(14, 1), filter_layout=True)
 
-    param_layout.append(sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='r',
-                               vertical_alignment='t'))  # include last pair in series
+        if use_center is True and index_mod == 1:
+            left_cols.append(param_layout)
+            left_sizes.append(len(parameter.description))
+        elif use_center is True and index_mod == 2:
+            center_cols.append(param_layout)
+        elif use_center is True and index_mod == 0:
+            right_cols.append(param_layout)
+        elif use_center is False and index_mod == 1:
+            left_cols.append(param_layout)
+            center_cols.append([sg.Canvas(size=(0, 0), visible=True)])
+        elif use_center is False and index_mod == 0:
+            right_cols.append(param_layout)
+        else:
+            print('Warning: cannot assign layout for filter parameter {PARAM}'.format(PARAM=parameter.name))
+
+    pad_diff = 14 - max(left_sizes)
+    param_pad_r = pad_frame + pad_diff * 13 if pad_diff > 0 else pad_frame
+
+    header_layout = [[sg.Col([[sg.Canvas(size=(0, 0), background_color=bg_col)]],
+                             pad=(0, (pad_v, 0)), background_color=bg_col, expand_x=True)],
+                     [sg.Col(left_cols, pad=((pad_frame, 0), 0), background_color=bg_col, justification='l',
+                             vertical_alignment='t', expand_x=True),
+                      sg.Col(center_cols, pad=(0, 0), background_color=bg_col, justification='c',
+                             vertical_alignment='t', expand_x=True),
+                      sg.Col(right_cols, pad=((0, param_pad_r), 0), background_color=bg_col, justification='r',
+                             vertical_alignment='t', expand_x=True)],
+                     [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
 
     # Import data table
     main_layout = [[lo.create_table_layout(data, display_header, '-TABLE-', events=False, width=width, nrow=20,
@@ -824,9 +914,7 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
                            pad=(0, 0), justification='r')]]
 
     layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-              [sg.Col([param_layout, [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]],
-                      pad=(pad_frame, 0), background_color=bg_col, justification='c',
-                      expand_x=True, expand_y=True)],
+              [sg.Col(header_layout, pad=(pad_frame, 0), background_color=bg_col, expand_x=True, expand_y=True)],
               [sg.Col(main_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, justification='c')],
               [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
 
@@ -836,6 +924,7 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
     import_data = None
     while True:
         event, values = window.read(timeout=1000, close=False)
+#        event, values = window.read()
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             import_data = None
@@ -847,9 +936,6 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
 
             # Filter table
             for param in parameters:
-                if param.filterable is False:
-                    continue
-
                 if param.hidden is True:
                     param_value = param.value
                 else:
@@ -867,7 +953,18 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
                 else:
                     display_df[alias_col].replace(alias_map, inplace=True)
 
-            window['-TABLE-'].update(values=display_df.values.tolist())
+            for column in display_df.columns:
+                column_values = display_df[column]
+                dtype = column_values.dtype
+                if is_float_dtype(dtype):
+                    column_values = column_values.apply('{:,.2f}'.format)
+                elif is_datetime_dtype(dtype):
+                    column_values = column_values.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
+                                                                   relativedelta(years=+date_offset)).strftime(date_fmt)
+                    if pd.notnull(x) else '')
+                display_df[column] = column_values
+
+            window['-TABLE-'].update(values=display_df.iloc[:, display_indices].values.tolist())
 
             continue
 
@@ -889,7 +986,7 @@ def data_import_window(df, parameters, header_map: dict = None, aliases: dict = 
                 row = values['-TABLE-'][0]
             except IndexError:
                 continue
-            import_data = df.iloc[row]
+            import_data = display_df.iloc[row]
             break
 
     window.close()

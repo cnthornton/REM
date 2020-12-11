@@ -309,7 +309,10 @@ class UserAccount:
 
         # Define sorting component of query statement
         if type(order) in (type(list()), type(tuple())):
-            order_by = ' ORDER BY {}'.format(', '.join(order))
+            if len(order) > 0:
+                order_by = ' ORDER BY {}'.format(', '.join(order))
+            else:
+                order_by = ''
         elif isinstance(order, str):
             order_by = ' ORDER BY {}'.format(order)
         else:

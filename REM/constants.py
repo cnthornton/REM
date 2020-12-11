@@ -5,7 +5,7 @@ REM constants and other program settings.
 
 # Element colors
 ACTION_COL = WHITE_TEXT_COL = '#FFFFFF'  # white
-DEFAULT_COL = '#F5F5F5'  # light grey
+DEFAULT_COL = FRAME_COL = '#F5F5F5'  # light grey
 INACTIVE_COL = '#DEDEDE'  # light grey
 BUTTON_COL = '#64B5F6'
 LOGIN_BUTTON_COL = PASS_COL = '#94FA92'  # green

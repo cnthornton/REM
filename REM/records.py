@@ -13,12 +13,14 @@ import PySimpleGUI as sg
 import REM.constants as const
 import REM.data_manipulation as dm
 import REM.layouts as lo
+import REM.parameters as mod_param
 import REM.secondary as win2
 from REM.config import configuration, current_tbl_pkeys, settings
 
 
 class AuditRecord:
     """
+    Class to store information about an audit record.
     """
 
     def __init__(self, rule_name, name, sdict):
@@ -385,7 +387,7 @@ class AuditRecord:
                          background_color=bg_col),
                  sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, 0), 0), justification='l',
                          font=font_b, background_color=bg_col, auto_size_text=True, border_width=0)],
-                [sg.HorizontalSeparator(pad=(0, (pad_el*2, 0)), color=const.HEADER_COL)]],
+                [sg.HorizontalSeparator(pad=(0, (pad_el * 2, 0)), color=const.HEADER_COL)]],
                 pad=(0, 0), background_color=bg_col, vertical_alignment='t'),
                 sg.Col([[sg.Button('', key=note_key, pad=(0, 0), image_data=const.NOTES_ICON, visible=True,
                                    button_color=(text_col, bg_col), border_width=0, tooltip=self.notes['Title'])]],
@@ -1254,3 +1256,528 @@ class AuditRecordSubset(AuditRecord):
         self.df = df
 
 
+class AccountRecord:
+    """
+    Class to store information about an account record, which are components of an audit record.
+    """
+
+    def __init__(self, group_name, record_name, rdict):
+        self.rule_name = group_name
+        self.name = record_name
+        self.element_key = lo.as_key('{RULE} Account {NAME}'.format(RULE=group_name, NAME=record_name))
+        self.elements = ['Notes', 'Cancel', 'Delete', 'Save']
+        self.required_elements = ['ID', 'Date', 'Cancel', 'Note', 'Mark']
+
+        # Record type description
+        try:
+            self.title = rdict['Title']
+        except KeyError:
+            self.title = record_name
+
+        # User permissions when accessing record
+        try:
+            permissions = rdict['Permissions']
+        except KeyError:
+            self.is_viewable = False
+            self.is_editable = False
+            self.is_deletable = False
+            self.is_markable = False
+        else:
+            if 'View' in permissions:
+                try:
+                    self.is_viewable = bool(int(permissions['View']))
+                except ValueError:
+                    print('Configuration Warning: {RULE}, {NAME}: parameter "View" must be either 0 (False) or 1 (True)'
+                          .format(RULE=group_name, NAME=record_name))
+                    self.is_viewable = False
+            else:
+                self.is_viewable = False
+            if 'Edit' in permissions:
+                try:
+                    self.is_editable = bool(int(permissions['Edit']))
+                except ValueError:
+                    print('Configuration Warning: {RULE}, {NAME}: parameter "Edit" must be either 0 (False) or 1 (True)'
+                          .format(RULE=group_name, NAME=record_name))
+                    self.is_editable = False
+            else:
+                self.is_editable = False
+            if 'Delete' in permissions:
+                try:
+                    self.is_deletable = bool(int(permissions['Delete']))
+                except ValueError:
+                    print('Configuration Warning: {RULE}, {NAME}: parameter "Delete" must be either 0 (False) or 1 '
+                          '(True)'.format(RULE=group_name, NAME=record_name))
+                    self.is_deletable = False
+            else:
+                self.is_deletable = False
+            if 'MarkForDeletion' in permissions:
+                try:
+                    self.is_markable = bool(int(permissions['MarkForDeletion']))
+                except ValueError:
+                    print('Configuration Warning: {RULE}, {NAME}: parameter "MarkForDeletion" must be either 0 (False) '
+                          'or 1 (True)'.format(RULE=group_name, NAME=record_name))
+                    self.is_markable = False
+            else:
+                self.is_markable = False
+
+        # Record primary key and foreign keys
+        try:
+            ids = rdict['IDs']
+        except KeyError:
+            win2.popup_error('Configuration Error: {RULE}, {NAME}: missing required parameter "IDs"'
+                             .format(RULE=group_name, NAME=record_name))
+            sys.exit(1)
+
+        if len(ids) < 1:
+            win2.popup_error('Configuration Error: {RULE}, {NAME}: "IDs" must include at least one '
+                             'primary ID field'.format(RULE=group_name, NAME=record_name))
+            sys.exit(1)
+
+        has_primary = False
+        for id_field in ids:
+            id_param = ids[id_field]
+
+            if 'Title' not in id_param:
+                id_param['Title'] = id_field
+            if 'DatabaseTable' not in id_param:
+                win2.popup_error('Configuration Error: {RULE}, {NAME}: "DatabaseTable" is a required '
+                                 'field for IDs entry "{ID}"'.format(RULE=group_name, NAME=record_name, ID=id_field))
+                sys.exit(1)
+            if 'DatabaseField' not in id_param:
+                win2.popup_error('Configuration Error: {RULE}, {NAME}: "DatabaseField" is a required '
+                                 'field for IDs entry "{ID}"'.format(RULE=group_name, NAME=record_name, ID=id_field))
+                sys.exit(1)
+            if 'IsPrimary' not in id_param:
+                id_param['IsPrimary'] = False
+            else:
+                try:
+                    is_primary = bool(int(id_param['IsPrimary']))
+                except ValueError:
+                    win2.popup_error('Configuration Error: {RULE}, {NAME}: "IsPrimary" must be either 0 '
+                                     '(False) or 1 (True)'.format(RULE=group_name, NAME=record_name))
+                    sys.exit(1)
+                else:
+                    id_param['IsPrimary'] = is_primary
+                    if is_primary is True:
+                        if has_primary is True:
+                            win2.popup_error('Configuration Error: {RULE}, {NAME}: only one "IDs" '
+                                             'parameter can be set as the primary ID field'
+                                             .format(RULE=self.rule_name, NAME=self.name))
+                            sys.exit(1)
+                        else:
+                            has_primary = True
+
+        if has_primary is False:
+            win2.popup_error('Configuration Error: {RULE}, {NAME}: "IDs" must include at least one '
+                             'primary ID field'.format(RULE=group_name, NAME=record_name))
+
+        self.ids = ids
+
+        # Database export rules
+        try:
+            self.export_rules = rdict['ExportRules']
+        except KeyError:
+            self.export_rules = None
+
+        # Database import rules
+        try:
+            self.import_rules = rdict['ImportRules']
+        except KeyError:
+            self.import_rules = None
+
+        # SQL table columns
+        try:
+            all_columns = rdict['TableColumns']
+        except KeyError:
+            msg = 'Configuration Error: {RULE}, {NAME}: missing required field "TableColumns".' \
+                .format(RULE=group_name, NAME=record_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+        self.columns = all_columns
+
+        # Display table column mappings
+        try:
+            self.display_columns = rdict['DisplayColumns']
+        except KeyError:
+            self.display_columns = None
+
+        # All rule parameters
+        self.parameters = []
+        try:
+            params = rdict['Parameters']
+        except KeyError:
+            msg = 'Configuration Error: {RULE}, {NAME}: missing required field "Parameters".' \
+                .format(RULE=group_name, NAME=record_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        param_names = []
+        for param in params:
+            cdict = params[param]
+            self.elements.append(param)
+            param_names.append(param)
+
+            try:
+                param_layout = cdict['ElementType']
+            except KeyError:
+                msg = 'Configuration Error: {RULE}, {NAME}: Parameter {PARAM} is missing the required field ' \
+                      '"{FIELD}"'.format(RULE=group_name, NAME=record_name, PARAM=param, FIELD='ElementType')
+                win2.popup_error(msg)
+                sys.exit(1)
+
+            if param_layout == 'dropdown':
+                self.parameters.append(mod_param.RuleParameterCombo(record_name, param, cdict))
+            elif param_layout == 'input':
+                self.parameters.append(mod_param.RuleParameterInput(record_name, param, cdict))
+            elif param_layout == 'date':
+                self.parameters.append(mod_param.RuleParameterDate(record_name, param, cdict))
+            elif param_layout == 'checkbox':
+                self.parameters.append(mod_param.RuleParameterCheckbox(record_name, param, cdict))
+            else:
+                msg = 'Configuration Error: {RULE}, {NAME}: Parameter {PARAM} has unknown element type {TYPE}' \
+                    .format(RULE=group_name, NAME=record_name, PARAM=param, TYPE=param_layout)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        # Required record parameters
+        try:
+            required_params = rdict['RequiredParameters']
+        except KeyError:
+            msg = 'Configuration Error: {RULE}, {NAME}: missing required field "RequiredParameters".' \
+                .format(RULE=group_name, NAME=record_name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        for required_param in required_params:
+            param_name = required_params[required_param]
+            if param_name not in param_names:
+                msg = 'Configuration Warning: {RULE}, {NAME}: required parameter {PARAM} does not have a ' \
+                      'corresponding entry for {COL} in the Parameters field.' \
+                    .format(RULE=group_name, NAME=record_name, PARAM=required_param, COL=param_name)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        for required_param in self.required_elements:
+            if required_param not in required_params:
+                msg = 'Configuration Warning: {RULE}, {NAME}: missing required parameter {PARAM}.' \
+                    .format(RULE=group_name, NAME=record_name, PARAM=required_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        self.required_parameters = required_params
+
+        # Optional record parameters
+        try:
+            self.optional_parameters = rdict['OptionalParameters']
+        except KeyError:
+            self.optional_parameters = {}
+
+        # Parameters used to filter existing records
+        try:
+            self.filter_parameters = rdict['FilterParameters']
+        except KeyError:
+            self.filter_parameters = {}
+
+        # Parameter value aliases
+        try:
+            self.aliases = rdict['Aliases']
+        except KeyError:
+            self.aliases = {}
+
+        # SQL filter rules
+        try:
+            import_parameters = rdict['ImportParameters']
+        except KeyError:
+            import_parameters = {}
+        for import_param in import_parameters:
+            param_entry = import_parameters[import_param]
+            if 'Statement' not in param_entry:
+                msg = 'Configuration Error: {RULE}, {NAME}: missing required parameter "Statement" for ' \
+                      'ImportParameters entry {ENTRY}'.format(RULE=group_name, NAME=record_name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+            if 'Parameters' not in param_entry:
+                msg = 'Configuration Error: {RULE}, {NAME}: missing required parameter "Parameters" for ' \
+                      'ImportParameters entry {ENTRY}'.format(RULE=group_name, NAME=record_name, ENTRY=import_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        self.import_parameters = import_parameters
+
+    def key_lookup(self, element):
+        """
+        Lookup element key for input control element.
+        """
+        if element in self.elements:
+            key = lo.as_key('{RULE} {NAME} {ELEM}'.format(RULE=self.rule_name, NAME=self.name, ELEM=element))
+        else:
+            key = None
+
+        return key
+
+    def layout(self, win_size: tuple = None, editable: bool = False, markable: bool = False):
+        """
+        Generate a GUI layout for the account record.
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+
+        # Rule parameters
+        params = self.parameters
+
+        # Element parameters
+        header_col = const.HEADER_COL
+        frame_col = const.FRAME_COL
+        bg_col = const.ACTION_COL
+        text_col = const.TEXT_COL
+
+        font_h = const.HEADER_FONT
+        font_main = const.MAIN_FONT
+        bold_font = const.BOLD_FONT
+        bold_l_font = const.BOLD_MID_FONT
+
+        pad_el = const.ELEM_PAD
+        pad_v = const.VERT_PAD
+        pad_frame = const.FRAME_PAD
+
+        # Element sizes
+        layout_width = width - 120 if width >= 120 else width
+        layout_height = height * 0.8
+        border_width = 1
+
+        # Layout elements
+
+        # Window Title
+        title = self.title
+        title_layout = [[sg.Col([
+            [sg.Canvas(size=(layout_width - 40, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
+            [sg.Text(title, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
+            pad=(0, 0), justification='l', background_color=header_col, expand_x=True)]]
+
+        # Mark for deletion
+        mark_param = self.fetch_parameter(self.required_parameters['Mark'])
+        mark_layout = [mark_param.layout()]
+
+        # Record header
+        id_param = self.fetch_parameter(self.required_parameters['ID'])
+        date_param = self.fetch_parameter(self.required_parameters['Date'])
+        header_layout = [[sg.Col([[sg.Text('{}:'.format(id_param.description), pad=(0, (0, pad_el)),
+                                           font=bold_l_font, justification='r', background_color=bg_col),
+                                   sg.Text(id_param.value, pad=(0, 0), font=font_main, background_color=bg_col)]],
+                                 pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
+                          sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], background_color=bg_col, justification='c',
+                                 expand_x=True),
+                          sg.Col([[sg.Text('{}:'.format(date_param.description), pad=(0, (0, pad_el)),
+                                           font=bold_l_font, justification='r', background_color=bg_col),
+                                   sg.Text(date_param.value, pad=(0, 0), font=font_main, background_color=bg_col)]],
+                                 pad=(0, 0), background_color=bg_col, justification='r')],
+                         [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
+
+        # Parse optional parameters
+        text_lengths = []
+        for param in params:
+            if param.hidden is True or param.name not in self.optional_parameters:
+                continue
+            text_lengths.append(len(param.description))
+
+        try:
+            text_width = max(text_lengths)
+        except ValueError:
+            text_width = 14
+
+        right_elements = []
+        left_elements = []
+        center_elements = []
+        for param in params:
+            # Skip parameters not in list
+            if param.hidden is True or param.name not in self.optional_parameters:
+                continue
+
+            element_layout = param.layout(size=(14, 1), text_size=(text_width, 1), text_justification='l',
+                                          padding=(0, 0), bg_col=frame_col)
+
+            if param.justification == 'right':
+                right_elements.append(element_layout)
+            elif param.justification == 'center':
+                center_elements.append(element_layout)
+            else:
+                left_elements.append(element_layout)
+
+        if len(right_elements) < 1:
+            right_elements.append([])
+        if len(left_elements) < 1:
+            left_elements.append([])
+        if len(center_elements) < 1:
+            center_elements.append([])
+
+        # Details frame
+        if len(left_elements) > 6 or len(right_elements) > 6 or len(center_elements) > 6:
+            scroll = True
+        else:
+            scroll = False
+        details_layout = [[sg.Col([[sg.Canvas(size=(0, int(layout_height * 0.25)), background_color=frame_col)]],
+                                  background_color=frame_col),
+                           sg.Col([
+                               [sg.Canvas(size=(layout_width - 104, 0), visible=True, background_color=frame_col)],
+                               [sg.Col(left_elements, pad=(0, 0), justification='l', element_justification='l',
+                                       background_color=frame_col, vertical_alignment='t', expand_x=True),
+                                sg.Col(center_elements, pad=(0, 0), justification='c', element_justification='l',
+                                       vertical_alignment='t', background_color=frame_col, expand_x=True),
+                                sg.Col(right_elements, pad=(0, 0), justification='r', element_justification='l',
+                                       background_color=frame_col, vertical_alignment='t', expand_x=True)]],
+                               pad=(pad_v, pad_v), background_color=frame_col, vertical_alignment='t',
+                               scrollable=scroll, vertical_scroll_only=True, expand_y=True)]]
+
+        # Notes frame
+        note_param = self.fetch_parameter(self.required_parameters['Note'])
+
+        notes_key = note_param.element_key
+        note_layout = [
+            [sg.Canvas(size=(layout_width - 84, 0), visible=True, background_color=frame_col)],
+            [sg.Multiline(default_text=note_param.value, key=notes_key, size=(60, 10), pad=(pad_v, pad_v),
+                          background_color=bg_col, text_color=text_col, border_width=1, focus=False)]]
+
+        # Main panel layout
+        main_layout = [[sg.Col([[sg.Col(mark_layout, pad=(0, (0, pad_v)), justification='r',
+                                        background_color=bg_col, vertical_alignment='t')],
+                                [sg.Col(header_layout, pad=(pad_frame, (0, pad_frame)), vertical_alignment='t',
+                                        background_color=bg_col, expand_x=True)],
+                                [sg.Frame('Record Details', details_layout, pad=(pad_frame, pad_v),
+                                          border_width=border_width, background_color=frame_col, font=bold_l_font,
+                                          relief='solid')],
+                                [sg.Frame(note_param.description, note_layout, pad=(pad_frame, (pad_v, pad_frame)),
+                                          border_width=border_width, background_color=frame_col, font=bold_l_font,
+                                          relief='solid')]],
+                               vertical_alignment='t', background_color=bg_col, expand_x=True, expand_y=True)]]
+
+        # Flow control buttons
+        cancel_key = self.key_lookup('Cancel')
+        delete_key = self.key_lookup('Delete')
+        save_key = self.key_lookup('Save')
+        bttn_layout = [[sg.Col([[lo.B2('Cancel', key=cancel_key, pad=(0, 0), tooltip='Cancel record edit')]],
+                               justification='l', expand_x=True),
+                        sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
+                        sg.Col([[lo.B2('Delete', key=delete_key, pad=(pad_el, 0),
+                                       disabled=(not self.is_deletable), tooltip='Delete record'),
+                                 lo.B2('Save', key=save_key, pad=(pad_el, 0), disabled=(not self.is_editable),
+                                       tooltip='Save record')]],
+                               justification='r')]]
+
+        # Pane elements must be columns
+        layout = [[sg.Col([[sg.Frame('', [
+            [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col)],
+            [sg.Col(main_layout, pad=(0, 0), background_color=bg_col)]],
+                                     background_color=bg_col, title_color=text_col, relief='raised')]],
+                          pad=(pad_frame, (pad_frame, pad_v)), background_color=bg_col, justification='c')],
+                  [sg.Col(bttn_layout, pad=(pad_frame, (0, pad_frame)), expand_x=True)]]
+
+        return layout
+
+    def fetch_parameter(self, name, by_key: bool = False, by_type: bool = False):
+        """
+        Fetch a record parameter by either name, key, or parameter element type.
+        """
+        if by_key and by_type:
+            print('Warning: {RULE}, {NAME}, parameter {PARAM}: the "by_key" and "by_type" arguments are mutually '
+                  'exclusive. Defaulting to "by_key".'.format(RULE=self.rule_name, NAME=self.name, PARAM=name))
+            by_type = False
+
+        if by_key:
+            names = [i.element_key for i in self.parameters]
+        elif by_type:
+            names = [i.type for i in self.parameters]
+        else:
+            names = [i.name for i in self.parameters]
+
+        try:
+            index = names.index(name)
+        except IndexError:
+            param = None
+        else:
+            param = self.parameters[index]
+
+        return param
+
+    def save_to_database(self, user):
+        """
+        Save record updates to the database.
+        """
+        id_param = self.fetch_parameter(self.required_parameters['ID'])
+        record_id = id_param.value
+
+        saved = []
+        export_rules = self.export_rules
+        for table in export_rules:
+            table_entry = export_rules[table]
+            references = table_entry['TableColumns']
+
+            export_columns = [configuration.editor_code, configuration.edit_date]
+            export_values = [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
+            for param in self.parameters:
+                if param.editable is False:
+                    continue
+
+                if param.name in references:
+                    db_col = references[param.name]
+                    export_columns.append(db_col)
+                    export_values.append(param.value)
+
+            filters = ('{} = ?'.format(id_param.name), (record_id,))
+
+            saved.append(user.update(table, export_columns, export_values, filters))
+
+        return all(saved)
+
+    def delete_record(self):
+        """
+        Delete record from database.
+        """
+        # Check if one-to-one mapping with foreign keys and ask if user would like to delete foreign records as well
+        pass
+
+
+def load_account_record(user, record_group, record_name, record_entry):
+    """
+    Load an existing account record from the program database.
+    """
+    db_record = AccountRecord(record_group, record_name, record_entry)
+
+    tables = db_record.import_rules
+    display_mapping = db_record.display_columns
+
+    # Define the filter parameters
+    filters = []
+    import_parameters = []
+    for parameter in db_record.parameters:
+        if parameter.name in db_record.filter_parameters:
+            import_parameters.append(parameter)
+
+            if parameter.editable is False and parameter.value is not None:
+                filters.append(parameter.filter_statement())
+
+    # Add configured import filters
+    filters += dm.filter_statements(db_record.import_parameters)
+
+    # Query existing database entries
+    order_by = [db_record.required_parameters['ID'], db_record.required_parameters['Date']]
+    import_df = user.query(tables, columns=db_record.columns, filter_rules=filters, order=order_by, prog_db=True)
+    if import_df.empty:
+        win2.popup_notice('There are no existing records in the database to display')
+        return None
+
+    if not display_mapping:
+        display_mapping = {i: i for i in import_df.columns.values.tolist()}
+    trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping,
+                                       aliases=db_record.aliases, create_new=False)
+
+    if trans_df is None:  # user selected to cancel importing/creating a bank transaction
+        return None
+
+    # Update parameter value attributes
+    values = {index: value for index, value in trans_df.items()}
+    for param in db_record.parameters:
+        param.set_value(values, by_key=False)
+
+    return db_record

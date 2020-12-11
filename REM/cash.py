@@ -13,7 +13,7 @@ import PySimpleGUI as sg
 import REM.constants as const
 import REM.data_manipulation as dm
 import REM.layouts as lo
-import REM.parameters as param_els
+import REM.parameters as mod_param
 import REM.secondary as win2
 from REM.config import configuration, current_tbl_pkeys, settings
 
@@ -95,7 +95,7 @@ class CashRule:
 
         name (str): cash reconciliation rule name.
 
-        adict (dict): dictionary of optional and required cash rule arguments.
+        rule_entry (dict): dictionary of optional and required cash rule arguments.
 
     Attributes:
 
@@ -108,90 +108,98 @@ class CashRule:
         permissions (str): permissions required to view the accounting method. Default: user.
     """
 
-    def __init__(self, name, adict):
+    def __init__(self, name, rule_entry):
 
         self.name = name
         self.element_key = lo.as_key(name)
         self.elements = ['Cancel', 'Save', 'ID', 'Deposit', 'Date', 'ExpenseTable', 'ExpenseTotals', 'AddExpense',
                          'RemoveExpense', 'EntryTable', 'EntryTotals', 'AddEntry', 'RemoveEntry',
                          'FrameWidth', 'FrameHeight', 'PanelHeight', 'Main']
+        self.required_elements = ['ID', 'Date', 'Deposit']
 
         try:
-            self.title = adict['Title']
+            self.title = rule_entry['Title']
         except KeyError:
             self.title = name
 
         try:
-            self.permissions = adict['Permissions']
+            self.permissions = rule_entry['Permissions']
         except KeyError:  # default permission for a cash rule is 'user'
             self.permissions = 'user'
 
+        # Record primary key and foreign keys
         try:
-            table = adict['DatabaseTable']
+            ids = rule_entry['IDs']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "DatabaseTable".').format(RULE=name)
+            win2.popup_error('Configuration Error: {RULE}: missing required parameter "IDs"'.format(RULE=name))
+            sys.exit(1)
+
+        if len(ids) < 1:
+            win2.popup_error('Configuration Error: {RULE}: "IDs" must include at least one primary ID field'
+                             .format(RULE=name))
+            sys.exit(1)
+
+        has_primary = False
+        primary_table = None
+        for id_field in ids:
+            id_param = ids[id_field]
+
+            if 'Title' not in id_param:
+                id_param['Title'] = id_field
+            if 'Format' not in id_param:
+                win2.popup_error('Configuration Error: {RULE}: "Format" is a required field for IDs entry "{ID}"'
+                                 .format(RULE=name, ID=id_field))
+                sys.exit(1)
+            else:
+                id_param['Format'] = re.findall(r'\{(.*?)\}', id_param['Format'])
+            if 'DatabaseTable' not in id_param:
+                win2.popup_error('Configuration Error: {RULE}: "DatabaseTable" is a required field for IDs entry '
+                                 '"{ID}"'.format(RULE=name, ID=id_field))
+                sys.exit(1)
+            if 'DatabaseField' not in id_param:
+                win2.popup_error('Configuration Error: {RULE}: "DatabaseField" is a required field for IDs entry "{ID}"'
+                                 .format(RULE=name, ID=id_field))
+                sys.exit(1)
+            if 'IsPrimary' not in id_param:
+                id_param['IsPrimary'] = False
+            else:
+                try:
+                    is_primary = bool(int(id_param['IsPrimary']))
+                except ValueError:
+                    win2.popup_error('Configuration Error: {RULE}: "IsPrimary" must be either 0 (False) or 1 (True)'
+                                     .format(RULE=name))
+                    sys.exit(1)
+                else:
+                    id_param['IsPrimary'] = is_primary
+                    if is_primary is True:
+                        if has_primary is True:
+                            win2.popup_error('Configuration Error: {RULE}: only one "IDs" parameter can be set as '
+                                             'the primary ID field'.format(RULE=self.name))
+                            sys.exit(1)
+                        else:
+                            has_primary = True
+                            primary_table = id_param['DatabaseTable']
+
+        if has_primary is False:
+            win2.popup_error('Configuration Error: {RULE}: "IDs" must include at least one primary ID field'
+                             .format(RULE=name))
+
+        self.ids = ids
+        self.table = primary_table
+
+        # Database import rules
+        try:
+            import_rules = rule_entry['ImportRules']
+        except KeyError:
+            msg = _('Configuration Error: rule {RULE}: missing required field "ImportRules".').format(RULE=name)
             win2.popup_error(msg)
             sys.exit(1)
         else:
-            self.table = table
+            self.import_rules = import_rules
 
+        # SQL table columns
         try:
-            id_entry = adict['ID']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "ID".').format(RULE=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        msg = 'Configuration Error: rule {RULE}: missing required ID entry field "{FIELD}"'
-        if 'Column' not in id_entry:
-            win2.popup_error(msg.format(RULE=name, FIELD='Column'))
-            sys.exit(1)
-        if 'Format' not in id_entry:
-            win2.popup_error(msg.format(RULE=name, FIELD='Format'))
-            sys.exit(1)
-        else:
-            id_entry['Format'] = re.findall(r'\{(.*?)\}', id_entry['Format'])
-        if 'Description' not in id_entry:
-            id_entry['Description'] = 'ID'
-        id_entry['Value'] = None
-        self.id = id_entry
-
-        try:
-            date_entry = adict['Date']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "Date".').format(RULE=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        msg = 'Configuration Error: rule {RULE}: missing required Date entry field "{FIELD}"'
-        if 'Column' not in date_entry:
-            win2.popup_error(msg.format(RULE=name, FIELD='Column'))
-            sys.exit(1)
-        if 'DateFormat' not in date_entry:
-            win2.popup_error(msg.format(RULE=name, FIELD='DateFormat'))
-            sys.exit(1)
-        else:
-            date_entry['Format'] = settings.format_date_str(date_entry['DateFormat'])
-        if 'Description' not in date_entry:
-            date_entry['Description'] = 'Date'
-        date_entry['Value'] = None
-        self.date = date_entry
-
-        try:
-            deposit_entry = adict['Deposit']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "Deposit".').format(RULE=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        msg = 'Configuration Error: rule {RULE}: missing required Deposit entry field "{FIELD}"'
-        if 'Column' not in deposit_entry:
-            win2.popup_error(msg.format(RULE=name, Field='Column'))
-            sys.exit(1)
-        if 'Description' not in deposit_entry:
-            deposit_entry['Description'] = 'Deposit Amount'
-        deposit_entry['Value'] = None
-        self.deposit = deposit_entry
-
-        try:
-            table_columns = adict['TableColumns']
+            table_columns = rule_entry['TableColumns']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}: missing required field "TableColumns".').format(RULE=name)
             win2.popup_error(msg)
@@ -199,17 +207,15 @@ class CashRule:
         else:
             self.columns = table_columns
 
+        # Display table column mappings
         try:
-            display_columns = adict['DisplayColumns']
+            self.display_columns = rule_entry['DisplayColumns']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "DisplayColumns".').format(RULE=name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        else:
-            self.display_columns = display_columns
+            self.display_columns = {}
 
+        # SQL filter rules
         try:
-            import_parameters = adict['ImportParameters']
+            import_parameters = rule_entry['ImportParameters']
         except KeyError:
             import_parameters = {}
         for import_param in import_parameters:
@@ -227,17 +233,20 @@ class CashRule:
 
         self.import_parameters = import_parameters
 
+        # All rule parameters
         self.parameters = []
         try:
-            params = adict['RuleParameters']
+            params = rule_entry['Parameters']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "RuleParameters".').format(RULE=name)
+            msg = _('Configuration Error: rule {RULE}: missing required field "Parameters".').format(RULE=name)
             win2.popup_error(msg)
             sys.exit(1)
 
+        param_names = []
         for param in params:
             cdict = params[param]
             self.elements.append(param)
+            param_names.append(param)
 
             try:
                 param_layout = cdict['ElementType']
@@ -248,21 +257,60 @@ class CashRule:
                 sys.exit(1)
 
             if param_layout == 'dropdown':
-                self.parameters.append(param_els.AuditParameterCombo(name, param, cdict))
+                self.parameters.append(mod_param.RuleParameterCombo(name, param, cdict))
             elif param_layout == 'input':
-                self.parameters.append(param_els.AuditParameterInput(name, param, cdict))
+                self.parameters.append(mod_param.RuleParameterInput(name, param, cdict))
             elif param_layout == 'date':
-                self.parameters.append(param_els.AuditParameterDate(name, param, cdict))
-            elif param_layout == 'date_range':
-                self.parameters.append(param_els.AuditParameterDateRange(name, param, cdict))
+                self.parameters.append(mod_param.RuleParameterDate(name, param, cdict))
+            elif param_layout == 'checkbox':
+                self.parameters.append(mod_param.RuleParameterCheckbox(name, param, cdict))
             else:
                 msg = 'Configuration Error: rule {RULE}, RuleParameters, {PARAM}: unknown parameter type {TYPE}' \
                     .format(RULE=name, PARAM=param, TYPE=param_layout)
                 win2.popup_error(msg)
                 sys.exit(1)
 
+        # Required record parameters
         try:
-            expenses = adict['Expenses']
+            required_params = rule_entry['RequiredParameters']
+        except KeyError:
+            msg = 'Configuration Error: {RULE}: missing required field "RequiredParameters".' \
+                .format(RULE=name)
+            win2.popup_error(msg)
+            sys.exit(1)
+
+        for required_param in required_params:
+            param_name = required_params[required_param]
+            if param_name not in param_names:
+                msg = 'Configuration Warning: {RULE}: required parameter {PARAM} does not have a ' \
+                      'corresponding entry for {COL} in the Parameters field.' \
+                    .format(RULE=name, PARAM=required_param, COL=param_name)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        for required_param in self.required_elements:
+            if required_param not in required_params:
+                msg = 'Configuration Warning: {RULE}: missing required parameter {PARAM}.' \
+                    .format(RULE=name, PARAM=required_param)
+                win2.popup_error(msg)
+                sys.exit(1)
+
+        self.required_parameters = required_params
+
+        # Optional record parameters
+        try:
+            self.optional_parameters = rule_entry['OptionalParameters']
+        except KeyError:
+            self.optional_parameters = {}
+
+        # Parameters used to filter existing records
+        try:
+            self.filter_parameters = rule_entry['FilterParameters']
+        except KeyError:
+            self.filter_parameters = {}
+
+        try:
+            expenses = rule_entry['Expenses']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}: missing required field "Expenses".').format(RULE=name)
             win2.popup_error(msg)
@@ -271,7 +319,7 @@ class CashRule:
             self.expenses = CashExpenses(name, expenses)
 
         try:
-            records = adict['Records']
+            records = rule_entry['Records']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}: missing required field "Records".').format(RULE=name)
             win2.popup_error(msg)
@@ -280,7 +328,7 @@ class CashRule:
             self.records = CashRecords(name, records)
 
         try:
-            sdict = adict['Summary']
+            sdict = rule_entry['Summary']
         except KeyError:
             msg = 'Configuration Error: rule {RULE}: missing required field "Summary"'.format(RULE=name)
             win2.popup_error(msg)
@@ -289,7 +337,7 @@ class CashRule:
         self.summary = CashSummaryPanel(name, sdict)
 
         try:
-            self.aliases = adict['Aliases']
+            self.aliases = rule_entry['Aliases']
         except KeyError:
             self.aliases = {}
 
@@ -378,11 +426,11 @@ class CashRule:
         """
         # Reset rule parameters
         for param in self.parameters:
-            param.reset_parameter()
-
             if not param.hidden:
                 param_key = param.element_key
                 window[param_key].update(value='')
+
+            param.reset_parameter()
 
     def reset_attributes(self):
         """
@@ -390,9 +438,6 @@ class CashRule:
         """
         header = [dm.colname_from_query(i) for i in self.columns]
         self.df = pd.DataFrame(columns=header)
-
-        self.id['Value'] = None
-        self.date['Value'] = None
 
         self.exists = False
 
@@ -406,14 +451,17 @@ class CashRule:
         # Remove transaction ID from list if not already saved in database
         if self.exists is False:  # newly created transaction
             # Remove transaction ID from list of transaction IDs
+            id_param = self.fetch_parameter(self.required_parameters['ID'])
+            record_id = id_param.value
             try:
-                current_tbl_pkeys[self.table].remove(self.id['Value'])
+
+                current_tbl_pkeys[self.table].remove(record_id)
             except ValueError:
                 print('Warning: attempting to remove non-existent ID "{ID}" from the list of database '
-                      'table {TBL} IDs'.format(ID=self.id['Value'], TBL=self.expenses.table))
+                      'table {TBL} IDs'.format(ID=record_id, TBL=self.expenses.table))
             else:
                 print('Info: removed ID {ID} from the list of database table {TBL} IDs'
-                      .format(ID=self.id['Value'], TBL=self.table))
+                      .format(ID=record_id, TBL=self.table))
 
         # Remove those expense IDs not already saved in the database from the list
         all_expenses = self.expenses.df[self.expenses.pkey].values.tolist()
@@ -483,11 +531,17 @@ class CashRule:
             [sg.Text(panel_title, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
             pad=(0, 0), justification='l', background_color=header_col, expand_x=True)]]
 
-        # Panel heading layout
+        # Required parameters
+        id_param = self.fetch_parameter(self.required_parameters['ID'])
+        date_param = self.fetch_parameter(self.required_parameters['Date'])
+        deposit_param = self.fetch_parameter(self.required_parameters['Deposit'])
+
+        # Optional parameters
         right_elements = []
         left_elements = []
         for param in params:
-            if param.hidden is True:
+            # Skip parameters not in list
+            if param.hidden is True or param.name not in self.optional_parameters:
                 continue
 
             element_layout = param.layout()
@@ -496,26 +550,25 @@ class CashRule:
             else:
                 left_elements += element_layout
 
-        deposit_key = self.key_lookup('Deposit')
-        deposit_layout = [sg.Text('{}:'.format(self.deposit['Description']), pad=((0, pad_el), 0), justification='r',
-                                  font=bold_font, background_color=bg_col),
-                          sg.Text('', key=deposit_key, size=(14, 1), enable_events=True, pad=((0, pad_el), 0),
-                                  font=font_main, background_color=bg_col, border_width=bwidth, relief='sunken')]
+        deposit_layout = [sg.Text('{}:'.format(deposit_param.description), pad=((pad_v, pad_el), 0),
+                                  justification='r', font=bold_font, auto_size_text=True, background_color=bg_col),
+                          sg.Input(deposit_param.value, key=deposit_param.element_key, size=(14, 1),
+                                   pad=((0, pad_el), 0), font=font_main, disabled=True, border_width=1)]
         right_elements += deposit_layout
 
-        id_key = self.key_lookup('ID')
-        id_title = self.id['Description']
-        header_layout = [
-            [sg.Col([[sg.Text('{}:'.format(id_title), pad=((pad_el*2, pad_el), pad_el*2), font=bold_l_font,
-                              background_color=bg_col),
-                      sg.Text('', key=id_key, size=(20, 1), pad=((pad_el, pad_el*2), pad_el*2), justification='l',
-                              font=bold_l_font, background_color=bg_col, auto_size_text=True, border_width=0)]],
-                pad=(0, 0), background_color=bg_col)],
-            [sg.Col([left_elements], pad=(0, pad_v), justification='l', background_color=bg_col, expand_x=True),
-             sg.Col([[sg.Canvas(size=(0, 0), visible=True, background_color=bg_col)]],
-                    justification='c', background_color=bg_col, expand_x=True),
-             sg.Col([right_elements], pad=(0, pad_v), justification='r', background_color=bg_col)],
-            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
+        # Header layout
+        top_row = id_param.layout()
+        top_row += date_param.layout()
+        header_layout = [[sg.Col([top_row], pad=(0, pad_v), background_color=bg_col,
+                                 justification='l', vertical_alignment='t', expand_x=True),
+                          sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], background_color=bg_col,
+                                 justification='c', vertical_alignment='t', expand_x=True)],
+                         [sg.Col([left_elements], pad=(0, 0), background_color=bg_col, justification='l',
+                                 vertical_alignment='t', expand_x=True),
+                          sg.Col([[sg.Canvas(size=(0, 0), background_color=bg_col)]], justification='c',
+                                 vertical_alignment='t', background_color=bg_col, expand_x=True),
+                          sg.Col([right_elements], justification='r', vertical_alignment='t', background_color=bg_col)],
+                         [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
 
         # Expense frame layout
         expense_key = self.key_lookup('ExpenseTable')
@@ -552,7 +605,8 @@ class CashRule:
         # Main panel layout
         panel_height_key = self.key_lookup('PanelHeight')
         main_layout = [[sg.Col([[sg.Canvas(key=panel_height_key, size=(0, panel_height), visible=True)]]),
-                        sg.Col([[sg.Col(header_layout, pad=(pad_frame, 0), justification='l', background_color=bg_col, expand_x=True)],
+                        sg.Col([[sg.Col(header_layout, pad=(pad_frame, 0), justification='l', background_color=bg_col,
+                                        expand_x=True)],
                                 [sg.Col(entries_layout, pad=(pad_frame, pad_frame), vertical_alignment='t',
                                         background_color=bg_col)],
                                 [sg.Col(expense_layout, pad=(pad_frame, pad_frame), vertical_alignment='t',
@@ -661,9 +715,16 @@ class CashRule:
         """
         Format data elements for display.
         """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
         default_col = const.ACTION_COL
         greater_col = const.PASS_COL
         lesser_col = const.FAIL_COL
+
+        date_fmt = settings.format_date_str(date_str=settings.display_date_format)
+        date_offset = settings.get_date_offset()
 
         # Update entry and expense tables
         display_df = self.format_display_table(table='records')
@@ -696,9 +757,23 @@ class CashRule:
         else:
             bg_color = default_col
 
-        deposit_key = self.key_lookup('Deposit')
+        deposit_param = self.fetch_parameter(self.required_parameters['Deposit'])
+        deposit_key = deposit_param.element_key
         window[deposit_key].update(value='{:,.2f}'.format(deposit_total), background_color=bg_color)
-        self.deposit['Value'] = deposit_total
+        deposit_param.set_value({deposit_param.name: deposit_total})
+
+        # Update date elements
+        for param in self.parameters:
+            if param.hidden is True:
+                continue
+            if param.type == 'date':
+                param_value = param.value_obj
+                if param_value is not None:
+                    date_value = (strptime(param_value.strftime(date_fmt), date_fmt) + relativedelta(years=+date_offset)).strftime(date_fmt)
+                    print(param.name, date_value)
+
+                    window[param.element_key].update(value=date_value)
+
 
     def format_display_table(self, table: str = 'records', date_fmt: str = None):
         """
@@ -743,7 +818,12 @@ class CashRule:
         """
         Create a new transaction ID.
         """
-        id_format = self.id['Format']
+        for id_field in self.ids:
+            id_entry = self.ids[id_field]
+            if id_entry['IsPrimary'] is True:
+                id_format = id_entry['Format']
+                break
+
         param_fields = [i.name for i in self.parameters]
 
         # Determine date parameter of the new ID
@@ -839,8 +919,11 @@ class CashRule:
         """
         Update the ID components attribute used for creating new transaction IDs
         """
-        id_format = self.id['Format']
-        id_field = self.id['Column']
+        for id_field in self.ids:
+            id_entry = self.ids[id_field]
+            if id_entry['IsPrimary'] is True:
+                id_format = id_entry['Format']
+                break
 
         parameters = self.parameters
         param_fields = [i.name for i in parameters]
@@ -901,32 +984,26 @@ class CashRule:
         display_mapping = self.display_columns
 
         # Define the filter parameters
-        import_parameters = []
         filters = []
-
-        id_param = self.id
-        id_name = id_param['Column']
-        id_param['ElementType'] = 'input'
-        import_parameters.append(param_els.AuditParameterInput(self.name, id_name, id_param))
-
-        date_param = self.date
-        date_name = date_param['Column']
-        date_param['ElementType'] = 'date'
-        import_parameters.append(param_els.AuditParameterDate(self.name, date_name, date_param))
-
+        import_parameters = []
         for parameter in self.parameters:
-            if parameter.editable is False and parameter.filterable is True and parameter.value is not None:
-                filters.append(parameter.filter_statement(table=table))
-
-            if parameter.filterable is True:
+            if parameter.name in self.filter_parameters:
                 import_parameters.append(parameter)
+
+                if parameter.editable is False and parameter.value is not None:
+                    print(parameter.name, parameter.value)
+                    filters.append(parameter.filter_statement())
 
         # Add configured import filters
         filters += self.filter_statements()
 
         # Query existing database entries
-        order_by = [date_name, id_name]
-        import_df = user.query(table, columns=self.columns, filter_rules=filters, order=order_by, prog_db=True)
+        order_by = [self.required_parameters['ID'], self.required_parameters['Date']]
+        import_df = user.query(self.import_rules, columns=self.columns, filter_rules=filters, order=order_by,
+                               prog_db=True)
+
+        if not display_mapping:
+            display_mapping = {i: i for i in import_df.columns.values.tolist()}
         trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping,
                                            aliases=self.aliases, create_new=True)
 
@@ -938,15 +1015,19 @@ class CashRule:
             print('Info: rule {RULE}: ID of the new transaction is {ID}'.format(RULE=self.name, ID=trans_id))
 
             # Add transaction to the list of transaction IDs
-            current_tbl_pkeys[self.table].append(trans_id)
+            current_tbl_pkeys[table].append(trans_id)
 
-            self.df.at[0, self.id['Column']] = trans_id
-            self.id['Value'] = trans_id
+            id_param = self.fetch_parameter(self.required_parameters['ID'])
+
+            self.df.at[0, id_param.name] = trans_id
+            id_param.set_value({id_param.name: trans_id}, by_key=False)
 
             # Add transaction date to table
+            date_param = self.fetch_parameter(self.required_parameters['Date'])
+
             trans_date = datetime.datetime.now()
-            self.df.at[0, self.date['Column']] = trans_date
-            self.date['Value'] = trans_date
+            self.df.at[0, date_param.name] = trans_date
+            date_param.set_value({date_param.name: trans_date}, by_key=False)
 
             # Add default parameter values to new transaction
             for parameter in self.parameters:
@@ -958,12 +1039,6 @@ class CashRule:
 
             return self.element_key
         else:
-            trans_id = trans_df[self.id['Column']]
-            self.id['Value'] = trans_id
-
-            trans_date = trans_df[self.date['Column']]
-            self.date['Value'] = trans_date
-
             # Set existing attribute to True
             self.exists = True
 
@@ -974,20 +1049,23 @@ class CashRule:
         for param in self.parameters:
             param.set_value(values, by_key=False)
 
+        id_param = self.fetch_parameter(self.required_parameters['ID'])
+        trans_id = id_param.value
+
         # Import associated expenses and records
         expense_table = self.expenses.table
         qfilter = ('{} = ?'.format(self.expenses.refkey), (trans_id,))
 
-        expenses_df = user.query(expense_table, columns=list(self.expenses.columns.keys()), filter_rules=qfilter, prog_db=True)
+        expenses_df = user.query(expense_table, columns=list(self.expenses.columns.keys()), filter_rules=qfilter,
+                                 prog_db=True)
         self.expenses.df = self.expenses.import_df = expenses_df
-        print(self.expenses.df, type(self.expenses.df))
 
         records_table = self.records.table
         qfilter = ('{} = ?'.format(self.records.refkey), (trans_id,))
 
-        records_df = user.query(records_table, columns=list(self.records.columns.keys()), filter_rules=qfilter, prog_db=True)
+        records_df = user.query(records_table, columns=list(self.records.columns.keys()), filter_rules=qfilter,
+                                prog_db=True)
         self.records.df = self.records.import_df = records_df
-        print(self.records.df, type(self.records.df))
 
         return self.element_key
 
@@ -998,6 +1076,9 @@ class CashRule:
         df = self.df
         table = self.table
 
+        id_param = self.fetch_parameter(self.required_parameters['ID'])
+        record_id = id_param.value
+
         nrow = df.shape[0]
         if nrow > 1:
             print('Something went wrong')
@@ -1006,8 +1087,6 @@ class CashRule:
         # Add parameters to dataframe
         for param in self.parameters:
             param_col = param.name
-            if param_col == self.id['Column']:
-                continue
 
             param_val = param.value
             df[param_col] = param_val
@@ -1026,7 +1105,7 @@ class CashRule:
                 values = export_df.values.tolist()[0]
 
                 # Prepare filter parameters
-                filters = ('{} = ?'.format(self.id['Column']), (self.id['Value'],))
+                filters = ('{} = ?'.format(id_param.name), (record_id,))
 
                 # Update existing transaction
                 saved = user.update(table, columns, values, filters)
@@ -1051,13 +1130,13 @@ class CashRule:
             return False
 
         # Add transaction ID to the expenses table
-        self.expenses.df[self.expenses.refkey] = self.id['Value']
+        self.expenses.df[self.expenses.refkey] = record_id
 
         # Update the records added to the transaction
         records_table = self.records.table
         ref_column = self.records.refkey
         ref_key = self.records.pkey
-        ref_value = self.id['Value']
+        ref_value = record_id
         for index, row in self.records.df.iterrows():
             row_id = row[ref_key]
             filters = ('{} = ?'.format(ref_key), (row_id,))

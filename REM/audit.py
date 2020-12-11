@@ -17,7 +17,7 @@ import REM.constants as const
 import REM.data_manipulation as dm
 import REM.layouts as lo
 import REM.parameters as param_els
-import REM.records as records
+import REM.records as mod_records
 import REM.secondary as win2
 from REM.config import configuration, current_tbl_pkeys, settings
 
@@ -110,7 +110,7 @@ class AuditRule:
 
         permissions (str): permissions required to view the audit. Default: user.
 
-        parameters (list): list of AuditParameter type objects.
+        parameters (list): list of RuleParameter type objects.
 
         tabs (list): list of TabItem objects.
 
@@ -146,13 +146,13 @@ class AuditRule:
 
             param_layout = cdict['ElementType']
             if param_layout == 'dropdown':
-                self.parameters.append(param_els.AuditParameterCombo(name, param, cdict))
+                self.parameters.append(param_els.RuleParameterCombo(name, param, cdict))
             elif param_layout == 'input':
-                self.parameters.append(param_els.AuditParameterInput(name, param, cdict))
+                self.parameters.append(param_els.RuleParameterInput(name, param, cdict))
             elif param_layout == 'date':
-                self.parameters.append(param_els.AuditParameterDate(name, param, cdict))
-            elif param_layout == 'date_range':
-                self.parameters.append(param_els.AuditParameterDateRange(name, param, cdict))
+                self.parameters.append(param_els.RuleParameterDate(name, param, cdict))
+            elif param_layout == 'checkbox':
+                self.parameters.append(param_els.RuleParameterCheckbox(name, param, cdict))
             else:
                 msg = 'Configuration Error: unknown rule parameter type {TYPE} in rule {NAME}' \
                     .format(TYPE=param_layout, NAME=name)
@@ -215,6 +215,7 @@ class AuditRule:
 
     def fetch_parameter(self, name, by_key: bool = False, by_type: bool = False):
         """
+        Fetch an audit rule parameter by either name, key, or parameter element type.
         """
         if by_key and by_type:
             print('Warning: rule {NAME}, parameter {PARAM}: the "by_key" and "by_type" arguments are mutually '
@@ -546,9 +547,9 @@ class SummaryPanel:
                 sys.exit(1)
 
             if summ_type == 'Subset':
-                self.tabs.append(records.AuditRecordSubset(rule_name, tab, si_dict))
+                self.tabs.append(mod_records.AuditRecordSubset(rule_name, tab, si_dict))
             elif summ_type == 'Add':
-                self.tabs.append(records.AuditRecordAdd(rule_name, tab, si_dict))
+                self.tabs.append(mod_records.AuditRecordAdd(rule_name, tab, si_dict))
             else:
                 msg = _('Configuration Error: rule {RULE}, summary {NAME}:  unknown type "{TYPE}" provided to the '
                         'Types parameter.').format(RULE=rule_name, NAME=tab, TYPE=summ_type)

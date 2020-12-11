@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '1.1.0'
+__version__ = '1.1.1'
 
 import datetime
 from multiprocessing import freeze_support
@@ -14,6 +14,7 @@ import REM.cash as cash
 import REM.data_manipulation as dm
 from REM.config import configuration, current_tbl_pkeys, settings
 import REM.layouts as lo
+import REM.records as mod_records
 import REM.secondary as win2
 import REM.constants as const
 import sys
@@ -34,29 +35,36 @@ class ToolBar:
         self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
 
         acct_menu = []
-        acct_reports = []
-        report_keys = []
         for account_method in account_methods:
             acct_menu.append(('', account_method.title))
-            acct_reports.append(('', account_method.title))
 
             rules = []
-            reports = []
             for rule in account_method.rules:
                 rules.append(('!', rule.title))
-                report_element = '{} Report'.format(rule.title)
-
-                report_key = lo.as_key(report_element)
-                report_keys.append(report_key)
-                reports.append(('!', '{RULE}::{KEY}'.format(RULE=rule.title, KEY=report_key)))
 
             acct_menu.append(rules)
-            acct_reports.append(reports)
 
-        self.report_keys = report_keys
+        acct_records = []
+        record_rules = configuration.db_records['rules']
+        for record_group in record_rules:
+            acct_records.append(('', record_group))
+
+            record_entries = []
+            for record_type in record_rules[record_group]:
+                record_entry = record_rules[record_group][record_type]
+
+                try:
+                    record_title = record_entry['Title']
+                except KeyError:
+                    record_title = record_type
+
+                record_entries.append(('!', '{ITEM}::{KEY}'.format(ITEM=record_title, KEY=record_type)))
+
+            acct_records.append(record_entries)
+
         self.acct_menu = {'name': '&Audits', 'items': acct_menu}
-        self.reports_menu = {'name': 'Reports',
-                             'items': [('!', 'Summary S&tatistics'), ('', 'Summary &Reports'), acct_reports]}
+        self.reports_menu = {'name': 'Records',
+                             'items': [('!', 'S&tatistics'), ('', '&Records'), acct_records]}
         self.user_menu = {'name': '&User',
                           'items': [('!', '&Manage Accounts'), ('!', 'M&essages'), ('', '---'), ('', 'Sign &In'),
                                     ('!', 'Sign &Out')]}
@@ -97,7 +105,9 @@ class ToolBar:
         db_ico = const.DB_ICON
         user_ico = const.USER_ICON
         menu_ico = const.MENU_ICON
+
         padding = const.TOOLBAR_PAD
+
         header_col = const.HEADER_COL
         text_col = const.TEXT_COL
 
@@ -106,7 +116,7 @@ class ToolBar:
                                            button_color=(text_col, header_col), pad=(padding, padding)),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
                                            button_color=(text_col, header_col),
-                                           tooltip=_('Generate Reports & Statistics'), pad=(padding, padding)),
+                                           tooltip=_('Generate Record Reports & Statistics'), pad=(padding, padding)),
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
                                        disabled=True)]],
@@ -371,7 +381,7 @@ def main():
     cancel_keys += [i.key_lookup('Cancel') for i in cash_rules.rules]
     #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
-    report_keys = toolbar.report_keys
+    record_rules = configuration.db_records['rules']
 
     summ_tbl_keys = []
     for rule in audit_rules.rules:
@@ -463,7 +473,7 @@ def main():
 
                 # Admin only actions and menus
                 admin = user.admin
-                if admin:
+                if admin is True:
                     # Database administration
                     window['-DBMENU-'].update(disabled=False)
 
@@ -476,19 +486,42 @@ def main():
                     # Menu
                     toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
 
-                # Enable rule and summary report permissions on per rule basis defined in config
+                # Enable accounting rules permissions on per rule basis defined in config
                 for acct_method in acct_methods:
                     for acct_rule in acct_method.rules:
                         rule_name = acct_rule.title
-                        report_key = lo.as_key('{} Report'.format(rule_name))
-                        report_name = '{RULE}::{KEY}'.format(RULE=rule_name, KEY=report_key)
                         if admin:
                             toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-                            toolbar.toggle_menu(window, 'rmenu', report_name, value='enable')
                         else:
                             perms = acct_rule.permissions
-                            if perms != 'admin':
+                            if perms != 'admin':  # permissions allow non-administrator access
                                 toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
+
+                # Enable record view permissions on per rule basis defined in config
+                for record_group in record_rules:
+                    for record_type in record_rules[record_group]:
+                        record_entry = record_rules[record_group][record_type]
+
+                        try:
+                            record_title = record_entry['Title']
+                        except KeyError:
+                            record_title = record_type
+
+                        record_name = '{ITEM}::{KEY}'.format(ITEM=record_title, KEY=record_type)
+
+                        if admin:
+                            toolbar.toggle_menu(window, 'rmenu', record_name, value='enable')
+                        else:
+                            try:
+                                perms = record_entry['Permissions']
+                            except KeyError:
+                                try:
+                                    record_viewable = bool(int(perms['View']))
+                                except (KeyError, ValueError):
+                                    continue
+
+                                if record_viewable is True:
+                                    toolbar.toggle_menu(window, 'rmenu', record_name, value='enable')
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
@@ -577,9 +610,20 @@ def main():
             for acct_method in acct_methods:
                 for acct_rule in acct_method.rules:
                     rule_name = acct_rule.title
-                    report_name = '{}::{}_SUMMARY'.format(rule_name, rule_name.upper())
                     toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
-                    toolbar.toggle_menu(window, 'rmenu', report_name, value='disable')
+
+            # Reports
+            for record_group in record_rules:
+                for record_type in record_rules[record_group]:
+                    record_entry = record_rules[record_group][record_type]
+
+                    try:
+                        record_title = record_entry['Title']
+                    except KeyError:
+                        record_title = record_type
+
+                    record_name = '{ITEM}::{KEY}'.format(ITEM=record_title, KEY=record_type)
+                    toolbar.toggle_menu(window, 'rmenu', record_name, value='disable')
 
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
@@ -611,6 +655,52 @@ def main():
                 debug_win = None
             else:
                 debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
+
+        # Pull up record
+        if event == '-RMENU-':
+            record_name = values['-RMENU-']
+            print('Info: pulling up report selection for {}'.format(record_name))
+            # Get record entry
+            record_title, record_id = record_name.split('::')
+            for record_group in record_rules:
+                for record_type in record_rules[record_group]:
+                    if record_type == record_id:
+                        record_entry = record_rules[record_group][record_type]
+
+                        # Obtain the record information
+                        try:
+                            record_class = record_entry['Type']
+                        except KeyError:
+                            win2.popup_error('Configuration Error: {RULE}, {NAME}: missing required parameter "Type"'
+                                             .format(RULE=record_group, NAME=record_type))
+                            break
+
+                        if record_class == 'account_record':
+                            db_record = mod_records.load_account_record(user, record_group, record_type, record_entry)
+                            if db_record is None:
+                                break
+
+                            # Display the account record window
+                            user_action = win2.account_record_window(db_record)
+                        elif record_class == 'audit_record':
+                            #db_record = mod_records.load_audit_record(user, record_group, record_type, record_entry)
+
+                            # Display the audit record window
+                            #user_action = win2.audit_record_window(db_record)
+                            pass
+                        else:
+                            win2.popup_error('Configuration Warning: {RULE}, {NAME}: cannot find a class for {TYPE}'
+                                             .format(RULE=record_group, NAME=record_type, TYPE=record_type))
+                            break
+
+                        if user_action == 'save':
+                            db_record.save_to_database(user)
+                        elif user_action == 'delete':
+                            db_record.delete_record(user)
+                        else:
+                            continue
+
+            continue
 
         # Switch to new panel
         if current_panel != '-HOME-' and (event in cancel_keys or values['-AMENU-'] or values['-RMENU-']):
@@ -705,11 +795,12 @@ def main():
                 continue
 
             # Update transaction ID field with the transaction number
-            elem_size = len(current_rule.id['Value']) + 1
+            id_param = current_rule.fetch_parameter(current_rule.required_parameters['ID'])
+            elem_size = len(id_param.value) + 1
 
-            id_key = current_rule.key_lookup('ID')
+            id_key = id_param.element_key
             window[id_key].set_size((elem_size, None))
-            window[id_key].update(value=current_rule.id['Value'])
+            window[id_key].update(value=id_param.value)
 
             # Update parameter elements
             for param in current_rule.parameters:
@@ -1207,6 +1298,8 @@ def main():
                         continue
 
                     param.set_value(values)
+                    print(param.name, param.value)
+                    print(values)
                     has_value = param.values_set()
 
                     if has_value is False:
@@ -1219,11 +1312,6 @@ def main():
 
                 if all_params is not True:
                     continue
-
-                # Add deposit amount to table
-                deposit_amount = current_rule.deposit['Value']
-                deposit_col = current_rule.deposit['Column']
-                current_rule.df[deposit_col] = deposit_amount
 
                 save_status = current_rule.save_to_database(user)
                 if save_status is False:
