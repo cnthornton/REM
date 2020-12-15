@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '1.1.3'
+__version__ = '1.1.4'
 
 import datetime
 from multiprocessing import freeze_support
@@ -819,7 +819,11 @@ def main():
             ref_table = current_rule.records.table
             ref_columns = list(current_rule.records.columns.keys())
             filters = ('{COL} IS NULL'.format(COL=current_rule.records.refkey), None)
-            import_df = user.query(ref_table, ref_columns, filter_rules=filters, prog_db=True)
+            try:
+                import_df = user.query(ref_table, ref_columns, filter_rules=filters, prog_db=True)
+            except Exception as e:
+                win2.popup_error('Error: database query failed - {}'.format(e))
+                continue
 
             current_rule.records.unassociated_df = current_rule.records.set_datatypes(import_df)
 
@@ -930,7 +934,7 @@ def main():
                     try:
                         df = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
                     except Exception as e:
-                        win2.popup_error('Error: audit failed due to {}'.format(e))
+                        win2.popup_error('Error: audit failed - {}'.format(e))
                         initialized = False
                         break
 
@@ -1328,5 +1332,10 @@ def main():
 
 if __name__ == "__main__":
     freeze_support()
-    main()
-    sys.exit(0)
+    try:
+        main()
+    except Exception as e:
+        win2.popup_error('Error: fatal program error - {}'.format(e))
+        sys.exit(1)
+    else:
+        sys.exit(0)

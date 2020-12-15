@@ -214,8 +214,8 @@ class UserAccount:
                     try:
                         result = future.result()
                     except Exception as e:
-                        print('Info: database process failed due to {}'.format(e))
-                        result = alt_result
+                        print('Info: database process failed - {}'.format(e))
+                        raise
 
                     break
             else:

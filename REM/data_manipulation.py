@@ -44,7 +44,10 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
     lengths = [max_size_per_col for _ in header]
 
     # Add any remainder evenly between columns
-    remainder = width - (ncol * max_size_per_col)
+    if len(lengths) < 1:
+        remainder = 0
+    else:
+        remainder = width - (ncol * max_size_per_col)
     index = 0
     for one in [1 for _ in range(int(remainder))]:
         if index > ncol - 1:

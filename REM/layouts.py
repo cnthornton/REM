@@ -663,6 +663,7 @@ class TabItem:
             try:
                 df = action_function(*args, **kwargs)
             except Exception as e:
+                win2.popup_error('Error: audit scan failed - {}'.format(e))
                 print('Warning: rule {RULE}, tab {NAME}: method {METHOD} failed due to {E}'
                       .format(NAME=self.name, RULE=self.rule_name, METHOD=action, E=e))
             else:
@@ -720,7 +721,12 @@ class TabItem:
         if audit_date and first_id:
             ## Find date of last transaction
             query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col_full, TBL=main_table)
-            dates_df = user.thread_transaction(query_str, (), operation='read')
+            try:
+                dates_df = user.thread_transaction(query_str, (), operation='read')
+            except Exception as e:
+                win2.popup_error('Error: audit scan failed due to failure to connect to the database')
+                print(e)
+                return df
 
             unq_dates = dates_df[date_col].tolist()
             try:
@@ -796,6 +802,7 @@ class TabItem:
 
             ## Search for missed numbers at end of day
             last_id_of_df = id_list[-1]
+
             filters = ('{} = ?'.format(date_col_full), (audit_date.strftime(date_fmt),))
             current_df = user.query(self.import_rules, columns=self.db_columns, filter_rules=filters)
             current_df.sort_values(by=[pkey], inplace=True, ascending=False)
@@ -841,7 +848,6 @@ class TabItem:
 
             # Drop missing transactions if they don't meet the import parameter requirements
             filters += self.filter_statements()
-
             missing_df = user.query(self.import_rules, columns=self.db_columns, filter_rules=filters, order=pkey_fmt)
         else:
             missing_df = pd.DataFrame(columns=df.columns)

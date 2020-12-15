@@ -1810,8 +1810,11 @@ class CashRecords:
             try:
                 df[column] = df[column].astype(astype, errors='raise')
             except (ValueError, TypeError):
-                print('Warning: rule {RULE}, Expenses: unable to set column {COL} to data type {DTYPE}'
-                      .format(RULE=self.rule_name, COL=column, DTYPE=dtype))
+                print('Warning: rule {RULE}, Expenses: unable to set column {COL} to data type {DTYPE} due to '
+                      'inconvertible data type'.format(RULE=self.rule_name, COL=column, DTYPE=dtype))
+            except KeyError:
+                print('Warning: rule {RULE}, Expenses: unable to set column {COL} to data type {DTYPE} due to column '
+                      'missing in dataframe'.format(RULE=self.rule_name, COL=column, DTYPE=dtype))
 
         return df
 

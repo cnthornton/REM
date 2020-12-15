@@ -272,9 +272,13 @@ class AuditRecord:
             print('Info: rule {RULE}, summary {NAME}: removing unsaved IDs created in cancelled audit from table '
                   '{TBL}, column {ID}'.format(RULE=self.rule_name, NAME=self.name, TBL=db_table, ID=id_field))
 
-            all_ids = self.df[id_field].dropna().unique().tolist()
-            existing_ids = self.import_df[id_field].dropna().unique().tolist()
-            created_ids = set(all_ids).difference(set(existing_ids))
+            try:
+                all_ids = self.df[id_field].dropna().unique().tolist()
+                existing_ids = self.import_df[id_field].dropna().unique().tolist()
+            except KeyError:
+                created_ids = set()
+            else:
+                created_ids = set(all_ids).difference(set(existing_ids))
 
             for record_id in created_ids:
                 try:
@@ -683,7 +687,12 @@ class AuditRecord:
                 continue
 
             all_ids = current_tbl_pkeys[db_table]
-            current_ids = df[id_field].dropna().unique().tolist()
+            try:
+                current_ids = df[id_field].dropna().unique().tolist()
+            except KeyError:
+                print('Error: rule {RULE}, summary {NAME}: ID column {ID} missing from the dataframe'
+                      .format(RULE=self.rule_name, NAME=self.name, ID=id_field))
+                return df
 
             print('Info: rule {RULE}, summary {NAME}: list of currents IDs for ID {ID} is {LIST}'
                   .format(RULE=self.rule_name, NAME=self.name, ID=id_field, LIST=current_ids))
