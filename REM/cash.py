@@ -10,11 +10,11 @@ import numpy as np
 import pandas as pd
 import PySimpleGUI as sg
 
-import REM.constants as const
-import REM.data_manipulation as dm
-import REM.layouts as lo
+import REM.constants as mod_const
+import REM.data_manipulation as mod_dm
+import REM.layouts as mod_lo
 import REM.parameters as mod_param
-import REM.secondary as win2
+import REM.secondary as mod_win2
 from REM.config import configuration, current_tbl_pkeys, settings
 
 
@@ -42,7 +42,7 @@ class CashRules:
             try:
                 cash_name = cash_param['name']
             except KeyError:
-                win2.popup_error('Error: cash_rules: the parameter "name" is a required field')
+                mod_win2.popup_error('Error: cash_rules: the parameter "name" is a required field')
                 sys.exit(1)
             else:
                 self.name = cash_name
@@ -55,7 +55,7 @@ class CashRules:
             try:
                 cash_rules = cash_param['rules']
             except KeyError:
-                win2.popup_error('Error: cash_rules: the parameter "rules" is a required field')
+                mod_win2.popup_error('Error: cash_rules: the parameter "rules" is a required field')
                 sys.exit(1)
 
             for rule_name in cash_rules:
@@ -66,7 +66,7 @@ class CashRules:
         Return name of all cash rules defined in configuration file.
         """
         if title is True:
-            return [i.title for i in self.rules]
+            return [i.menu_title for i in self.rules]
         else:
             return [i.name for i in self.rules]
 
@@ -111,19 +111,19 @@ class CashRule:
     def __init__(self, name, rule_entry):
 
         self.name = name
-        self.element_key = lo.as_key(name)
+        self.element_key = mod_lo.as_key(name)
         self.elements = ['Cancel', 'Save', 'ID', 'Deposit', 'Date', 'ExpenseTable', 'ExpenseTotals', 'AddExpense',
                          'RemoveExpense', 'EntryTable', 'EntryTotals', 'AddEntry', 'RemoveEntry',
                          'FrameWidth', 'FrameHeight', 'PanelHeight', 'Main']
         self.required_elements = ['ID', 'Date', 'Deposit']
 
         try:
-            self.title = rule_entry['Title']
+            self.menu_title = rule_entry['MenuTitle']
         except KeyError:
-            self.title = name
+            self.menu_title = name
 
         try:
-            self.permissions = rule_entry['Permissions']
+            self.permissions = rule_entry['AccessPermissions']
         except KeyError:  # default permission for a cash rule is 'user'
             self.permissions = 'user'
 
@@ -131,12 +131,12 @@ class CashRule:
         try:
             ids = rule_entry['IDs']
         except KeyError:
-            win2.popup_error('Configuration Error: {RULE}: missing required parameter "IDs"'.format(RULE=name))
+            mod_win2.popup_error('Configuration Error: {RULE}: missing required parameter "IDs"'.format(RULE=name))
             sys.exit(1)
 
         if len(ids) < 1:
-            win2.popup_error('Configuration Error: {RULE}: "IDs" must include at least one primary ID field'
-                             .format(RULE=name))
+            mod_win2.popup_error('Configuration Error: {RULE}: "IDs" must include at least one primary ID field'
+                                 .format(RULE=name))
             sys.exit(1)
 
         has_primary = False
@@ -147,18 +147,18 @@ class CashRule:
             if 'Title' not in id_param:
                 id_param['Title'] = id_field
             if 'Format' not in id_param:
-                win2.popup_error('Configuration Error: {RULE}: "Format" is a required field for IDs entry "{ID}"'
-                                 .format(RULE=name, ID=id_field))
+                mod_win2.popup_error('Configuration Error: {RULE}: "Format" is a required field for IDs entry "{ID}"'
+                                     .format(RULE=name, ID=id_field))
                 sys.exit(1)
             else:
                 id_param['Format'] = re.findall(r'\{(.*?)\}', id_param['Format'])
             if 'DatabaseTable' not in id_param:
-                win2.popup_error('Configuration Error: {RULE}: "DatabaseTable" is a required field for IDs entry '
+                mod_win2.popup_error('Configuration Error: {RULE}: "DatabaseTable" is a required field for IDs entry '
                                  '"{ID}"'.format(RULE=name, ID=id_field))
                 sys.exit(1)
             if 'DatabaseField' not in id_param:
-                win2.popup_error('Configuration Error: {RULE}: "DatabaseField" is a required field for IDs entry "{ID}"'
-                                 .format(RULE=name, ID=id_field))
+                mod_win2.popup_error('Configuration Error: {RULE}: "DatabaseField" is a required field for IDs entry "{ID}"'
+                                     .format(RULE=name, ID=id_field))
                 sys.exit(1)
             if 'IsPrimary' not in id_param:
                 id_param['IsPrimary'] = False
@@ -166,23 +166,23 @@ class CashRule:
                 try:
                     is_primary = bool(int(id_param['IsPrimary']))
                 except ValueError:
-                    win2.popup_error('Configuration Error: {RULE}: "IsPrimary" must be either 0 (False) or 1 (True)'
-                                     .format(RULE=name))
+                    mod_win2.popup_error('Configuration Error: {RULE}: "IsPrimary" must be either 0 (False) or 1 (True)'
+                                         .format(RULE=name))
                     sys.exit(1)
                 else:
                     id_param['IsPrimary'] = is_primary
                     if is_primary is True:
                         if has_primary is True:
-                            win2.popup_error('Configuration Error: {RULE}: only one "IDs" parameter can be set as '
-                                             'the primary ID field'.format(RULE=self.name))
+                            mod_win2.popup_error('Configuration Error: CashRule {RULE}: only one "IDs" parameter can be '
+                                             'set as the primary ID field'.format(RULE=self.name))
                             sys.exit(1)
                         else:
                             has_primary = True
                             primary_table = id_param['DatabaseTable']
 
         if has_primary is False:
-            win2.popup_error('Configuration Error: {RULE}: "IDs" must include at least one primary ID field'
-                             .format(RULE=name))
+            mod_win2.popup_error('Configuration Error: CashRule {RULE}: "IDs" must include at least one primary ID field'
+                                 .format(RULE=name))
 
         self.ids = ids
         self.table = primary_table
@@ -191,8 +191,8 @@ class CashRule:
         try:
             import_rules = rule_entry['ImportRules']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "ImportRules".').format(RULE=name)
-            win2.popup_error(msg)
+            msg = _('Configuration Error: CashRule {RULE}: missing required field "ImportRules".').format(RULE=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             self.import_rules = import_rules
@@ -201,8 +201,8 @@ class CashRule:
         try:
             table_columns = rule_entry['TableColumns']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "TableColumns".').format(RULE=name)
-            win2.popup_error(msg)
+            msg = _('Configuration Error: CashRule {RULE}: missing required field "TableColumns".').format(RULE=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             self.columns = table_columns
@@ -221,14 +221,14 @@ class CashRule:
         for import_param in import_parameters:
             param_entry = import_parameters[import_param]
             if 'Statement' not in param_entry:
-                msg = 'Configuration Error: rule {RULE}: missing required parameter "Statement" for ' \
+                msg = 'Configuration Error: CashRule {RULE}: missing required parameter "Statement" for ' \
                       'ImportParameters entry {ENTRY}'.format(RULE=name, ENTRY=import_param)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
             if 'Parameters' not in param_entry:
-                msg = 'Configuration Error: rule {RULE}: missing required parameter "Parameters" for ' \
+                msg = 'Configuration Error: CashRule {RULE}: missing required parameter "Parameters" for ' \
                       'ImportParameters entry {ENTRY}'.format(RULE=name, ENTRY=import_param)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
 
         self.import_parameters = import_parameters
@@ -238,37 +238,40 @@ class CashRule:
         try:
             params = rule_entry['Parameters']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: missing required field "Parameters".').format(RULE=name)
-            win2.popup_error(msg)
+            msg = _('Configuration Error: CashRule {RULE}: missing required field "Parameters".').format(RULE=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         param_names = []
         for param in params:
-            cdict = params[param]
-            self.elements.append(param)
+            param_entry = params[param]
             param_names.append(param)
 
             try:
-                param_layout = cdict['ElementType']
+                param_layout = param_entry['ElementType']
             except KeyError:
-                msg = 'Configuration Error: rule {RULE}, RuleParameters, {PARAM}: missing required field "{FIELD}"' \
+                msg = 'Configuration Error: CashRule {RULE}, RuleParameter {PARAM}: missing required field "{FIELD}"' \
                     .format(RULE=name, PARAM=param, FIELD='ElementType')
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
 
             if param_layout == 'dropdown':
-                self.parameters.append(mod_param.RuleParameterCombo(name, param, cdict))
+                param_class = mod_param.RuleParameterCombo
             elif param_layout == 'input':
-                self.parameters.append(mod_param.RuleParameterInput(name, param, cdict))
+                param_class = mod_param.RuleParameterInput
             elif param_layout == 'date':
-                self.parameters.append(mod_param.RuleParameterDate(name, param, cdict))
+                param_class = mod_param.RuleParameterDate
             elif param_layout == 'checkbox':
-                self.parameters.append(mod_param.RuleParameterCheckbox(name, param, cdict))
+                param_class = mod_param.RuleParameterCheckbox
             else:
-                msg = 'Configuration Error: rule {RULE}, RuleParameters, {PARAM}: unknown parameter type {TYPE}' \
-                    .format(RULE=name, PARAM=param, TYPE=param_layout)
-                win2.popup_error(msg)
+                msg = 'Configuration Error: unknown rule parameter type {TYPE} in rule {NAME}' \
+                    .format(TYPE=param_layout, NAME=name)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
+
+            param = param_class(param, param_entry)
+            self.parameters.append(param)
+            self.elements += param.elements
 
         # Required record parameters
         try:
@@ -276,7 +279,7 @@ class CashRule:
         except KeyError:
             msg = 'Configuration Error: {RULE}: missing required field "RequiredParameters".' \
                 .format(RULE=name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         for required_param in required_params:
@@ -285,14 +288,14 @@ class CashRule:
                 msg = 'Configuration Warning: {RULE}: required parameter {PARAM} does not have a ' \
                       'corresponding entry for {COL} in the Parameters field.' \
                     .format(RULE=name, PARAM=required_param, COL=param_name)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
 
         for required_param in self.required_elements:
             if required_param not in required_params:
                 msg = 'Configuration Warning: {RULE}: missing required parameter {PARAM}.' \
                     .format(RULE=name, PARAM=required_param)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
 
         self.required_parameters = required_params
@@ -313,7 +316,7 @@ class CashRule:
             expenses = rule_entry['Expenses']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}: missing required field "Expenses".').format(RULE=name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             self.expenses = CashExpenses(name, expenses)
@@ -322,7 +325,7 @@ class CashRule:
             records = rule_entry['Records']
         except KeyError:
             msg = _('Configuration Error: rule {RULE}: missing required field "Records".').format(RULE=name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             self.records = CashRecords(name, records)
@@ -331,7 +334,7 @@ class CashRule:
             sdict = rule_entry['Summary']
         except KeyError:
             msg = 'Configuration Error: rule {RULE}: missing required field "Summary"'.format(RULE=name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         self.summary = CashSummaryPanel(name, sdict)
@@ -347,7 +350,7 @@ class CashRule:
         self.last_panel = 1
 
         # Dynamic attributes
-        header = [dm.colname_from_query(i) for i in table_columns]
+        header = [mod_dm.colname_from_query(i) for i in table_columns]
         self.df = pd.DataFrame(columns=header)
 
         self.exists = False
@@ -357,7 +360,7 @@ class CashRule:
         Lookup element key for input control element.
         """
         if element in self.elements:
-            key = lo.as_key('{} {}'.format(self.name, element))
+            key = mod_lo.as_key('{} {}'.format(self.name, element))
         else:
             key = None
 
@@ -436,7 +439,7 @@ class CashRule:
         """
         Reset rule attributes.
         """
-        header = [dm.colname_from_query(i) for i in self.columns]
+        header = [mod_dm.colname_from_query(i) for i in self.columns]
         self.df = pd.DataFrame(columns=header)
 
         self.exists = False
@@ -485,7 +488,7 @@ class CashRule:
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         # Rule parameters
         tbl_header = list(self.records.display_columns.keys())
@@ -497,19 +500,20 @@ class CashRule:
         params = self.parameters
 
         # Element parameters
-        header_col = const.HEADER_COL2
-        input_col = const.INPUT_COL
-        bg_col = const.ACTION_COL
-        text_col = const.TEXT_COL
+        header_col = mod_const.HEADER_COL2
+        input_col = mod_const.INPUT_COL
+        bg_col = mod_const.ACTION_COL
+        text_col = mod_const.TEXT_COL
 
-        font_h = const.HEADER_FONT
-        font_main = const.MAIN_FONT
-        bold_font = const.BOLD_FONT
-        bold_l_font = const.BOLD_MID_FONT
+        font_h = mod_const.HEADER_FONT
+        font_main = mod_const.MAIN_FONT
+        bold_font = mod_const.BOLD_FONT
+        bold_l_font = mod_const.BOLD_MID_FONT
 
-        pad_el = const.ELEM_PAD
-        pad_v = const.VERT_PAD
-        pad_frame = const.FRAME_PAD
+        pad_el = mod_const.ELEM_PAD
+        pad_v = mod_const.VERT_PAD
+        pad_h = mod_const.HORZ_PAD
+        pad_frame = mod_const.FRAME_PAD
 
         # Element sizes
         layout_width = width - 120 if width >= 120 else width
@@ -521,7 +525,7 @@ class CashRule:
         bwidth = 1
 
         # Layout elements
-        panel_title = self.title
+        panel_title = self.menu_title
         width_key = self.key_lookup('FrameWidth')
         layout_els = []
 
@@ -544,15 +548,12 @@ class CashRule:
             if param.hidden is True or param.name not in self.optional_parameters:
                 continue
 
-            element_layout = param.layout()
-            if param.justification == 'right':
-                right_elements += element_layout
-            else:
-                left_elements += element_layout
+            element_layout = param.layout(padding=((0, pad_h), 0))
+            left_elements += element_layout
 
         deposit_layout = [sg.Text('{}:'.format(deposit_param.description), pad=((pad_v, pad_el), 0),
                                   justification='r', font=bold_font, auto_size_text=True, background_color=bg_col),
-                          sg.Text(deposit_param.value, key=deposit_param.element_key, size=(14, 1),
+                          sg.Text(deposit_param.value, key=deposit_param.key_lookup('Element'), size=(14, 1),
                                   pad=((0, pad_el), 0), font=font_main, relief='sunken', border_width=1)]
         right_elements += deposit_layout
 
@@ -568,7 +569,7 @@ class CashRule:
                           sg.Col([[sg.Canvas(size=(0, 0), background_color=bg_col)]], justification='c',
                                  vertical_alignment='t', background_color=bg_col, expand_x=True),
                           sg.Col([right_elements], justification='r', vertical_alignment='t', background_color=bg_col)],
-                         [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
+                         [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=mod_const.INACTIVE_COL)]]
 
         # Expense frame layout
         expense_key = self.key_lookup('ExpenseTable')
@@ -576,9 +577,9 @@ class CashRule:
         add_expense_key = self.key_lookup('AddExpense')
         remove_expense_key = self.key_lookup('RemoveExpense')
         expense_layout = [
-            [lo.create_table_layout([[]], expense_header, expense_key, bind=True, pad=(0, 0), nrow=4,
-                                    width=tbl_width, add_key=add_expense_key, delete_key=remove_expense_key,
-                                    table_name=expense_title, tooltip='Click on a row to edit the row fields')],
+            [mod_lo.create_table_layout([[]], expense_header, expense_key, bind=True, pad=(0, 0), nrow=4,
+                                        width=tbl_width, add_key=add_expense_key, delete_key=remove_expense_key,
+                                        table_name=expense_title, tooltip='Click on a row to edit the row fields')],
             [sg.Col([
                 [sg.Text('Total:', pad=((0, pad_el), (pad_v, 0)), background_color=bg_col, font=bold_font),
                  sg.Text('', key=expense_totals_key, size=(14, 1), pad=((pad_el, 0), (pad_v, 0)),
@@ -592,9 +593,9 @@ class CashRule:
         add_entry_key = self.key_lookup('AddEntry')
         remove_entry_key = self.key_lookup('RemoveEntry')
         entries_layout = [
-            [lo.create_table_layout([[]], tbl_header, tbl_key, bind=True, pad=(0, 0), nrow=6,
-                                    width=tbl_width, table_name=tbl_title, add_key=add_entry_key,
-                                    delete_key=remove_entry_key, tooltip='Click on a row to edit')],
+            [mod_lo.create_table_layout([[]], tbl_header, tbl_key, bind=True, pad=(0, 0), nrow=6,
+                                        width=tbl_width, table_name=tbl_title, add_key=add_entry_key,
+                                        delete_key=remove_entry_key, tooltip='Click on a row to edit')],
             [sg.Col([
                 [sg.Text('Total:', pad=((0, pad_el), (pad_v, 0)), background_color=bg_col, font=bold_font),
                  sg.Text('', key=totals_key, size=(14, 1), pad=((pad_el, 0), (pad_v, 0)), border_width=bwidth,
@@ -627,11 +628,11 @@ class CashRule:
         # Flow control buttons
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        bttn_layout = [sg.Col([[lo.B2('Cancel', key=cancel_key, pad=(0, (pad_v, 0)),
-                                      tooltip='Return to home screen')]], justification='l', expand_x=True),
+        bttn_layout = [sg.Col([[mod_lo.B2('Cancel', key=cancel_key, pad=(0, (pad_v, 0)),
+                                          tooltip='Return to home screen')]], justification='l', expand_x=True),
                        sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                       sg.Col([[lo.B2('Save', key=save_key, pad=(0, (pad_v, 0)), disabled=False,
-                                      tooltip='Save transaction')]], justification='r')]
+                       sg.Col([[mod_lo.B2('Save', key=save_key, pad=(0, (pad_v, 0)), disabled=False,
+                                          tooltip='Save transaction')]], justification='r')]
 
         # Pane elements must be columns
         height_key = self.key_lookup('FrameHeight')
@@ -655,12 +656,12 @@ class CashRule:
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         # Resize space between action buttons
         # For every five-pixel increase in window size, increase panel size by one
         layout_pad = 120
-        win_diff = width - const.WIN_WIDTH
+        win_diff = width - mod_const.WIN_WIDTH
         layout_pad = layout_pad + int(win_diff / 5)
 
         layout_width = width - layout_pad if layout_pad > 0 else width
@@ -679,7 +680,7 @@ class CashRule:
 
         # Reset table sizes
         # Add one row for every 100-pixel increase in window height
-        height_diff = int(height - const.WIN_HEIGHT)
+        height_diff = int(height - mod_const.WIN_HEIGHT)
         nrows = 4 + int(height_diff / 100) if int(height_diff / 100) > - 2 else 4
 
         # Expenses table
@@ -688,7 +689,7 @@ class CashRule:
         expenses_key = self.key_lookup('ExpenseTable')
         expense_columns = self.expenses.display_columns
         expense_header = list(expense_columns.keys())
-        lengths = dm.calc_column_widths(expense_header, width=tbl_width, pixels=True)
+        lengths = mod_dm.calc_column_widths(expense_header, width=tbl_width, pixels=True)
         for col_index, col_name in enumerate(expense_header):
             col_width = lengths[col_index]
             window[expenses_key].Widget.column(col_name, width=col_width)
@@ -700,7 +701,7 @@ class CashRule:
         records_key = self.key_lookup('EntryTable')
         records_columns = self.records.display_columns
         records_header = list(records_columns.keys())
-        lengths = dm.calc_column_widths(records_header, width=tbl_width, pixels=True)
+        lengths = mod_dm.calc_column_widths(records_header, width=tbl_width, pixels=True)
         for col_index, col_name in enumerate(records_header):
             col_width = lengths[col_index]
             window[records_key].Widget.column(col_name, width=col_width)
@@ -719,9 +720,9 @@ class CashRule:
         strptime = datetime.datetime.strptime
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
-        default_col = const.ACTION_COL
-        greater_col = const.PASS_COL
-        lesser_col = const.FAIL_COL
+        default_col = mod_const.ACTION_COL
+        greater_col = mod_const.PASS_COL
+        lesser_col = mod_const.FAIL_COL
 
         date_fmt = settings.format_date_str(date_str=settings.display_date_format)
         date_offset = settings.get_date_offset()
@@ -802,7 +803,7 @@ class CashRule:
         for col_name in display_columns:
             col_rule = display_columns[col_name]
 
-            col_to_add = dm.generate_column_from_rule(dataframe, col_rule)
+            col_to_add = mod_dm.generate_column_from_rule(dataframe, col_rule)
             dtype = col_to_add.dtype
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
@@ -854,7 +855,7 @@ class CashRule:
         except KeyError:
             msg = 'Configuration Warning: rule {RULE}: missing an IDs entry for database table {TBL}'\
                 .format(RULE=self.name, TBL=self.table)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             prev_ids.sort()
@@ -1004,8 +1005,8 @@ class CashRule:
 
         if not display_mapping:
             display_mapping = {i: i for i in import_df.columns.values.tolist()}
-        trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping,
-                                           aliases=self.aliases, create_new=True)
+        trans_df = mod_win2.data_import_window(import_df, import_parameters, header_map=display_mapping,
+                                               aliases=self.aliases, create_new=True)
 
         if trans_df is None:  # user selected to cancel importing/creating a bank transaction
             return '-HOME-'
@@ -1093,7 +1094,7 @@ class CashRule:
 
         # Update the transaction table
         exists = self.exists
-        export_df = df[[dm.colname_from_query(i) for i in self.columns]]
+        export_df = df[[mod_dm.colname_from_query(i) for i in self.columns]]
         if exists is True:  # updating existing transaction
             if user.admin:  # must be admin to update existing data
                 # Add editor information
@@ -1111,7 +1112,7 @@ class CashRule:
                 saved = user.update(table, columns, values, filters)
             else:
                 msg = 'The transaction already exists in the database. Only an admin can modify data in the database'
-                win2.popup_notice(msg)
+                mod_win2.popup_notice(msg)
 
                 return False
         else:  # new transaction
@@ -1193,8 +1194,8 @@ class CashRule:
             success = user.update(expenses_table, [expense_refkey, 'IsCancel'], [None, 1], filters)
 
             if success is False:
-                win2.popup_error('Warning: Failed to update {ID}. Changes will not be saved to database table {TBL}'
-                                 .format(ID=expense_id, TBL=expenses_table))
+                mod_win2.popup_error('Warning: Failed to update {ID}. Changes will not be saved to database table {TBL}'
+                                     .format(ID=expense_id, TBL=expenses_table))
 
         return True
 
@@ -1246,7 +1247,7 @@ class CashExpenses:
     def __init__(self, rule_name, edict):
 
         self.rule_name = rule_name
-        self.element_key = lo.as_key('{} Expenses'.format(rule_name))
+        self.element_key = mod_lo.as_key('{} Expenses'.format(rule_name))
 
         try:
             self.title = edict['Title']
@@ -1258,7 +1259,7 @@ class CashExpenses:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "DatabaseTable".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1266,7 +1267,7 @@ class CashExpenses:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "PrimaryKey".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1274,7 +1275,7 @@ class CashExpenses:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "ReferenceKey".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1282,7 +1283,7 @@ class CashExpenses:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "IDFormat".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             self.format = re.findall(r'\{(.*?)\}', id_format)
@@ -1292,7 +1293,7 @@ class CashExpenses:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "TableColumns".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             self.columns = table_columns
@@ -1302,7 +1303,7 @@ class CashExpenses:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "DisplayColumns".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1320,7 +1321,7 @@ class CashExpenses:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Expenses: missing required field "TotalColumn".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         # Dynamic attributes
@@ -1417,7 +1418,7 @@ class CashExpenses:
 
         # Display the add row window
         display_map = {display_columns[i]: i for i in display_columns}
-        df = win2.modify_record(df, new_index, edit_columns, header_map=display_map, edit=False)
+        df = mod_win2.modify_record(df, new_index, edit_columns, header_map=display_map, edit=False)
 
         if nrow + 1 == df.shape[0]:  # record successfully saved
             # Save to list of used IDs
@@ -1435,7 +1436,7 @@ class CashExpenses:
         edit_columns = self.edit_columns
 
         display_map = {display_columns[i]: i for i in display_columns}
-        df = win2.modify_record(df, index, edit_columns, header_map=display_map, win_size=win_size, edit=True)
+        df = mod_win2.modify_record(df, index, edit_columns, header_map=display_map, win_size=win_size, edit=True)
 
         self.df = df
 
@@ -1493,7 +1494,7 @@ class CashExpenses:
             prev_ids = current_tbl_pkeys[self.table]
         except KeyError:
             msg = 'Configuration Warning: missing an IDs entry for database table {}'.format(self.table)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             prev_ids.sort()
@@ -1647,7 +1648,7 @@ class CashRecords:
     def __init__(self, rule_name, rdict):
 
         self.rule_name = rule_name
-        self.element_key = lo.as_key('{} Expenses'.format(rule_name))
+        self.element_key = mod_lo.as_key('{} Expenses'.format(rule_name))
 
         try:
             self.title = rdict['Title']
@@ -1659,7 +1660,7 @@ class CashRecords:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "DatabaseTable".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1667,7 +1668,7 @@ class CashRecords:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "PrimaryKey".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1675,7 +1676,7 @@ class CashRecords:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "ReferenceKey".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1683,7 +1684,7 @@ class CashRecords:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "TableColumns".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             self.columns = table_columns
@@ -1698,14 +1699,14 @@ class CashRecords:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "TableColumns".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         for column_alias in reference_columns:
             column_name = reference_columns[column_alias]
             if column_name not in table_columns:
-                win2.popup_notice('Configuration Warning: rule {RULE}, Records: {COL} not in list of table columns'
-                                  .format(RULE=rule_name, COL=column_name))
+                mod_win2.popup_notice('Configuration Warning: rule {RULE}, Records: {COL} not in list of table columns'
+                                      .format(RULE=rule_name, COL=column_name))
                 del reference_columns[column_alias]
         self.reference_columns = reference_columns
 
@@ -1714,7 +1715,7 @@ class CashRecords:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "DisplayColumns".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
@@ -1722,7 +1723,7 @@ class CashRecords:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, Records: missing required field "TotalColumn".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         # Dynamic attributes
@@ -1745,8 +1746,8 @@ class CashRecords:
         display_columns = {j: i for i, j in self.reference_columns.items()}
 
         # Display data selection window
-        selected_ids = win2.associate_data(df, unassoc_df, pkey, column_map=display_columns,
-                                        to_title=self.title, from_title=self.reference_header)
+        selected_ids = mod_win2.associate_data(df, unassoc_df, pkey, column_map=display_columns,
+                                               to_title=self.title, from_title=self.reference_header)
 
         if len(selected_ids) > 0:
             selected_indices = unassoc_df.index[unassoc_df[pkey].isin(selected_ids)].tolist()
@@ -1827,7 +1828,7 @@ class CashSummaryPanel:
     def __init__(self, rule_name, sdict):
 
         self.rule_name = rule_name
-        self.element_key = lo.as_key('{} Summary'.format(rule_name))
+        self.element_key = mod_lo.as_key('{} Summary'.format(rule_name))
         self.elements = ['Title']
 
         self.summary_items = []
@@ -1849,7 +1850,7 @@ class CashSummaryPanel:
         Lookup element key for input control element.
         """
         if element in self.elements:
-            key = lo.as_key('{} Summary {}'.format(self.rule_name, element))
+            key = mod_lo.as_key('{} Summary {}'.format(self.rule_name, element))
         else:
             print('Warning: rule {RULE}, Summary: unable to find GUI element {ELEM} in list of elements'
                   .format(RULE=self.rule_name, ELEM=element))

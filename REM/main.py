@@ -3,20 +3,21 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '1.1.4'
+__version__ = '1.2.1'
 
 import datetime
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
 import REM.audit as audit
+import REM.authentication as mod_auth
 import REM.bank as bank
 import REM.cash as cash
-import REM.data_manipulation as dm
-from REM.config import configuration, current_tbl_pkeys, settings
-import REM.layouts as lo
+import REM.data_manipulation as mod_dm
+from REM.config import configuration, settings
+import REM.layouts as mod_lo
 import REM.records as mod_records
-import REM.secondary as win2
-import REM.constants as const
+import REM.secondary as mod_win2
+import REM.constants as mod_const
 import sys
 import tkinter as tk
 
@@ -34,43 +35,53 @@ class ToolBar:
         self.name = 'toolbar'
         self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
 
+        record_map = {'account': '&Account Records', 'bank_deposit': 'Bank &Deposit Records',
+                      'bank_statement': '&Bank Statement Records', 'audit': 'Audi&t Records',
+                      'transaction': '&Transaction Records', 'cash_expense': '&Expense Records'}
+
+        # Accounting method menu items
         acct_menu = []
         for account_method in account_methods:
             acct_menu.append(('', account_method.title))
 
             rules = []
             for rule in account_method.rules:
-                rules.append(('!', rule.title))
+                rules.append(('!', rule.menu_title))
 
             acct_menu.append(rules)
 
-        acct_records = []
-        record_rules = configuration.db_records['rules']
-        for record_group in record_rules:
-            acct_records.append(('', record_group))
+        # Program records menu items
+        acct_records = {}
+        record_rules = configuration.records.entries
+        for record_entry in record_rules:
+            record_type = record_entry.type
+            record_title = record_entry.menu_title
+            try:
+                record_group = record_map[record_type]
+            except KeyError:
+                print('Configuration Error: record type {TYPE} not an accepted program record type'
+                      .format(TYPE=record_type))
+                continue
+            try:
+                acct_records[record_group].append(record_title)
+            except KeyError:
+                acct_records[record_group] = [record_title]
 
-            record_entries = []
-            for record_type in record_rules[record_group]:
-                record_entry = record_rules[record_group][record_type]
+        record_menu = []
+        for record_group in acct_records:
+            record_menu.append(('', record_group))
 
-                try:
-                    record_title = record_entry['Title']
-                except KeyError:
-                    record_title = record_type
+            menu_items = acct_records[record_group]
+            record_menu.append([('!', i) for i in menu_items])
 
-                record_entries.append(('!', '{ITEM}::{KEY}'.format(ITEM=record_title, KEY=record_type)))
-
-            acct_records.append(record_entries)
-
-        self.acct_menu = {'name': '&Audits', 'items': acct_menu}
-        self.reports_menu = {'name': 'Records',
-                             'items': [('!', 'S&tatistics'), ('', '&Records'), acct_records]}
+        self.acct_menu = {'name': '&Validation', 'items': acct_menu}
+        self.reports_menu = {'name': '&Records', 'items': record_menu}
         self.user_menu = {'name': '&User',
-                          'items': [('!', '&Manage Accounts'), ('!', 'M&essages'), ('', '---'), ('', 'Sign &In'),
+                          'items': [('!', 'Manage &Users'), ('!', '&Messages'), ('', '---'), ('', 'Sign &In'),
                                     ('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
-                          'items': [('!', '&Settings'), ('', '&Debug'), ('', '---'), ('', '&Help'),
-                                    ('', 'A&bout'), ('', '---'), ('', '&Quit')]}
+                          'items': [('!', '&Settings'), ('', 'Debu&g'), ('', '---'), ('', '&Help'),
+                                    ('', 'Ab&out'), ('', '---'), ('', '&Quit')]}
 
     def key_lookup(self, element):
         """
@@ -78,7 +89,7 @@ class ToolBar:
         """
         elements = self.elements
         if element in elements:
-            key = lo.as_key('{}'.format(element))
+            key = mod_lo.as_key('{}'.format(element))
         else:
             key = None
 
@@ -91,7 +102,7 @@ class ToolBar:
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         # Menu items
         menu_audit = self.menu_definition('amenu')
@@ -100,23 +111,23 @@ class ToolBar:
         menu_menu = self.menu_definition('mmenu')
 
         # Layout settings
-        audit_ico = const.AUDIT_ICON
-        report_ico = const.REPORT_ICON
-        db_ico = const.DB_ICON
-        user_ico = const.USER_ICON
-        menu_ico = const.MENU_ICON
+        audit_ico = mod_const.AUDIT_ICON
+        report_ico = mod_const.REPORT_ICON
+        db_ico = mod_const.DB_ICON
+        user_ico = mod_const.USER_ICON
+        menu_ico = mod_const.MENU_ICON
 
-        padding = const.TOOLBAR_PAD
+        padding = mod_const.TOOLBAR_PAD
 
-        header_col = const.HEADER_COL
-        text_col = const.TEXT_COL
+        header_col = mod_const.HEADER_COL
+        text_col = mod_const.TEXT_COL
 
         toolbar = [[sg.Canvas(key='-CANVAS_WIDTH-', size=(width, 0), visible=True)],
                    [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
                                            button_color=(text_col, header_col), pad=(padding, padding)),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
                                            button_color=(text_col, header_col),
-                                           tooltip=_('Generate Record Reports & Statistics'), pad=(padding, padding)),
+                                           tooltip=configuration.records.title, pad=(padding, padding)),
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
                                        disabled=True)]],
@@ -139,7 +150,7 @@ class ToolBar:
         """
         Update user menu to display username after a user is logged in.
         """
-        select_col = const.SELECT_TEXT_COL
+        select_col = mod_const.SELECT_TEXT_COL
 
         element_key = '-UMENU-'
 
@@ -264,10 +275,10 @@ def get_panels(account_methods, win_size: tuple = None):
     if win_size:
         width, height = win_size
     else:
-        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
     # Home page action panel
-    panels = [lo.home_screen()]
+    panels = [mod_lo.home_screen()]
 
     # Add Audit rule with summary panel
     for account_method in account_methods:
@@ -282,12 +293,11 @@ def get_panels(account_methods, win_size: tuple = None):
     return pane
 
 
-def resize_elements(window, rules, win_size: tuple = None):
+def resize_elements(window, rules):
     """
     Resize GUI elements when window is resized
     """
-    win_size = win_size if win_size else window.size
-    width, height = win_size
+    width, height = window.size
 
     # Update toolbar and pane elements
     window['-CANVAS_HEIGHT-'].set_size((None, height))
@@ -295,7 +305,7 @@ def resize_elements(window, rules, win_size: tuple = None):
 
     # Update audit rule elements
     for rule in rules:
-        rule.resize_elements(window, win_size=win_size)
+        rule.resize_elements(window)
 
 
 def format_date_element(date_str):
@@ -327,10 +337,10 @@ def main():
     strptime = datetime.datetime.strptime
 
     # Theme
-    default_col = const.DEFAULT_COL
-    action_col = const.ACTION_COL
-    text_col = const.TEXT_COL
-    font = const.MAIN_FONT
+    default_col = mod_const.DEFAULT_COL
+    action_col = mod_const.ACTION_COL
+    text_col = mod_const.TEXT_COL
+    font = mod_const.MAIN_FONT
 
     sg.set_options(element_padding=(0, 0), margins=(0, 0),
                    auto_size_buttons=True, auto_size_text=True,
@@ -339,7 +349,7 @@ def main():
                    input_text_color=text_col, text_color=text_col,
                    text_element_background_color=default_col,
                    input_elements_background_color=action_col,
-                   button_color=(text_col, default_col), tooltip_font=(const.TOOLTIP_FONT))
+                   button_color=(text_col, default_col), tooltip_font=(mod_const.TOOLTIP_FONT))
 
     # Original window size
     root = tk.Tk()
@@ -348,13 +358,13 @@ def main():
     root.destroy()
     del root
 
-    if screen_w >= const.WIN_WIDTH:
-        current_w = const.WIN_WIDTH
+    if screen_w >= mod_const.WIN_WIDTH:
+        current_w = mod_const.WIN_WIDTH
     else:
         current_w = screen_w
 
-    if screen_h >= const.WIN_HEIGHT:
-        current_h = const.WIN_HEIGHT
+    if screen_h >= mod_const.WIN_HEIGHT:
+        current_h = mod_const.WIN_HEIGHT
     else:
         current_h = screen_h
 
@@ -364,12 +374,14 @@ def main():
     bank_rules = bank.BankRules(configuration)
     startup_msgs = configuration.startup_msgs
 
-    acct_methods = [audit_rules, cash_rules]
+    acct_methods = [audit_rules, cash_rules, bank_rules]
 
     # Configure GUI layout
     toolbar = ToolBar([audit_rules, cash_rules, bank_rules])
     layout = [toolbar.layout(win_size=(current_w, current_h)),
               get_panels(acct_methods, win_size=(current_w, current_h))]
+
+    user = mod_auth.UserAccount()
 
     # Element keys and names
     audit_names = audit_rules.print_rules()
@@ -379,17 +391,14 @@ def main():
     cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.key_lookup('Cancel') for i in cash_rules.rules]
-    #    start_keys = [i.key_lookup('Start') for i in audit_rules.rules]
 
-    record_rules = configuration.db_records['rules']
+    record_rules = configuration.records.entries
 
     summ_tbl_keys = []
     for rule in audit_rules.rules:
         for tab in rule.summary.tabs:
             summ_tbl_keys.append(tab.key_lookup('Table'))
             summ_tbl_keys.append(tab.key_lookup('Totals'))
-
-    date_key = None
 
     print('Info: current audit rules are {}'.format(', '.join(audit_names)))
 
@@ -403,7 +412,7 @@ def main():
     debug_win = None
 
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, icon=settings.logo, font=const.MAIN_FONT, size=(current_w, current_h),
+    window = sg.Window('REM Tila', layout, icon=settings.logo, font=mod_const.MAIN_FONT, size=(current_w, current_h),
                        resizable=True, return_keyboard_events=True)
     window.finalize()
     window.maximize()
@@ -412,11 +421,11 @@ def main():
     screen_w, screen_h = window.get_screen_dimensions()
     print('Info: screen size is {W} x {H}'.format(W=screen_w, H=screen_h))
 
-    user_image = tk.PhotoImage(data=const.USER_ICON)
-    userin_image = tk.PhotoImage(data=const.USERIN_ICON)
+    user_image = tk.PhotoImage(data=mod_const.USER_ICON)
+    userin_image = tk.PhotoImage(data=mod_const.USERIN_ICON)
 
     all_rules = [i for acct_method in acct_methods for i in acct_method.rules]
-    resize_elements(window, all_rules, win_size=(current_w, current_h))
+    resize_elements(window, all_rules)
     resized = False
 
     # Event Loop
@@ -450,7 +459,7 @@ def main():
             print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            resize_elements(window, all_rules, win_size=(win_w, win_h))
+            resize_elements(window, all_rules)
 
             current_w, current_h = (win_w, win_h)
             resized = True
@@ -459,7 +468,7 @@ def main():
         # User login
         if values['-UMENU-'] == 'Sign In':  # user logs on
             print('Info: displaying user login screen')
-            user = win2.login_window()
+            user = mod_win2.login_window(user)
 
             if user.logged_in:  # logged on successfully
                 # Disable sign-in and enable sign-off
@@ -477,9 +486,6 @@ def main():
                     # Database administration
                     window['-DBMENU-'].update(disabled=False)
 
-                    # Reports and statistics
-                    toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='enable')
-
                     # User
                     toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
 
@@ -489,7 +495,7 @@ def main():
                 # Enable accounting rules permissions on per rule basis defined in config
                 for acct_method in acct_methods:
                     for acct_rule in acct_method.rules:
-                        rule_name = acct_rule.title
+                        rule_name = acct_rule.menu_title
                         if admin:
                             toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
                         else:
@@ -498,30 +504,9 @@ def main():
                                 toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
 
                 # Enable record view permissions on per rule basis defined in config
-                for record_group in record_rules:
-                    for record_type in record_rules[record_group]:
-                        record_entry = record_rules[record_group][record_type]
-
-                        try:
-                            record_title = record_entry['Title']
-                        except KeyError:
-                            record_title = record_type
-
-                        record_name = '{ITEM}::{KEY}'.format(ITEM=record_title, KEY=record_type)
-
-                        if admin:
-                            toolbar.toggle_menu(window, 'rmenu', record_name, value='enable')
-                        else:
-                            try:
-                                perms = record_entry['Permissions']
-                            except KeyError:
-                                try:
-                                    record_viewable = bool(int(perms['View']))
-                                except (KeyError, ValueError):
-                                    continue
-
-                                if record_viewable is True:
-                                    toolbar.toggle_menu(window, 'rmenu', record_name, value='enable')
+                for record_entry in record_rules:
+                    if user.admin is True or record_entry.permissions == 'user':
+                        toolbar.toggle_menu(window, 'rmenu', record_entry.menu_title, value='enable')
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
@@ -534,7 +519,7 @@ def main():
             # Confirm sign-out
             if audit_in_progress:  # ask to switch first
                 msg = _('An audit is ongoing. Are you sure you would like to quit without saving?')
-                selection = win2.popup_confirm(msg)
+                selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
                     # Reset to defaults
@@ -551,7 +536,7 @@ def main():
                     continue
             elif cr_in_progress:  # ask to switch first
                 msg = _('Are you sure you would like to quit without saving the transaction?')
-                selection = win2.popup_confirm(msg)
+                selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
                     # Reset to defaults
@@ -567,7 +552,7 @@ def main():
                     continue
             else:  # no action being taken so ok to switch without asking
                 msg = _('Are you sure you would like to sign-out?')
-                selection = win2.popup_confirm(msg)
+                selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'Cancel':
                     continue
@@ -596,10 +581,6 @@ def main():
             # Database administration
             window['-DBMENU-'].update(disabled=True)
 
-            # Reports and statistics
-            toolbar.toggle_menu(window, 'rmenu', 'summary reports', value='disable')
-            toolbar.toggle_menu(window, 'rmenu', 'summary statistics', value='disable')
-
             # User
             toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='disable')
 
@@ -609,40 +590,31 @@ def main():
             # Audit rules
             for acct_method in acct_methods:
                 for acct_rule in acct_method.rules:
-                    rule_name = acct_rule.title
+                    rule_name = acct_rule.menu_title
                     toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
 
             # Reports
-            for record_group in record_rules:
-                for record_type in record_rules[record_group]:
-                    record_entry = record_rules[record_group][record_type]
-
-                    try:
-                        record_title = record_entry['Title']
-                    except KeyError:
-                        record_title = record_type
-
-                    record_name = '{ITEM}::{KEY}'.format(ITEM=record_title, KEY=record_type)
-                    toolbar.toggle_menu(window, 'rmenu', record_name, value='disable')
+            for record_entry in record_rules:
+                toolbar.toggle_menu(window, 'rmenu', record_entry.menu_title, value='disable')
 
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
-            win2.edit_settings(win_size=window.size)
+            mod_win2.edit_settings(win_size=window.size)
             continue
 
         # Display "About" window
         if values['-MMENU-'] == 'About':
-            win2.about()
+            mod_win2.about()
             continue
 
         # Display the database update window
         if event == '-DBMENU-':
-            win2.database_importer_window(user)
+            mod_win2.database_importer_window(user, win_size=window.get_screen_size())
             continue
 
         # Display debugger window
         if not debug_win and values['-MMENU-'] == 'Debug':
-            debug_win = win2.debugger()
+            debug_win = mod_win2.debugger()
             debug_win.finalize()
 
             print('Info: starting debugger')
@@ -656,49 +628,29 @@ def main():
             else:
                 debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
 
-        # Pull up record
+        # Pull up an existing database record
         if event == '-RMENU-':
-            record_name = values['-RMENU-']
-            print('Info: pulling up report selection for {}'.format(record_name))
+            # Get Record Type selection
+            record_type = values['-RMENU-']
+            print('Info: displaying selection window for {} records'.format(record_type))
+
             # Get record entry
-            record_title, record_id = record_name.split('::')
-            for record_group in record_rules:
-                for record_type in record_rules[record_group]:
-                    if record_type == record_id:
-                        record_entry = record_rules[record_group][record_type]
+            record_entry = configuration.records.fetch_entry(record_type, by_title=True)
+            print('record selected is {}'.format(record_entry.name))
 
-                        # Obtain the record information
-                        try:
-                            record_class = record_entry['Type']
-                        except KeyError:
-                            win2.popup_error('Configuration Error: {RULE}, {NAME}: missing required parameter "Type"'
-                                             .format(RULE=record_group, NAME=record_type))
-                            break
+            # Display record import window
+            try:
+                selected_record = mod_records.import_records(record_entry, user)
+            except Exception as e:
+                msg = 'Failed to load record - {ERR}'.format(ERR=e)
+                mod_win2.popup_error(msg)
+                print('Error: {}'.format(msg))
+                continue
+            if selected_record is None:
+                continue
 
-                        if record_class == 'account_record':
-                            db_record = mod_records.load_account_record(user, record_group, record_type, record_entry)
-                            if db_record is None:
-                                break
-
-                            # Display the account record window
-                            user_action = win2.account_record_window(db_record)
-                        elif record_class == 'audit_record':
-                            #db_record = mod_records.load_audit_record(user, record_group, record_type, record_entry)
-
-                            # Display the audit record window
-                            #user_action = win2.audit_record_window(db_record)
-                            pass
-                        else:
-                            win2.popup_error('Configuration Warning: {RULE}, {NAME}: cannot find a class for {TYPE}'
-                                             .format(RULE=record_group, NAME=record_type, TYPE=record_type))
-                            break
-
-                        if user_action == 'save':
-                            db_record.save_to_database(user)
-                        elif user_action == 'delete':
-                            db_record.delete_record(user)
-                        else:
-                            continue
+            # Open the record display window
+            mod_win2.record_window(selected_record, user, save=True, delete=True)
 
             continue
 
@@ -706,7 +658,7 @@ def main():
         if current_panel != '-HOME-' and (event in cancel_keys or values['-AMENU-'] or values['-RMENU-']):
             if audit_in_progress:  # ask to switch first
                 msg = _('An audit is ongoing. Are you sure you would like to quit without saving?')
-                selection = win2.popup_confirm(msg)
+                selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
                     # Reset to defaults
@@ -728,7 +680,7 @@ def main():
                     continue
             elif cr_in_progress:  # ask to switch first
                 msg = _('Are you sure you would like to quit without saving the transaction?')
-                selection = win2.popup_confirm(msg)
+                selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
                     # Reset to defaults
@@ -770,15 +722,6 @@ def main():
             tab_windows = [i.name for i in current_rule.tabs]
             final_index = len(tab_windows) - 1
 
-            # Set up variables for updating date parameter fields
-            date_param = current_rule.fetch_parameter('date', by_type=True)
-            try:
-                date_key = date_param.element_key
-            except AttributeError:
-                date_key = None
-
-            date_str = []
-
             current_panel = current_rule.element_key
 
             print('Info: the panel in view is {} with tabs {}'.format(current_rule.name, ', '.join(tab_windows)))
@@ -794,7 +737,7 @@ def main():
                 window[import_panel].update(visible=True)
                 continue
 
-            # Update transaction ID field with the transaction number
+            # Update ID field with the bank deposit number
             id_param = current_rule.fetch_parameter(current_rule.required_parameters['ID'])
             elem_size = len(id_param.value) + 1
 
@@ -822,19 +765,10 @@ def main():
             try:
                 import_df = user.query(ref_table, ref_columns, filter_rules=filters, prog_db=True)
             except Exception as e:
-                win2.popup_error('Error: database query failed - {}'.format(e))
+                mod_win2.popup_error('Error: database query failed - {ERR}'.format(ERR=e))
                 continue
 
             current_rule.records.unassociated_df = current_rule.records.set_datatypes(import_df)
-
-            # Set up variables for updating date parameter fields
-            date_param = current_rule.fetch_parameter('date', by_type=True)
-            try:
-                date_key = date_param.element_key
-            except AttributeError:
-                date_key = None
-
-            date_str = []
 
             current_panel = import_panel
             cr_in_progress = True
@@ -845,42 +779,21 @@ def main():
         elif values['-AMENU-'] in bank_names:
             # Obtain the selected rule object
             current_rule = bank_rules.fetch_rule(selected_action)
-            pass
 
-        # Format date parameter field, if used in a given rule set
-        if current_rule and event == date_key:
-            elem_value = values[event]
-            try:
-                input_value = strptime(elem_value, '%Y-%m-%d')
-            except ValueError:
-                input_value = elem_value.replace('-', '')
-            else:
-                window[date_key].update(value=input_value.strftime('%Y-%m-%d'))
-                continue
+            window[current_panel].update(visible=False)
 
-            if len(input_value) > 8:  # don't go beyond acceptable size
-                date_str_fmt = format_date_element(date_str)
-                window[date_key].update(value=date_str_fmt)
-                continue
+            current_panel = current_rule.element_key
+            window[current_panel].update(visible=True)
+            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
 
-            if input_value and not input_value.isnumeric():
-                date_str_fmt = format_date_element(date_str)
-                window[date_key].update(value=date_str_fmt)
-                continue
+            print('Info: the panel in view is {}'.format(current_rule.name))
+            continue
 
-            if len(input_value) > len(date_str):  # add character
-                date_str.append(input_value[-1])
-
-                date_str_fmt = format_date_element(date_str)
-                window[date_key].update(value=date_str_fmt)
-            elif len(input_value) < len(date_str):  # remove character
-                date_str.pop()
-
-                date_str_fmt = format_date_element(date_str)
-                window[date_key].update(value=date_str_fmt)
-            else:
-                date_str_fmt = format_date_element(date_str)
-                window[date_key].update(value=date_str_fmt)
+        # Action events
+        if current_rule and event in current_rule.elements:
+            print('Info: running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
+            current_rule.run_event(window, event, values, user)
+            continue
 
         # Audit Rules
         # Start the audit
@@ -899,7 +812,7 @@ def main():
                 if not has_value:
                     param_desc = param.description
                     msg = _('Correctly formatted input is required in the "{}" field').format(param_desc)
-                    win2.popup_notice(msg)
+                    mod_win2.popup_notice(msg)
 
                 inputs.append(has_value)
 
@@ -908,7 +821,7 @@ def main():
                 # Verify that the audit has not already been performed with these parameters
                 audit_exists = current_rule.summary.load_from_database(user, current_rule.parameters)
                 if audit_exists is True:
-                    continue_audit = win2.popup_confirm('An audit has already been performed using these parameters. '
+                    continue_audit = mod_win2.popup_confirm('An audit has already been performed using these parameters. '
                                                         'Only an admin may edit an existing audit. Are you sure you '
                                                         'would like to continue?')
                     if continue_audit == 'Cancel':
@@ -934,7 +847,7 @@ def main():
                     try:
                         df = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
                     except Exception as e:
-                        win2.popup_error('Error: audit failed - {}'.format(e))
+                        mod_win2.popup_error('Error: audit failed - {}'.format(e))
                         initialized = False
                         break
 
@@ -1016,12 +929,12 @@ def main():
                     new_row = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
                 else:
                     msg = _("Warning: {} is already in the table").format(new_id)
-                    win2.popup_notice(msg)
+                    mod_win2.popup_notice(msg)
                     continue
 
                 if new_row.empty:  # query returned nothing
                     msg = _("Warning: unable to find transaction {}").format(new_id)
-                    win2.popup_notice(msg)
+                    mod_win2.popup_notice(msg)
                     window[input_key].update(value='')
                     continue
 
@@ -1029,7 +942,7 @@ def main():
                 window[input_key].update(value='')
 
                 # Append new rows to the table
-                df = dm.append_to_table(tab.df, new_row)
+                df = mod_dm.append_to_table(tab.df, new_row)
                 tab.df = df
 
                 # Update display table
@@ -1187,15 +1100,15 @@ def main():
                         break
 
                 notes_title = summ_tab.notes['Title']
-                note_text = win2.notes_window(summ_tab.id, summ_tab.notes['Value'], record=tab_title,
-                                              title=notes_title).strip()
+                note_text = mod_win2.notes_window(summ_tab.id, summ_tab.notes['Value'], record=tab_title,
+                                                  title=notes_title).strip()
                 summ_tab.notes['Value'] = note_text
 
                 # Change edit note button to be highlighted if note field not empty
                 if note_text:
-                    window[event].update(image_data=const.EDIT_ICON)
+                    window[event].update(image_data=mod_const.EDIT_NOTE_ICON)
                 else:
-                    window[event].update(image_data=const.NOTES_ICON)
+                    window[event].update(image_data=mod_const.TAKE_NOTE_ICON)
 
             # Save results of the audit
             if event == current_rule.key_lookup('Save'):
@@ -1207,7 +1120,7 @@ def main():
 
                 if not outfile:
                     msg = _('Please select an output file before continuing')
-                    win2.popup_error(msg)
+                    mod_win2.popup_error(msg)
                     continue
                 else:
                     print('Info: saving summary report to {}'.format(outfile))
@@ -1218,11 +1131,11 @@ def main():
                 except Exception as e:
                     raise
                     msg = _('Database save failed - {}').format(e)
-                    win2.popup_error(msg)
+                    mod_win2.popup_error(msg)
                 else:
                     if save_status is False:
                         msg = _('Database save failed.')
-                        win2.popup_error(msg)
+                        mod_win2.popup_error(msg)
                         continue
 
                 # Save summary to excel or csv file
@@ -1231,7 +1144,7 @@ def main():
                 except Exception as e:
                     print(e)
                     msg = _('Save to file {} failed due to {}').format(outfile, e)
-                    win2.popup_error(msg)
+                    mod_win2.popup_error(msg)
 
                 # Reset audit elements
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
@@ -1309,7 +1222,7 @@ def main():
                     if has_value is False:
                         param_desc = param.description
                         msg = _('Correctly formatted input is required in the "{}" field').format(param_desc)
-                        win2.popup_notice(msg)
+                        mod_win2.popup_notice(msg)
 
                         all_params = False
                         break
@@ -1320,7 +1233,7 @@ def main():
                 save_status = current_rule.save_to_database(user)
                 if save_status is False:
                     msg = _('Database save failed.')
-                    win2.popup_error(msg)
+                    mod_win2.popup_error(msg)
                     continue
 
                 cr_in_progress = False
@@ -1335,7 +1248,8 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        win2.popup_error('Error: fatal program error - {}'.format(e))
+        raise
+        mod_win2.popup_error('Error: fatal program error - {}'.format(e))
         sys.exit(1)
     else:
         sys.exit(0)

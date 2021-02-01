@@ -3,6 +3,7 @@ REM records classes and functions. Includes audit records and account records.
 """
 import datetime
 import dateutil
+from random import randint
 import re
 import sys
 
@@ -10,12 +11,1189 @@ import numpy as np
 import pandas as pd
 import PySimpleGUI as sg
 
-import REM.constants as const
-import REM.data_manipulation as dm
-import REM.layouts as lo
-import REM.parameters as mod_param
-import REM.secondary as win2
+import REM.constants as mod_const
+import REM.data_manipulation as mod_dm
+import REM.elements as mod_elem
+import REM.layouts as mod_lo
+import REM.secondary as mod_win2
 from REM.config import configuration, current_tbl_pkeys, settings
+
+
+class DatabaseRecord:
+    """
+    Generic database record account.
+
+    Attributes:
+        name (str): name of the configured record entry.
+
+        id (int): record element number.
+
+        elements (list): list of GUI element keys.
+
+        title (str): record display title.
+
+        permissions (dict): dictionary mapping permission rules to permission groups
+
+        parameters (list): list of data and other GUI elements used to display information about the record.
+
+        references (list): list of reference records.
+
+        components (list): list of record components.
+    """
+
+    def __init__(self, record_entry, record_data, new_record: bool = False):
+        """
+        Arguments:
+            record_entry (class): configuration entry for the record.
+
+            record_data (dict): dictionary or pandas series containing record data.
+        """
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+        approved_record_types = ['transaction', 'account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
+        self.name = record_entry.name
+        self.record_type = record_entry.type
+
+        self.id = randint(0, 1000000000)
+        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ['Delete', 'Save', 'RecordID', 'RecordDate', 'MarkedForDeletion', 'Approved',
+                          'ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'Height',
+                          'Width']]
+
+        entry = record_entry.record_layout
+        self.record_layout = entry
+        self.new = new_record
+
+        # User permissions when accessing record
+        try:
+            permissions = entry['Permissions']
+        except KeyError:
+            self.permissions = {'edit': 'admin', 'delete': 'admin', 'mark': 'admin', 'unlink': 'admin',
+                                'approve': 'admin'}
+        else:
+            self.permissions = {'edit': permissions.get('Edit', 'admin'),
+                                'delete': permissions.get('Delete', 'admin'),
+                                'mark': permissions.get('MarkForDeletion', 'admin'),
+                                'unlink': permissions.get('RemoveAssociations', 'admin'),
+                                'approve': permissions.get('Approve', 'admin')}
+
+        if isinstance(record_data, pd.Series):
+            record_data = record_data.to_dict()
+        elif isinstance(record_data, dict):
+            record_data = record_data
+        elif isinstance(record_data, pd.DataFrame):
+            if record_data.shape[0] > 1:
+                raise AttributeError('more than one record provided to record class {TYPE}'.format(TYPE=self.name))
+            elif record_data.shape[0] < 1:
+                raise AttributeError('empty dataframe provided to record class {TYPE}'.format(TYPE=self.name))
+            else:
+                record_data = record_data.iloc[0]
+        else:
+            raise AttributeError('unknown object type provided to record class {TYPE}'.format(TYPE=self.name))
+
+        try:
+            self.record_id = record_data['RecordID']
+        except KeyError:
+            raise AttributeError('missing required import data column "RecordID"')
+
+        try:
+            record_date = record_data['RecordDate']
+        except KeyError:
+            raise AttributeError('missing required import data column "RecordDate"')
+        else:
+            if is_datetime_dtype(record_date) or isinstance(record_date, datetime.datetime):
+                self.record_date = record_date
+            elif isinstance(record_date, str):
+                try:
+                    self.record_date = datetime.datetime.strptime(record_date, '%Y-%m-%d')
+                except ValueError:
+                    raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
+            else:
+                raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
+
+        self.deleted = record_data.get('Deleted', False)
+        self.marked_for_deletion = record_data.get('MarkedForDeletion', None)
+        self.approved = record_data.get('Approved', None)
+
+        self.creator = record_data.get(configuration.creator_code, None)
+        self.creation_date = record_data.get(configuration.creation_date, None)
+        self.editor = record_data.get(configuration.editor_code, None)
+        self.edit_date = record_data.get(configuration.edit_date, None)
+
+        # Required record elements
+        self.parameters = []
+        try:
+            details = entry['Details']
+        except KeyError:
+            raise AttributeError('missing required parameter "Details"'.format(NAME=self.name))
+        else:
+            try:
+                parameters = details['Elements']
+            except KeyError:
+                raise AttributeError('missing required Details parameter "Elements"'.format(NAME=self.name))
+
+            for param in parameters:
+                param_entry = parameters[param]
+                try:
+                    param_type = param_entry['ElementType']
+                except KeyError:
+                    raise AttributeError('"Details" element {PARAM} is missing the required field "ElementType"'
+                                         .format(PARAM=param))
+
+                # Set the object type of the record parameter.
+                if param_type == 'table':
+                    element_class = mod_elem.TableElement
+
+                    # Format entry for table initialization
+                    description = param_entry.get('Description', param)
+                    try:
+                        param_entry = param_entry['Options']
+                    except KeyError:
+                        raise AttributeError('the "Options" parameter is required for table element {PARAM}'
+                                             .format(PARAM=param))
+                    param_entry['Title'] = description
+                else:
+                    element_class = mod_elem.DataElement
+
+                # Initialize parameter object
+                try:
+                    param_obj = element_class(param, param_entry, parent=self.name)
+                except Exception as e:
+                    raise AttributeError('failed to initialize {NAME} record {ID}, element {PARAM} - {ERR}'
+                                         .format(NAME=self.name, ID=self.record_id, PARAM=param, ERR=e))
+
+                if param_type == 'table':  # parameter is a data table
+                    param_cols = list(param_obj.columns)
+                    table_data = pd.Series(index=param_cols)
+                    for param_col in param_cols:
+                        try:
+                            table_data[param_col] = record_data[param_col]
+                        except KeyError:
+                            continue
+
+                    param_obj.df = param_obj.df.append(table_data, ignore_index=True)
+                    print(param_obj.df)
+                else:  # parameter is a data element
+                    try:
+                        param_value = record_data[param]
+                    except KeyError:
+                        print('Warning: record {ID}: imported data is missing a column for parameter {PARAM}'
+                              .format(ID=self.record_id, PARAM=param))
+                    else:
+                        print('Info: record {ID}: setting parameter {PARAM} to value {VAL}'
+                              .format(ID=self.record_id, PARAM=param_obj.name, VAL=param_value))
+                        param_obj.value = param_obj.format_value(param_value)
+
+                # Add the parameter to the record
+                self.parameters.append(param_obj)
+                self.elements += param_obj.elements
+
+        self.references = []
+        try:
+            ref_entry = entry['References']
+        except KeyError:
+            print('Warning: No reference record types configured for {NAME}'.format(NAME=self.name))
+            ref_elements = []
+        else:
+            try:
+                ref_elements = ref_entry['Elements']
+            except KeyError:
+                print('Configuration Warning: missing required References parameter "Elements"'.format(NAME=self.name))
+                ref_elements = []
+
+        self.components = []
+        try:
+            comp_entry = entry['Components']
+        except KeyError:
+            print('Warning: No component record types configured for {NAME}'.format(NAME=self.name))
+            comp_types = []
+        else:
+            try:
+                comp_elements = comp_entry['Elements']
+            except KeyError:
+                print('Configuration Warning: missing required References parameter "Elements"'.format(NAME=self.name))
+                comp_types = []
+            else:
+                comp_types = []
+                for comp_element in comp_elements:
+                    if comp_element not in approved_record_types:
+                        print('Configuration Error: RecordEntry {TYPE}: component table {TBL} must be an acceptable '
+                              'record type'.format(TYPE=self.record_type, TBL=comp_element))
+                        continue
+                    table_entry = comp_elements[comp_element]
+                    comp_table = mod_elem.TableElement(comp_element, table_entry, parent=self.name, date=self.record_date)
+                    comp_types.append(comp_table.record_type)
+                    self.components.append(comp_table)
+                    self.elements += comp_table.elements
+
+        ref_rows = record_entry.import_references(self.record_id)
+        for index, row in ref_rows.iterrows():
+            # Store imported references as references box objects
+            print(row)
+            print(ref_elements)
+            doctype = row['DocType']
+            if doctype in ref_elements:
+                print('Info: record {ID}: adding reference {NAME} with record type {TYPE}'
+                      .format(ID=self.record_id, NAME=row['DocNo'], TYPE=doctype))
+                try:
+                    ref_box = mod_elem.ReferenceElement('{}_Reference'.format(doctype), row, parent=self.name)
+                except Exception as e:
+                    print('Warning: record {ID}: failed to add reference {NAME} to list of references - {ERR}'
+                          .format(ID=self.record_id, NAME=row['DocNo'], ERR=e))
+                    continue
+                else:
+                    self.references.append(ref_box)
+                    self.elements += ref_box.elements
+
+            # Store imported components as table rows
+            reftype = row['RefType']
+            if reftype in comp_types:
+                print('Info: record {ID}: adding component {NAME} with record type {TYPE}'
+                      .format(ID=self.record_id, NAME=row['RefNo'], TYPE=reftype))
+                # Fetch the relevant components table
+                comp_table = self.fetch_component(reftype, by_type=True)
+
+                # Import data to the table
+                ref_id = row['RefNo']
+                ref_record_entry = configuration.records.fetch_entry(reftype)
+                ref_record = ref_record_entry.load_record(ref_id)
+
+                comp_table.df = comp_table.append(ref_record)
+
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i.split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            raise KeyError('component {COMP} not found in list of data element {PARAM} components'
+                           .format(COMP=component, PARAM=self.name))
+
+        return key
+
+    def run_event(self, window, event, values, user):
+        """
+        Perform a record action.
+        """
+        save_key = self.key_lookup('Save')
+        delete_key = self.key_lookup('Delete')
+        approved_key = self.key_lookup('Approved')
+        marked_key = self.key_lookup('MarkedForDeletion')
+
+        param_elems = [i for param in self.parameters for i in param.elements]
+        component_elems = [i for component in self.components for i in component.elements]
+        reference_elems = [i for reference in self.references for i in reference.elements]
+
+        if event == self.key_lookup('ReferencesButton'):
+            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='references')
+        elif event == self.key_lookup('ComponentsButton'):
+            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='components')
+        elif event in param_elems:  # parameter event
+            try:
+                param = self.fetch_element(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = param.run_event(window, event, values, user)
+        elif event in component_elems:  # component table event
+            try:
+                component_table = self.fetch_component(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find component associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = component_table.run_event(window, event, values, user)
+        elif event in reference_elems:
+            try:
+                refbox = self.fetch_reference(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = refbox.run_event(window, event, values, user)
+        elif event == approved_key:
+            self.approved = values[approved_key]
+            print('Info: record {ID}: setting approved to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.approved))
+        elif event == marked_key:
+            self.marked_for_deletion = values[marked_key]
+            print('Info: record {ID}: setting marked for deletion to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
+        elif event == save_key:
+            # Update record parameters in the record database table
+            # Remove any deleted references from the record reference table
+            for refbox in self.references:
+                refkey = refbox.key_lookup('Element')
+                ref_removed = window[refkey].metadata['deleted']
+                if ref_removed is True:
+                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
+                          .format(ID=self.record_id, REF=refbox.record_id))
+            # Remove any deleted components from the record reference table
+
+            return False
+        elif event == delete_key:
+            # Remove the record from the record table
+            # Remove any entry in the record reference table referencing the record
+            return False
+
+        return True
+
+    def fetch_element(self, element, by_key: bool = False):
+        """
+        Fetch a GUI data element by name or event key.
+        """
+        if by_key is True:
+            element_type = element.split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.parameters]
+        else:
+            element_names = [i.name for i in self.parameters]
+
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.parameters[index]
+        else:
+            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
+                           .format(ELEM=element, NAME=self.name))
+
+        return parameter
+
+    def fetch_reference(self, reference, by_key: bool = False, by_id: bool = False):
+        """
+        Display a reference record in a new window.
+        """
+        if by_key is True:
+            element_type = reference.split('_')[-1]
+            references = [i.key_lookup(element_type) for i in self.references]
+        elif by_id is True:
+            references = [i.record_id for i in self.references]
+        else:
+            references = [i.name for i in self.references]
+
+        if reference in references:
+            index = references.index(reference)
+            ref_elem = self.references[index]
+        else:
+            raise KeyError('reference {ELEM} not found in list of {NAME} references'
+                           .format(ELEM=reference, NAME=self.name))
+
+        return ref_elem
+
+    def fetch_component(self, component, by_key: bool = False, by_type: bool = False):
+        """
+        Fetch a component table by name.
+        """
+        if by_key is True:
+            element_type = component.split('_')[-1]
+            components = [i.key_lookup(element_type) for i in self.components]
+        elif by_type is True:
+            components = [i.record_type for i in self.components]
+        else:
+            components = [i.name for i in self.components]
+
+        if component in components:
+            index = components.index(component)
+            comp_tbl = self.components[index]
+        else:
+            raise KeyError('component {ELEM} not found in list of {NAME} component tables'
+                           .format(ELEM=component, NAME=self.name))
+
+        return comp_tbl
+
+    def table_values(self):
+        """
+        Format parameter values as a table row.
+        """
+        parameters = self.parameters
+
+        columns = ['RecordID', 'RecordDate', 'Approved', 'MarkedForDeletion']
+        values = [self.record_id, self.record_date, self.approved, self.marked_for_deletion]
+
+        # Add parameter values
+        for param in parameters:
+            param_type = param.etype
+            if param_type == 'table':  # parameter is a data table object
+                col_summs = param.summarize_table()
+                columns += col_summs.index.values.tolist()
+                values += col_summs.values.tolist()
+            else:  # parameter is a data element object
+                columns.append(param.name)
+                values.append(param.value)
+
+        return pd.Series(values, index=columns)
+
+    def header_layout(self):
+        """
+        Generate the layout for the header section of the record layout.
+        """
+        record_layout = self.record_layout
+
+        layout_header = record_layout['Header']
+        header_elements = layout_header['Elements']
+
+        # Element parameters
+        bg_col = mod_const.ACTION_COL
+
+        main_font = mod_const.MAIN_FONT
+        bold_font = mod_const.BOLD_LARGE_FONT
+
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+
+        # Header components
+        try:
+            id_title = header_elements.get('RecordID', 'Record ID')
+        except KeyError:
+            print('Warning: the parameter "RecordID" was not included in the list of configured data elements')
+            id_title = 'ID'
+        try:
+            date_title = header_elements.get('RecordDate', 'Record Date')
+        except KeyError:
+            print('Warning: the parameter "RecordDate" was not included in the list of configured data elements')
+            date_title = 'Date'
+
+        if isinstance(self.record_date, datetime.datetime):
+            record_date = settings.format_display_date(self.record_date)
+        else:
+            record_date = self.record_date
+
+        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
+        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                              font=main_font, background_color=bg_col, tooltip=id_tooltip,
+                              metadata={'visible': True, 'disabled': False, 'value': self.record_id}),
+                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(record_date, key=self.key_lookup('RecordDate'), font=main_font,
+                              background_color=bg_col, auto_size_text=True,
+                              metadata={'visible': True, 'disabled': False, 'value': self.record_date})]]
+
+        # Header layout
+        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True)]]
+
+        return layout
+
+    def layout(self, win_size: tuple = None, user_access: str = 'admin', save: bool = True, delete: bool = False,
+               title_bar: bool = True):
+        """
+        Generate a GUI layout for the account record.
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (mod_const.WIN_WIDTH * 0.8, mod_const.WIN_HEIGHT * 0.8)
+
+        record_layout = self.record_layout
+
+        # GUI data elements
+        markable = True if user_access == 'admin' or self.permissions['mark'] == 'user' else False
+        editable = True if user_access == 'admin' or self.permissions['save'] == 'user' else False
+        deletable = True if (user_access == 'admin' or self.permissions[
+            'delete'] == 'user') and delete is True else False
+        unlinkable = True if user_access == 'admin' or self.permissions['unlink'] == 'user' else False
+        approvable = True if user_access == 'admin' or self.permissions['approve'] == 'user' else False
+        savable = True if editable is True and save is True else False
+
+        # Element parameters
+        header_col = mod_const.HEADER_COL
+        bg_col = mod_const.ACTION_COL
+        text_col = mod_const.TEXT_COL
+
+        font_h = mod_const.HEADER_FONT
+        main_font = mod_const.MAIN_FONT
+        bold_font = mod_const.BOLD_LARGE_FONT
+
+        pad_el = mod_const.ELEM_PAD
+        pad_v = mod_const.VERT_PAD
+        pad_h = mod_const.HORZ_PAD
+        pad_frame = mod_const.FRAME_PAD
+
+        # Element sizes
+
+        # Layout elements
+        layout_header = record_layout['Header']
+        header_elements = layout_header['Elements']
+
+        try:
+            reference_title = record_layout['References'].get('Title', 'References')
+        except KeyError:
+            reference_title = 'References'
+            has_references = False
+        else:
+            has_references = True
+
+        try:
+            components_title = record_layout['Components'].get('Title', 'Components')
+        except KeyError:
+            components_title = 'Components'
+            has_components = False
+        else:
+            has_components = True
+
+        # Window Title
+        if self.marked_for_deletion is not None:
+            try:
+                is_marked_for_deletion = bool(self.marked_for_deletion)
+            except (ValueError, TypeError):
+                is_marked_for_deletion = False
+
+            mark_title = header_elements.get('MarkedForDeletion', 'Marked for deletion')
+            mark_layout = [sg.Checkbox(mark_title, key=self.key_lookup('MarkedForDeletion'),
+                                       default=is_marked_for_deletion, enable_events=True,
+                                       font=main_font, background_color=header_col, disabled=(not markable),
+                                       metadata={'visible': True, 'disabled': (not markable),
+                                                 'value': self.marked_for_deletion})]
+        else:
+            mark_layout = []
+
+        if self.approved is not None:
+            try:
+                is_approved = bool(self.approved)
+            except (ValueError, TypeError):
+                is_approved = False
+
+            approved_title = header_elements.get('Approved', 'Approved')
+            approved_layout = [sg.Checkbox(approved_title, default=is_approved,
+                                           key=self.key_lookup('Approved'), font=main_font, enable_events=True,
+                                           background_color=header_col, disabled=(not approvable),
+                                           metadata={'visible': True, 'disabled': (not markable),
+                                                     'value': self.approved})]
+        else:
+            approved_layout = []
+
+        title = layout_header.get('Title', self.name)
+        title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h,
+                                          background_color=header_col)]],
+                                pad=(0, 0), justification='l', background_color=header_col, expand_x=True),
+                         sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                                background_color=header_col, justification='c', expand_x=True),
+                         sg.Col([approved_layout, mark_layout], pad=(pad_frame, 0), background_color=header_col,
+                                justification='r', vertical_alignment='c')]]
+
+        # Record header
+        header_layout = self.header_layout()
+
+        # Create layout for record details
+        details_layout = []
+        for data_elem in self.parameters:
+            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, overwrite_edit=self.new)])
+
+        # Add reference boxes to the details section
+        ref_key = self.key_lookup('ReferencesButton')
+        ref_layout = [[sg.Image(data=mod_const.NETWORK_ICON, pad=((0, pad_el), 0), background_color=bg_col),
+                       sg.Text(reference_title, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                       sg.Button('', image_data=mod_const.HIDE_ICON, key=ref_key, button_color=(text_col, bg_col),
+                                 border_width=0, disabled=False, visible=True,
+                                 metadata={'visible': True, 'disabled': False})]]
+
+        ref_boxes = []
+        for ref_box in self.references:
+            ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=unlinkable)])
+
+        ref_layout.append([sg.pin(sg.Col(ref_boxes, key=self.key_lookup('ReferencesFrame'), background_color=bg_col,
+                                         visible=True, expand_x=True, metadata={'visible': True}))])
+
+        if has_references is True:
+            details_layout.append([sg.Col(ref_layout, expand_x=True, pad=(0, pad_el), background_color=bg_col)])
+
+        # Add components to the details section
+        comp_key = self.key_lookup('ComponentsButton')
+        comp_layout = [[sg.Image(data=mod_const.COMPONENTS_ICON, pad=((0, pad_el), 0), background_color=bg_col),
+                        sg.Text(components_title, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                        sg.Button('', image_data=mod_const.HIDE_ICON, key=comp_key, button_color=(text_col, bg_col),
+                                  border_width=0, visible=True, disabled=False,
+                                  metadata={'visible': True, 'disabled': False})]]
+
+        comp_tables = []
+        for comp_table in self.components:
+            comp_table.df = comp_table.set_datatypes(comp_table.df)
+            comp_tables.append([comp_table.layout(padding=(0, pad_v), width=width, height=height)])
+
+        comp_layout.append([sg.pin(sg.Col(comp_tables, key=self.key_lookup('ComponentsFrame'), background_color=bg_col,
+                                          visible=True, expand_x=True, metadata={'visible': False}))])
+
+        if has_components is True:
+            details_layout.append([sg.Col(comp_layout, pad=(0, pad_el), expand_x=True, background_color=bg_col)])
+
+        height_key = self.key_lookup('Height')
+        main_layout = [[sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
+                        sg.Col(details_layout, pad=(0, 0), background_color=bg_col, expand_x=True, expand_y=True,
+                               scrollable=True, vertical_scroll_only=True, vertical_alignment='t')]]
+
+        # Flow control buttons
+        delete_key = self.key_lookup('Delete')
+        save_key = self.key_lookup('Save')
+        bttn_layout = [[mod_lo.B2('Delete', key=delete_key, pad=(pad_el, 0), visible=deletable,
+                                  tooltip='Delete record'),
+                        mod_lo.B2('Save', key=save_key, pad=(pad_el, 0), visible=savable,
+                                  tooltip='Save record')]]
+
+        # Pane elements must be columns
+        width_key = self.key_lookup('Width')
+        width_layout = [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)]]
+        if title_bar is True:
+            layout = [[sg.Col(width_layout, pad=(0, 0), background_color=bg_col)],
+                      [sg.Col(title_layout, background_color=header_col, expand_x=True)],
+                      [sg.Col(header_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, expand_x=True)],
+                      [sg.HorizontalSeparator(pad=(pad_frame, (pad_v, pad_frame)), color=mod_const.INACTIVE_COL)],
+                      [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)],
+                      [sg.HorizontalSeparator(pad=(pad_frame, 0), color=mod_const.INACTIVE_COL)],
+                      [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c',
+                              background_color=bg_col, expand_x=True)]]
+        else:
+            layout = [[sg.Col(width_layout, pad=(0, 0), background_color=bg_col)],
+                      [sg.HorizontalSeparator(pad=(pad_frame, (pad_v, pad_frame)), color=mod_const.INACTIVE_COL)],
+                      [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)],
+                      [sg.HorizontalSeparator(pad=(pad_frame, 0), color=mod_const.INACTIVE_COL)],
+                      [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c',
+                              background_color=bg_col, expand_x=True)]]
+
+        return layout
+
+    def resize(self, window, win_size: tuple = None):
+        """
+        Resize the record elements.
+        """
+        if win_size is not None:
+            width, height = win_size
+        else:
+            width, height = window.size
+
+        print('Info: record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id, W=width, H=height))
+
+        # Expand the frame width and height
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size((width, None))
+
+        height_key = self.key_lookup('Height')
+        window[height_key].set_size((None, height))
+        window.bind("<Configure>", window[height_key].Widget.config(height=int(height)))
+
+        # Expand the size of multiline parameters
+        for param in self.parameters:
+            param_type = param.etype
+            if param_type == 'multiline':
+                param_size = (int(width / 9) - int(64/9), None)
+            elif param_type == 'table':
+                param_size = (width - 64, 1)
+            else:
+                param_size = None
+            param.resize(window, size=param_size)
+
+        # Resize the reference boxes
+        ref_width = width - 62  # accounting for left and right padding and border width
+        for refbox in self.references:
+            refbox.resize(window, size=(ref_width, 40))
+
+        # Resize component tables
+        tbl_width = width - 64  # accounting for left and right padding and border width
+        tbl_height = int(height * 0.2)  # each table has height that is 20% of window height
+        for comp_table in self.components:
+            comp_table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
+
+        window.refresh()
+
+    def collapse_expand(self, window, frame: str = 'references'):
+        """
+        Hide/unhide record frames.
+        """
+        if frame == 'references':
+            hide_key = self.key_lookup('ReferencesButton')
+            frame_key = self.key_lookup('ReferencesFrame')
+        else:
+            hide_key = self.key_lookup('ComponentsButton')
+            frame_key = self.key_lookup('ComponentsFrame')
+
+        if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
+            window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
+            window[frame_key].update(visible=False)
+
+            window[frame_key].metadata['visible'] = False
+        else:  # not visible yet, so want to expand the frame
+            window[hide_key].update(image_data=mod_const.HIDE_ICON)
+            window[frame_key].update(visible=True)
+
+            window[frame_key].metadata['visible'] = True
+
+
+class DepositRecord(DatabaseRecord):
+    """
+    Class to manage the layout and display of an REM Deposit Record.
+    """
+
+    def __init__(self, record_entry, record_data):
+        """
+        deposit (float): amount deposited into the bank account.
+        """
+        super().__init__(record_entry, record_data)
+        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Deposit'))
+
+        try:
+            deposit = float(record_data['DepositAmount'])
+        except (KeyError, TypeError):
+            self.deposit = 0
+        else:
+            if np.isnan(deposit):
+                self.deposit = 0.00
+            else:
+                self.deposit = deposit
+
+    def header_layout(self):
+        """
+        Generate the layout for the header section of the record layout.
+        """
+        record_layout = self.record_layout
+
+        layout_header = record_layout['Header']
+        header_elements = layout_header['Elements']
+
+        # Element parameters
+        bg_col = mod_const.ACTION_COL
+
+        main_font = mod_const.MAIN_FONT
+        bold_font = mod_const.BOLD_LARGE_FONT
+
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+
+        # Header components
+        try:
+            id_title = header_elements.get('RecordID', 'Record ID')
+        except KeyError:
+            print('Warning: the parameter "RecordID" was not included in the list of configured data elements')
+            id_title = 'ID'
+        try:
+            date_title = header_elements.get('RecordDate', 'Record Date')
+        except KeyError:
+            print('Warning: the parameter "RecordDate" was not included in the list of configured data elements')
+            date_title = 'Date'
+
+        if isinstance(self.record_date, datetime.datetime):
+            record_date = settings.format_display_date(self.record_date)
+        else:
+            record_date = self.record_date
+
+        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
+        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                              font=main_font, background_color=bg_col, tooltip=id_tooltip),
+                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(record_date, key=self.key_lookup('RecordDate'), auto_size_text=True, font=main_font,
+                              background_color=bg_col)]]
+        try:
+            deposit_title = header_elements.get('DepositAmount', 'Deposit Total')
+        except KeyError:
+            print('Warning: the parameter "DepositAmount" was not included in the list of configured data elements')
+            deposit_title = 'Deposit Total'
+        deposit_layout = [[sg.Text('{}:'.format(deposit_title), pad=((0, pad_el), 0), background_color=bg_col,
+                                   font=bold_font),
+                           sg.Text('{:,.2f}'.format(self.deposit), key=self.key_lookup('Deposit'), size=(14, 1),
+                                   font=main_font, background_color=bg_col, border_width=1, relief="sunken",
+                                   tooltip='Import amount: {}'.format('{:,.2f}'.format(self.deposit)))]]
+
+        # Header layout
+        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
+                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                          background_color=bg_col, justification='c', expand_x=True),
+                   sg.Col(deposit_layout, background_color=bg_col, justification='r')]]
+
+        return layout
+
+    def table_values(self):
+        """
+        Format parameter values as a table row.
+        """
+        parameters = self.parameters
+
+        columns = ['RecordID', 'RecordDate', 'Approved', 'MarkedForDeletion', 'DepositAmount']
+        values = [self.record_id, self.record_date, self.approved, self.marked_for_deletion, self.deposit]
+
+        # Add parameter values
+        for param in parameters:
+            param_type = param.etype
+            if param_type == 'table':
+                col_summs = param.summarize_table()
+                columns += col_summs.index.values.tolist()
+                values += col_summs.values.tolist()
+            else:
+                columns.append(param.name)
+                values.append(param.value)
+
+        return pd.Series(values, index=columns)
+
+    def run_event(self, window, event, values, user):
+        """
+        Perform a record action.
+        """
+        default_col = mod_const.ACTION_COL
+        greater_col = mod_const.PASS_COL
+        lesser_col = mod_const.FAIL_COL
+
+        save_key = self.key_lookup('Save')
+        delete_key = self.key_lookup('Delete')
+        approved_key = self.key_lookup('Approved')
+        marked_key = self.key_lookup('MarkedForDeletion')
+
+        param_elems = [i for param in self.parameters for i in param.elements]
+        component_elems = [i for component in self.components for i in component.elements]
+        reference_elems = [i for reference in self.references for i in reference.elements]
+
+        if event == self.key_lookup('ReferencesButton'):
+            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='references')
+        elif event == self.key_lookup('ComponentsButton'):
+            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='components')
+        elif event in param_elems:  # parameter event
+            try:
+                param = self.fetch_element(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = param.run_event(window, event, values, user)
+        elif event in component_elems:  # component table event
+            try:
+                component_table = self.fetch_component(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find component associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = component_table.run_event(window, event, values, user)
+
+            deposit_total = self.update_deposit()
+            if deposit_total > 0:
+                bg_color = greater_col
+            elif deposit_total < 0:
+                bg_color = lesser_col
+            else:
+                bg_color = default_col
+
+            window[self.key_lookup('Deposit')].update(value='{:,.2f}'.format(deposit_total), background_color=bg_color)
+        elif event in reference_elems:
+            try:
+                refbox = self.fetch_reference(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = refbox.run_event(window, event, values, user)
+        elif event == approved_key:
+            self.approved = values[approved_key]
+            print('Info: record {ID}: setting approved to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.approved))
+        elif event == marked_key:
+            self.marked_for_deletion = values[marked_key]
+            print('Info: record {ID}: setting marked for deletion to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
+        elif event == save_key:
+            # Update record parameters in the record database table
+            # Remove any deleted references from the record reference table
+            for refbox in self.references:
+                refkey = refbox.key_lookup('Element')
+                ref_removed = window[refkey].metadata['deleted']
+                if ref_removed is True:
+                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
+                          .format(ID=self.record_id, REF=refbox.record_id))
+            # Remove any deleted components from the record reference table
+
+            return False
+        elif event == delete_key:
+            # Remove the record from the record table
+            # Remove any entry in the record reference table referencing the record
+            return False
+
+        return True
+
+    def update_deposit(self):
+        """
+        Update the deposit amount element and deposit attribute based on component table totals.
+        """
+        # Update the deposit element, in case a component was added or deleted
+        try:
+            account_table = self.fetch_component('account')
+        except KeyError:
+            print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "account"'
+                  .format(TYPE=self.record_type))
+            account_total = 0
+        else:
+            account_total = account_table.calculate_total()
+            print('Info: record {ID}: total income was calculated from the accounts table is {VAL}'
+                  .format(ID=self.record_id, VAL=account_total))
+
+        try:
+            expense_table = self.fetch_component('cash_expense')
+        except KeyError:
+            print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "cash_expense"'
+                  .format(TYPE=self.record_type))
+            expense_total = 0
+        else:
+            expense_total = expense_table.calculate_total()
+            print('Info: record {ID}: total expenditures was calculated from the expense table to be {VAL}'
+                  .format(ID=self.record_id, VAL=expense_total))
+
+        deposit_total = account_total - expense_total
+
+        self.deposit = deposit_total
+        return deposit_total
+
+
+class TAuditRecord(DatabaseRecord):
+    """
+    Class to manage the layout of an audit record.
+    """
+
+    def __init__(self, record_entry, record_data):
+        """
+        remainder (float): remaining total after subtracting component record totals.
+        """
+        super().__init__(record_entry, record_data)
+        for element in ['Remainder', 'Notes', 'NotesButton']:
+            self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=element))
+
+        try:
+            remainder = float(record_data['Remainder'])
+        except (KeyError, TypeError):
+            self.remainder = 0.00
+        else:
+            if np.isnan(remainder):
+                self.remainder = 0.00
+            else:
+                self.remainder = remainder
+        print('remainder before is {} and after is'.format(record_data['Remainder']), self.remainder)
+
+        try:
+            self.note = record_data['Notes']
+        except KeyError:
+            self.note = ''
+
+    def header_layout(self):
+        """
+        Generate the layout for the header section of the record layout.
+        """
+        record_layout = self.record_layout
+
+        layout_header = record_layout['Header']
+        header_elements = layout_header['Elements']
+
+        # Element parameters
+        bg_col = mod_const.ACTION_COL
+        text_col = mod_const.TEXT_COL
+
+        main_font = mod_const.MAIN_FONT
+        bold_font = mod_const.BOLD_LARGE_FONT
+
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+
+        # Header components
+        id_title = header_elements.get('RecordID', 'Record ID')
+        date_title = header_elements.get('RecordDate', 'Record Date')
+        notes_title = header_elements.get('Notes', 'Notes')
+
+        if isinstance(self.record_date, datetime.datetime):
+            record_date = settings.format_display_date(self.record_date)
+        else:
+            record_date = self.record_date
+
+        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
+        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                              font=main_font, background_color=bg_col, tooltip=id_tooltip),
+                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(record_date, key=self.key_lookup('RecordDate'), pad=((0, pad_h), 0),
+                              auto_size_text=True, font=main_font, background_color=bg_col),
+                      sg.Button('', key=self.key_lookup('NotesButton'), image_data=mod_const.TAKE_NOTE_ICON,
+                                button_color=(text_col, bg_col), border_width=0, tooltip=notes_title),
+                      sg.Text(self.note, key=self.key_lookup('Notes'), size=(1, 1), visible=False)]
+                     ]
+        try:
+            remainder_title = header_elements.get('Remainder', 'Remainder')
+        except KeyError:
+            print('Warning: the parameter "Remainder" was not included in the list of configured data elements')
+            remainder_title = 'Remainder'
+        remainder_layout = [[sg.Text('{}:'.format(remainder_title), pad=((0, pad_el), 0), background_color=bg_col,
+                                     font=bold_font),
+                             sg.Text('{:,.2f}'.format(self.remainder), key=self.key_lookup('Remainder'), size=(14, 1),
+                                     font=main_font, background_color=bg_col, border_width=1, relief="sunken",
+                                     tooltip='Import amount: {}'.format('{:,.2f}'.format(self.remainder)))]]
+
+        # Header layout
+        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
+                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                          background_color=bg_col, justification='c', expand_x=True),
+                   sg.Col(remainder_layout, background_color=bg_col, justification='r')]]
+
+        return layout
+
+    def table_values(self):
+        """
+        Format parameter values as a table row.
+        """
+        parameters = self.parameters
+
+        columns = ['RecordID', 'RecordDate', 'Approved', 'MarkedForDeletion', 'Remainder', 'Notes']
+        values = [self.record_id, self.record_date, self.approved, self.marked_for_deletion, self.remainder, self.note]
+
+        # Add parameter values
+        for param in parameters:
+            param_type = param.etype
+            if param_type == 'table':
+                col_summs = param.summarize_table()
+                columns += col_summs.index.values.tolist()
+                values += col_summs.values.tolist()
+            else:
+                columns.append(param.name)
+                values.append(param.value)
+
+        return pd.Series(values, index=columns)
+
+    def run_event(self, window, event, values, user):
+        """
+        Perform a record action.
+        """
+        default_col = mod_const.ACTION_COL
+        greater_col = mod_const.PASS_COL
+        lesser_col = mod_const.FAIL_COL
+
+        save_key = self.key_lookup('Save')
+        delete_key = self.key_lookup('Delete')
+        approved_key = self.key_lookup('Approved')
+        marked_key = self.key_lookup('MarkedForDeletion')
+        notes_key = self.key_lookup('NotesButton')
+
+        param_elems = [i for param in self.parameters for i in param.elements]
+        component_elems = [i for component in self.components for i in component.elements]
+        reference_elems = [i for reference in self.references for i in reference.elements]
+
+        if event == self.key_lookup('ReferencesButton'):
+            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='references')
+        elif event == self.key_lookup('ComponentsButton'):
+            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='components')
+        elif event == notes_key:
+            record_layout = self.record_layout
+            layout_header = record_layout['Header']
+            header_elements = layout_header['Elements']
+
+            notes_title = header_elements.get('Notes', 'Notes')
+            id_title = header_elements.get('RecordID', 'Record ID')
+
+            note_text = mod_win2.notes_window(self.record_id, self.note, id_title=id_title, title=notes_title).strip()
+            self.note = note_text
+
+            # Change edit note button to be highlighted if note field not empty
+            if note_text:
+                window[event].update(image_data=mod_const.EDIT_NOTE_ICON)
+            else:
+                window[event].update(image_data=mod_const.TAKE_NOTE_ICON)
+        elif event in param_elems:  # parameter event
+            try:
+                param = self.fetch_element(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = param.run_event(window, event, values, user)
+
+            # Update the remainder element, in case a component was added or deleted
+            remainder = self.update_remainder()
+            if remainder > 0:
+                print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
+                      .format(NAME=self.name, ID=self.record_id, AMOUNT=remainder))
+                bg_color = greater_col
+            elif remainder < 0:
+                print('Info: {NAME}, record {ID}: account records are over-allocated by {AMOUNT}'
+                      .format(NAME=self.name, ID=self.record_id, AMOUNT=abs(remainder)))
+                bg_color = lesser_col
+            else:
+                bg_color = default_col
+
+            window[self.key_lookup('Remainder')].update(value='{:,.2f}'.format(remainder), background_color=bg_color)
+        elif event in component_elems:  # component table event
+            try:
+                component_table = self.fetch_component(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find component associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = component_table.run_event(window, event, values, user)
+
+            # Update the remainder element, in case a component was added or deleted
+            remainder = self.update_remainder()
+            if remainder > 0:
+                print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
+                      .format(NAME=self.name, ID=self.record_id, AMOUNT=remainder))
+                bg_color = greater_col
+            elif remainder < 0:
+                print('Info: {NAME}, record {ID}: account records are over-allocated by {AMOUNT}'
+                      .format(NAME=self.name, ID=self.record_id, AMOUNT=abs(remainder)))
+                bg_color = lesser_col
+            else:
+                bg_color = default_col
+
+            window[self.key_lookup('Remainder')].update(value='{:,.2f}'.format(remainder), background_color=bg_color)
+
+        elif event in reference_elems:
+            try:
+                refbox = self.fetch_reference(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = refbox.run_event(window, event, values, user)
+        elif event == approved_key:
+            self.approved = values[approved_key]
+            print('Info: record {ID}: setting approved to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.approved))
+        elif event == marked_key:
+            self.marked_for_deletion = values[marked_key]
+            print('Info: record {ID}: setting marked for deletion to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
+        elif event == save_key:
+            # Update record parameters in the record database table
+            # Remove any deleted references from the record reference table
+            for refbox in self.references:
+                refkey = refbox.key_lookup('Element')
+                ref_removed = window[refkey].metadata['deleted']
+                if ref_removed is True:
+                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
+                          .format(ID=self.record_id, REF=refbox.record_id))
+            # Remove any deleted components from the record reference table
+
+            return False
+        elif event == delete_key:
+            # Remove the record from the record table
+            # Remove any entry in the record reference table referencing the record
+            return False
+
+        return True
+
+    def update_remainder(self):
+        """
+        Update the remainder amount element and remainder attribute based on component table totals and totals parameter.
+        """
+        # Update the remainder element, in case a component was added or deleted
+        totals_table = self.fetch_element('Totals')
+        totals_sum = totals_table.calculate_total()
+
+        try:
+            account_table = self.fetch_component('account')
+        except KeyError:
+            print('Configuration Error: missing required component records of type "account"')
+            account_total = 0
+        else:
+            account_total = account_table.calculate_total()
+
+        remainder = totals_sum - account_total
+
+        self.remainder = remainder
+        return remainder
 
 
 class AuditRecord:
@@ -27,7 +1205,7 @@ class AuditRecord:
 
         self.rule_name = rule_name
         self.name = name
-        self.element_key = lo.as_key('{RULE} Summary {NAME}'.format(RULE=rule_name, NAME=name))
+        self.element_key = mod_lo.as_key('{RULE} Summary {NAME}'.format(RULE=rule_name, NAME=name))
         self.elements = ['DocNo', 'Totals', 'Table', 'Add', 'Delete', 'Total', 'Remainder', 'TabHeight', 'Note']
         self.type = None
 
@@ -39,13 +1217,13 @@ class AuditRecord:
         try:
             ids = sdict['IDs']
         except KeyError:
-            win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "IDs"'
-                             .format(RULE=self.rule_name, NAME=self.name))
+            mod_win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "IDs"'
+                                 .format(RULE=self.rule_name, NAME=self.name))
             sys.exit(1)
 
         if len(ids) < 1:
-            win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "IDs" must include at least one '
-                             'primary ID field'.format(RULE=self.rule_name, NAME=self.name))
+            mod_win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "IDs" must include at least one '
+                                 'primary ID field'.format(RULE=self.rule_name, NAME=self.name))
             sys.exit(1)
 
         has_primary = False
@@ -55,18 +1233,21 @@ class AuditRecord:
             if 'Title' not in id_param:
                 id_param['Title'] = id_field
             if 'Format' not in id_param:
-                win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "Format" is a required field for '
-                                 'IDs entry "{ID}"'.format(RULE=self.rule_name, NAME=self.name, ID=id_field))
+                mod_win2.popup_error(
+                    'Configuration Error: rule {RULE}, summary {NAME}: "Format" is a required field for '
+                    'IDs entry "{ID}"'.format(RULE=self.rule_name, NAME=self.name, ID=id_field))
                 sys.exit(1)
             else:
                 id_param['Format'] = re.findall(r'\{(.*?)\}', id_param['Format'])
             if 'DatabaseTable' not in id_param:
-                win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "DatabaseTable" is a required '
-                                 'field for IDs entry "{ID}"'.format(RULE=self.rule_name, NAME=self.name, ID=id_field))
+                mod_win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "DatabaseTable" is a required '
+                                     'field for IDs entry "{ID}"'.format(RULE=self.rule_name, NAME=self.name,
+                                                                         ID=id_field))
                 sys.exit(1)
             if 'DatabaseField' not in id_param:
-                win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "DatabaseField" is a required '
-                                 'field for IDs entry "{ID}"'.format(RULE=self.rule_name, NAME=self.name, ID=id_field))
+                mod_win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "DatabaseField" is a required '
+                                     'field for IDs entry "{ID}"'.format(RULE=self.rule_name, NAME=self.name,
+                                                                         ID=id_field))
                 sys.exit(1)
             if 'IsUnique' not in id_param:
                 id_param['IsUnique'] = False
@@ -74,8 +1255,9 @@ class AuditRecord:
                 try:
                     is_unique = bool(int(id_param['IsUnique']))
                 except ValueError:
-                    win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "IsUnique" must be either 0 '
-                                     '(False) or 1 (True)'.format(RULE=self.rule_name, NAME=self.name))
+                    mod_win2.popup_error(
+                        'Configuration Error: rule {RULE}, summary {NAME}: "IsUnique" must be either 0 '
+                        '(False) or 1 (True)'.format(RULE=self.rule_name, NAME=self.name))
                     sys.exit(1)
                 else:
                     id_param['IsUnique'] = is_unique
@@ -85,23 +1267,24 @@ class AuditRecord:
                 try:
                     is_primary = bool(int(id_param['IsPrimary']))
                 except ValueError:
-                    win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "IsPrimary" must be either 0 '
-                                     '(False) or 1 (True)'.format(RULE=self.rule_name, NAME=self.name))
+                    mod_win2.popup_error(
+                        'Configuration Error: rule {RULE}, summary {NAME}: "IsPrimary" must be either 0 '
+                        '(False) or 1 (True)'.format(RULE=self.rule_name, NAME=self.name))
                     sys.exit(1)
                 else:
                     id_param['IsPrimary'] = is_primary
                     if is_primary is True:
                         if has_primary is True:
-                            win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: only one "IDs" '
-                                             'parameter can be set as the primary ID field'
-                                             .format(RULE=self.rule_name, NAME=self.name))
+                            mod_win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: only one "IDs" '
+                                                 'parameter can be set as the primary ID field'
+                                                 .format(RULE=self.rule_name, NAME=self.name))
                             sys.exit(1)
                         else:
                             has_primary = True
 
         if has_primary is False:
-            win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "IDs" must include at least one '
-                             'primary ID field'.format(RULE=self.rule_name, NAME=self.name))
+            mod_win2.popup_error('Configuration Error: rule {RULE}, summary {NAME}: "IDs" must include at least one '
+                                 'primary ID field'.format(RULE=self.rule_name, NAME=self.name))
 
         self.ids = ids
 
@@ -120,7 +1303,7 @@ class AuditRecord:
         except KeyError:
             msg = 'Configuration Error: rule {RULE}, summary {NAME}: missing required field "TableColumns".' \
                 .format(NAME=name, RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         self.db_columns = all_columns
 
@@ -129,25 +1312,26 @@ class AuditRecord:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Records".') \
                 .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "{FIELD}" '
                 'in the "Records" parameter.')
         if 'TableColumns' not in records:
-            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
+            mod_win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
             sys.exit(1)
         if 'SumColumn' not in records:
-            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='SumColumn'))
+            mod_win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='SumColumn'))
             sys.exit(1)
         else:
             if records['SumColumn'] not in records['TableColumns']:
-                win2.popup_error('Configuration Error: rule {RULE}, name {NAME}: SumColumn {SUM} not in list of table '
-                                 'columns'.format(RULE=rule_name, NAME=name, SUM=records['SumColumn']))
+                mod_win2.popup_error(
+                    'Configuration Error: rule {RULE}, name {NAME}: SumColumn {SUM} not in list of table '
+                    'columns'.format(RULE=rule_name, NAME=name, SUM=records['SumColumn']))
                 sys.exit(1)
         if 'DisplayHeader' not in records:
             records['DisplayHeader'] = ''
         if 'DisplayColumns' not in records:
-            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
+            mod_win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
             sys.exit(1)
         if 'MappingColumns' not in records:
             records['MappingColumns'] = {}
@@ -165,18 +1349,18 @@ class AuditRecord:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Totals".') \
                 .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         msg = _('Configuration Error: rule {RULE}, summary {NAME}: missing required field "{FIELD}" '
                 'in the "Totals" parameter.')
         if 'TableColumns' not in totals:
-            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
+            mod_win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='TableColumns'))
             sys.exit(1)
         if 'DisplayHeader' not in totals:
             totals['DisplayHeader'] = ''
         if 'DisplayColumns' not in totals:
-            win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
+            mod_win2.popup_error(msg.format(RULE=rule_name, NAME=name, FEILD='DisplayColumns'))
             sys.exit(1)
         if 'MappingColumns' not in totals:
             totals['MappingColumns'] = {}
@@ -218,18 +1402,18 @@ class AuditRecord:
             if 'Statement' not in param_entry:
                 msg = 'Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Statement" for ' \
                       'ImportParameters entry {ENTRY}'.format(RULE=rule_name, NAME=name, ENTRY=import_param)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
             if 'Parameters' not in param_entry:
                 msg = 'Configuration Error: rule {RULE}, summary {NAME}: missing required parameter "Parameters" for ' \
                       'ImportParameters entry {ENTRY}'.format(RULE=rule_name, NAME=name, ENTRY=import_param)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
 
         self.import_parameters = import_parameters
 
         # Dynamic attributes
-        header = [dm.colname_from_query(i) for i in all_columns]
+        header = [mod_dm.colname_from_query(i) for i in all_columns]
         self.df = self.import_df = self.removed_df = pd.DataFrame(columns=header)
 
         totals_header = list(set(list(totals['MappingColumns'].keys()) + list(totals['EditColumns'].keys())))
@@ -296,7 +1480,7 @@ class AuditRecord:
         Lookup element key for input control element.
         """
         if element in self.elements:
-            key = lo.as_key('{RULE} Summary {NAME} {ELEM}'.format(RULE=self.rule_name, NAME=self.name, ELEM=element))
+            key = mod_lo.as_key('{RULE} Summary {NAME} {ELEM}'.format(RULE=self.rule_name, NAME=self.name, ELEM=element))
         else:
             print('Warning: rule {RULE}, summary {NAME}: unable to find GUI element {ELEM} in list of elements'
                   .format(RULE=self.rule_name, NAME=self.name, ELEM=element))
@@ -346,21 +1530,21 @@ class AuditRecord:
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         display_columns = self.records['DisplayColumns']
         totals_columns = self.totals['DisplayColumns']
 
         # Window and element size parameters
-        bg_col = const.ACTION_COL
-        text_col = const.TEXT_COL
+        bg_col = mod_const.ACTION_COL
+        text_col = mod_const.TEXT_COL
 
-        font = const.MID_FONT
-        font_b = const.BOLD_MID_FONT
+        font = mod_const.MID_FONT
+        font_b = mod_const.BOLD_MID_FONT
 
-        pad_frame = const.FRAME_PAD
-        pad_el = const.ELEM_PAD
-        pad_v = const.VERT_PAD
+        pad_frame = mod_const.FRAME_PAD
+        pad_el = mod_const.ELEM_PAD
+        pad_v = mod_const.VERT_PAD
 
         tbl_pad = (0, 0)
 
@@ -374,26 +1558,15 @@ class AuditRecord:
 
         no_key = self.key_lookup('DocNo')
         note_key = self.key_lookup('Note')
-        #        header_layout = [
-        #            [sg.Frame('', [
-        #                [sg.Text('{}:'.format(tab_title), pad=((pad_el * 2, pad_el), pad_el * 2), font=font_b,
-        #                         background_color=bg_col),
-        #                 sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, pad_el * 2), pad_el * 2), justification='l',
-        #                         font=font, background_color=bg_col, auto_size_text=True, border_width=0)]],
-        #                      pad=(0, 0), background_color=header_col, border_width=1, relief='ridge'),
-        #             sg.Col([[sg.Button('', key=note_key, pad=(0, 0), image_data=const.NOTES_ICON, visible=True,
-        #                                button_color=(text_col, bg_col), border_width=0, tooltip=self.notes['Title'])]],
-        #                    pad=(pad_v, 0), background_color=bg_col, vertical_alignment='c')]]
-
         header_layout = [
             [sg.Col([
                 [sg.Text('{}:'.format(tab_title), pad=((0, pad_el), 0), font=font_b,
                          background_color=bg_col),
                  sg.Text('', key=no_key, size=(20, 1), pad=((pad_el, 0), 0), justification='l',
                          font=font_b, background_color=bg_col, auto_size_text=True, border_width=0)],
-                [sg.HorizontalSeparator(pad=(0, (pad_el * 2, 0)), color=const.HEADER_COL)]],
+                [sg.HorizontalSeparator(pad=(0, (pad_el * 2, 0)), color=mod_const.HEADER_COL)]],
                 pad=(0, 0), background_color=bg_col, vertical_alignment='t'),
-                sg.Col([[sg.Button('', key=note_key, pad=(0, 0), image_data=const.NOTES_ICON, visible=True,
+                sg.Col([[sg.Button('', key=note_key, pad=(0, 0), image_data=mod_const.TAKE_NOTE_ICON, visible=True,
                                    button_color=(text_col, bg_col), border_width=0, tooltip=self.notes['Title'])]],
                        pad=(pad_v, 0), background_color=bg_col, vertical_alignment='t')]]
 
@@ -406,21 +1579,21 @@ class AuditRecord:
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         remain_key = self.key_lookup('Remainder')
-        data = dm.create_empty_table(nrow=5, ncol=len(records_header))
-        records_layout = [[lo.create_table_layout(data, records_header, tbl_key, bind=True, height=height, width=width,
-                                                  pad=tbl_pad, add_key=add_key, delete_key=delete_key,
-                                                  table_name=records_title)],
+        data = mod_dm.create_empty_table(nrow=5, ncol=len(records_header))
+        records_layout = [[mod_lo.create_table_layout(data, records_header, tbl_key, bind=True, height=height, width=width,
+                                                      pad=tbl_pad, add_key=add_key, delete_key=delete_key,
+                                                      table_name=records_title)],
                           [sg.Col([[sg.Text('Remainder:', pad=((0, pad_el), 0), font=font_b, background_color=bg_col),
                                     sg.Text('', key=remain_key, size=(14, 1), pad=((pad_el, 0), 0), font=font,
                                             background_color=bg_col, justification='r', relief='sunken')]],
                                   pad=(0, (pad_v, 0)), background_color=bg_col, justification='r')], ]
 
         totals_title = self.totals['DisplayHeader']
-        totals_data = dm.create_empty_table(nrow=1, ncol=len(totals_header))
+        totals_data = mod_dm.create_empty_table(nrow=1, ncol=len(totals_header))
         totals_key = self.key_lookup('Totals')
         total_key = self.key_lookup('Total')
-        totals_layout = [[lo.create_table_layout(totals_data, totals_header, totals_key, bind=True, height=height,
-                                                 width=width, nrow=1, pad=tbl_pad, table_name=totals_title)],
+        totals_layout = [[mod_lo.create_table_layout(totals_data, totals_header, totals_key, bind=True, height=height,
+                                                     width=width, nrow=1, pad=tbl_pad, table_name=totals_title)],
                          [sg.Col([[sg.Text('Total:', pad=((0, pad_el), 0), font=font_b, background_color=bg_col),
                                    sg.Text('', key=total_key, size=(14, 1), pad=((pad_el, 0), 0), font=font,
                                            background_color=bg_col, justification='r', relief='sunken')]],
@@ -446,7 +1619,7 @@ class AuditRecord:
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         tbl_key = self.key_lookup('Table')
         totals_key = self.key_lookup('Totals')
@@ -455,7 +1628,7 @@ class AuditRecord:
         # Reset table size
         # For every five-pixel increase in window size, increase tab size by one
         tab_pad = 120
-        win_diff = width - const.WIN_WIDTH
+        win_diff = width - mod_const.WIN_WIDTH
         tab_pad = int(tab_pad + (win_diff / 5))
 
         frame_width = width - tab_pad if tab_pad > 0 else width
@@ -472,7 +1645,7 @@ class AuditRecord:
         header = list(record_columns.keys())
 
         tbl_width = tab_width - 42
-        lengths = dm.calc_column_widths(header, width=tbl_width, pixels=True)
+        lengths = mod_dm.calc_column_widths(header, width=tbl_width, pixels=True)
         for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
             window[tbl_key].Widget.column(col_name, width=col_width)
@@ -482,7 +1655,7 @@ class AuditRecord:
 
         totals_columns = self.totals['DisplayColumns']
         totals_header = list(totals_columns.keys())
-        lengths = dm.calc_column_widths(totals_header, width=tbl_width, pixels=True)
+        lengths = mod_dm.calc_column_widths(totals_header, width=tbl_width, pixels=True)
         for col_index, col_name in enumerate(totals_header):
             col_width = lengths[col_index]
             window[totals_key].Widget.column(col_name, width=col_width)
@@ -493,34 +1666,29 @@ class AuditRecord:
         window.refresh()
 
         # Expand 1 row every 40 pixel increase in window size
-        height_diff = int((height - const.WIN_HEIGHT) / 40)
+        height_diff = int((height - mod_const.WIN_HEIGHT) / 40)
         nrows = 3 + height_diff if height_diff > -3 else 1
         window[totals_key].update(num_rows=1)
         window[tbl_key].update(num_rows=nrows)
 
-    def fetch_parameter(self, name, by_key: bool = False, by_type: bool = False):
+    def fetch_parameter(self, element, by_key: bool = False):
         """
+        Fetch a GUI parameter element by name or event key.
         """
-        if by_key and by_type:
-            print('Warning: rule {RULE}, summary {NAME}, parameter {PARAM}: the "by_key" and "by_type" arguments are '
-                  'mutually exclusive. Defaulting to "by_key".'.format(RULE=self.rule_name, NAME=self.name, PARAM=name))
-            by_type = False
-
-        if by_key:
-            names = [i.element_key for i in self.parameters]
-        elif by_type:
-            names = [i.type for i in self.parameters]
+        if by_key is True:
+            element_type = element.split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.parameters]
         else:
-            names = [i.name for i in self.parameters]
+            element_names = [i.name for i in self.parameters]
 
-        try:
-            index = names.index(name)
-        except IndexError:
-            param = None
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.parameters[index]
         else:
-            param = self.parameters[index]
+            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
+                           .format(ELEM=element, NAME=self.name))
 
-        return param
+        return parameter
 
     def update_id_components(self, id_param):
         """
@@ -767,11 +1935,11 @@ class AuditRecord:
         df.loc[:, edit_cols] = df.loc[:, edit_cols].ffill(axis=0)
 
         # Fill in other columns
-        df = dm.fill_na(df)
+        df = mod_dm.fill_na(df)
 
         # Display the add row window
         display_map = {display_columns[i]: i for i in display_columns}
-        df = win2.modify_record(df, new_index, edit_columns, header_map=display_map, win_size=win_size, edit=False)
+        df = mod_win2.modify_record(df, new_index, edit_columns, header_map=display_map, win_size=win_size, edit=False)
 
         # Remove IDs from list of table IDs if record creation cancelled
         if nrow + 1 != df.shape[0]:  # new record creation cancelled
@@ -802,32 +1970,19 @@ class AuditRecord:
 
         self.df = df
 
-    def edit_row(self, index, element_key, win_size: tuple = None):
+    def edit_row(self, index, win_size: tuple = None):
         """
         Edit row using modify record window.
         """
-        if element_key == self.key_lookup('Table'):
-            parameter = self.records
-            df = self.df.copy()
-            table = 'records'
-        elif element_key == self.key_lookup('Totals'):
-            parameter = self.totals
-            df = self.totals_df.copy()
-            table = 'totals'
-        else:
-            raise KeyError('element key {} does not correspond to either the Totals or Records tables'
-                           .format(element_key))
+        df = self.df.copy()
+        try:
+            row = df[index]
+        except IndexError:
+            mod_win2.popup_error('Warning: failed to edit record - no record found at table index {IND} to edit'
+                                 .format(IND=index))
+            return df
 
-        display_columns = parameter['DisplayColumns']
-        edit_columns = parameter['EditColumns']
-
-        display_map = {display_columns[i]: i for i in display_columns}
-        df = win2.modify_record(df, index, edit_columns, header_map=display_map, win_size=win_size, edit=True)
-
-        if table == 'records':
-            self.df = df
-        elif table == 'totals':
-            self.totals_df = df
+        df = mod_win2.modify_record(df, index, edit_columns, header_map=display_map, win_size=win_size, edit=True)
 
     def remove_row(self, index):
         """
@@ -895,7 +2050,7 @@ class AuditRecord:
         for col_name in display_columns:
             col_rule = display_columns[col_name]
 
-            col_to_add = dm.generate_column_from_rule(dataframe, col_rule)
+            col_to_add = mod_dm.generate_column_from_rule(dataframe, col_rule)
             dtype = col_to_add.dtype
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
@@ -941,7 +2096,7 @@ class AuditRecord:
         print('Info: rule {RULE}, summary {NAME}: searching for errors based on defined error rules {RULES}'
               .format(NAME=self.name, RULE=self.rule_name, RULES=error_rules))
 
-        results = dm.evaluate_rule_set(df, error_rules)
+        results = mod_dm.evaluate_rule_set(df, error_rules)
         for row, result in enumerate(results):
             if result is False:
                 print('Info: rule {RULE}, summary {NAME}: table row {ROW} failed one or more condition rule'
@@ -1028,7 +2183,7 @@ class AuditRecord:
             else:
                 for default_value in default_rules:
                     edit_rule = default_rules[default_value]
-                    results = dm.evaluate_rule_set(df, {default_value: edit_rule}, as_list=True)
+                    results = mod_dm.evaluate_rule_set(df, {default_value: edit_rule}, as_list=True)
                     for row, result in enumerate(results):
                         if result is True:
                             df.at[row, edit_column] = default_value
@@ -1062,7 +2217,7 @@ class AuditRecord:
             else:
                 for default_value in default_rules:
                     static_rule = default_rules[default_value]
-                    results = dm.evaluate_rule_set(df, {default_value: static_rule}, as_list=True)
+                    results = mod_dm.evaluate_rule_set(df, {default_value: static_rule}, as_list=True)
                     for row_index, result in enumerate(results):
                         if result is True and pd.isna(df.at[row_index, static_column]):
                             df.at[row_index, static_column] = default_value
@@ -1131,7 +2286,7 @@ class AuditRecordAdd(AuditRecord):
 
             tally_rule = self.totals['TallyRule']
             if tally_rule:
-                totals_sum = dm.evaluate_rule(self.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
+                totals_sum = mod_dm.evaluate_rule(self.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
             else:
                 totals_sum = self.totals_df.iloc[0].sum()
 
@@ -1191,7 +2346,7 @@ class AuditRecordSubset(AuditRecord):
             print('Info: rule {RULE}, summary {NAME}: subsetting reference table {REF}'
                   .format(RULE=self.rule_name, NAME=self.name, REF=reference))
             try:
-                subset_df = dm.subset_dataframe(tab_df, subset_rule)
+                subset_df = mod_dm.subset_dataframe(tab_df, subset_rule)
             except Exception as e:
                 print('Warning: rule {RULE}, summary {NAME}: subsetting table {REF} failed due to {ERR}'
                       .format(RULE=self.rule_name, NAME=self.name, REF=reference, ERR=e))
@@ -1211,7 +2366,7 @@ class AuditRecordSubset(AuditRecord):
                     continue
 
                 mapping_rule = mapping_columns[mapping_column]
-                col_to_add = dm.generate_column_from_rule(subset_df, mapping_rule)
+                col_to_add = mod_dm.generate_column_from_rule(subset_df, mapping_rule)
                 append_df[mapping_column] = col_to_add
 
             # Find rows from the dataframe to append that are already found in the existing dataset
@@ -1230,7 +2385,7 @@ class AuditRecordSubset(AuditRecord):
             append_df = append_df[~append_df[id_column].isin(rows_to_drop)]
 
             # Append data to the records dataframe
-            df = dm.append_to_table(df, append_df)
+            df = mod_dm.append_to_table(df, append_df)
 
         self.df = df
         if df.empty:  # no records generated from database or tab summaries
@@ -1265,578 +2420,91 @@ class AuditRecordSubset(AuditRecord):
         self.df = df
 
 
-class AccountRecord:
+def import_records(record_entry, user):
     """
-    Class to store information about an account record, which are components of an audit record.
+    Load existing records from the program database to select from.
     """
+    # Import all records of relevant type from the database
+    import_df = record_entry.import_records(user)
 
-    def __init__(self, group_name, record_name, rdict):
-        self.rule_name = group_name
-        self.name = record_name
-        self.element_key = lo.as_key('{RULE} Account {NAME}'.format(RULE=group_name, NAME=record_name))
-        self.elements = ['Notes', 'Cancel', 'Delete', 'Save']
-        self.required_elements = ['ID', 'Date', 'Cancel', 'Note', 'Mark']
+    # Display the import record window
+    import_table = mod_elem.TableElement(record_entry.name, record_entry.import_table)
+    import_table.df = import_table.append(import_df)
 
-        # Record type description
-        try:
-            self.title = rdict['Title']
-        except KeyError:
-            self.title = record_name
+    record_id = mod_win2.data_import_window(user, import_table, create_new=False)
 
-        # User permissions when accessing record
-        try:
-            permissions = rdict['Permissions']
-        except KeyError:
-            self.is_viewable = False
-            self.is_editable = False
-            self.is_deletable = False
-            self.is_markable = False
-        else:
-            if 'View' in permissions:
-                try:
-                    self.is_viewable = bool(int(permissions['View']))
-                except ValueError:
-                    print('Configuration Warning: {RULE}, {NAME}: parameter "View" must be either 0 (False) or 1 (True)'
-                          .format(RULE=group_name, NAME=record_name))
-                    self.is_viewable = False
-            else:
-                self.is_viewable = False
-            if 'Edit' in permissions:
-                try:
-                    self.is_editable = bool(int(permissions['Edit']))
-                except ValueError:
-                    print('Configuration Warning: {RULE}, {NAME}: parameter "Edit" must be either 0 (False) or 1 (True)'
-                          .format(RULE=group_name, NAME=record_name))
-                    self.is_editable = False
-            else:
-                self.is_editable = False
-            if 'Delete' in permissions:
-                try:
-                    self.is_deletable = bool(int(permissions['Delete']))
-                except ValueError:
-                    print('Configuration Warning: {RULE}, {NAME}: parameter "Delete" must be either 0 (False) or 1 '
-                          '(True)'.format(RULE=group_name, NAME=record_name))
-                    self.is_deletable = False
-            else:
-                self.is_deletable = False
-            if 'MarkForDeletion' in permissions:
-                try:
-                    self.is_markable = bool(int(permissions['MarkForDeletion']))
-                except ValueError:
-                    print('Configuration Warning: {RULE}, {NAME}: parameter "MarkForDeletion" must be either 0 (False) '
-                          'or 1 (True)'.format(RULE=group_name, NAME=record_name))
-                    self.is_markable = False
-            else:
-                self.is_markable = False
-
-        # Record primary key and foreign keys
-        try:
-            ids = rdict['IDs']
-        except KeyError:
-            win2.popup_error('Configuration Error: {RULE}, {NAME}: missing required parameter "IDs"'
-                             .format(RULE=group_name, NAME=record_name))
-            sys.exit(1)
-
-        if len(ids) < 1:
-            win2.popup_error('Configuration Error: {RULE}, {NAME}: "IDs" must include at least one '
-                             'primary ID field'.format(RULE=group_name, NAME=record_name))
-            sys.exit(1)
-
-        has_primary = False
-        for id_field in ids:
-            id_param = ids[id_field]
-
-            if 'Title' not in id_param:
-                id_param['Title'] = id_field
-            if 'DatabaseTable' not in id_param:
-                win2.popup_error('Configuration Error: {RULE}, {NAME}: "DatabaseTable" is a required '
-                                 'field for IDs entry "{ID}"'.format(RULE=group_name, NAME=record_name, ID=id_field))
-                sys.exit(1)
-            if 'DatabaseField' not in id_param:
-                win2.popup_error('Configuration Error: {RULE}, {NAME}: "DatabaseField" is a required '
-                                 'field for IDs entry "{ID}"'.format(RULE=group_name, NAME=record_name, ID=id_field))
-                sys.exit(1)
-            if 'IsPrimary' not in id_param:
-                id_param['IsPrimary'] = False
-            else:
-                try:
-                    is_primary = bool(int(id_param['IsPrimary']))
-                except ValueError:
-                    win2.popup_error('Configuration Error: {RULE}, {NAME}: "IsPrimary" must be either 0 '
-                                     '(False) or 1 (True)'.format(RULE=group_name, NAME=record_name))
-                    sys.exit(1)
-                else:
-                    id_param['IsPrimary'] = is_primary
-                    if is_primary is True:
-                        if has_primary is True:
-                            win2.popup_error('Configuration Error: {RULE}, {NAME}: only one "IDs" '
-                                             'parameter can be set as the primary ID field'
-                                             .format(RULE=self.rule_name, NAME=self.name))
-                            sys.exit(1)
-                        else:
-                            has_primary = True
-
-        if has_primary is False:
-            win2.popup_error('Configuration Error: {RULE}, {NAME}: "IDs" must include at least one '
-                             'primary ID field'.format(RULE=group_name, NAME=record_name))
-
-        self.ids = ids
-
-        # Database export rules
-        try:
-            self.export_rules = rdict['ExportRules']
-        except KeyError:
-            self.export_rules = None
-
-        # Database import rules
-        try:
-            self.import_rules = rdict['ImportRules']
-        except KeyError:
-            self.import_rules = None
-
-        # SQL table columns
-        try:
-            all_columns = rdict['TableColumns']
-        except KeyError:
-            msg = 'Configuration Error: {RULE}, {NAME}: missing required field "TableColumns".' \
-                .format(RULE=group_name, NAME=record_name)
-            win2.popup_error(msg)
-            sys.exit(1)
-        self.columns = all_columns
-
-        # Display table column mappings
-        try:
-            self.display_columns = rdict['DisplayColumns']
-        except KeyError:
-            self.display_columns = None
-
-        # All rule parameters
-        self.parameters = []
-        try:
-            params = rdict['Parameters']
-        except KeyError:
-            msg = 'Configuration Error: {RULE}, {NAME}: missing required field "Parameters".' \
-                .format(RULE=group_name, NAME=record_name)
-            win2.popup_error(msg)
-            sys.exit(1)
-
-        param_names = []
-        for param in params:
-            cdict = params[param]
-            self.elements.append(param)
-            param_names.append(param)
-
-            try:
-                param_layout = cdict['ElementType']
-            except KeyError:
-                msg = 'Configuration Error: {RULE}, {NAME}: Parameter {PARAM} is missing the required field ' \
-                      '"{FIELD}"'.format(RULE=group_name, NAME=record_name, PARAM=param, FIELD='ElementType')
-                win2.popup_error(msg)
-                sys.exit(1)
-
-            if param_layout == 'dropdown':
-                self.parameters.append(mod_param.RuleParameterCombo(record_name, param, cdict))
-            elif param_layout == 'input':
-                self.parameters.append(mod_param.RuleParameterInput(record_name, param, cdict))
-            elif param_layout == 'date':
-                self.parameters.append(mod_param.RuleParameterDate(record_name, param, cdict))
-            elif param_layout == 'checkbox':
-                self.parameters.append(mod_param.RuleParameterCheckbox(record_name, param, cdict))
-            else:
-                msg = 'Configuration Error: {RULE}, {NAME}: Parameter {PARAM} has unknown element type {TYPE}' \
-                    .format(RULE=group_name, NAME=record_name, PARAM=param, TYPE=param_layout)
-                win2.popup_error(msg)
-                sys.exit(1)
-
-        # Required record parameters
-        try:
-            required_params = rdict['RequiredParameters']
-        except KeyError:
-            msg = 'Configuration Error: {RULE}, {NAME}: missing required field "RequiredParameters".' \
-                .format(RULE=group_name, NAME=record_name)
-            win2.popup_error(msg)
-            sys.exit(1)
-
-        for required_param in required_params:
-            param_name = required_params[required_param]
-            if param_name not in param_names:
-                msg = 'Configuration Warning: {RULE}, {NAME}: required parameter {PARAM} does not have a ' \
-                      'corresponding entry for {COL} in the Parameters field.' \
-                    .format(RULE=group_name, NAME=record_name, PARAM=required_param, COL=param_name)
-                win2.popup_error(msg)
-                sys.exit(1)
-
-        for required_param in self.required_elements:
-            if required_param not in required_params:
-                msg = 'Configuration Warning: {RULE}, {NAME}: missing required parameter {PARAM}.' \
-                    .format(RULE=group_name, NAME=record_name, PARAM=required_param)
-                win2.popup_error(msg)
-                sys.exit(1)
-
-        self.required_parameters = required_params
-
-        # Optional record parameters
-        try:
-            self.optional_parameters = rdict['OptionalParameters']
-        except KeyError:
-            self.optional_parameters = {}
-
-        # Parameters used to filter existing records
-        try:
-            self.filter_parameters = rdict['FilterParameters']
-        except KeyError:
-            self.filter_parameters = {}
-
-        # Parameter value aliases
-        try:
-            self.aliases = rdict['Aliases']
-        except KeyError:
-            self.aliases = {}
-
-        # SQL filter rules
-        try:
-            import_parameters = rdict['ImportParameters']
-        except KeyError:
-            import_parameters = {}
-        for import_param in import_parameters:
-            param_entry = import_parameters[import_param]
-            if 'Statement' not in param_entry:
-                msg = 'Configuration Error: {RULE}, {NAME}: missing required parameter "Statement" for ' \
-                      'ImportParameters entry {ENTRY}'.format(RULE=group_name, NAME=record_name, ENTRY=import_param)
-                win2.popup_error(msg)
-                sys.exit(1)
-            if 'Parameters' not in param_entry:
-                msg = 'Configuration Error: {RULE}, {NAME}: missing required parameter "Parameters" for ' \
-                      'ImportParameters entry {ENTRY}'.format(RULE=group_name, NAME=record_name, ENTRY=import_param)
-                win2.popup_error(msg)
-                sys.exit(1)
-
-        self.import_parameters = import_parameters
-
-        self.df = pd.DataFrame()
-
-    def key_lookup(self, element):
-        """
-        Lookup element key for input control element.
-        """
-        if element in self.elements:
-            key = lo.as_key('{RULE} {NAME} {ELEM}'.format(RULE=self.rule_name, NAME=self.name, ELEM=element))
-        else:
-            key = None
-
-        return key
-
-    def layout(self, win_size: tuple = None, editable: bool = False, markable: bool = False, deletable: bool = False):
-        """
-        Generate a GUI layout for the account record.
-        """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
-
-        # Rule parameters
-        params = self.parameters
-
-        # Element parameters
-        header_col = const.HEADER_COL
-        frame_col = const.FRAME_COL
-        bg_col = const.ACTION_COL
-        text_col = const.TEXT_COL
-
-        font_h = const.HEADER_FONT
-        font_main = const.MAIN_FONT
-        bold_font = const.BOLD_FONT
-        bold_l_font = const.BOLD_MID_FONT
-
-        pad_el = const.ELEM_PAD
-        pad_v = const.VERT_PAD
-        pad_frame = const.FRAME_PAD
-
-        # Element sizes
-        layout_width = width - 120 if width >= 120 else width
-        layout_height = height * 0.8
-        border_width = 1
-
-        # Layout elements
-
-        # Window Title
-        title = self.title
-        title_layout = [[sg.Col([
-            [sg.Canvas(size=(layout_width - 40, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
-            [sg.Text(title, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
-            pad=(0, 0), justification='l', background_color=header_col, expand_x=True)]]
-
-        # Mark for deletion
-        mark_param = self.fetch_parameter(self.required_parameters['Mark'])
-        mark_layout = [mark_param.layout()]
-
-        # Record header
-        id_param = self.fetch_parameter(self.required_parameters['ID'])
-        date_param = self.fetch_parameter(self.required_parameters['Date'])
-        header_layout = [[sg.Col([[sg.Text('{}:'.format(id_param.description), pad=(0, (0, pad_el)),
-                                           font=bold_l_font, justification='r', background_color=bg_col),
-                                   sg.Text(id_param.value, pad=(0, 0), font=font_main, background_color=bg_col)]],
-                                 pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
-                          sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], background_color=bg_col, justification='c',
-                                 expand_x=True),
-                          sg.Col([[sg.Text('{}:'.format(date_param.description), pad=(0, (0, pad_el)),
-                                           font=bold_l_font, justification='r', background_color=bg_col),
-                                   sg.Text(date_param.value, pad=(0, 0), font=font_main, background_color=bg_col)]],
-                                 pad=(0, 0), background_color=bg_col, justification='r')],
-                         [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
-
-        # Parse optional parameters
-        text_lengths = []
-        for param in params:
-            if param.hidden is True or param.name not in self.optional_parameters:
-                continue
-            text_lengths.append(len(param.description))
-
-        try:
-            text_width = max(text_lengths)
-        except ValueError:
-            text_width = 14
-
-        right_elements = []
-        left_elements = []
-        center_elements = []
-        for param in params:
-            # Skip parameters not in list
-            if param.hidden is True or param.name not in self.optional_parameters:
-                continue
-
-            element_layout = param.layout(size=(14, 1), text_size=(text_width, 1), text_justification='l',
-                                          padding=(0, 0), bg_col=frame_col)
-
-            if param.justification == 'right':
-                right_elements.append(element_layout)
-            elif param.justification == 'center':
-                center_elements.append(element_layout)
-            else:
-                left_elements.append(element_layout)
-
-        if len(right_elements) < 1:
-            right_elements.append([])
-        if len(left_elements) < 1:
-            left_elements.append([])
-        if len(center_elements) < 1:
-            center_elements.append([])
-
-        # Details frame
-        if len(left_elements) > 6 or len(right_elements) > 6 or len(center_elements) > 6:
-            scroll = True
-        else:
-            scroll = False
-        details_layout = [[sg.Col([[sg.Canvas(size=(0, int(layout_height * 0.25)), background_color=frame_col)]],
-                                  background_color=frame_col),
-                           sg.Col([
-                               [sg.Canvas(size=(layout_width - 104, 0), visible=True, background_color=frame_col)],
-                               [sg.Col(left_elements, pad=(0, 0), justification='l', element_justification='l',
-                                       background_color=frame_col, vertical_alignment='t', expand_x=True),
-                                sg.Col(center_elements, pad=(0, 0), justification='c', element_justification='l',
-                                       vertical_alignment='t', background_color=frame_col, expand_x=True),
-                                sg.Col(right_elements, pad=(0, 0), justification='r', element_justification='l',
-                                       background_color=frame_col, vertical_alignment='t', expand_x=True)]],
-                               pad=(pad_v, pad_v), background_color=frame_col, vertical_alignment='t',
-                               scrollable=scroll, vertical_scroll_only=True, expand_y=True)]]
-
-        # Notes frame
-        note_param = self.fetch_parameter(self.required_parameters['Note'])
-
-        notes_key = note_param.element_key
-        note_layout = [
-            [sg.Canvas(size=(layout_width - 84, 0), visible=True, background_color=frame_col)],
-            [sg.Multiline(default_text=note_param.value, key=notes_key, size=(60, 10), pad=(pad_v, pad_v),
-                          background_color=bg_col, text_color=text_col, border_width=1, focus=False)]]
-
-        # Main panel layout
-        main_layout = [[sg.Col([[sg.Col(mark_layout, pad=(0, (0, pad_v)), justification='r',
-                                        background_color=bg_col, vertical_alignment='t')],
-                                [sg.Col(header_layout, pad=(pad_frame, (0, pad_frame)), vertical_alignment='t',
-                                        background_color=bg_col, expand_x=True)],
-                                [sg.Frame('Record Details', details_layout, pad=(pad_frame, pad_v),
-                                          border_width=border_width, background_color=frame_col, font=bold_l_font,
-                                          relief='solid')],
-                                [sg.Frame(note_param.description, note_layout, pad=(pad_frame, (pad_v, pad_frame)),
-                                          border_width=border_width, background_color=frame_col, font=bold_l_font,
-                                          relief='solid')]],
-                               vertical_alignment='t', background_color=bg_col, expand_x=True, expand_y=True)]]
-
-        # Flow control buttons
-        cancel_key = self.key_lookup('Cancel')
-        delete_key = self.key_lookup('Delete')
-        save_key = self.key_lookup('Save')
-        bttn_layout = [[sg.Col([[lo.B2('Cancel', key=cancel_key, pad=(0, 0), tooltip='Cancel record edit')]],
-                               justification='l', expand_x=True),
-                        sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                        sg.Col([[lo.B2('Delete', key=delete_key, pad=(pad_el, 0),
-                                       disabled=(not self.is_deletable), tooltip='Delete record'),
-                                 lo.B2('Save', key=save_key, pad=(pad_el, 0), disabled=(not self.is_editable),
-                                       tooltip='Save record')]],
-                               justification='r')]]
-
-        # Pane elements must be columns
-        layout = [[sg.Col([[sg.Frame('', [
-            [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col)],
-            [sg.Col(main_layout, pad=(0, 0), background_color=bg_col)]],
-                                     background_color=bg_col, title_color=text_col, relief='raised')]],
-                          pad=(pad_frame, (pad_frame, pad_v)), background_color=bg_col, justification='c')],
-                  [sg.Col(bttn_layout, pad=(pad_frame, (0, pad_frame)), expand_x=True)]]
-
-        return layout
-
-    def fetch_parameter(self, name, by_key: bool = False, by_type: bool = False):
-        """
-        Fetch a record parameter by either name, key, or parameter element type.
-        """
-        if by_key and by_type:
-            print('Warning: {RULE}, {NAME}, parameter {PARAM}: the "by_key" and "by_type" arguments are mutually '
-                  'exclusive. Defaulting to "by_key".'.format(RULE=self.rule_name, NAME=self.name, PARAM=name))
-            by_type = False
-
-        if by_key:
-            names = [i.element_key for i in self.parameters]
-        elif by_type:
-            names = [i.type for i in self.parameters]
-        else:
-            names = [i.name for i in self.parameters]
-
-        try:
-            index = names.index(name)
-        except IndexError:
-            param = None
-        else:
-            param = self.parameters[index]
-
-        return param
-
-    def save_to_database(self, user):
-        """
-        Save record updates to the database.
-        """
-        id_param = self.fetch_parameter(self.required_parameters['ID'])
-        record_id = id_param.value
-
-        saved = []
-        export_rules = self.export_rules
-        for table in export_rules:
-            table_entry = export_rules[table]
-            references = table_entry['TableColumns']
-
-            export_columns = [configuration.editor_code, configuration.edit_date]
-            export_values = [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
-            for param in self.parameters:
-                if param.editable is False:
-                    continue
-
-                if param.name in references:
-                    db_col = references[param.name]
-                    export_columns.append(db_col)
-                    export_values.append(param.value)
-
-            filters = ('{} = ?'.format(id_param.name), (record_id,))
-
-            saved.append(user.update(table, export_columns, export_values, filters))
-
-        return all(saved)
-
-    def delete_record(self, user):
-        """
-        Delete record from database.
-        """
-        pass
-        primary_entry = self.fetch_parameter(self.required_parameters['ID'])
-        primary_id = primary_entry.value
-
-        cancelled = []
-        # Update removed records
-        for id_field in self.ids:
-            id_entry = self.ids[id_field]
-            db_table = id_entry['DatabaseTable']
-            db_field = id_entry['DatabaseField'] if 'DatabaseField' in id_entry else id_field
-
-            record_id = self.df[id_field]
-
-            if id_entry['IsPrimary']:
-                # Remove primary record
-                filters = ('{} = ?'.format(id_field), (record_id,))
-            else:
-                # Check if one-to-one mapping with foreign keys. Ask if user would like to delete foreign records if not
-                dup_filter = ('{} = ?'.format(id_field), (record_id,))
-                duplicates_df = user.query(self.import_rules, columns=[id_field], filter_rules=dup_filter, prog_db=True)
-                if isinstance(duplicates_df, pd.DataFrame):
-                    ndups = duplicates_df.size[0]
-                elif isinstance(duplicates_df, pd.Series):
-                    ndups = duplicates_df.size
-                else:
-                    continue
-
-                if ndups > 1:  # don't ask to delete foreign record
-                    continue
-                else:  # only one foreign record found matching ID in selected record
-                    msg = 'Record {PKEY} is associated with ID {ID} from {TBL}, which is not associated with any ' \
-                          'other records. Would you like to delete {ID} from {TBL}'\
-                        .format(PKEY=primary_id, ID=record_id, TBL=db_table)
-                    to_delete = win2.popup_confirm(msg)
-                    if to_delete == 'Cancel':
-                        continue
-                    else:
-                        filters = ('{} = ?'.format(db_field), (record_id,))
-
-            # Remove record
-            success = user.update(db_table, ['IsCancel'], [1], filters)
-
-            if success is False:
-                win2.popup_error('Warning: Failed to remove {ID}. Changes will not be saved to the database table {TBL}'
-                                 .format(ID=record_id, TBL=db_table))
-            cancelled.append(success)
-
-        return all(cancelled)
-
-
-def load_account_record(user, record_group, record_name, record_entry):
-    """
-    Load an existing account record from the program database.
-    """
-    db_record = AccountRecord(record_group, record_name, record_entry)
-
-    tables = db_record.import_rules
-    display_mapping = db_record.display_columns
-
-    # Define the filter parameters
-    filters = []
-    import_parameters = []
-    for parameter in db_record.parameters:
-        if parameter.name in db_record.filter_parameters:
-            import_parameters.append(parameter)
-
-            if parameter.editable is False and parameter.value is not None:
-                filters.append(parameter.filter_statement())
-
-    # Add configured import filters
-    filters += dm.filter_statements(db_record.import_parameters)
-
-    # Query existing database entries
-    order_by = [db_record.required_parameters['ID'], db_record.required_parameters['Date']]
-    import_df = user.query(tables, columns=db_record.columns, filter_rules=filters, order=order_by, prog_db=True)
-    if import_df.empty:
-        win2.popup_notice('There are no existing records in the database to display')
+    if record_id is None:
+        print('Warning: there are no existing records in the database to display')
         return None
 
-    if not display_mapping:
-        display_mapping = {i: i for i in import_df.columns.values.tolist()}
-    trans_df = win2.data_import_window(import_df, import_parameters, header_map=display_mapping,
-                                       aliases=db_record.aliases, create_new=False)
+    try:
+        trans_df = import_df[import_df['RecordID'] == record_id]
+    except KeyError:
+        print('warning: missing required column "RecordID"')
+        return None
+    else:
+        if trans_df.empty:
+            print('Warning: could not find record {ID} in data table'.format(ID=record_id))
+            return None
+        else:
+            record_data = trans_df.iloc[0]
 
-    if trans_df is None:  # user selected to cancel importing/creating a bank transaction
+    # Set the record object based on the record type
+    record_type = record_entry.type
+    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
+        record_class = DatabaseRecord
+    elif record_type == 'bank_deposit':
+        record_class = DepositRecord
+    elif record_type == 'audit':
+        record_class = TAuditRecord
+    else:
+        print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    # Update parameter value attributes
-    values = {index: value for index, value in trans_df.items()}
-    for param in db_record.parameters:
-        param.set_value(values, by_key=False)
+    record = record_class(record_entry, record_data)
 
-    db_record.df = trans_df
+    return record
 
-    return db_record
+
+def load_record(record_entry, record_id):
+    """
+    Load an existing record from the program database.
+    """
+    # Extract the record data from the database
+    import_df = record_entry.load_record(record_id)
+
+    # Set the record object based on the record type
+    record_type = record_entry.type
+    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
+        record_class = DatabaseRecord
+    elif record_type == 'bank_deposit':
+        record_class = DepositRecord
+    elif record_type == 'audit':
+        record_class = TAuditRecord
+    else:
+        print('Warning: unknown record layout type provided {}'.format(record_type))
+        return None
+
+    record = record_class(record_entry, import_df)
+
+    return record
+
+
+def create_record(record_entry, record_data):
+    """
+    Create a new database record.
+    """
+    record_type = record_entry.type
+    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
+        record_class = DatabaseRecord
+    elif record_type == 'bank_deposit':
+        record_class = DepositRecord
+    elif record_type == 'audit':
+        record_class = TAuditRecord
+    else:
+        print('Warning: unknown record layout type provided {}'.format(record_type))
+        return None
+
+    record = record_class(record_entry, record_data, new_record=True)
+
+    return record

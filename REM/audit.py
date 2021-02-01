@@ -16,9 +16,9 @@ import pdfkit
 import REM.constants as const
 import REM.data_manipulation as dm
 import REM.layouts as lo
-import REM.parameters as param_els
+import REM.parameters as mod_param
 import REM.records as mod_records
-import REM.secondary as win2
+import REM.secondary as mod_win2
 from REM.config import configuration, current_tbl_pkeys, settings
 
 
@@ -45,7 +45,7 @@ class AuditRules:
             try:
                 audit_name = audit_param['name']
             except KeyError:
-                win2.popup_error('Error: audit_rules: the parameter "name" is a required field')
+                mod_win2.popup_error('Error: audit_rules: the parameter "name" is a required field')
                 sys.exit(1)
             else:
                 self.name = audit_name
@@ -58,7 +58,7 @@ class AuditRules:
             try:
                 audit_rules = audit_param['rules']
             except KeyError:
-                win2.popup_error('Error: audit_rules: the parameter "rules" is a required field')
+                mod_win2.popup_error('Error: audit_rules: the parameter "rules" is a required field')
                 sys.exit(1)
 
             for audit_rule in audit_rules:
@@ -69,7 +69,7 @@ class AuditRules:
         Return name of all audit rules defined in configuration file.
         """
         if title is True:
-            return [i.title for i in self.rules]
+            return [i.menu_title for i in self.rules]
         else:
             return [i.name for i in self.rules]
 
@@ -104,7 +104,7 @@ class AuditRule:
 
         name (str): audit rule name.
 
-        title (str): audit rule title.
+        menu_title (str): menu title for the audit rule.
 
         element_key (str): GUI element key.
 
@@ -117,64 +117,68 @@ class AuditRule:
         summary (SummaryPanel): SummaryPanel object.
     """
 
-    def __init__(self, name, adict):
+    def __init__(self, name, main_entry):
 
         self.name = name
         self.element_key = lo.as_key(name)
         self.elements = ['TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'Audit', 'FrameWidth', 'FrameHeight']
         try:
-            self.title = adict['Title']
+            self.menu_title = main_entry['MenuTitle']
         except KeyError:
-            self.title = name
+            self.menu_title = name
 
         try:
-            self.permissions = adict['Permissions']
+            self.permissions = main_entry['AccessPermissions']
         except KeyError:  # default permission for an audit is 'user'
             self.permissions = 'user'
 
         self.parameters = []
         try:
-            params = adict['RuleParameters']
+            params = main_entry['RuleParameters']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "RuleParameters" is required for rule {}'.format(name)
-            win2.popup_error(msg)
+            msg = 'Configuration Error: AuditRule {RULE}: missing required "Main" parameter "RuleParameters"' \
+                .format(RULE=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         for param in params:
-            cdict = params[param]
-            self.elements.append(param)
+            param_entry = params[param]
 
-            param_layout = cdict['ElementType']
+            param_layout = param_entry['ElementType']
             if param_layout == 'dropdown':
-                self.parameters.append(param_els.RuleParameterCombo(name, param, cdict))
+                param_class = mod_param.RuleParameterCombo
             elif param_layout == 'input':
-                self.parameters.append(param_els.RuleParameterInput(name, param, cdict))
+                param_class = mod_param.RuleParameterInput
             elif param_layout == 'date':
-                self.parameters.append(param_els.RuleParameterDate(name, param, cdict))
+                param_class = mod_param.RuleParameterDate
             elif param_layout == 'checkbox':
-                self.parameters.append(param_els.RuleParameterCheckbox(name, param, cdict))
+                param_class = mod_param.RuleParameterCheckbox
             else:
-                msg = 'Configuration Error: unknown rule parameter type {TYPE} in rule {NAME}' \
-                    .format(TYPE=param_layout, NAME=name)
-                win2.popup_error(msg)
+                msg = 'Configuration Error: AuditRule {NAME}: unknown type {TYPE} provided to RuleParameter {PARAM}' \
+                    .format(NAME=name, TYPE=param_layout, PARAM=param)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
+
+            param = param_class(param, param_entry)
+            self.parameters.append(param)
+            self.elements += param.elements
 
         self.tabs = []
         try:
-            tdict = adict['Tabs']
+            tdict = main_entry['Tabs']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "Tabs" is required for rule {}'.format(name)
-            win2.popup_error(msg)
+            msg = 'Configuration Error: AuditRule {NAME}: missing required parameter "Tabs"'.format(NAME=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         for tab_name in tdict:
             self.tabs.append(lo.TabItem(name, tab_name, tdict[tab_name]))
 
         try:
-            sdict = adict['Summary']
+            sdict = main_entry['Summary']
         except KeyError:
-            msg = 'Configuration Error: the rule parameter "Summary" is required for rule {}'.format(name)
-            win2.popup_error(msg)
+            msg = 'Configuration Error: AuditRule {NAME}: missing required parameter "Summary"'.format(NAME=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         self.summary = SummaryPanel(name, sdict)
@@ -206,7 +210,7 @@ class AuditRule:
         try:
             index = names.index(name)
         except ValueError:
-            print('Error: rule {RULE}: tab item {TAB} not in list of tab items'.format(RULE=self.name, TAB=name))
+            print('Error: AuditRule {RULE}: tab item {TAB} not in list of tab items'.format(RULE=self.name, TAB=name))
             tab_item = None
         else:
             tab_item = self.tabs[index]
@@ -218,12 +222,12 @@ class AuditRule:
         Fetch an audit rule parameter by either name, key, or parameter element type.
         """
         if by_key and by_type:
-            print('Warning: rule {NAME}, parameter {PARAM}: the "by_key" and "by_type" arguments are mutually '
+            print('Warning: AuditRule {NAME}, parameter {PARAM}: the "by_key" and "by_type" arguments are mutually '
                   'exclusive. Defaulting to "by_key".'.format(NAME=self.name, PARAM=name))
             by_type = False
 
         if by_key:
-            names = [i.element_key for i in self.parameters]
+            names = [i.key_lookup('Element') for i in self.parameters]
         elif by_type:
             names = [i.type for i in self.parameters]
         else:
@@ -272,7 +276,7 @@ class AuditRule:
 
         # Layout elements
         # Title
-        panel_title = self.title
+        panel_title = self.menu_title
         width_key = self.key_lookup('FrameWidth')
         title_layout = [[sg.Col([
             [sg.Canvas(key=width_key, size=(layout_width, 1), pad=(0, pad_v), visible=True,
@@ -466,11 +470,7 @@ class AuditRule:
         """
         # Reset Parameter attributes
         for param in self.parameters:
-            param.reset_parameter()
-
-            # Update parameter window element
-            param_key = param.element_key
-            window[param_key].update(value='')
+            param.reset_parameter(window)
 
     def reset_attributes(self):
         """
@@ -501,7 +501,7 @@ class AuditRule:
         status = False if value == 'enable' else True
 
         for parameter in self.parameters:
-            element_key = parameter.element_key
+            element_key = parameter.key_lookup('Element')
             print('Info: rule {RULE}, parameter {NAME}: updated element to "disabled={VAL}"'
                   .format(NAME=parameter.name, RULE=self.name, VAL=status))
 
@@ -533,7 +533,7 @@ class SummaryPanel:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}: Summary missing required field "Tabs".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         for tab in tabs:
@@ -543,7 +543,7 @@ class SummaryPanel:
             except KeyError:
                 msg = _('Configuration Error: rule {RULE}, summary {NAME}:  missing required field "Type".') \
                     .format(RULE=rule_name, NAME=tab)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
 
             if summ_type == 'Subset':
@@ -553,7 +553,7 @@ class SummaryPanel:
             else:
                 msg = _('Configuration Error: rule {RULE}, summary {NAME}:  unknown type "{TYPE}" provided to the '
                         'Types parameter.').format(RULE=rule_name, NAME=tab, TYPE=summ_type)
-                win2.popup_error(msg)
+                mod_win2.popup_error(msg)
                 sys.exit(1)
 
         try:
@@ -566,7 +566,7 @@ class SummaryPanel:
         except KeyError:
             msg = _('Configuration Error: rule {RULE}: Summary missing required field "Report".') \
                 .format(RULE=rule_name)
-            win2.popup_error(msg)
+            mod_win2.popup_error(msg)
             sys.exit(1)
         for tab_name in report:
             report_tab = report[tab_name]
@@ -578,7 +578,7 @@ class SummaryPanel:
                 if 'Title' not in section:
                     section['Title'] = section_name
                 if 'Columns' not in section:
-                    win2.popup_error(msg.format(RULE=rule_name, PARAM='Columns', NAME=section_name))
+                    mod_win2.popup_error(msg.format(RULE=rule_name, PARAM='Columns', NAME=section_name))
                     sys.exit(1)
 
         self.report = report
@@ -766,9 +766,9 @@ class SummaryPanel:
             note_key = tab.key_lookup('Note')
             note_text = tab.notes['Value']
             if note_text:
-                window[note_key].update(image_data=const.EDIT_ICON)
+                window[note_key].update(image_data=const.EDIT_NOTE_ICON)
             else:
-                window[note_key].update(image_data=const.NOTES_ICON)
+                window[note_key].update(image_data=const.TAKE_NOTE_ICON)
 
     def initialize_tables(self, rule):
         """
@@ -1060,14 +1060,14 @@ class SummaryPanel:
                     # Verify that user would like to update the database table
                     msg = 'Some of the audit results already exist in the {TAB} database tables. Would you like to ' \
                           'replace the existing rows of data?'.format(TAB=tab.name)
-                    update_table = win2.popup_confirm(msg)
+                    update_table = mod_win2.popup_confirm(msg)
 
                     if update_table == 'Cancel':
                         return False
                 else:
                     msg = 'Audit results already exist in the summary database. Only an admin can update audit ' \
                           'records'
-                    win2.popup_notice(msg)
+                    mod_win2.popup_notice(msg)
 
                     return False
 
@@ -1098,7 +1098,7 @@ class SummaryPanel:
                                 cancelled = user.update(db_table, ['IsCancel'], [1], filters)
 
                                 if cancelled is False:  # failed to update
-                                    win2.popup_error('Warning: Failed to remove {ID}. Changes will not be saved to the '
+                                    mod_win2.popup_error('Warning: Failed to remove {ID}. Changes will not be saved to the '
                                                      'database table {TBL}'.format(ID=current_id, TBL=db_table))
 
                             print('Info: current ID for ID field {}, row {} is {}'.format(id_field, row_index,
@@ -1289,7 +1289,7 @@ class SummaryPanel:
                 if db_id_field is None or import_id_field is None:
                     msg = 'Configuration Error: rule {RULE}, summary {NAME}: Export Database table {TBL} is missing' \
                           ' an entry in the IDs parameter'.format(RULE=tab.rule_name, NAME=tab.name, TBL=table)
-                    win2.popup_error(msg)
+                    mod_win2.popup_error(msg)
                     sys.exit(1)
 
                 # Update database with records
@@ -1347,7 +1347,7 @@ class SummaryPanel:
                     cancelled = user.update(table, ['IsCancel'], [1], filters)
 
                     if cancelled is False:
-                        win2.popup_error(
+                        mod_win2.popup_error(
                             'Warning: Failed to remove {ID}. Changes will not be saved to the database table {TBL}'
                                 .format(ID=record_id, TBL=table))
 

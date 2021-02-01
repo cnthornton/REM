@@ -2,8 +2,10 @@
 REM configuration settings.
 """
 
+import datetime
 import dateutil
 import gettext
+import locale
 import os
 import PySimpleGUI as sg
 import REM.constants as const
@@ -44,13 +46,20 @@ class UserSettings:
         except KeyError:
             cnfg_locale = 'en_US'
         self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
+        locale.setlocale(locale.LC_ALL, self.locale)
+        locale_conv = locale.localeconv()
+        self.decimal_sep = locale_conv['decimal_point']
+        self.thousands_sep = locale_conv['thousands_sep']
+        self.currency = locale_conv['int_curr_symbol']
+        self.currency_symbol = locale_conv['currency_symbol']
+
         self.localedir = os.path.join(dirname, 'locale')
         self.domain = 'base'
 
         try:
             self.display_date_format = cnfg['localization']['display_date']
         except KeyError:
-            self.display_date_format = 'DD-MM-YYYY'
+            self.display_date_format = 'YYYY-MM-DD'
 
         self.translation = self.change_locale()
         self.translation.install('base')  # bind gettext to _() in __builtins__ namespace
@@ -139,6 +148,7 @@ class UserSettings:
         """
         Translate text using language defined in settings.
         """
+        pass
 
     def edit_attribute(self, attr, value):
         """
@@ -253,17 +263,20 @@ class UserSettings:
 
         try:
             trans = gettext.translation(domain, localedir=localdir, languages=[language])
-        except Exception:
-            print('Unable to find translations for locale {}'.format(language))
+        except Exception as e:
+            print('Unable to find translations for locale {LANG} - {ERR}'.format(LANG=language, ERR=e))
             trans = gettext
 
         return trans
 
-    def format_display_date(self, date):
+    def format_display_date(self, dt):
         """
         Format a datetime object for displaying based on configured date format.
+
+        Arguments:
+            dt (datetime): datetime instance.
         """
-        date = self.apply_date_offset(date)
+        date = self.apply_date_offset(dt)
         date_str = self.format_date_str(date_str=self.display_date_format)
 
         date_formatted = date.strftime(date_str)
@@ -272,6 +285,10 @@ class UserSettings:
 
     def format_date_str(self, date_str: str = None):
         """
+        Format a date string for use as input to datetime method.
+
+        Arguments:
+            date_str (str): date string.
         """
         separators = set(':/- ')
         date_fmts = {'YYYY': '%Y', 'YY': '%y',
@@ -313,8 +330,7 @@ class UserSettings:
                     strfmt.append(date_fmts[component])
                 except KeyError:
                     if component:
-                        print('Warning: unknown component {} provided to date string {}.'.format(component, date_str))
-                        raise
+                        raise TypeError('unknown component {} provided to date string {}.'.format(component, date_str))
 
                 strfmt.append(char)
                 buff = []
@@ -324,8 +340,7 @@ class UserSettings:
         try:  # format final component remaining in buffer
             strfmt.append(date_fmts[''.join(buff)])
         except KeyError:
-            print('Warning: unsupported characters {} found in date string {}'.format(''.join(buff), date_str))
-            raise
+            raise TypeError('unsupported characters {} found in date string {}'.format(''.join(buff), date_str))
 
         return ''.join(strfmt)
 
@@ -344,11 +359,19 @@ class UserSettings:
 
     def apply_date_offset(self, dt):
         """
-        Apply date offset to a datetime object
+        Apply date offset to a datetime object.
+
+        Arguments:
+            dt (datetime): datetime instance.
         """
         relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
 
         offset = self.get_date_offset()
-        dt_mod = dt + relativedelta(years=+offset)
+        try:
+            dt_mod = dt + relativedelta(years=+offset)
+        except Exception as e:
+            print('Info: encountered warning when attempting to apply offset to date - {ERR}'.format(ERR=e))
+            dt_mod = strptime(dt.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S') + relativedelta(years=+offset)
 
         return dt_mod

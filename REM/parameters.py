@@ -4,12 +4,12 @@ REM parameter element classes.
 import sys
 
 import datetime
-import dateutil.parser
+import pandas as pd
 import PySimpleGUI as sg
+from random import randint
 
-import REM.constants as const
-import REM.layouts as lo
-import REM.secondary as win2
+import REM.constants as mod_const
+import REM.secondary as mod_win2
 from REM.config import settings
 
 
@@ -17,122 +17,311 @@ class RuleParameter:
     """
     """
 
-    def __init__(self, rule_name, name, cdict):
+    def __init__(self, name, entry):
 
         self.name = name
-        self.rule_name = rule_name
-        self.element_key = lo.as_key('{RULE} Parameter {NAME} '.format(RULE=rule_name, NAME=name))
+        self.id = randint(0, 1000000000)
+        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ['Element']]
+
         try:
-            self.description = cdict['Description']
+            self.description = entry['Description']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, RuleParameter {NAME}: missing required parameter "Description".') \
-                .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
+            msg = 'Configuration Error: RuleParameter {NAME}: missing required parameter "Description".' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
-            self.type = cdict['ElementType']
+            self.etype = entry['ElementType']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}, RuleParameter {NAME}: missing required parameter "ElementType".') \
-                .format(RULE=rule_name, NAME=name)
-            win2.popup_error(msg)
+            msg = 'Configuration Error: RuleParameter {NAME}: missing required parameter "ElementType".' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
-            editable = bool(int(cdict['IsEditable']))
+            self.dtype = entry['DataType']
+        except KeyError:
+            self.dtype = 'string'
+
+        try:
+            editable = bool(int(entry['IsEditable']))
         except KeyError:
             self.editable = True
         except ValueError:
-            win2.popup_error('Configuration Error: rule {RULE}, Parameter {NAME}: "IsEditable" must be either 0 '
-                             '(False) or 1 (True)'.format(RULE=self.rule_name, NAME=self.name))
+            mod_win2.popup_error('Configuration Error: RuleParameter {NAME}: "IsEditable" must be either 0 '
+                                 '(False) or 1 (True)'.format(NAME=self.name))
             sys.exit(1)
         else:
             self.editable = editable
 
         try:
-            hidden = bool(int(cdict['IsHidden']))
+            hidden = bool(int(entry['IsHidden']))
         except KeyError:
             self.hidden = False
         except ValueError:
-            win2.popup_error('Configuration Error: rule {RULE}, Parameter {NAME}: "IsHidden" must be either 0 '
-                             '(False) or 1 (True)'.format(RULE=self.rule_name, NAME=self.name))
+            mod_win2.popup_error('Configuration Error: RuleParameter {NAME}: "IsHidden" must be either 0 '
+                                 '(False) or 1 (True)'.format(NAME=self.name))
             sys.exit(1)
         else:
             self.hidden = hidden
 
         try:
-            justification = cdict['Justification']
+            self.field = entry['DatabaseField']
         except KeyError:
-            self.justification = 'left'
-        else:
-            if justification not in ['right', 'left', 'center']:
-                self.justification = 'left'
-            else:
-                self.justification = justification
+            self.field = None
 
         try:
-            self.alias = cdict['Alias']
-        except KeyError:
-            self.alias = name
-
-        try:
-            self.default = cdict['DefaultValue']
+            self.default = entry['DefaultValue']
         except KeyError:
             self.default = None
 
         # Dynamic attributes
-        self.value = self.value_raw = self.value_obj = None
+        self.value = None
 
-        self.set_value({self.element_key: self.default})
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i.split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            print('Warning: RuleParameter {NAME}: component {COMP} not found in list of components'
+                  .format(COMP=component, NAME=self.name))
+            key = None
 
-    def reset_parameter(self):
+        return key
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        if event in self.elements:
+            display_value = self.enforce_formatting(window, values, event)
+            window[event].update(value=display_value)
+
+    def enforce_formatting(self, window, values, elem_key):
+        """
+        Enforce the correct formatting of user input into the parameter element.
+        """
+        strptime = datetime.datetime.strptime
+        dec_sep = settings.decimal_sep
+        group_sep = settings.thousands_sep
+
+        dtype = self.dtype
+
+        value = values[elem_key]
+        print('Info: parameter {PARAM}: enforcing correct formatting of input value {VAL}'
+              .format(PARAM=self.name, VAL=value))
+
+        if value == '' or value is None or pd.isna(value):
+            return ''
+
+        elem_key = self.key_lookup('Element')
+
+        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+            current_value = list(window[elem_key].metadata['value'])
+
+            # Remove separator from the input
+            new_value = list(value.replace('-', ''))
+            input_len = len(new_value)
+            if input_len == 8:
+                try:
+                    new_date = strptime(''.join(new_value), '%Y%m%d')
+                except ValueError:  # date is incorrectly formatted
+                    msg = '{} is not a valid date format'.format(''.join(new_value))
+                    mod_win2.popup_notice(msg)
+                    print('Warning: {}'.format(msg))
+
+                    display_value = self.format_date(''.join(current_value))
+                else:
+                    current_value = new_value
+                    display_value = new_date.strftime('%Y-%m-%d')
+            elif input_len < 8:
+                current_len = len(current_value)
+                if current_len > input_len:  # user deleted a character
+                    current_value = new_value
+                elif current_len < input_len:  # user added a character
+                    # Find the character and location of the user input
+                    new_char = new_value[-1]  # defaults to the last character
+                    new_index = len(new_value)  # defaults to the end of the string
+                    for index, old_char in enumerate(current_value):
+                        character = new_value[index]
+                        if old_char != character:
+                            new_char = character
+                            new_index = index
+                            break
+
+                    # Validate added character
+                    if new_char.isnumeric():  # can add integers
+                        current_value.insert(new_index, new_char)
+
+                else:  # user replaced a character
+                    # Find the character and location of the user input
+                    for new_index, new_char in enumerate(new_value):  # defaults to the last character
+                        old_char = current_value[new_index]
+                        if old_char != new_char:
+                            break
+
+                    # Validate added character
+                    if new_char.isnumeric():  # can add integers
+                        current_value[new_index] = new_char
+
+                display_value = self.format_date(current_value)
+            else:
+                display_value = self.format_date(current_value)
+
+            window[elem_key].metadata['value'] = ''.join(current_value)
+
+        elif dtype == 'money':
+            current_value = list(window[elem_key].metadata['value'])
+            print(current_value)
+
+            # Remove currency and grouping separator
+            #            new_value = value[len(currency_sym):].replace(group_sep, '')
+            new_value = list(value.replace(group_sep, ''))
+            print(new_value)
+
+            if len(current_value) > len(new_value):  # user removed a character
+                print('removing a character')
+                # Remove the decimal separator if last character is decimal
+                if new_value[-1] == dec_sep:
+                    print('removing decimal')
+                    current_value = new_value[0:-1]
+                else:
+                    current_value = new_value
+            elif len(current_value) < len(new_value):  # user added new character
+                print('adding a character')
+                # Find the character and location of the user input
+                new_char = new_value[-1]  # defaults to the last character
+                new_index = len(new_value)  # defaults to the end of the string
+                for index, old_char in enumerate(current_value):
+                    character = new_value[index]
+                    if old_char != character:
+                        new_char = character
+                        new_index = index
+                        break
+
+                print(new_char, new_index)
+
+                # Validate added character
+                if new_char.isnumeric():  # can add integers
+                    print('inserting new character {} at index {}'.format(new_char, new_index))
+                    current_value.insert(new_index, new_char)
+                elif new_char == dec_sep:  # and also decimal character
+                    if dec_sep not in current_value:  # can only add one decimal character
+                        print('inserting new character {} at index {}'.format(new_char, new_index))
+                        current_value.insert(new_index, new_char)
+            else:  # user replaced a character
+                print('replacing a character')
+                # Find the character and location of the user input
+                for new_index, new_char in enumerate(new_value):  # defaults to the last character
+                    old_char = current_value[new_index]
+                    if old_char != new_char:
+                        break
+
+                # Validate added character
+                if new_char.isnumeric():  # can add integers
+                    current_value[new_index] = new_char
+                elif new_char == dec_sep and dec_sep not in current_value:  # or one decimal character
+                    current_value[new_index] = new_char
+
+            current_value = ''.join(current_value)
+            if dec_sep in current_value:
+                integers, decimals = current_value.split(dec_sep)
+                decimals = decimals[0:2]
+                current_value = integers + dec_sep + decimals[0:2]
+                display_value = ''.join([group_sep * (n % 3 == 2) + i
+                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
+            else:
+                display_value = ''.join([group_sep * (n % 3 == 2) + i
+                                         for n, i in enumerate(current_value[::-1])][::-1]).lstrip(',')
+
+            window[elem_key].metadata['value'] = current_value
+
+        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric'):
+            current_value = window[elem_key].metadata['value']
+            try:
+                float(value)
+            except ValueError:
+                display_value = current_value
+            else:
+                display_value = value
+
+            window[elem_key].metadata['value'] = display_value
+
+        elif dtype in ('int', 'integer', 'bit'):
+            current_value = window[elem_key].metadata['value']
+            try:
+                new_value = int(value)
+            except ValueError:
+                display_value = current_value
+            else:
+                display_value = str(new_value)
+
+            window[elem_key].metadata['value'] = display_value
+
+        else:
+            display_value = value
+
+        return display_value
+
+    def format_date(self, date_str):
+        """
+        Forces user input to date element to be in ISO format.
+        """
+        buff = []
+        for index, char in enumerate(date_str):
+            if index == 3:
+                if len(date_str) != 4:
+                    buff.append('{}-'.format(char))
+                else:
+                    buff.append(char)
+            elif index == 5:
+                if len(date_str) != 6:
+                    buff.append('{}-'.format(char))
+                else:
+                    buff.append(char)
+            else:
+                buff.append(char)
+
+        return ''.join(buff)
+
+    def reset_parameter(self, window):
         """
         Reset the parameter's values.
         """
-        print('Info: rule {RULE}, parameter {PARAM}: resetting parameter value {VAL} to {DEF}'
-              .format(RULE=self.rule_name, PARAM=self.name, VAL=self.value, DEF=self.default))
-        self.set_value({self.element_key: self.default})
+        print('Info: RuleParameter {NAME}: resetting parameter value {VAL} to {DEF}'
+              .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
-    def set_value(self, values, by_key: bool = True):
+        self.value = None
+
+        # Update the parameter window element
+        window[self.key_lookup('Element')].update(value='')
+
+    def toggle_parameter(self, window, value: str = 'enable'):
         """
-        Set the value of the parameter element from user input.
-
-        Arguments:
-
-            values (dict): dictionary of window element values.
-
-            by_key (bool): get value of parameter from dictionary using the element key (default: True)
+        Toggle parameter elements on and off.
         """
-        if by_key is True:
-            elem_key = self.element_key
-        else:
-            elem_key = self.name
+        status = False if value == 'enable' else True
 
-        try:
-            value = values[elem_key]
-        except KeyError:
-            print('Warning: rule {RULE}, parameter {PARAM}: no values set for parameter with key {KEY}'
-                  .format(PARAM=self.name, RULE=self.rule_name, KEY=elem_key))
-        else:
-            self.value = self.value_raw = self.value_obj = value
+        element_key = self.key_lookup('Element')
+        print('Info: RuleParameter {NAME}: updating element to "disabled={VAL}"'
+              .format(NAME=self.name, VAL=status))
 
-    def values_set(self):
-        """
-        Check whether all values attributes have been set.
-        """
-        if self.value:
-            return True
-        else:
-            return False
+        window[element_key].update(disabled=status)
 
-    def filter_statement(self, table=None, alias: bool = False):
+    def query_statement(self, table: str = None):
         """
         Generate the filter clause for SQL querying.
         """
-        if alias is True:
-            colname = self.alias
-        else:
+        if self.field is None:
             colname = self.name
+        else:
+            colname = self.field
 
         if table:
             db_field = '{}.{}'.format(table, colname)
@@ -141,7 +330,7 @@ class RuleParameter:
 
         value = self.value
         if value is not None:
-            statement = ('{}= ?'.format(db_field), (value,))
+            statement = ('{} = ?'.format(db_field), (value,))
         else:
             statement = None
 
@@ -150,227 +339,540 @@ class RuleParameter:
 
 class RuleParameterInput(RuleParameter):
     """
-    Input style parameter object.
+    Input-style parameter.
     """
 
-    def layout(self, text_size: tuple = (None, None), text_justification: str = 'r', size: tuple = (14, 1),
-               padding: tuple = (const.HORZ_PAD, 0), default: bool = True, bg_col: str = const.ACTION_COL,
-               filter_layout: bool = False):
+    def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
-        Create a layout for rule parameter element 'input'.
+        Create a GUI layout for the parameter.
         """
-        pad_el = const.ELEM_PAD
-        pad_h, pad_v = padding
+        # Element settings
+        pad_el = mod_const.ELEM_PAD
 
-        font = const.MID_FONT
-        bold_font = const.BOLD_FONT
+        font = mod_const.MID_FONT
+        bold_font = mod_const.BOLD_FONT
 
-        in_col = const.INPUT_COL
+        in_col = mod_const.INPUT_COL
 
+        # Parameter settings
         desc = '{}:'.format(self.description)
-        param_value = '' if self.value is None or default is False else self.value
+        param_value = '' if self.value is None else self.value
 
-        key = self.element_key
-        if self.editable is True or filter_layout is True:
-            layout = [sg.Text(desc, size=text_size, pad=((pad_h, pad_el), pad_v), justification=text_justification,
-                              font=bold_font, background_color=bg_col),
-                      sg.Input(param_value, key=key, size=size, enable_events=True, pad=((0, pad_h), pad_v), font=font,
-                               background_color=in_col, disabled=False,
-                               tooltip=_('Input value for {}'.format(self.description)))]
+        # Element layout
+        elem_key = self.key_lookup('Element')
+        layout = []
+        if self.editable is True:
+            layout.append([sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                   background_color=bg_col),
+                           sg.Input(param_value, key=elem_key, size=size, enable_events=True, font=font,
+                                    background_color=in_col, tooltip='Input value for {}'.format(self.description),
+                                    metadata={'value': param_value, 'disabled': False})])
         else:
-            layout = [sg.Text(desc, size=text_size, pad=((pad_h, pad_el), pad_v), justification=text_justification,
-                              font=bold_font, background_color=bg_col),
-                      sg.Text(param_value, key=key, size=size, pad=((0, pad_h), pad_v), font=font,
-                              background_color=bg_col, border_width=1)]
+            layout.append([sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                   background_color=bg_col),
+                           sg.Text(param_value, key=elem_key, size=size, font=font, background_color=bg_col,
+                                   border_width=1)])
 
-        return layout
+        return [sg.Col(layout, pad=padding, background_color=bg_col)]
+
+    def format_value(self, values):
+        """
+        Set the value of the data element from user input.
+
+        Arguments:
+
+            values (dict): GUI element values.
+        """
+        group_sep = settings.thousands_sep
+        dtype = self.dtype
+
+        try:
+            input_value = values[self.key_lookup('Element')]
+        except KeyError:
+            return None
+
+        if dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+            try:
+                value_fmt = float(input_value)
+            except (ValueError, TypeError):
+                try:
+                    value_fmt = float(input_value.replace(group_sep, ''))
+                except (ValueError, TypeError, AttributeError):
+                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                          .format(PARAM=self.name, VAL=input_value))
+                    return None
+        elif dtype in ('int', 'integer', 'bit'):
+            try:
+                value_fmt = int(input_value)
+            except (ValueError, TypeError, AttributeError):
+                try:
+                    value_fmt = input_value.replace(',', '')
+                except (ValueError, TypeError):
+                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                          .format(PARAM=self.name, VAL=input_value))
+                    return None
+        elif dtype in ('bool', 'boolean'):
+            if isinstance(input_value, bool):
+                value_fmt = input_value
+            else:
+                try:
+                    value_fmt = bool(int(input_value))
+                except (ValueError, TypeError):
+                    value_fmt = bool(input_value)
+        else:
+            value_fmt = str(input_value)
+
+        return value_fmt
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        dec_sep = settings.decimal_sep
+        group_sep = settings.thousands_sep
+
+        dtype = self.dtype
+        value = self.value
+        print('Info: formatting parameter {PARAM} value {VAL} for display'
+              .format(PARAM=self.name, VAL=value))
+
+        if value == '' or value is None:
+            return ''
+
+        if dtype == 'money':
+            if dec_sep in value:
+                integers, decimals = value.split(dec_sep)
+                decimals = decimals[0:2]
+                display_value = ''.join([group_sep * (n % 3 == 2) + i
+                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
+            else:
+                display_value = ''.join([group_sep * (n % 3 == 2) + i
+                                         for n, i in enumerate(value[::-1])][::-1]).lstrip(',')
+
+        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric'):
+            try:
+                new_value = float(value)
+            except ValueError:
+                display_value = value
+            else:
+                display_value = str(new_value)
+
+        elif dtype in ('int', 'integer', 'bit'):
+            try:
+                new_value = int(value)
+            except ValueError:
+                display_value = value
+            else:
+                display_value = str(new_value)
+
+        else:
+            display_value = str(value)
+
+        return display_value
 
 
 class RuleParameterCombo(RuleParameter):
     """
-    DropDown parameter element object.
+    DropDown-style parameter.
     """
 
-    def __init__(self, rule_name, name, cdict):
-        super().__init__(rule_name, name, cdict)
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
         try:
-            self.combo_values = cdict['Values']
+            self.combo_values = entry['Values']
         except KeyError:
-            msg = _('Configuration Warning: rule {RULE}, parameter {PARAM}: values required for parameter type '
-                    '"dropdown"').format(PARAM=name, RULE=rule_name)
-            win2.popup_notice(msg)
+            msg = _('Configuration Warning: RuleParameter {PARAM}: values required for parameter type '
+                    '"dropdown"').format(PARAM=name)
+            mod_win2.popup_notice(msg)
 
             self.combo_values = []
 
-    def layout(self, text_size: tuple = (None, None), text_justification: str = 'r', size: tuple = None,
-               padding: tuple = (const.HORZ_PAD, 0), default: bool = True, bg_col: str = const.ACTION_COL,
-               filter_layout: bool = False):
+        try:
+            self.aliases = entry['Aliases']
+        except KeyError:
+            self.aliases = {}
+
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
-        Create a layout for rule parameter element 'dropdown'.
+        Create a GUI layout for the parameter.
         """
-        pad_el = const.ELEM_PAD
-        pad_h, pad_v = padding
+        # Element settings
+        pad_el = mod_const.ELEM_PAD
 
-        font = const.MID_FONT
-        bold_font = const.BOLD_FONT
+        font = mod_const.MID_FONT
+        bold_font = mod_const.BOLD_FONT
 
-        in_col = const.INPUT_COL
+        in_col = mod_const.INPUT_COL
 
-        key = self.element_key
+        # Parameter settings
+        aliases = self.aliases
+        combo_values = self.combo_values
+        default_value = self.value
+
+        elem_key = self.key_lookup('Element')
         desc = '{}:'.format(self.description)
-        values = self.combo_values
-        if values[0] != '':
+        values = [aliases[i] for i in combo_values if i in aliases]
+        if '' not in values:  # the no selection option
             values.insert(0, '')
 
+        param_value = '' if default_value is None else default_value
+
+        # Parameter size
         width = max([len(i) for i in values]) + 1
         size = (width, 1) if size is None else size
 
-        param_value = '' if self.value is None or default is False else self.value
-
-        if self.editable is True or filter_layout is True:
-            layout = [sg.Text(desc, size=text_size, pad=((pad_h, pad_el), pad_v), justification=text_justification,
-                              font=bold_font, background_color=bg_col),
-                      sg.Combo(values, default_value=param_value, key=key, size=size, pad=((0, pad_h), pad_v),
-                               font=font, background_color=in_col, enable_events=True, disabled=False)]
+        # Element layout
+        layout = []
+        if self.editable is True:
+            layout.append([sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                   background_color=bg_col),
+                           sg.Combo(values, default_value=param_value, key=elem_key, size=size, font=font,
+                                    background_color=in_col, enable_events=True,
+                                    tooltip='Select a value for {}'.format(self.description),
+                                    metadata={'value': param_value, 'disabled': False})])
         else:
-            layout = [sg.Text(desc, size=text_size, pad=((pad_h, pad_el), pad_v), justification=text_justification,
-                              font=bold_font, background_color=bg_col),
-                      sg.Text(param_value, key=key, size=size, pad=((0, pad_h), pad_v), font=font,
-                              background_color=bg_col, border_width=1)]
+            layout.append([sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                   background_color=bg_col),
+                           sg.Text(param_value, key=elem_key, size=size, font=font, background_color=bg_col,
+                                   border_width=1)])
 
-#        return sg.Col([layout], pad=(0, 0), background_color=bg_col)
-        return layout
+        return [sg.Col(layout, pad=padding, background_color=bg_col)]
+
+    def format_value(self, values):
+        """
+        Set the value of the data element from user input.
+
+        Arguments:
+
+            values (dict): GUI element values.
+        """
+        try:
+            input_value = values[self.key_lookup('Element')]
+        except KeyError:
+            return None
+
+        aliases = {j: i for i, j in self.aliases.items()}
+        value_fmt = aliases.get(input_value, input_value)
+
+        return value_fmt
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        value = self.value
+        aliases = self.aliases
+
+        display_value = aliases.get(value, value)
+
+        return display_value
 
 
 class RuleParameterDate(RuleParameter):
     """
-    Date parameter element object.
+    Date-style parameter.
     """
 
-    def __init__(self, rule_name, name, cdict):
-        super().__init__(rule_name, name, cdict)
-        try:
-            self.format = settings.format_date_str(date_str=cdict['DateFormat'])
-        except KeyError:
-            msg = _('Warning: rule {RULE}, parameter {PARAM}: no date format specified ... defaulting to '
-                    'YYYY-MM-DD').format(PARAM=name, RULE=rule_name)
-            win2.popup_notice(msg)
-            self.format = "%Y-%m-%d"
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
 
-    def layout(self, text_size: tuple = (None, None), text_justification: str = 'r', size: tuple = (14, 1),
-               padding: tuple = (const.HORZ_PAD, 0), default: bool = True, bg_col: str = const.ACTION_COL,
-               filter_layout: bool = False):
+    def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
-        Layout for the rule parameter element 'date'.
+        Create a GUI layout for the parameter.
         """
-        pad_el = const.ELEM_PAD
-        pad_h, pad_v = padding
+        pad_el = mod_const.ELEM_PAD
 
-        date_ico = const.CALENDAR_ICON
-        font = const.MID_FONT
-        bold_font = const.BOLD_FONT
+        # Element settings
+        date_ico = mod_const.CALENDAR_ICON
+        font = mod_const.MID_FONT
+        bold_font = mod_const.BOLD_FONT
 
-        in_col = const.INPUT_COL
+        in_col = mod_const.INPUT_COL
 
+        # Parameter settings
         desc = '{}:'.format(self.description)
-        param_value = '' if self.value is None or default is False else self.value
+        param_value = '' if self.value is None else self.value
 
-        input_key = self.element_key
-        date_key = lo.as_key('{RULE} Parameter {NAME} Button'.format(RULE=self.rule_name, NAME=self.name))
-        if self.editable is True or filter_layout is True:
-            layout = [sg.Text(desc, size=text_size, pad=((pad_h, pad_el), pad_v), justification=text_justification,
-                              font=bold_font, background_color=bg_col),
-                      sg.Input(param_value, key=input_key, size=size, enable_events=True, pad=((0, pad_el), pad_v),
-                               font=font, background_color=in_col, disabled=False,
-                               tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date'),
-                      sg.CalendarButton('', key=date_key, format='%Y-%m-%d', image_data=date_ico, pad=((0, pad_h), pad_v),
-                                        font=font, border_width=0, disabled=False,
-                                        tooltip='Select date from calendar menu')]
+        # Element layout
+        input_key = self.key_lookup('Element')
+        calendar_key = self.key_lookup('Calendar')
+        layout = []
+        if self.editable is True:
+            layout.append([sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                   background_color=bg_col),
+                           sg.Input(param_value, key=input_key, size=size, enable_events=True, pad=((0, pad_el), 0),
+                                    font=font, background_color=in_col, disabled=False,
+                                    tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
+                                    metadata={'value': param_value, 'disabled': False}),
+                           sg.CalendarButton('', key=calendar_key, format='%Y-%m-%d', image_data=date_ico, font=font,
+                                             border_width=0, tooltip='Select date from calendar menu')])
         else:
-            layout = [sg.Text(desc, size=text_size, pad=((pad_h, pad_el), pad_v), justification=text_justification,
-                              font=bold_font, background_color=bg_col),
-                      sg.Text(param_value, key=input_key, size=size, pad=((0, pad_el), pad_v), font=font,
-                              background_color=bg_col, border_width=1)]
-#                      sg.CalendarButton('', key=date_key, format='%Y-%m-%d', image_data=date_ico,
-#                                        pad=((0, pad_h), pad_v), font=font, border_width=0, visible=False,
-#                                        tooltip='Select date from calendar menu')]
+            layout.append([sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                   background_color=bg_col),
+                           sg.Text(param_value, key=input_key, size=size, font=font, background_color=bg_col,
+                                   border_width=1, metadata={'value': param_value, 'disabled': True})])
 
-        #        return sg.Col([layout], pad=(0, 0), background_color=bg_col)
-        return layout
+        return [sg.Col(layout, pad=padding, background_color=bg_col)]
 
-    def set_value(self, values, by_key: bool = True):
+    def format_value(self, values):
         """
-        Set the value of the parameter element from user input.
+        Set the value of the data element from user input.
 
         Arguments:
 
-            values: dictionary of window element values.
+            values (dict): GUI element values.
         """
-        dparse = dateutil.parser.parse
-
-        if by_key is True:
-            elem_key = self.element_key
-        else:
-            elem_key = self.name
+        strptime = datetime.datetime.strptime
 
         try:
-            value_raw: str = values[elem_key]
+            input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Warning: rule {RULE}, parameter {PARAM}: no values set for parameter with element key {KEY}'
-                  .format(PARAM=self.name, RULE=self.rule_name, KEY=elem_key))
+            return None
+
+        if isinstance(input_value, str):
+            try:
+                value_fmt = strptime(input_value, '%Y-%m-%d')
+            except (ValueError, TypeError):
+                print('Warning: parameter {PARAM}: unable to parse date {VAL}'
+                      .format(PARAM=self.name, VAL=input_value))
+                value_fmt = None
+        elif isinstance(input_value, datetime.datetime):
+            value_fmt = input_value
         else:
-            if isinstance(value_raw, str):
-                try:
-                    date = dparse(value_raw, yearfirst=True)
-                except (ValueError, TypeError):
-                    print('Warning: rule {RULE}, parameter {PARAM}: unable to parse date {VAL}'
-                          .format(PARAM=self.name, RULE=self.rule_name, VAL=value_raw))
-                    date = None
-            elif isinstance(value_raw, datetime.datetime):
-                date = value_raw
-            else:
-                print('Warning: rule {RULE}, parameter {PARAM}: unknown object type for {VAL}'
-                      .format(PARAM=self.name, RULE=self.rule_name, VAL=value_raw))
-                date = None
+            print('Warning: parameter {PARAM}: unknown object type for {VAL}'
+                  .format(PARAM=self.name, VAL=input_value))
+            value_fmt = None
 
-            if date is not None:
-                try:
-                    value_fmt: str = date.strftime(self.format)
-                except (ValueError, AttributeError):
-                    print('Configuration Error: rule {RULE}, parameter {PARAM}: invalid format string {STR}'
-                          .format(RULE=self.rule_name, PARAM=self.name, STR=self.format))
-                    value_fmt = date = None
-            else:
-                value_fmt = date = None
+        return value_fmt
 
-            self.value = value_fmt
-            self.value_raw = value_raw
-            self.value_obj = date
-
-    def values_set(self):
+    def format_display(self):
         """
-        Check whether all values attributes have been set with correct formatting.
+        Format the parameter's value for displaying.
         """
-        value = self.value_raw
+        value = self.value
+        if value is None:
+            return ''
 
         if isinstance(value, str):
-            try:
-                input_date = value.split()[0].replace('-', '')
-            except (AttributeError, IndexError):
-                print('configuration error: rule {RULE}, parameter {PARAM}: invalid format string {STR}'
-                      .format(RULE=self.rule_name, PARAM=self.name, STR=self.format))
-                return False
+            value_fmt = value
         elif isinstance(value, datetime.datetime):
-            input_date = value.strftime("%Y%m%d")
+            value_fmt = value.strftime('%Y-%m-%d')
         else:
-            print('configuration error: rule {RULE}, parameter {PARAM}: no value found for parameter'
-                  .format(RULE=self.rule_name, PARAM=self.name))
-            return False
+            print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                  .format(PARAM=self.name, VAL=value))
+            value_fmt = None
 
-        if input_date and len(input_date) == 8:
-            return True
+        return value_fmt
+
+    def toggle_parameter(self, window, value: str = 'enable'):
+        """
+        Toggle parameter elements on and off.
+        """
+        status = False if value == 'enable' else True
+
+        print('Info: RuleParameter {NAME}: updating elements to "disabled={VAL}"'
+              .format(NAME=self.name, VAL=status))
+
+        element_key = self.key_lookup('Element')
+        calendar_key = self.key_lookup('Calendar')
+
+        window[element_key].update(disabled=status)
+        window[calendar_key].update(disabled=status)
+
+
+class RuleParameterDateRange(RuleParameter):
+    """
+    Date parameter element object.
+    """
+
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
+        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Element2'))
+        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar2'))
+
+    def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
+        """
+        Create a GUI layout for the parameter.
+        """
+        # Element settings
+        pad_el = mod_const.ELEM_PAD
+
+        date_ico = mod_const.CALENDAR_ICON
+        font = mod_const.MID_FONT
+        bold_font = mod_const.BOLD_FONT
+
+        in_col = mod_const.INPUT_COL
+
+        # Parameter settings
+        try:
+            from_desc, to_desc = self.description
+        except ValueError:
+            from_desc = to_desc = self.description
+
+        try:
+            from_value, to_value = self.default
+        except (TypeError, ValueError):
+            from_value = to_value = self.default if self.default is not None else ''
+
+        # Element layout
+        from_key = self.key_lookup('Element')
+        from_date_key = self.key_lookup('Calendar')
+        to_key = self.key_lookup('Element2')
+        to_date_key = self.key_lookup('Calendar2')
+        if self.editable is True:
+            layout = [
+                sg.Col([[sg.Text('{}:'.format(from_desc), auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                 background_color=bg_col),
+                         sg.Input(from_value, key=from_key, size=size, enable_events=True, pad=((0, pad_el), 0),
+                                  font=font, background_color=in_col,
+                                  tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
+                                  metadata={'value': [], 'disabled': False}),
+                         sg.CalendarButton('', key=from_date_key, format='%Y-%m-%d', image_data=date_ico,
+                                           font=font, border_width=0, tooltip='Select date from calendar menu')]],
+                       pad=padding, background_color=bg_col),
+                sg.Col([[sg.Text('{}:'.format(to_desc), auto_size_text=True, pad=((0, pad_el), 0),
+                                 font=bold_font, background_color=bg_col),
+                         sg.Input(to_value, key=to_key, size=size, enable_events=True, pad=((0, pad_el), 0),
+                                  font=font, background_color=in_col, disabled=False,
+                                  tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
+                                  metadata={'value': [], 'disabled': False}),
+                         sg.CalendarButton('', key=to_date_key, format='%Y-%m-%d', image_data=date_ico,
+                                           font=font, border_width=0, tooltip='Select date from calendar menu')]],
+                       pad=padding, background_color=bg_col)]
         else:
-            return False
+            layout = [
+                sg.Col([[sg.Text(from_desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                 background_color=bg_col),
+                         sg.Text(from_value, key=from_key, size=size, font=font, background_color=bg_col,
+                                 border_width=1, metadata={'value': [], 'disabled': True})]],
+                       pad=padding, background_color=bg_col),
+                sg.Col([[sg.Text(to_desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                 background_color=bg_col),
+                       sg.Text(to_value, key=to_key, size=size, font=font,
+                               background_color=bg_col, border_width=1, metadata={'value': [], 'disabled': True})]],
+                       pad=padding, background_color=bg_col)]
+
+        return layout
+
+    def format_value(self, values):
+        """
+        Set the value of the data element from user input.
+
+        Arguments:
+
+            values (dict): GUI element values.
+        """
+        strptime = datetime.datetime.strptime
+
+        try:
+            input_values = (values[self.key_lookup('Element')], values[self.key_lookup('Element2')])
+        except KeyError:
+            return None
+
+        formatted_values = []
+        for input_value in input_values:
+            if isinstance(input_value, str):
+                try:
+                    value_fmt = strptime(input_value, '%Y-%m-%d')
+                except (ValueError, TypeError):
+                    print('Warning: parameter {PARAM}: unable to parse date {VAL}'
+                          .format(PARAM=self.name, VAL=input_value))
+                    value_fmt = None
+            elif isinstance(input_value, datetime.datetime):
+                value_fmt = input_value
+            else:
+                print('Warning: parameter {PARAM}: unknown object type for {VAL}'
+                      .format(PARAM=self.name, VAL=input_value))
+                value_fmt = None
+
+            formatted_values.append(value_fmt)
+
+        return formatted_values
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        values = self.value
+        if values is None:
+            return ('', '')
+
+        formatted_values = []
+        for value in values:
+            if isinstance(value, str):
+                value_fmt = value
+            elif isinstance(value, datetime.datetime):
+                value_fmt = value.strftime('%Y-%m-%d')
+            else:
+                print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                      .format(PARAM=self.name, VAL=value))
+                value_fmt = None
+
+            formatted_values.append(value_fmt)
+
+        return formatted_values
+
+    def query_statement(self, table: str = None):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        if self.field is None:
+            colname = self.name
+        else:
+            colname = self.field
+
+        if table:
+            db_field = '{}.{}'.format(table, colname)
+        else:
+            db_field = colname
+
+        values = self.value
+        if len(values) == 2:
+            statement = ('{} BETWEEN ? AND ?'.format(db_field), values)
+        else:
+            statement = None
+
+        return statement
+
+    def reset_parameter(self, window):
+        """
+        Reset the parameter's values.
+        """
+        print('Info: RuleParameter {NAME}: resetting parameter value {VAL} to {DEF}'
+              .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        try:
+            def_val1, def_val2 = self.default
+        except (ValueError, TypeError):
+            def_val1 = def_val2 = None
+
+        self.format_value({self.key_lookup('Element'): def_val1, self.key_lookup('Element2'): def_val2})
+        print('Info: RuleParameter {NAME}: values reset to {VAL}'.format(NAME=self.name, VAL=self.value))
+
+        # Update the parameter window element
+        window[self.key_lookup('Element')].update(value='')
+        window[self.key_lookup('Element2')].update(value='')
+
+    def toggle_parameter(self, window, value: str = 'enable'):
+        """
+        Toggle parameter elements on and off.
+        """
+        status = False if value == 'enable' else True
+
+        print('Info: RuleParameter {NAME}: updating elements to "disabled={VAL}"'
+              .format(NAME=self.name, VAL=status))
+
+        element_key = self.key_lookup('Element')
+        calendar_key = self.key_lookup('Calendar')
+        element2_key = self.key_lookup('Element2')
+        calendar2_key = self.key_lookup('Calendar2')
+
+        window[element_key].update(disabled=status)
+        window[calendar_key].update(disabled=status)
+        window[element2_key].update(disabled=status)
+        window[calendar2_key].update(disabled=status)
 
 
 class RuleParameterCheckbox(RuleParameter):
@@ -378,57 +880,62 @@ class RuleParameterCheckbox(RuleParameter):
     Checkbox parameter element object.
     """
 
-    def __init__(self, rule_name, name, cdict):
-        super().__init__(rule_name, name, cdict)
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+        try:
+            value_type = entry['Type']
+        except KeyError:
+            self.type = 'bool'
+        else:
+            if value_type not in ('bool', 'exists'):
+                self.type = 'bool'
+            else:
+                self.type = value_type
 
-    def layout(self, text_size: tuple = (None, None), text_justification: str = 'r', size: tuple = (None, None),
-               padding: tuple = (const.HORZ_PAD, 0), default: bool = True, bg_col: str = const.ACTION_COL,
-               filter_layout: bool = False):
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
-        Create a layout for rule parameter element 'checkbox'.
+        Create a GUI layout for the parameter.
         """
-        bold_font = const.BOLD_FONT
+        bold_font = mod_const.BOLD_FONT
 
-        key = self.element_key
+        key = self.key_lookup('Element')
         desc = self.description
-        disabled = False if self.editable is True or filter_layout is True else True
-        param_value = False if self.value is None or default is False else self.value
-        layout = [sg.Col([
-            [sg.Checkbox(desc, default=param_value, key=key, pad=padding, font=bold_font, enable_events=True,
-                         background_color=bg_col, disabled=disabled)]], background_color=bg_col, justification='c')]
+        disabled = False if self.editable is True else True
+        try:
+            param_value = bool(int(self.value))
+        except (ValueError, TypeError):
+            param_value = bool(self.value)
+        layout = [[sg.Checkbox(desc, default=param_value, key=key, size=size, pad=padding, font=bold_font,
+                               enable_events=True, background_color=bg_col, disabled=disabled)]]
 
-        return layout
+        return [sg.Col(layout, pad=padding, background_color=bg_col)]
 
-    def set_value(self, values, by_key: bool = True):
+    def format_value(self, values):
         """
         Set the value of the parameter element from user input.
 
         Arguments:
 
-            values (dict): dictionary of window element values.
-
-            by_key (bool): get value of parameter from dictionary using the element key (default: True)
+            values (dict): GUI element values.
         """
-        if by_key is True:
-            elem_key = self.element_key
-        else:
-            elem_key = self.name
+        try:
+            input_value = values[self.key_lookup('Element')]
+        except KeyError:
+            return None
 
         try:
-            value = values[elem_key]
-        except KeyError:
-            print('Warning: rule {RULE}, parameter {PARAM}: no values set for parameter with key {KEY}'
-                  .format(PARAM=self.name, RULE=self.rule_name, KEY=elem_key))
-        else:
-            if isinstance(value, bool):
-                self.value = self.value_obj = value
-                self.value_raw = int(value)
-            else:
-                try:
-                    self.value = self.value_obj = bool(int(value))
-                except (ValueError, TypeError):
-                    print('Warning: rule {RULE}, parameter {PARAM}: unable to convert value {VAL} to boolean'
-                          .format(PARAM=self.name, RULE=self.rule_name, VAL=value))
-                else:
-                    self.value_raw = int(self.value)
+            value_fmt = bool(int(input_value))
+        except (ValueError, TypeError):
+            value_fmt = bool(input_value)
+
+        self.value = value_fmt
+
+        return value_fmt
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+
+        return self.value
 

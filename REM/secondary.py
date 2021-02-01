@@ -2,30 +2,27 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
-import datetime
 import dateutil
+import datetime
 import gc
 import numpy as np
 import pandas as pd
 import pyodbc
 import PySimpleGUI as sg
-import REM.authentication as auth
-from REM.config import settings
-import REM.constants as const
-import REM.data_manipulation as dm
-import REM.layouts as lo
-from REM.main import __version__
-import math
-import sys
 import textwrap
-import time
+
+from REM.config import configuration, settings
+import REM.constants as mod_const
+import REM.data_manipulation as mod_dm
+import REM.layouts as mod_lo
+from REM.main import __version__
 
 
 # Popups
 def popup_confirm(msg):
     """Display popup asking user if they would like to continue without completing the current action.
     """
-    font = const.MID_FONT
+    font = mod_const.MID_FONT
     return sg.popup_ok_cancel(textwrap.fill(msg, width=40), font=font, title='')
 
 
@@ -33,7 +30,7 @@ def popup_notice(msg):
     """
     Display popup notifying user that an action is required or couldn't be undertaken.
     """
-    font = const.MID_FONT
+    font = mod_const.MID_FONT
     return sg.popup_ok(textwrap.fill(msg, width=40), font=font, title='')
 
 
@@ -41,7 +38,7 @@ def popup_error(msg):
     """
     Display popup notifying user that there is a fatal program error.
     """
-    font = const.MID_FONT
+    font = mod_const.MID_FONT
     return sg.popup_error(textwrap.fill(msg, width=40), font=font, title='')
 
 
@@ -50,9 +47,9 @@ def verify_row(self, row_index):
     """
     Add row to verified list, returning list of updated row colors.
     """
-    tbl_bg_col = const.TBL_BG_COL
-    tbl_alt_col = const.TBL_ALT_COL
-    tbl_vfy_col = const.TBL_VFY_COL
+    tbl_bg_col = mod_const.TBL_BG_COL
+    tbl_alt_col = mod_const.TBL_ALT_COL
+    tbl_vfy_col = mod_const.TBL_VFY_COL
 
     if row_index is not None and row_index not in self.verified:
         self.verified.append(row_index)  # add row to list of verified
@@ -87,9 +84,9 @@ def debugger():
     Display the debugger window.
     """
     # Window and element size parameters
-    pad_frame = const.FRAME_PAD
+    pad_frame = mod_const.FRAME_PAD
 
-    main_font = const.MAIN_FONT
+    main_font = mod_const.MAIN_FONT
 
     # GUI layout
     layout = [[sg.Output(key='-DEBUG-', size=(60, 20), pad=(pad_frame, pad_frame))]]
@@ -99,32 +96,32 @@ def debugger():
     return window
 
 
-def login_window():
+def login_window(account):
     """
     Display the login window.
     """
     # Window and element size parameters
-    pad_frame = const.FRAME_PAD
-    pad_h = const.HORZ_PAD
-    pad_el = const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_h = mod_const.HORZ_PAD
+    pad_el = mod_const.ELEM_PAD
 
-    bg_col = const.ACTION_COL
-    input_col = const.INPUT_COL
-    login_col = const.LOGIN_BUTTON_COL
-    cancel_col = const.CANCEL_BUTTON_COL
-    def_text_col = const.TEXT_COL
-    text_col = const.WHITE_TEXT_COL
-    help_col = const.HELP_TEXT_COL
-    bold_text = const.BOLD_FONT
+    bg_col = mod_const.ACTION_COL
+    input_col = mod_const.INPUT_COL
+    login_col = mod_const.LOGIN_BUTTON_COL
+    cancel_col = mod_const.CANCEL_BUTTON_COL
+    def_text_col = mod_const.TEXT_COL
+    text_col = mod_const.WHITE_TEXT_COL
+    help_col = mod_const.HELP_TEXT_COL
+    bold_text = mod_const.BOLD_FONT
 
-    lock_icon = const.LOCK_ICON
-    username_icon = const.USERNAME_ICON
+    lock_icon = mod_const.LOCK_ICON
+    username_icon = mod_const.USERNAME_ICON
 
-    isize = const.IN1_SIZE
-    bsize = const.B1_SIZE
+    isize = mod_const.IN1_SIZE
+    bsize = mod_const.B1_SIZE
 
-    main_font = const.MAIN_FONT
-    small_font = const.SMALL_FONT
+    main_font = mod_const.MAIN_FONT
+    small_font = mod_const.SMALL_FONT
 
     logo = settings.logo
 
@@ -156,8 +153,6 @@ def login_window():
                                 font=bold_text, button_color=(text_col, cancel_col))]]
 
     layout = [[sg.Col(column_layout, element_justification='center', justification='center', background_color=bg_col)]]
-
-    account = auth.UserAccount()
 
     window = sg.Window('', layout, font=main_font, modal=True, keep_on_top=True, no_titlebar=True,
                        return_keyboard_events=True)
@@ -227,73 +222,91 @@ def login_window():
     return account
 
 
-def account_record_window(record):
+def record_window(record, user, win_size: tuple = None, save: bool = False, delete: bool = False):
     """
-    Display the account record window.
+    Display the record window.
     """
-    # GUI layout
-    layout = record.layout(editable=True, markable=True)
-    if not layout:
-        return False
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
+    # GUI layout
+    pad_v = mod_const.VERT_PAD
+    bg_col = mod_const.ACTION_COL
+
+    layout = [[sg.Col(record.layout(win_size=(600, height), save=save, delete=delete), pad=(pad_v, pad_v),
+                      background_color=bg_col, expand_x=True)]]
     window = sg.Window('Database Record', layout, modal=True, keep_on_top=False, return_keyboard_events=True)
     window.finalize()
 
-    note_param = record.fetch_parameter(record.required_parameters['Note'])
-    note_key = note_param.element_key
-    window[note_key].expand(expand_x=True)
+    # Resize window
+    screen_w, screen_h = window.get_screen_dimensions()
+    win_w = int(screen_w * 0.45)
+    win_h = int(screen_h * 0.6)
 
-    cancel_key = record.key_lookup('Cancel')
-    save_key = record.key_lookup('Save')
-    delete_key = record.key_lookup('Delete')
+    record.resize(window, win_size=(win_w, win_h))
+    window = center_window(window)
+
+    # Update record display
+    for component_table in record.components:
+        display_df = component_table.update_display(window)
+
     # Event window
-    user_action = 'cancel'
+    record_elements = [i for i in record.elements]
     while True:
         event, values = window.read()
 
-        if event in (sg.WIN_CLOSED, cancel_key):  # selected close-window
+        if event == sg.WIN_CLOSED:  # selected close-window without accepting changes
             break
 
-        if event == delete_key:
-            user_action = 'delete'
-            break
+        # Update the record parameters with user-input
+        if event in record_elements:
+            print(event)
+            result = record.run_event(window, event, values, user)
+            if result is True:  # event is something other than the action buttons save or delete
+                continue
+            else:  # event is save or delete
+                if event == record.key_lookup('Delete'):  # delete the record selected
+                    record = None
+                else:  # save changes selected
+                    # Update parameter values
+                    for param in record.parameters:
+                        elem_key = param.key_lookup('Element')
+                        try:
+                            param_value = values[elem_key]
+                        except KeyError:
+                            continue
+                        param.value = param.format_value(param_value)
 
-        if event == save_key:
-            # Update parameter values
-            for param in record.parameters:
-                param.set_value(values)
-                print(param.name, param.value)
-
-            # Save updated parameters to the database
-            user_action = 'save'
-            break
+                break
 
     window.close()
     layout = None
     window = None
     gc.collect()
 
-    return user_action
+    return record
 
 
-def notes_window(docno, note, record='DocNo', title='Note'):
+def notes_window(docno, note, id_title='RecordID', title='Note'):
     """
     Display the note-taking window.
     """
     # Window and element size parameters
-    pad_frame = const.FRAME_PAD
-    pad_v = const.VERT_PAD
-    pad_el = const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
+    pad_el = mod_const.ELEM_PAD
 
-    bg_col = const.ACTION_COL
-    default_col = const.DEFAULT_COL
-    input_col = const.INPUT_COL
-    text_col = const.TEXT_COL
-    header_col = const.HEADER_COL
+    bg_col = mod_const.ACTION_COL
+    default_col = mod_const.DEFAULT_COL
+    input_col = mod_const.INPUT_COL
+    text_col = mod_const.TEXT_COL
+    header_col = mod_const.HEADER_COL
 
-    main_font = const.MAIN_FONT
-    header_font = const.HEADER_FONT
-    bold_font = const.BOLD_MID_FONT
+    main_font = mod_const.MAIN_FONT
+    header_font = mod_const.HEADER_FONT
+    bold_font = mod_const.BOLD_MID_FONT
 
     width = 80
     height = 20
@@ -304,7 +317,7 @@ def notes_window(docno, note, record='DocNo', title='Note'):
                              background_color=header_col)]]
 
     header_layout = [
-        [sg.Text('{}:'.format(record), pad=((pad_el*2, pad_el), pad_el*2), font=bold_font, background_color=bg_col),
+        [sg.Text('{}:'.format(id_title), pad=((pad_el*2, pad_el), pad_el*2), font=bold_font, background_color=bg_col),
          sg.Text(docno, size=(12, 1), pad=((pad_el, pad_el*2), pad_el*2), justification='l', font=main_font,
                  background_color=bg_col, auto_size_text=True, border_width=0)]]
 
@@ -316,8 +329,8 @@ def notes_window(docno, note, record='DocNo', title='Note'):
                              border_width=1, relief='raised')],
                    [sg.Col(note_layout, pad=(pad_frame, (0, pad_frame)), background_color=input_col, justification='l')]]
 
-    bttn_layout = [[lo.B2('Cancel', key='-CANCEL-', pad=((0, pad_el), 0), tooltip='Cancel'),
-                    lo.B2('Save', key='-SAVE-', pad=((pad_el, 0), 0), tooltip='Save note')]]
+    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=((0, pad_el), 0), tooltip='Cancel'),
+                    mod_lo.B2('Save', key='-SAVE-', pad=((pad_el, 0), 0), tooltip='Save note')]]
 
     layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
               [sg.Frame('', main_layout, pad=(pad_frame, 0), background_color=bg_col)],
@@ -345,29 +358,48 @@ def notes_window(docno, note, record='DocNo', title='Note'):
     return note
 
 
-def database_importer_window(user):
+def database_importer_window(user, win_size: tuple = None):
     """
     Display the database importer window.
     """
+    is_numeric_dtype = pd.api.types.is_numeric_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    relativedelta = dateutil.relativedelta.relativedelta
+
+    dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64, 'time': np.datetime64,
+                 'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
+                 'int': int, 'integer': int, 'bit': int, 'bool': bool, 'boolean': bool, 'char': str,
+                 'varchar': str, 'binary': str, 'varbinary': str, 'tinytext': str, 'text': str, 'string': str}
+
+    date_types = ['date', 'datetime', 'time', 'timestamp']
+
+    oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
+
+    cond_operators = ['==', '!=', '>', '<', '>=', '<=']
+    math_operators = ['+', '-', '*', '/', '%']
+
+    # Layout settings
+    main_font = mod_const.MAIN_FONT
+
+    text_col = mod_const.TEXT_COL
+    select_col = mod_const.SELECT_TEXT_COL
+
     # Window and element size parameters
-    main_font = const.MAIN_FONT
+    if win_size is not None:
+        width = win_size[0] * 0.7
+        height = win_size[1] * 0.8
+    else:
+        width, height = (int(mod_const.WIN_WIDTH * 0.7), int(mod_const.WIN_HEIGHT * 0.8))
 
-    text_col = const.TEXT_COL
-    select_col = const.SELECT_TEXT_COL
+    # Window layout
+    layout = mod_lo.importer_layout(win_size=(width, height))
 
-    width = 1200
-    height = 800
-
-    try:
-        tables = [i.table_name for i in user.database_tables(settings.prog_db)]
-    except ValueError:
-        tables = []
-
-    layout = lo.importer_layout(tables, win_size=(width, height))
-
-    window = sg.Window(_('Import into Database'), layout, font=main_font, size=(width, height), modal=True)
+    window = sg.Window(_('Import to Database'), layout, font=main_font, modal=True, return_keyboard_events=True)
     window.finalize()
 
+    deletion_keys = ['d', 'Delete', 'BackSpace']
+
+    # Element values
     panel_keys = {0: '-P1-', 1: '-P2-', 2: '-P3-'}
     panel_names = {0: '-PN1-', 1: '-PN2-', 2: '-PN3-'}
     current_panel = 0
@@ -378,13 +410,75 @@ def database_importer_window(user):
     map_df = pd.DataFrame(columns=['Table Column Name', 'Data Type', 'File Column Name'])
 
     table = None
+    record_type = None
+    record_ids = []
+    record_entry = None
+    subset_df = None
+    reserved_values = [configuration.id_field, configuration.edit_date, configuration.editor_code,
+                       configuration.creation_date, configuration.creator_code]
     listbox_values = []
+
+    add_keys = ['-SUBSET_ADD_{}-'.format(i) for i in range(9)]  # last rule has no add button
+    delete_keys = ['-SUBSET_DELETE_{}-'.format(i) for i in range(1, 10)]  # first rule has no delete button
+    subs_in_view = [0]
+
+    mod_add_keys = ['-MODIFY_ADD_{}-'.format(i) for i in range(9)]  # last rule has no add button
+    mod_delete_keys = ['-MODIFY_DELETE_{}-'.format(i) for i in range(1, 10)]  # first rule has no delete button
+    mods_in_view = [0]
 
     # Start event loop
     while True:
-        event, values = window.read(timeout=500)
+        event, values = window.read(timeout=1000)
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            # Delete any unsaved record IDs created in the final step
+            if len(record_ids) > 0 and record_entry is not None:
+                print('Info: removing unsaved record IDs')
+                record_entry.remove_ids(record_ids)
+                record_ids = []
+            break
+
+        # Import selected data into the database table
+        if event == '-IMPORT-':
+            if subset_df is None or table is None or record_entry is None:
+                continue
+
+            # Prepare the insertion statement
+            tbl_columns = subset_df.columns.values.tolist()
+            records_saved = []
+            for index, row in subset_df.iterrows():
+                # Prepare update parameters
+                row_values = row.replace({np.nan: None}).values.tolist()
+                records_saved.append(user.insert(table, tbl_columns, row_values))
+
+            msg = 'Successfully saved {SUCCESS} rows to the database. Failed to save {FAIL} rows'\
+                .format(SUCCESS=len([i for i in records_saved if i is True]),
+                        FAIL=len([i for i in records_saved if i is False]))
+            popup_notice(msg)
+            print('Info: {}'.format(msg))
+
+            # Delete saved record IDs from list of unsaved IDs
+            print('Info: removing saved records from the list of unsaved IDs')
+            record_entry.remove_ids(record_ids)
+
+            # Export report describing success of import by row
+            success_col = 'Successfully saved'
+            subset_df[success_col] = records_saved
+            outfile = sg.popup_get_file('', title='Save Database import report', save_as=True,
+                                        default_extension='xlsx', no_window=True,
+                                        file_types=(
+                                            ('XLS - Microsoft Excel', '*.xlsx'), ('Comma-Separated Values', '*.csv')))
+
+            try:
+                out_fmt = outfile.split('.')[-1]
+            except AttributeError:
+                break
+
+            if out_fmt == 'csv':
+                subset_df.to_csv(outfile, sep=',', header=True, index=False)
+            else:
+                subset_df.style.apply(highlight_bool, column=success_col, axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
+
             break
 
         # Enable next button when a file is selected
@@ -424,28 +518,54 @@ def database_importer_window(user):
                     popup_notice('Unsupported character provided as the thousands separator')
                     continue
 
-            # Populate Preview table with top 20 values from spreadsheet
+            # Populate Preview table with top 10 and bottom 10 values from spreadsheet
             if next_panel == last_panel:
-                if table is None:
+                table = values['-TABLE-']
+                record_type = values['-RECORDTYPE-']
+                if not table:
                     popup_notice('Please select a valid table from the "Table" dropdown')
                     continue
+                elif not record_type:
+                    popup_notice('Please select a valid record type from the "Record Type" dropdown')
+                    continue
                 else:
-                    file_format = values['-FORMAT-']
+                    # Specify the import column data types
+                    convert_map = {}
+                    for index, row in map_df.iterrows():
+                        fcolname = row['File Column Name']
+                        colname = row['Table Column Name']
+
+                        db_type = columns[colname][0]
+                        if db_type in date_types:
+                            continue
+
+                        try:
+                            coltype = dtype_map[db_type.lower()]
+                        except KeyError:
+                            print('Info: database data type {DTYPE} not in list of expected data types'
+                                  .format(DTYPE=db_type))
+                            continue
+                        else:
+                            convert_map[fcolname] = coltype
 
                     # Import spreadsheet into dataframe
+                    file_format = values['-FORMAT-']
                     if file_format == 'xls':
-                        formatting_options = {'parse_dates': values['-DATES-'], 'convert_float': values['-INTS-'],
+                        formatting_options = {'convert_float': values['-INTS-'],
                                               'skiprows': skiptop, 'skipfooter': skipbottom, 'header': header_row,
-                                              'thousands': thousands_sep}
+                                              'thousands': thousands_sep, 'dtype': convert_map}
                         reader = pd.read_excel
                     else:
-                        formatting_options = {'parse_dates': values['-DATES-'], 'sep': values['-FSEP-'],
-                                              'lineterminator': values['-NSEP-'], 'skiprows': skiptop,
+                        formatting_options = {'sep': values['-FSEP-'], 'skiprows': skiptop,
                                               'skipfooter': skipbottom, 'header': header_row,
-                                              'thousands': thousands_sep, 'encoding': 'utf-8', 'error_bad_lines': False,
-                                              'skip_blank_lines': True}
+                                              'thousands': thousands_sep, 'encoding': 'utf-8',
+                                              'error_bad_lines': False,
+                                              'skip_blank_lines': True, 'dtype': convert_map}
                         reader = pd.read_csv
 
+                    print('Info: formatting import file options: {}'.format(formatting_options))
+
+                    # Import data from the file into a pandas dataframe
                     import_df = reader(infile, **formatting_options)
 
                     # Rename columns based on mapping information
@@ -453,9 +573,11 @@ def database_importer_window(user):
                                            index=map_df['File Column Name']).to_dict()
                     import_df.rename(col_mapper, axis=1, inplace=True)
 
+                    # Set values for the required columns.
                     for index, row in req_df.iterrows():
                         column_name = row['Table Column Name']
                         column_value = row['Default Value']
+
                         import_df[column_name] = column_value
 
                     all_cols = req_df['Table Column Name'].append(map_df['Table Column Name'], ignore_index=True)
@@ -464,17 +586,257 @@ def database_importer_window(user):
                     except KeyError:
                         popup_notice('Please verify that column names are mapped correctly')
                         continue
+                    else:
+                        # Set columns dtypes
+                        dtypes = {}
+                        date_cols = []
+                        for final_col in all_cols:
+                            if final_col in columns:
+                                coltype = columns[final_col][0]
+                                if coltype in date_types:  # set the datatype of datetime columns separately
+                                    date_cols.append(final_col)
+                                    continue
+
+                                try:
+                                    dtype = dtype_map[coltype.lower()]
+                                except KeyError:
+                                    dtype = np.object
+                                dtypes[final_col] = dtype
+
+                        final_df = final_df.astype(dtypes)
+                        if values['-DATES-']:
+                            for date_col in date_cols:
+                                try:
+                                    final_df[date_col] = pd.to_datetime(final_df[date_col],
+                                                                        dayfirst=values['-DAYFIRST-'],
+                                                                        yearfirst=values['-YEARFIRST-'])
+                                except Exception as e:
+                                    msg = 'Unable to convert values in column {COL} to a datetime format - {ERR}'\
+                                        .format(COL=date_col, ERR=e)
+                                    popup_error(msg)
+                                    print('Error: {}'.format(msg))
+
+                    # Subset table based on specified subset rules
+                    subset_df = final_df
+                    for sub_num in subs_in_view:
+                        sub_col = values['-SUBSET_COL_{}-'.format(sub_num)]
+                        sub_oper = values['-SUBSET_OPER_{}-'.format(sub_num)]
+                        sub_val = values['-SUBSET_VALUE_{}-'.format(sub_num)]
+                        if not sub_col or not sub_oper:
+                            continue
+
+                        if sub_col not in all_cols.values.tolist():
+                            msg = 'The column {COL} selected in subset rule {RULE} must be one of the required or ' \
+                                  'mapping columns chosen for importing'.format(COL=sub_col, RULE=sub_num + 1)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+
+                        # Get dtype of subset column and convert value to the correct dtype
+                        try:
+                            sub_dtype = columns[sub_col][0]
+                        except KeyError:
+                            msg = 'The column {COL} selected for subset rule {RULE} must be a valid table column'\
+                                .format(COL=sub_col, RULE=sub_num + 1)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+                        else:
+                            sub_obj = dtype_map[sub_dtype]
+
+                        try:
+                            sub_val_fmt = sub_obj(sub_val)
+                        except ValueError:
+                            msg = 'Unable to convert the value {VAL} from subset rule {RULE} to {DTYPE}'\
+                                .format(VAL=sub_val, RULE=sub_num + 1, DTYPE=sub_dtype)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+                        else:
+                            print('Info: sub-setting table column {COL} by value {VAL}'
+                                  .format(COL=sub_col, VAL=sub_val_fmt))
+
+                        if sub_oper == '<':
+                            cond_results = subset_df[sub_col] < sub_val_fmt
+                        elif sub_oper == '>':
+                            cond_results = subset_df[sub_col] > sub_val_fmt
+                        elif sub_oper == '<=':
+                            cond_results = subset_df[sub_col] <= sub_val_fmt
+                        elif sub_oper == '>=':
+                            cond_results = subset_df[sub_col] >= sub_val_fmt
+                        elif sub_oper == '=':
+                            cond_results = subset_df[sub_col] == sub_val_fmt
+                        elif sub_oper == '!=':
+                            cond_results = subset_df[sub_col] != sub_val_fmt
+                        else:
+                            msg = 'The operator {OPER} selected for subset rule {RULE} is not a supported ' \
+                                  'subset operator'.format(OPER=sub_oper, RULE=sub_num + 1)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+
+                        try:
+                            subset_df = subset_df[cond_results]
+                        except Exception as e:
+                            msg = 'Failed to subset the dataframe using subset rule {RULE}. Use the debug window for ' \
+                                  'more information'.format(RULE=sub_num)
+                            popup_error(msg)
+                            print('Warning: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
+
+                    # Create record IDs for each row in the final import table
+                    record_entry = configuration.records.fetch_entry(record_type, by_title=True)
+
+                    failed_rows = []
+                    for index, row in subset_df.iterrows():
+                        try:
+                            date_list = pd.to_datetime(subset_df[configuration.date_field], errors='coerce')
+                        except KeyError:
+                            record_date = datetime.datetime.now()
+                        else:
+                            record_date = date_list[index]
+
+                        record_id = record_entry.create_id(record_date)
+                        if record_id is None:
+                            msg = 'Failed to create a record ID for row {}'.format(row)
+                            popup_notice(msg)
+                            print('Error: {}'.format(msg))
+                            failed_rows.append(index)
+                        else:
+                            record_ids.append(record_id)
+
+                    subset_df = subset_df[~subset_df.index.isin(failed_rows)]
+
+                    subset_df[configuration.id_field] = record_ids
+
+                    # Set values for the creator fields
+                    subset_df[configuration.creator_code] = user.uid
+                    subset_df[configuration.creation_date] = datetime.datetime.now()
+
+                    # Modify table column values based on the modify column rules
+                    for elem_num in mods_in_view:
+                        elem_col = values['-MODIFY_COL_{}-'.format(elem_num)]
+                        elem_oper = values['-MODIFY_OPER_{}-'.format(elem_num)]
+                        elem_val = values['-MODIFY_VALUE_{}-'.format(elem_num)]
+                        if not elem_col or not elem_oper:
+                            continue
+
+                        if elem_col not in all_cols.values.tolist():
+                            msg = 'The column {COL} selected in modify column rule {RULE} must be one of the required ' \
+                                  'or mapping columns chosen for importing'.format(COL=elem_col, RULE=elem_num + 1)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+
+                        if elem_oper not in math_operators:
+                            msg = 'The operator {OPER} selected for modify column rule {RULE} is not a supported math ' \
+                                  'operator'.format(OPER=elem_oper, RULE=elem_num + 1)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+
+                        # Get the datatype of the column to modify
+                        try:
+                            elem_dtype = columns[elem_col][0]
+                        except KeyError:
+                            msg = 'The column {COL} selected for modify column rule {RULE} must be a valid table ' \
+                                  'column'.format(COL=elem_col, RULE=elem_num + 1)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+                        else:
+                            elem_obj = dtype_map[elem_dtype]
+
+                        # Convert value to numeric datatype
+                        try:
+                            elem_val_fmt = float(elem_val)
+                        except ValueError:
+                            msg = 'Unable to convert the value {VAL} from modify column rule {RULE} to numeric' \
+                                .format(VAL=elem_val, RULE=elem_num + 1)
+                            popup_error(msg)
+                            print('Warning: {}'.format(msg))
+                            continue
+                        else:
+                            print('Info: modifying table column {COL} by value {VAL} based on rule {RULE}'
+                                  .format(COL=elem_col, VAL=elem_val_fmt, RULE=elem_num + 1))
+
+                        # Create the evaluation string
+                        if is_numeric_dtype(elem_obj):
+                            eval_str = 'subset_df["{COL}"] {OPER} {VAL}'\
+                                .format(COL=elem_col, OPER=elem_oper, VAL=elem_val_fmt)
+                            try:
+                                subset_df[elem_col] = eval(eval_str)
+                            except SyntaxError:
+                                msg = 'Failed to modify the values of column {COL} using rule {NAME}. Use the debug ' \
+                                      'window for more information'.format(COL=elem_col, NAME=elem_num + 1)
+                                popup_error(msg)
+                                print('Warning: invalid syntax in evaluation string {RULE} for rule {NAME}'
+                                      .format(RULE=eval_str, NAME=elem_num))
+                                print(subset_df)
+                            except NameError:
+                                msg = 'Failed to modify the values of column {COL} using rule {NAME}. Use the debug ' \
+                                      'window for more information'.format(COL=elem_col, NAME=elem_num + 1)
+                                popup_error(msg)
+                                print('Warning: unknown column {COL} specified in modify rule {NAME}'
+                                      .format(COL=elem_col, NAME=eval_str))
+                                print(subset_df)
+                                print(subset_df.columns)
+                            else:
+                                print('Info: successfully modified column {COL} values based on specified rule {RULE}'
+                                      .format(COL=elem_col, RULE=elem_num + 1))
+                        elif is_datetime_dtype(elem_obj):
+                            if elem_oper == '+':
+                                offset = relativedelta(days=+elem_val_fmt)
+                            elif elem_oper == '-':
+                                offset = relativedelta(days=-elem_val_fmt)
+                            else:
+                                msg = 'Unable to modify column {COL} values in rule {RULE} using "{OPER}". Only ' \
+                                      'addition and subtraction is supported for date columns.' \
+                                    .format(COL=elem_col, OPER=oper_map[elem_oper], RULE=elem_num + 1)
+                                popup_error(msg)
+                                print('Warning: {}'.format(msg))
+                                continue
+
+                            try:
+                                subset_df[elem_col] = subset_df[elem_col].apply(lambda x: x + offset)
+                            except Exception as e:
+                                msg = 'Failed to modify the values of column {COL} using rule {RULE} - {ERR}'\
+                                    .format(COL=elem_col, RULE=elem_num + 1, ERR=e)
+                                popup_error(msg)
+                                print('Error: {}'.format(msg))
+                            else:
+                                print('Info: successfully modified column {COL} values based on specified rule {RULE}'
+                                      .format(COL=elem_col, RULE=elem_num + 1))
+                        else:
+                            msg = 'Modify column rule {RULE}: Only columns with numeric or date data type ' \
+                                  'can be modified'.format(RULE=elem_num + 1)
+                            popup_error(msg)
+                            print('Error: {}'.format(msg))
+                            continue
+
+                    print(subset_df)
+                    print(subset_df.columns)
+                    print(subset_df.dtypes)
 
                     # Populate preview with table values
-                    col_widths = dm.calc_column_widths(all_cols, width=width * 0.77, pixels=True)
-                    window['-PREVIEW-'].Widget['columns'] = tuple(all_cols.values.tolist())
+                    final_cols = subset_df.columns.values.tolist()
+                    preview_cols = [configuration.id_field] + [i for i in final_cols if i != configuration.id_field]
+                    col_widths = mod_dm.calc_column_widths(preview_cols, width=width * 0.77, pixels=True)
+                    window['-PREVIEW-'].Widget['columns'] = tuple(preview_cols)
                     window['-PREVIEW-'].Widget['displaycolumns'] = '#all'
-                    for index, column_name in enumerate(all_cols):
+                    for index, column_name in enumerate(preview_cols):
                         col_width = col_widths[index]
                         window['-PREVIEW-'].Widget.column(index, width=col_width)
                         window['-PREVIEW-'].Widget.heading(index, text=column_name)
 
-                    window['-PREVIEW-'].update(values=final_df.head(n=20).values.tolist())
+                    preview_df = subset_df.head(10).append(subset_df.tail(10))[preview_cols]
+
+                    window['-PREVIEW-'].update(values=preview_df.values.tolist())
+
+                    # Update import statistic elements
+                    nrow, ncol = subset_df.shape
+                    window['-NCOL-'].update(value=ncol)
+                    window['-NROW-'].update(value=nrow)
+                    window['-TABLENAME-'].update(value=table)
 
                     # Enable import button
                     window['-IMPORT-'].update(disabled=False)
@@ -512,6 +874,13 @@ def database_importer_window(user):
         if event == '-BACK-':
             prev_panel = current_panel - 1
 
+            # Delete created record IDs if current panel is the preview panel
+            if current_panel == last_panel:
+                if len(record_ids) > 0 and record_entry is not None:
+                    print('Info: removing unsaved record IDs')
+                    record_entry.remove_ids(record_ids)
+                    record_ids = []
+
             # Enable /disable panels
             window[panel_keys[current_panel]].update(visible=False)
             window[panel_keys[prev_panel]].update(visible=True)
@@ -532,11 +901,11 @@ def database_importer_window(user):
             current_panel = prev_panel
             continue
 
-        # Populate database table tables based on table selection
+        # Populate data tables based on database table selection
         if event == '-TABLE-':
             table = values['-TABLE-']
             columns = {i.column_name: (i.type_name, i.column_size) for i in
-                       user.table_schema(settings.prog_db, table)}
+                       user.table_schema(settings.prog_db, table) if i.column_name not in reserved_values}
 
             listbox_values = list(columns.keys())
 
@@ -550,6 +919,17 @@ def database_importer_window(user):
 
             window['-REQCOL-'].update(values=req_df.values.tolist())
             window['-MAPCOL-'].update(values=map_df.values.tolist())
+
+            # Reset the subset rule columns
+            for index in range(10):
+                sub_col_key = '-SUBSET_COL_{}-'.format(index)
+                window[sub_col_key].update(values=tuple(sorted(listbox_values)))
+
+            # Reset the modify rule columns
+            for index in range(10):
+                mod_col_key = '-MODIFY_COL_{}-'.format(index)
+                window[mod_col_key].update(values=tuple(sorted(listbox_values)))
+
             continue
 
         # Populate tables with columns selected from the list-boxes
@@ -591,49 +971,189 @@ def database_importer_window(user):
             window['-MAPLIST-'].update(values=listbox_values)
             continue
 
-        # Edit table row
+        # Remove rows from the tables
+        if event.split(':')[0] in deletion_keys and values['-MAPCOL-']:
+            indices = values['-MAPCOL-']
+            col_names = map_df.loc[indices, 'Table Column Name']
+
+            # Remove rows from the dataframe
+            map_df.drop(indices, axis=0, inplace=True)
+            map_df.reset_index(drop=True, inplace=True)
+            window['-MAPCOL-'].update(values=map_df.values.tolist())
+
+            # Return columns to the listboxes
+            for col_name in col_names:
+                if col_name not in req_df['Table Column Name'].tolist():
+                    if col_name not in listbox_values:
+                        listbox_values.append(col_name)
+
+            window['-REQLIST-'].update(values=listbox_values)
+            window['-MAPLIST-'].update(values=listbox_values)
+
+        if event.split(':')[0] in deletion_keys and values['-REQCOL-']:
+            indices = values['-REQCOL-']
+            col_names = req_df.loc[indices, 'Table Column Name']
+
+            # Remove rows from the dataframe
+            req_df.drop(indices, axis=0, inplace=True)
+            req_df.reset_index(drop=True, inplace=True)
+            window['-REQCOL-'].update(values=req_df.values.tolist())
+
+            # Return columns to the listboxes
+            for col_name in col_names:
+                if col_name not in map_df['Table Column Name'].tolist():  # not found in other dataframe
+                    if col_name not in listbox_values:  # not already somehow in the listboxes
+                        listbox_values.append(col_name)
+
+            window['-REQLIST-'].update(values=listbox_values)
+            window['-MAPLIST-'].update(values=listbox_values)
+
+        # Edit a table row's values
         if event == '-REQCOL-' and table is not None:
             try:
-                col_index = values['-REQCOL-'][0]
+                row_index = values['-REQCOL-'][0]
             except IndexError:
                 continue
 
             # Find datatype of selected column
-            col_name = req_df.at[col_index, 'Table Column Name']
-            dtype = columns[col_name][0]
+            row_name = req_df.at[row_index, 'Table Column Name']
+            row_dtype = columns[row_name][0]
 
             # Modify table row
-            req_df = modify_record(req_df, col_index, {'Default Value': {'ElementType': dtype}})
+            row = edit_row_window(req_df.iloc[row_index], edit_columns={'Default Value': {'ElementType': row_dtype}})
             window['-REQCOL-'].update(values=req_df.values.tolist())
-
-            # Return column to listbox if row is deleted
-            if col_name not in req_df['Table Column Name'].tolist():
-                if col_name not in listbox_values:
-                    listbox_values.append(col_name)
-                window['-REQLIST-'].update(values=listbox_values)
-                window['-MAPLIST-'].update(values=listbox_values)
+            req_df.iloc[row_index] = row
 
             continue
 
         if event == '-MAPCOL-' and table is not None:
             try:
-                col_index = values['-MAPCOL-'][0]
+                row_index = values['-MAPCOL-'][0]
             except IndexError:
                 continue
 
-            col_name = map_df.at[col_index, 'Table Column Name']
+            # Find datatype of selected column
+            row_dtype = 'string'
 
             # Modify table row
-            map_df = modify_record(map_df, col_index, {'File Column Name': {'ElementType': 'string'}})
+            row = edit_row_window(map_df.iloc[row_index], edit_columns={'File Column Name': {'ElementType': row_dtype}})
             window['-MAPCOL-'].update(values=map_df.values.tolist())
+            map_df.iloc[row_index] = row
 
-            # Return column to listbox if row is deleted
-            if col_name not in map_df['Table Column Name'].tolist():
-                if col_name not in listbox_values:
-                    listbox_values.append(col_name)
-                window['-REQLIST-'].update(values=listbox_values)
-                window['-MAPLIST-'].update(values=listbox_values)
+            continue
 
+        # Add a subset element
+        if event in add_keys:
+            # Get subset number of current and following rows
+            subset_num = int(event.replace('-', '').split('_')[-1])
+            next_num = subset_num + 1
+
+            # Make next row visible
+            next_key = '-SUBSET_{}-'.format(next_num)
+            window[next_key].update(visible=True)
+            window[next_key].expand(expand_x=True, expand_row=True)
+
+            # Make add button of current element invisible
+            window[event].update(visible=False)
+
+            # Add new row to the list of visible rows
+            subs_in_view.append(next_num)
+
+            window['-SUBSET-'].update(visible=False)
+            window['-SUBSET-'].expand(expand_y=True, expand_row=True)
+            window.refresh()
+            window['-SUBSET-'].update(visible=True)
+
+            print('Info: adding subset rule {RULE} with key {KEY}'.format(RULE=next_num, KEY=next_key))
+            continue
+
+        # Delete a subset element
+        if event in delete_keys:
+            # Get subset number
+            subset_num = int(event.replace('-', '').split('_')[-1])
+
+            # Make row invisible and remove from list of visible rows
+            subset_key = '-SUBSET_{}-'.format(subset_num)
+            window[subset_key].update(visible=False)
+            subs_in_view.remove(subset_num)
+
+            # Reset the rule values
+            elem_col = '-SUBSET_COL_{}-'.format(subset_num)
+            elem_oper = '-SUBSET_OPER_{}-'.format(subset_num)
+            elem_value = '-SUBSET_VALUE_{}-'.format(subset_num)
+            window[elem_col].update(value='')
+            window[elem_oper].update(value='')
+            window[elem_value].update(value='')
+
+            # Make the add button of previous rule visible again
+            prev_num = subset_num - 1
+            if prev_num >= 0:
+                prev_key = '-SUBSET_ADD_{}-'.format(prev_num)
+                window[prev_key].update(visible=True)
+
+            window['-SUBSET-'].update(visible=False)
+            window['-SUBSET-'].expand(expand_y=True, expand_row=True)
+            window.refresh()
+            window['-SUBSET-'].update(visible=True)
+
+            print('Info: deleting subset rule {RULE} with key {KEY}'.format(RULE=subset_num, KEY=subset_key))
+            continue
+
+        # Add a modify column element
+        if event in mod_add_keys:
+            # Get subset number of current and following rows
+            mod_num = int(event.replace('-', '').split('_')[-1])
+            next_num = mod_num + 1
+
+            # Make next row visible
+            next_key = '-MODIFY_{}-'.format(next_num)
+            window[next_key].update(visible=True)
+            window[next_key].expand(expand_x=True, expand_row=True)
+
+            # Make add button of current element invisible
+            window[event].update(visible=False)
+
+            # Add new row to the list of visible rows
+            mods_in_view.append(next_num)
+
+            window['-MODIFY-'].update(visible=False)
+            window['-MODIFY-'].expand(expand_y=True, expand_row=True)
+            window.refresh()
+            window['-MODIFY-'].update(visible=True)
+
+            print('Info: adding modify column rule {RULE} with key {KEY}'.format(RULE=next_num, KEY=next_key))
+            continue
+
+        # Delete a modify column element
+        if event in mod_delete_keys:
+            # Get subset number
+            elem_num = int(event.replace('-', '').split('_')[-1])
+
+            # Make row invisible and remove from list of visible rows
+            mod_key = '-MODIFY_{}-'.format(elem_num)
+            window[mod_key].update(visible=False)
+            mods_in_view.remove(elem_num)
+
+            # Reset the rule values
+            elem_col = '-MODIFY_COL_{}-'.format(elem_num)
+            elem_oper = '-MODIFY_OPER_{}-'.format(elem_num)
+            elem_value = '-MODIFY_VALUE_{}-'.format(elem_num)
+            window[elem_col].update(value='')
+            window[elem_oper].update(value='')
+            window[elem_value].update(value='')
+
+            # Make the add button of previous rule visible again
+            prev_num = elem_num - 1
+            if prev_num >= 0:
+                prev_key = '-MODIFY_ADD_{}-'.format(prev_num)
+                window[prev_key].update(visible=True)
+
+            window['-MODIFY-'].update(visible=False)
+            window['-MODIFY-'].expand(expand_y=True, expand_row=True)
+            window.refresh()
+            window['-MODIFY-'].update(visible=True)
+
+            print('Info: deleting modify column rule {RULE} with key {KEY}'.format(RULE=elem_num, KEY=mod_key))
             continue
 
     window.close()
@@ -648,7 +1168,7 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     """
     Associate data from one table with data in another table.
     """
-    width = const.WIN_WIDTH - 40
+    width = mod_const.WIN_WIDTH - 40
 
     to_title = 'Collection' if to_title is None else to_title
     from_title = 'Source' if from_title is None else from_title
@@ -663,36 +1183,36 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     from_df.rename(columns=column_map, inplace=True)
 
     # Window and element size parameters
-    pad_frame = const.FRAME_PAD
-    pad_v = const.VERT_PAD
-    pad_el = const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
+    pad_el = mod_const.ELEM_PAD
 
-    bg_col = const.ACTION_COL
-    header_col = const.HEADER_COL
+    bg_col = mod_const.ACTION_COL
+    header_col = mod_const.HEADER_COL
 
-    main_font = const.MAIN_FONT
-    header_font = const.HEADER_FONT
+    main_font = mod_const.MAIN_FONT
+    header_font = mod_const.HEADER_FONT
 
     # Layout
     title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
                     [sg.Text('Associate Data Records', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
                              background_color=header_col)]]
 
-    main_layout = [[lo.create_table_layout(dm.format_display_table(from_df, column_map).values.tolist(),
-                                           column_header, '-FROM-', events=True,
-                                           tooltip='Double-click row to add row to the collection', nrow=10,
-                                           width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
-                                           table_name=from_title),
-                    lo.create_table_layout(dm.format_display_table(to_df, column_map).values.tolist(), column_header,
+    main_layout = [[mod_lo.create_table_layout(mod_dm.format_display_table(from_df, column_map).values.tolist(),
+                                               column_header, '-FROM-', events=True,
+                                               tooltip='Double-click row to add row to the collection', nrow=10,
+                                               width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
+                                               table_name=from_title),
+                    mod_lo.create_table_layout(mod_dm.format_display_table(to_df, column_map).values.tolist(), column_header,
                                            '-TO-', events=True,
-                                           tooltip='Double-click row to remove row from the collection', nrow=10,
-                                           width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
-                                           table_name=to_title)]]
+                                               tooltip='Double-click row to remove row from the collection', nrow=10,
+                                               width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
+                                               table_name=to_title)]]
 
-    bttn_layout = [[sg.Col([[lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel selections')]],
+    bttn_layout = [[sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel selections')]],
                            pad=(0, 0), justification='l', expand_x=True),
                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                    sg.Col([[lo.B2('Save', key='-SAVE-', pad=((0, pad_el), 0), tooltip='Save selections')]],
+                    sg.Col([[mod_lo.B2('Save', key='-SAVE-', pad=((0, pad_el), 0), tooltip='Save selections')]],
                            pad=(0, 0), justification='r')]]
 
     layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
@@ -725,8 +1245,8 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
             from_df.reset_index(drop=True, inplace=True)
 
             # Update display tables
-            window['-FROM-'].update(values=dm.format_display_table(from_df, column_map).values.tolist())
-            window['-TO-'].update(values=dm.format_display_table(to_df, column_map).values.tolist())
+            window['-FROM-'].update(values=mod_dm.format_display_table(from_df, column_map).values.tolist())
+            window['-TO-'].update(values=mod_dm.format_display_table(to_df, column_map).values.tolist())
 
             continue
 
@@ -751,8 +1271,8 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
             print(to_df.dtypes)
 
             # Update display tables
-            window['-FROM-'].update(values=dm.format_display_table(from_df, column_map).values.tolist())
-            window['-TO-'].update(values=dm.format_display_table(to_df, column_map).values.tolist())
+            window['-FROM-'].update(values=mod_dm.format_display_table(from_df, column_map).values.tolist())
+            window['-TO-'].update(values=mod_dm.format_display_table(to_df, column_map).values.tolist())
 
             continue
 
@@ -768,251 +1288,131 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     return select_rows
 
 
-def data_import_window(df, parameters, header_map: dict = None, aliases: dict = None, create_new: bool = False):
+def data_import_window(user, table, win_size: tuple = None, create_new: bool = False):
     """
     Display the import from database window.
     """
-    relativedelta = dateutil.relativedelta.relativedelta
-    strptime = datetime.datetime.strptime
-    is_float_dtype = pd.api.types.is_float_dtype
-    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-    date_fmt = settings.format_date_str(date_str=settings.display_date_format)
-    date_offset = settings.get_date_offset()
-
-    display_df = df.copy()
-    header = display_df.columns.values.tolist()
-
-    if header_map is None:
-        header_map = {i: i for i in header}
-
-    display_header = []
-    display_indices = []
-    for column_index, column in enumerate(header):
-        try:
-            display_header.append(header_map[column])
-        except KeyError:
-            print('Configuration Warning: display column {COL} not found in configured table columns'
-                  .format(COL=column))
-        else:
-            display_indices.append(column_index)
-
-    # Filter data by default parameters
-    filter_params = []
-    for param in parameters:
-        filter_params.append(param.element_key)
-
-        param_value = param.value
-        if param_value:
-            try:
-                display_df = display_df[display_df[param.name] == param_value]
-            except KeyError:
-                print('Configuration Warning: parameter {PARAM} not found in imported table'.format(PARAM=param.name))
-                continue
-
-    # Map column values to the aliases specified in the configuration
-    for alias_col in aliases:
-        alias_map = aliases[alias_col]  # dictionary of mapped values
-
-        if alias_col not in header:
-            continue
-        else:
-            display_df[alias_col].replace(alias_map, inplace=True)
-
-    for column in display_df.columns:
-        column_values = display_df[column]
-        dtype = column_values.dtype
-        if is_float_dtype(dtype):
-            column_values = column_values.apply('{:,.2f}'.format)
-        elif is_datetime_dtype(dtype):
-            column_values = column_values.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
-                                                         relativedelta(years=+date_offset)).strftime(date_fmt)
-                if pd.notnull(x) else '')
-        display_df[column] = column_values
-
-    data = display_df.iloc[:, display_indices].values.tolist()
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
     # Layout
+    record_col = None
+    for display_col in table.display_columns:
+        colname = table.display_columns[display_col]
+        if colname == 'RecordID':
+            record_col = display_col
+            break
+
+    if record_col is None:
+        print('Error: "RecordID" is a required display column')
+        return None
+
     # Window and element size parameters
-    width = const.WIN_WIDTH
+    header_col = mod_const.HEADER_COL
+    bg_col = mod_const.ACTION_COL
 
-    header_col = const.HEADER_COL
-    bg_col = const.ACTION_COL
+    header_font = mod_const.HEADER_FONT
 
-    header_font = const.HEADER_FONT
-
-    pad_el = const.ELEM_PAD
-    pad_v = const.VERT_PAD
-    pad_frame = const.FRAME_PAD
-
-    layout_params = []
-    for param in parameters:
-        if param.hidden is False:
-            layout_params.append(param)
+    pad_el = mod_const.ELEM_PAD
+    pad_v = mod_const.VERT_PAD
+    pad_frame = mod_const.FRAME_PAD
 
     # Title
+    title = 'Import {TYPE} records'.format(TYPE=table.title)
     title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
-                    [sg.Text('Import Database Records', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
+                    [sg.Text(title, pad=((pad_frame, 0), (0, pad_v)), font=header_font,
                              background_color=header_col)]]
 
-    use_center = True
-    if len(layout_params) <= 2 or len(layout_params) == 4:
-        use_center = False
-
-    left_cols = []
-    center_cols = []
-    right_cols = []
-    left_sizes = []
-    for i, parameter in enumerate(layout_params):
-        param_index = i + 1
-        if use_center is True:
-            index_mod = param_index % 3
-        else:
-            index_mod = param_index % 2
-
-        param_layout = parameter.layout(padding=(0, pad_el * 2), size=(14, 1), text_size=(14, 1), filter_layout=True)
-
-        if use_center is True and index_mod == 1:
-            left_cols.append(param_layout)
-            left_sizes.append(len(parameter.description))
-        elif use_center is True and index_mod == 2:
-            center_cols.append(param_layout)
-        elif use_center is True and index_mod == 0:
-            right_cols.append(param_layout)
-        elif use_center is False and index_mod == 1:
-            left_sizes.append(len(parameter.description))
-            left_cols.append(param_layout)
-            center_cols.append([sg.Canvas(size=(0, 0), visible=True)])
-        elif use_center is False and index_mod == 0:
-            right_cols.append(param_layout)
-        else:
-            print('Warning: cannot assign layout for filter parameter {PARAM}'.format(PARAM=parameter.name))
-
-    if len(right_cols) < 1:
-        right_cols.append([])
-    if len(left_cols) < 1:
-        left_cols.append([])
-    if len(center_cols) < 1:
-        center_cols.append([])
-
-    pad_diff = 14 - max(left_sizes)
-    param_pad_r = pad_frame + pad_diff * 13 if pad_diff > 0 else pad_frame
-
-    header_layout = [[sg.Col([[sg.Canvas(size=(0, 0), background_color=bg_col)]],
-                             pad=(0, (pad_v, 0)), background_color=bg_col, expand_x=True)],
-                     [sg.Col(left_cols, pad=((pad_frame, 0), 0), background_color=bg_col, justification='l',
-                             vertical_alignment='t', expand_x=True),
-                      sg.Col(center_cols, pad=(0, 0), background_color=bg_col, justification='c',
-                             vertical_alignment='t', expand_x=True),
-                      sg.Col(right_cols, pad=((0, param_pad_r), 0), background_color=bg_col, justification='r',
-                             vertical_alignment='t', expand_x=True)],
-                     [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.INACTIVE_COL)]]
-
     # Import data table
-    main_layout = [[lo.create_table_layout(data, display_header, '-TABLE-', events=False, width=width, nrow=20,
-                                           pad=(0, 0))]]
+    main_layout = [[table.layout(width=width, height=height, padding=(0, 0))]]
 
     # Control buttons
-    bttn_layout = [[sg.Col([[lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
+    bttn_layout = [[sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
                            pad=(0, 0), justification='l', expand_x=True),
                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                    sg.Col([[lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=create_new,
-                                   tooltip='Create new record'),
-                             lo.B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
+                    sg.Col([[mod_lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=create_new,
+                                       tooltip='Create new record'),
+                             mod_lo.B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
                            pad=(0, 0), justification='r')]]
 
     layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-              [sg.Col(header_layout, pad=(pad_frame, 0), background_color=bg_col, expand_x=True, expand_y=True)],
               [sg.Col(main_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, justification='c')],
               [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
 
+    # Finalize GUI window
     window = sg.Window('', layout, modal=True, resizable=False)
+    window.finalize()
+
+    screen_w, screen_h = window.get_screen_dimensions()
+    print('screen size is ({}, {})'.format(screen_w, screen_h))
+    win_w = int(screen_w * 0.8)
+    win_h = int(screen_h * 0.8)
+    print('desired window size is ({}, {})'.format(win_w, win_h))
+
+    table.resize(window, size=(win_w, win_h))
+
+    window = center_window(window)
+
+    # Set table datatypes
+    table.df = table.set_datatypes(table.df)
+
+    # Update display with default filter values
+    tbl_key = table.key_lookup('Element')
+    table_elements = [i for i in table.elements if i != tbl_key]
+
+    display_df = table.update_display(window)
 
     # Main loop
-    import_data = None
+    record_id = None
     while True:
-        event, values = window.read(timeout=1000, close=False)
-#        event, values = window.read()
+        event, values = window.read(timeout=500)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
-            import_data = None
+        if event in (sg.WIN_CLOSED, '-CANCEL-', '-NEW-'):  # selected close-window or Cancel
+            record_id = None
             break
 
-        # Filter table rows based on parameter values
-        if event in filter_params:
-            display_df = df.copy()
-
-            # Filter table
-            for param in parameters:
-                if param.hidden is True:
-                    param_value = param.value
-                else:
-                    param_value = values[param.element_key]
-
-                if param_value:
-                    display_df = display_df[display_df[param.name] == param_value]
-
-            # Map column values to the aliases specified in the configuration
-            for alias_col in aliases:
-                alias_map = aliases[alias_col]  # dictionary of mapped values
-
-                if alias_col not in header:
-                    continue
-                else:
-                    display_df[alias_col].replace(alias_map, inplace=True)
-
-            for column in display_df.columns:
-                column_values = display_df[column]
-                dtype = column_values.dtype
-                if is_float_dtype(dtype):
-                    column_values = column_values.apply('{:,.2f}'.format)
-                elif is_datetime_dtype(dtype):
-                    column_values = column_values.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
-                                                                   relativedelta(years=+date_offset)).strftime(date_fmt)
-                    if pd.notnull(x) else '')
-                display_df[column] = column_values
-
-            window['-TABLE-'].update(values=display_df.iloc[:, display_indices].values.tolist())
-
-            continue
-
         # Enable the OK button if a record is selected
-        if values['-TABLE-']:
+        if values[tbl_key]:
             window['-OK-'].update(disabled=False)
 
         # Disable the OK button if no record is selected
-        if not values['-TABLE-']:
+        if not values[tbl_key]:
             window['-OK-'].update(disabled=True)
-
-        if event == '-NEW-':  # click 'NEW' button
-            import_data = pd.DataFrame(columns=df.columns.values.tolist())
-            break
 
         if event == '-OK-':  # click 'OK' button
             # retrieve selected row
             try:
-                row = values['-TABLE-'][0]
+                row = values[tbl_key][0]
             except IndexError:
                 continue
-            import_data = display_df.iloc[row]
+            else:
+                record_id = display_df.at[row, record_col]
+
             break
+
+        # Run table events
+        if event in table_elements:
+            display_df = table.run_event(window, event, values, user)
+            continue
 
     window.close()
     layout = None
     window = None
     gc.collect()
 
-    return import_data
+    return record_id
 
 
 def import_window(df, win_size: tuple = None):
     """
-    Display the audit importer window.
+    Display the importer window.
     """
     if win_size:
         width, height = [i * 0.8 for i in win_size]
     else:
-        width, height = (const.WIN_WIDTH * 0.8, const.WIN_HEIGHT * 0.8)
+        width, height = (mod_const.WIN_WIDTH * 0.8, mod_const.WIN_HEIGHT * 0.8)
 
     # Format dataframe as list for input into sg
     data = df.values.tolist()
@@ -1020,30 +1420,30 @@ def import_window(df, win_size: tuple = None):
     all_rows = list(range(df.shape[0]))
 
     # Window and element size parameters
-    font_h = const.HEADER_FONT
-    main_font = const.MAIN_FONT
+    font_h = mod_const.HEADER_FONT
+    main_font = mod_const.MAIN_FONT
 
-    pad_v = const.VERT_PAD
-    pad_el = const.ELEM_PAD
-    pad_frame = const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
 
-    bg_col = const.ACTION_COL
-    tbl_bg_col = const.TBL_BG_COL
-    tbl_alt_col = const.TBL_ALT_COL
-    tbl_vfy_col = const.TBL_VFY_COL
-    header_col = const.HEADER_COL
+    bg_col = mod_const.ACTION_COL
+    tbl_bg_col = mod_const.TBL_BG_COL
+    tbl_alt_col = mod_const.TBL_ALT_COL
+    tbl_vfy_col = mod_const.TBL_VFY_COL
+    header_col = mod_const.HEADER_COL
 
     # GUI layout
-    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
-                    lo.B2(_('Import'), bind_return_key=True, key='-IMPORT-', pad=(pad_el, 0),
-                          tooltip=_('Import the selected transaction orders'))]]
+    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
+                    mod_lo.B2(_('Import'), bind_return_key=True, key='-IMPORT-', pad=(pad_el, 0),
+                              tooltip=_('Import the selected transaction orders'))]]
 
-    tbl_key = lo.as_key('Import Table')
+    tbl_key = mod_lo.as_key('Import Table')
     layout = [[sg.Col([[sg.Text(_('Import Missing Data'), pad=(pad_frame, (pad_frame, pad_v)),
                                 background_color=header_col, font=font_h)]],
                       pad=(0, 0), background_color=header_col, justification='l', expand_x=True, expand_y=True)],
-              [sg.Frame('', [[lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width,
-                                                     pad=(0, 0))]],
+              [sg.Frame('', [[mod_lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width,
+                                                         pad=(0, 0))]],
                         background_color=bg_col, element_justification='c', pad=(pad_frame, 0), border_width=0)],
               [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
 
@@ -1115,13 +1515,13 @@ def about():
     """
     Display the "about program" window.
     """
-    bg_col = const.ACTION_COL
-    header_font = const.HEADER_FONT
-    sub_font = const.BOLD_MID_FONT
-    text_font = const.MID_FONT
-    pad_frame = const.FRAME_PAD
-    pad_el = const.ELEM_PAD
-    header_col = const.HEADER_COL
+    bg_col = mod_const.ACTION_COL
+    header_font = mod_const.HEADER_FONT
+    sub_font = mod_const.BOLD_MID_FONT
+    text_font = mod_const.MID_FONT
+    pad_frame = mod_const.FRAME_PAD
+    pad_el = mod_const.ELEM_PAD
+    header_col = mod_const.HEADER_COL
 
     layout = [[sg.Frame('', [[sg.Col([[sg.Image(filename=settings.logo)]], pad=((0, pad_el), 0),
                                      background_color=bg_col),
@@ -1169,23 +1569,23 @@ def edit_settings(win_size: tuple = None):
     if win_size:
         width, height = [i * 0.6 for i in win_size]
     else:
-        width, height = (const.WIN_WIDTH * 0.6, const.WIN_HEIGHT * 0.6)
+        width, height = (mod_const.WIN_WIDTH * 0.6, mod_const.WIN_HEIGHT * 0.6)
 
     # Window and element size parameters
-    pad_el = const.ELEM_PAD
-    pad_frame = const.FRAME_PAD
-    pad_v = const.VERT_PAD
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
 
-    font_h = const.HEADER_FONT
-    header_col = const.HEADER_COL
+    font_h = mod_const.HEADER_FONT
+    header_col = mod_const.HEADER_COL
 
-    bg_col = const.ACTION_COL
+    bg_col = mod_const.ACTION_COL
 
     # GUI layout
     ## Buttons
-    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                          tooltip=_('Save changes'))]]
+    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
+                    mod_lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip=_('Save changes'))]]
 
     layout = [[sg.Col([[sg.Text('Edit Settings', pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
                                 background_color=header_col)]], pad=(0, 0), justification='l',
@@ -1221,6 +1621,219 @@ def edit_settings(win_size: tuple = None):
     gc.collect()
 
 
+def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win_size: tuple = None):
+    """
+    Display window for user to add or edit a row.
+
+    Arguments:
+        row (DataFrame): pandas series containing the row data.
+
+        edit_columns (dict): dictionary of columns that are editable.
+
+        header_map (dict): dictionary mapping dataframe columns to display columns.
+
+        win_size (tuple): tuple containing the window width and height.
+    """
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_integer_dtype = pd.api.types.is_integer_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    is_bool_dtype = pd.api.types.is_bool_dtype
+
+    if not isinstance(edit_columns, dict) and edit_columns is not None:
+        print('TypeError: argument edit_columns must be a dictionary but has current type {TYPE}'
+              .format(TYPE=type(edit_columns)))
+        return row
+
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+
+    # Format dataframe as a list for the gui
+    header = row.index.tolist()
+
+    if header_map is None:
+        header_map = {i: i for i in header}
+
+    display_header = []
+    for column in header_map:
+        if column in header:
+            display_header.append(column)
+        else:
+            continue
+
+    edit_keys = {}
+    if edit_columns is not None:
+        for column in edit_columns:
+            if column not in display_header:
+                print('Warning: editable column {COL} not found in the display header'.format(COL=column))
+                continue
+
+            element_key = mod_lo.as_key(column)
+            edit_keys[column] = element_key
+
+    # Window and element size parameters
+    main_font = mod_const.MAIN_FONT
+    font_size = main_font[1]
+
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
+
+    header_col = mod_const.TBL_HEADER_COL
+    in_col = mod_const.INPUT_COL
+
+    # GUI layout
+    ## Buttons
+    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
+                    mod_lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip=_('Save changes'))]]
+
+    ## Table
+    lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
+
+    tbl_layout = []
+    for i, display_column in enumerate(display_header):
+        display_name = header_map[display_column]
+
+        col_width = lengths[i]
+        column_layout = [[sg.Text(display_name, size=(col_width, 1), auto_size_text=False, border_width=1,
+                                  relief='sunken', background_color=header_col, justification='c', font=main_font,
+                                  tooltip=display_name)]]
+
+        field_val = row[display_column]
+        if display_column in edit_keys:
+            element_key = edit_keys[display_column]
+            readonly = False
+            try:
+                column_type = edit_columns[display_column]['ElementType']
+            except KeyError:
+                column_type = 'string'
+        else:
+            element_key = mod_lo.as_key(display_column)
+            readonly = True
+            column_type = 'string'
+
+        if column_type == 'dropdown':
+            try:
+                values = edit_columns[display_column]['Values']
+            except KeyError:
+                values = [field_val]
+            column_layout.append([sg.DropDown(values, default_value=field_val, key=element_key, size=(col_width - 2, 1),
+                                              font=main_font, readonly=readonly,
+                                              tooltip='Select item from the dropdown menu')])
+        else:
+            column_layout.append([sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
+                                           font=main_font, justification='r', readonly=readonly,
+                                           background_color=in_col, tooltip=field_val)])
+
+        tbl_layout.append(sg.Col(column_layout, pad=(0, 0), expand_x=True))
+
+    layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, (pad_frame, 0)))],
+              [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
+
+    window = sg.Window(_('Modify Record'), layout, modal=True, resizable=False)
+    window.finalize()
+
+    for display_column in display_header:
+        if display_column in edit_keys:
+            element_key = edit_keys[display_column]
+            window[element_key].expand(expand_x=True)
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            break
+
+        if event == '-SAVE-':  # click 'Save' button
+            ready_to_save = []
+            for column in edit_keys:
+                col_key = edit_keys[column]
+                input_val = values[col_key]
+
+                # Get data type of column
+                try:
+                    dtype = edit_columns[column]['ElementType'].lower()
+                except (KeyError, TypeError):
+                    dtype = row[column].dtype
+                else:
+                    if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                        dtype = np.datetime64
+                    elif dtype == 'dropdown':
+                        dtype = np.object
+                    elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+                        dtype = float
+                    elif dtype in ('int', 'integer', 'bit'):
+                        dtype = int
+                    elif dtype in ('bool', 'boolean'):
+                        dtype = bool
+                    else:
+                        dtype = np.object
+
+                # Set field value based on data type
+                print('Info: the data type of column {COL} is {DTYPE}'.format(COL=header_map[column], DTYPE=dtype))
+                msg = 'The value "{VAL}" provided to column "{COL}" is the wrong type'
+                if is_float_dtype(dtype):
+                    try:
+                        field_val = float(input_val)
+                    except ValueError:
+                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
+                        ready_to_save.append(False)
+                        break
+                elif is_integer_dtype(dtype):
+                    try:
+                        field_val = int(input_val)
+                    except ValueError:
+                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
+                        ready_to_save.append(False)
+                        break
+                elif is_bool_dtype(dtype):
+                    try:
+                        field_val = bool(input_val)
+                    except ValueError:
+                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
+                        ready_to_save.append(False)
+                        break
+                elif is_datetime_dtype(dtype):
+                    try:
+                        field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
+                    except ValueError:
+                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
+                        ready_to_save.append(False)
+                        break
+                else:
+                    field_val = input_val
+
+                # Replace field value with modified value
+                try:
+                    row[column] = field_val
+                except ValueError as e:
+                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type - {ERR}' \
+                        .format(VAL=field_val, COL=header_map[column], ERR=e)
+                    popup_notice(msg)
+                    ready_to_save.append(False)
+                else:
+                    ready_to_save.append(True)
+
+            if all(ready_to_save):
+                break
+            else:
+                continue
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return row
+
+
 def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple = None, edit: bool = True):
     """
     Display window for user to add or edit a row.
@@ -1254,7 +1867,7 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     if win_size:
         width, height = win_size
     else:
-        width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
     # Format dataframe as a list for the gui
     row = df.iloc[index]
@@ -1272,29 +1885,29 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
 
     edit_keys = {}
     for column in edit_cols:
-        element_key = lo.as_key(column)
+        element_key = mod_lo.as_key(column)
         edit_keys[column] = element_key
 
     # Window and element size parameters
-    main_font = const.MAIN_FONT
+    main_font = mod_const.MAIN_FONT
     font_size = main_font[1]
 
-    pad_el = const.ELEM_PAD
-    pad_frame = const.FRAME_PAD
-    pad_v = const.VERT_PAD
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
 
-    header_col = const.TBL_HEADER_COL
-    in_col = const.INPUT_COL
+    header_col = mod_const.TBL_HEADER_COL
+    in_col = mod_const.INPUT_COL
 
     # GUI layout
     ## Buttons
     #    if edit is True and index > 0:
-    bttn_layout = [[lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                    lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                          tooltip=_('Save changes'))]]
+    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
+                    mod_lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip=_('Save changes'))]]
 
     ## Table
-    lengths = dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
+    lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
 
     tbl_layout = []
     for i, display_column in enumerate(display_header):
@@ -1314,7 +1927,7 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
             except KeyError:
                 column_type = 'string'
         else:
-            element_key = lo.as_key(display_column)
+            element_key = mod_lo.as_key(display_column)
             readonly = True
             column_type = 'string'
 
@@ -1336,7 +1949,7 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, (pad_frame, 0)))],
               [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
 
-    window = sg.Window(_('Modify Record'), layout, modal=True, resizable=False)
+    window = sg.Window(_('Edit Row'), layout, modal=True, resizable=False)
     window.finalize()
 
     for display_column in display_header:
@@ -1440,3 +2053,37 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     gc.collect()
 
     return df
+
+
+def center_window(window):
+    """
+    Center a secondary window on the screen.
+    """
+    screen_w, screen_h = window.get_screen_dimensions()
+
+    print('real window size is {}'.format(window.size))
+    win_w, win_h = window.size
+    win_x = int(screen_w / 2 - win_w / 2)
+    win_y = int(screen_h / 2 - win_h / 2)
+    print('window new location is ({}, {})'.format(win_x, win_y))
+    if win_x + win_w > screen_w:
+        win_x = screen_w - win_w
+    if win_y + win_h > screen_h:
+        win_y = screen_h - win_h
+
+    window.move(win_x, win_y)
+    window.refresh()
+    print('window real location is {}'.format(window.current_location()))
+
+    return window
+
+
+def highlight_bool(s, column: str = 'Success'):
+    """
+    Annotate a pandas dataframe
+    """
+    ncol = len(s)
+    if s[column] is True or s[column] == 1:
+        return ['background-color: {}'.format(mod_const.PASS_COL)] * ncol
+    else:
+        return ['background-color: {}'.format(mod_const.FAIL_COL)] * ncol

@@ -289,11 +289,11 @@ class UserAccount:
 
     def query(self, tables, columns='*', filter_rules=None, order=None, prog_db=False):
         """
-        Query ODBC database.
+        Query an ODBC database.
 
         Arguments:
 
-            tables (dict): database tables to query.
+            tables (str): primary table ID.
 
             columns: list or string containing the column(s) to select from the database table.
 
@@ -351,7 +351,7 @@ class UserAccount:
 
         # Construct filtering rules
         try:
-            where_clause, params = self.construct_where_clause(filter_rules)
+            where_clause, params = construct_where_clause(filter_rules)
         except SQLStatementError as e:
             print('Query Error: {}'.format(e))
             return pd.DataFrame()
@@ -448,7 +448,7 @@ class UserAccount:
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
 
-        where_clause, filter_params = self.construct_where_clause(filters)
+        where_clause, filter_params = construct_where_clause(filters)
         if filter_params is not None:  # filter parameters go at end of parameter list
             params = params + filter_params
 
@@ -518,46 +518,6 @@ class UserAccount:
 
         return status
 
-    def construct_where_clause(self, filter_rules):
-        """
-        Construct an SQL statement where clause for querying and updating database tables.
-        """
-        if filter_rules is None or len(filter_rules) == 0:  # no filtering rules
-            return ('', None)
-
-        # Construct filtering rules
-        if isinstance(filter_rules, list):  # multiple filter parameters
-            all_params = []
-            for rule in filter_rules:
-                try:
-                    statement, params = rule
-                except ValueError:
-                    msg = 'incorrect data type for filter rule {}'.format(rule)
-                    raise SQLStatementError(msg)
-
-                if type(params) in (type(tuple()), type(list())):
-                    # Unpack parameters
-                    for param_value in params:
-                        all_params.append(param_value)
-                elif type(params) in (type(str()), type(int()), type(float())):
-                    all_params.append(params)
-                else:
-                    msg = 'unknown parameter type {} in rule {}'.format(params, rule)
-                    raise SQLStatementError(msg)
-
-            params = tuple(all_params)
-            where = 'WHERE {}'.format(' AND '.join([i[0] for i in filter_rules]))
-
-        elif isinstance(filter_rules, tuple):  # single filter parameter
-            statement, params = filter_rules
-            where = 'WHERE {COND}'.format(COND=statement)
-
-        else:  # unaccepted data type provided
-            msg = 'unaccepted data type {} provided in rule {}'.format(type(filter_rules), filter_rules)
-            raise SQLStatementError(msg)
-
-        return (where, params)
-
 
 # Functions
 def hash_password(password):
@@ -572,3 +532,44 @@ def hash_password(password):
     password_hash = md5hash.hexdigest()
 
     return password_hash
+
+
+def construct_where_clause(filter_rules):
+    """
+    Construct an SQL statement where clause for querying and updating database tables.
+    """
+    if filter_rules is None or len(filter_rules) == 0:  # no filtering rules
+        return ('', None)
+
+    # Construct filtering rules
+    if isinstance(filter_rules, list):  # multiple filter parameters
+        all_params = []
+        for rule in filter_rules:
+            try:
+                statement, params = rule
+            except ValueError:
+                msg = 'incorrect data type for filter rule {}'.format(rule)
+                raise SQLStatementError(msg)
+
+            if type(params) in (type(tuple()), type(list())):
+                # Unpack parameters
+                for param_value in params:
+                    all_params.append(param_value)
+            elif type(params) in (type(str()), type(int()), type(float())):
+                all_params.append(params)
+            else:
+                msg = 'unknown parameter type {} in rule {}'.format(params, rule)
+                raise SQLStatementError(msg)
+
+        params = tuple(all_params)
+        where = 'WHERE {}'.format(' AND '.join([i[0] for i in filter_rules]))
+
+    elif isinstance(filter_rules, tuple):  # single filter parameter
+        statement, params = filter_rules
+        where = 'WHERE {COND}'.format(COND=statement)
+
+    else:  # unaccepted data type provided
+        msg = 'unaccepted data type {} provided in rule {}'.format(type(filter_rules), filter_rules)
+        raise SQLStatementError(msg)
+
+    return (where, params)

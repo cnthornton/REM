@@ -3,10 +3,8 @@ REM function for manipulating data.
 """
 
 import datetime
-import dateutil
 import numpy as np
 import pandas as pd
-from REM.config import settings
 import re
 
 
@@ -190,60 +188,6 @@ def fill_na(df, colname=None):
                   .format(COL=column, DTYPE=dtype))
 
     return df
-
-
-def format_display_table(dataframe, display_map, date_fmt: str = None, aliases: dict = None):
-    """
-    Format dataframe for displaying as a table.
-    """
-    relativedelta = dateutil.relativedelta.relativedelta
-    strptime = datetime.datetime.strptime
-    is_float_dtype = pd.api.types.is_float_dtype
-    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-    aliases = aliases if aliases is not None else {}
-    date_fmt = date_fmt if date_fmt is not None else settings.format_date_str(date_str=settings.display_date_format)
-
-    display_header = list(display_map.keys())
-
-    # Localization specific options
-    date_offset = settings.get_date_offset()
-
-    display_df = pd.DataFrame()
-
-    # Subset dataframe by specified columns to display
-    for col_name in display_map:
-        mapped_col = display_map[col_name]
-
-        col_to_add = dataframe[mapped_col].copy()
-        dtype = col_to_add.dtype
-        print('the datatype of column {} is {}'.format(col_name, dtype))
-        if is_float_dtype(dtype):
-            col_to_add = col_to_add.apply('{:,.2f}'.format)
-        elif is_datetime_dtype(dtype):
-            print('column {} is a datetime object'.format(col_name))
-            col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
-                                                     relativedelta(years=+date_offset)).strftime(date_fmt)
-            if pd.notnull(x) else '')
-        display_df[col_name] = col_to_add
-
-    # Map column values to the aliases specified in the configuration
-    for alias_col in aliases:
-        alias_map = aliases[alias_col]  # dictionary of mapped values
-
-        if alias_col not in display_header:
-            print('Warning: alias {ALIAS} not found in the list of display columns'.format(ALIAS=alias_col))
-            continue
-
-        print('Info: applying aliases {MAP} to {COL}'.format(MAP=alias_map, COL=alias_col))
-
-        try:
-            display_df[alias_col].replace(alias_map, inplace=True)
-        except KeyError:
-            print('Warning: alias {ALIAS} not found in the list of display columns'.format(ALIAS=alias_col))
-            continue
-
-    return display_df
 
 
 def subset_dataframe(df, subset_rule):
@@ -438,8 +382,11 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
                     failed_condition = evaluate_rule(df, component, as_list=as_list)
                 except Exception as e:
                     print('Warning: evaluation failed - {}. Setting values to default "True"'.format(e))
-                    nrow = df.shape[0]
-                    eval_values.append([True for i in range(nrow)])
+                    if isinstance(df, pd.DataFrame):
+                        nrow = df.shape[0]
+                    elif isinstance(df, pd.Series):
+                        nrow = 1
+                    eval_values.append([True for _ in range(nrow)])
                 else:
                     eval_values.append(failed_condition)
             else:  # item is chain operators and / or
