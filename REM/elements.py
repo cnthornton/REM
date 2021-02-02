@@ -345,8 +345,12 @@ class TableElement:
                   .format(NAME=self.name, IND=select_row_indices))
 
             self.df = self.delete_rows(select_row_indices)
+        elif event == self.key_lookup('Export'):
+            export_df = self.update_display(window, values)
+            print('Info: exporting the display table to a spreadsheet')
+            print(export_df)
+            self.export_table(export_df)
         #        elif event == self.key_lookup('Import'):
-        #        elif event == self.key_lookup('Export'):
 
         result = self.update_display(window, values)
 
@@ -1044,7 +1048,7 @@ class TableElement:
 
         window.refresh()
 
-    def append(self, add_df, ignore_dtypes=False):
+    def append(self, add_df):
         """
         Add a new row of data to table.
         """
@@ -1055,30 +1059,7 @@ class TableElement:
         elif df.empty:
             return add_df
 
-        # Add row information to the table
-        if not add_df.dtypes.equals(df.dtypes) and not ignore_dtypes:
-            print('Warning: data to be appended has some dtypes that are different from the dataframe dtypes')
-            wrong_types = []
-            for header in add_df.columns.tolist():
-                new_dtype = add_df[header].dtypes
-                tab_dtype = df[header].dtypes
-
-                print('Info: comparing data type of {COL} with dtype {TYPEN} to dtype {TYPEO}'
-                      .format(COL=header, TYPEN=new_dtype, TYPEO=tab_dtype))
-                if new_dtype != tab_dtype:
-                    print(
-                        'Warning: trying to append new data with column {COL} having a non-matching data type. '
-                        'Coercing datatype to {TYPE}'.format(COL=header, TYPE=tab_dtype))
-                    wrong_types.append(header)
-
-            # Set data type to df column data type
-            try:
-                add_df = add_df.astype(df[wrong_types].dtypes.to_dict(), errors='raise')
-            except Exception as e:
-                print('Error: unable to add new data due to: {}'.format(e))
-                add_df = None
-
-        df = df.append(add_df, ignore_index=True, sort=False)
+        df = self.set_datatypes(df.append(add_df, ignore_index=True, sort=False))
 
         return df
 
@@ -1143,23 +1124,24 @@ class TableElement:
 
         return subset_df
 
-    def export_table(self):
+    def export_table(self, df):
         """
         Export table to spreadsheet.
         """
-        export_df = self.format_display_table()
-
-        outfile = sg.popup_get_file('', title='Export to', default_path=title, save_as=True,
-                                    default_extension='xls', no_window=True,
+        outfile = sg.popup_get_file('', title='Export table display', save_as=True,
+                                    default_extension='xlsx', no_window=True,
                                     file_types=(
-                                        ('XLS - Microsoft Excel', '*.xls'), ('Comma-Separated Values', '*.csv')))
+                                        ('XLS - Microsoft Excel', '*.xlsx'), ('Comma-Separated Values', '*.csv')))
 
         out_fmt = outfile.split('.')[-1]
 
         if out_fmt == 'csv':
-            export_df.to_csv(outfile, sep=',', float_format='{:,.2f}')
+            df.to_csv(outfile, sep=',', header=True, index=False)
         else:
-            export_df.to_excel(outfile)
+            annotations = self.annotate_display(df)
+            annotation_map = {i[0]: i[1] for i in annotations}
+            df.style.apply(lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white')) for _ in x],
+                           axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
 
     def calculate_total(self):
         """
@@ -1244,9 +1226,7 @@ class TableElement:
 
             return df
         else:
-            df = df.append(record_values, ignore_index=True)
-
-        df = self.set_datatypes(df)
+            df = self.append(record_values)
 
         return df
 
@@ -1260,9 +1240,7 @@ class TableElement:
         if select_df.empty:
             return df
         else:
-            df = df.append(select_df, ignore_index=True)
-
-        df = self.set_datatypes(df)
+            df = self.append(select_df)
 
         return df
 
