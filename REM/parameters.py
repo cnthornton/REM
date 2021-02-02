@@ -488,9 +488,14 @@ class RuleParameterCombo(RuleParameter):
             self.combo_values = []
 
         try:
-            self.aliases = entry['Aliases']
+            aliases = entry['Aliases']
         except KeyError:
-            self.aliases = {}
+            self.aliases = {i: i for i in self.combo_values}
+        else:
+            for value in self.combo_values:
+                if value not in aliases:
+                    aliases[value] = value
+            self.aliases = aliases
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -512,6 +517,7 @@ class RuleParameterCombo(RuleParameter):
         elem_key = self.key_lookup('Element')
         desc = '{}:'.format(self.description)
         values = [aliases[i] for i in combo_values if i in aliases]
+        print('Info: parameter {PARAM} has values {VALS} with aliases {ALIASES}'.format(PARAM=self.name, VALS=combo_values, ALIASES=values))
         if '' not in values:  # the no selection option
             values.insert(0, '')
 
@@ -605,8 +611,9 @@ class RuleParameterDate(RuleParameter):
                                     font=font, background_color=in_col, disabled=False,
                                     tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
                                     metadata={'value': param_value, 'disabled': False}),
-                           sg.CalendarButton('', key=calendar_key, format='%Y-%m-%d', image_data=date_ico, font=font,
-                                             border_width=0, tooltip='Select date from calendar menu')])
+                           sg.CalendarButton('', target=input_key, key=calendar_key, format='%Y-%m-%d',
+                                             image_data=date_ico, font=font, border_width=0,
+                                             tooltip='Select date from calendar menu')])
         else:
             layout.append([sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                    background_color=bg_col),
@@ -729,8 +736,9 @@ class RuleParameterDateRange(RuleParameter):
                                   font=font, background_color=in_col,
                                   tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
                                   metadata={'value': [], 'disabled': False}),
-                         sg.CalendarButton('', key=from_date_key, format='%Y-%m-%d', image_data=date_ico,
-                                           font=font, border_width=0, tooltip='Select date from calendar menu')]],
+                         sg.CalendarButton('', target=from_key, key=from_date_key, format='%Y-%m-%d',
+                                           image_data=date_ico, font=font, border_width=0,
+                                           tooltip='Select date from calendar menu')]],
                        pad=padding, background_color=bg_col),
                 sg.Col([[sg.Text('{}:'.format(to_desc), auto_size_text=True, pad=((0, pad_el), 0),
                                  font=bold_font, background_color=bg_col),
@@ -738,7 +746,7 @@ class RuleParameterDateRange(RuleParameter):
                                   font=font, background_color=in_col, disabled=False,
                                   tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
                                   metadata={'value': [], 'disabled': False}),
-                         sg.CalendarButton('', key=to_date_key, format='%Y-%m-%d', image_data=date_ico,
+                         sg.CalendarButton('', target=to_key, key=to_date_key, format='%Y-%m-%d', image_data=date_ico,
                                            font=font, border_width=0, tooltip='Select date from calendar menu')]],
                        pad=padding, background_color=bg_col)]
         else:

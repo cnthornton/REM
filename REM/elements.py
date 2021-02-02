@@ -1938,7 +1938,7 @@ class DataElement:
                                        disabled=is_disabled, enable_events=True,
                                        tooltip='Input date as YYYY-MM-DD or select date with the calendar button',
                                        metadata={'disabled': is_disabled, 'value': stored_value}),
-                              sg.CalendarButton('', key=date_key, format='%Y-%m-%d',
+                              sg.CalendarButton('', target=elem_key, key=date_key, format='%Y-%m-%d',
                                                 image_data=mod_const.CALENDAR_ICON,
                                                 font=font, border_width=0, disabled=is_disabled,
                                                 tooltip='Select the date from the calendar dropdown')]
@@ -1951,7 +1951,7 @@ class DataElement:
             nrow = element_options.get('Rows', 1)
             width = size[0]
             element_layout = [sg.Multiline(display_value, key=elem_key, size=(width, nrow), font=font,
-                                           background_color=input_col, text_color=text_col,
+                                           background_color=input_col, text_color=text_col, write_only=True,
                                            border_width=1, disabled=is_disabled, enable_events=True,
                                            tooltip='Input value for {}'.format(self.description),
                                            metadata={'disabled': is_disabled, 'value': param_value})]
@@ -2142,7 +2142,7 @@ class DataElement:
             window[elem_key].metadata['value'] = display_value
 
         else:
-            display_value = value.strip()
+            display_value = value
 
         return display_value
 
