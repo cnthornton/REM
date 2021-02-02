@@ -410,7 +410,6 @@ def database_importer_window(user, win_size: tuple = None):
     map_df = pd.DataFrame(columns=['Table Column Name', 'Data Type', 'File Column Name'])
 
     table = None
-    record_type = None
     record_ids = []
     record_entry = None
     subset_df = None
@@ -1369,9 +1368,12 @@ def data_import_window(user, table, win_size: tuple = None, create_new: bool = F
     while True:
         event, values = window.read(timeout=500)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-', '-NEW-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             record_id = None
             break
+
+        if event == '-NEW-':  # selected to create a new record
+            pass
 
         # Enable the OK button if a record is selected
         if values[tbl_key]:

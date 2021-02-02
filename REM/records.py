@@ -52,7 +52,7 @@ class DatabaseRecord:
 
         approved_record_types = ['transaction', 'account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
         self.name = record_entry.name
-        self.record_type = record_entry.type
+        self.record_group = record_entry.group
 
         self.id = randint(0, 1000000000)
         self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
@@ -218,7 +218,7 @@ class DatabaseRecord:
                 for comp_element in comp_elements:
                     if comp_element not in approved_record_types:
                         print('Configuration Error: RecordEntry {TYPE}: component table {TBL} must be an acceptable '
-                              'record type'.format(TYPE=self.record_type, TBL=comp_element))
+                              'record type'.format(TYPE=self.name, TBL=comp_element))
                         continue
                     table_entry = comp_elements[comp_element]
                     comp_table = mod_elem.TableElement(comp_element, table_entry, parent=self.name, date=self.record_date)
@@ -920,7 +920,7 @@ class DepositRecord(DatabaseRecord):
             account_table = self.fetch_component('account')
         except KeyError:
             print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "account"'
-                  .format(TYPE=self.record_type))
+                  .format(TYPE=self.name))
             account_total = 0
         else:
             account_total = account_table.calculate_total()
@@ -931,7 +931,7 @@ class DepositRecord(DatabaseRecord):
             expense_table = self.fetch_component('cash_expense')
         except KeyError:
             print('Configuration Error: RecordEntry {TYPE}: missing component records of type "cash_expense"'
-                  .format(TYPE=self.record_type))
+                  .format(TYPE=self.name))
             expense_total = 0
         else:
             expense_total = expense_table.calculate_total()
@@ -1137,7 +1137,7 @@ class AccountRecord(DatabaseRecord):
             table = self.fetch_component('transaction')
         except KeyError:
             print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "transaction"'
-                  .format(TYPE=self.record_type))
+                  .format(TYPE=self.name))
             total = 0
         else:
             total = table.calculate_total()
@@ -2660,7 +2660,7 @@ def import_records(record_entry, user):
             record_data = trans_df.iloc[0]
 
     # Set the record object based on the record type
-    record_type = record_entry.type
+    record_type = record_entry.groud
     if record_type in ('transaction', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
     elif record_type == 'account':
@@ -2686,7 +2686,7 @@ def load_record(record_entry, record_id):
     import_df = record_entry.load_record(record_id)
 
     # Set the record object based on the record type
-    record_type = record_entry.type
+    record_type = record_entry.group
     if record_type in ('transaction', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
     elif record_type == 'account':
@@ -2708,7 +2708,7 @@ def create_record(record_entry, record_data):
     """
     Create a new database record.
     """
-    record_type = record_entry.type
+    record_type = record_entry.group
     if record_type in ('transaction', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
     elif record_type == 'account':

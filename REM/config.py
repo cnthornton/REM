@@ -116,9 +116,9 @@ class RecordEntry:
             self.menu_title = name
 
         try:
-            self.type = entry['RecordType']
+            self.group = entry['RecordGroup']
         except KeyError:
-            popup_error('Configuration Error: RecordEntry {NAME}: missing required parameter "RecordType"'
+            popup_error('Configuration Error: RecordEntry {NAME}: missing required parameter "RecordGroup"'
                         .format(NAME=name))
             sys.exit(1)
 
@@ -462,7 +462,7 @@ class RecordEntry:
                     ref_type = ref_record.ref_type
                     ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
                                    configuration.creation_date]
-                    ref_values = [record_id, self.type, added_ref, ref_type, datetime.datetime.now(), user.name,
+                    ref_values = [record_id, self.group, added_ref, ref_type, datetime.datetime.now(), user.name,
                                   datetime.datetime.now()]
                     saved.append(user.insert(ref_table, ref_columns, ref_values))
 
@@ -494,7 +494,7 @@ class RecordEntry:
                     for added_comp in added_comps:
                         comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
                                         configuration.creation_date]
-                        comp_values = [record_id, self.type, added_comp, comp_type, datetime.datetime.now(), user.name,
+                        comp_values = [record_id, self.group, added_comp, comp_type, datetime.datetime.now(), user.name,
                                        datetime.datetime.now()]
                         saved.append(user.insert(ref_table, comp_columns, comp_values))
 
@@ -511,7 +511,7 @@ class RecordEntry:
                     ref_type = reference_record.ref_type
                     ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
                                    configuration.creation_date]
-                    ref_values = [record_id, self.type, ref_id, ref_type, datetime.datetime.now(), user.name,
+                    ref_values = [record_id, self.group, ref_id, ref_type, datetime.datetime.now(), user.name,
                                   datetime.datetime.now()]
                     saved.append(user.insert(ref_table, ref_columns, ref_values))
 
@@ -678,7 +678,7 @@ class RecordEntry:
             id_name, id_num = record_id.split('-')
         except ValueError:
             raise AttributeError('No date component found for {TYPE} record ID {ID}'
-                                 .format(TYPE=self.type, ID=record_id))
+                                 .format(TYPE=self.name, ID=record_id))
 
         return id_name[code_len:]
 
@@ -690,7 +690,7 @@ class RecordEntry:
             self.ids.remove(record_id)
         except ValueError:
             print('Warning: RecordEntry {NAME}: record {ID} was not found in the list of unsaved {TYPE} record IDs'
-                  .format(NAME=self.name, ID=record_id, TYPE=self.type))
+                  .format(NAME=self.name, ID=record_id, TYPE=self.name))
             success = False
         else:
             print('Info: RecordEntry {NAME}: removing unsaved record ID {ID}'.format(NAME=self.name, ID=record_id))
