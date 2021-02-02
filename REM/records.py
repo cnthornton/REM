@@ -942,6 +942,209 @@ class DepositRecord(DatabaseRecord):
         return deposit_total
 
 
+class AccountRecord(DatabaseRecord):
+    """
+    Class to manage the layout and display of an REM Account Record.
+    """
+
+    def __init__(self, record_entry, record_data):
+        """
+        amount (float): amount .
+        """
+        super().__init__(record_entry, record_data)
+        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Amount'))
+
+        try:
+            amount = float(record_data['Amount'])
+        except (KeyError, TypeError):
+            self.amount = 0
+        else:
+            if np.isnan(amount):
+                self.amount = 0.00
+            else:
+                self.amount = amount
+
+    def header_layout(self):
+        """
+        Generate the layout for the header section of the record layout.
+        """
+        record_layout = self.record_layout
+
+        layout_header = record_layout['Header']
+        header_elements = layout_header['Elements']
+
+        # Element parameters
+        bg_col = mod_const.ACTION_COL
+
+        main_font = mod_const.MAIN_FONT
+        bold_font = mod_const.BOLD_LARGE_FONT
+
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+
+        # Header components
+        try:
+            id_title = header_elements.get('RecordID', 'Record ID')
+        except KeyError:
+            print('Warning: the parameter "RecordID" was not included in the list of configured data elements')
+            id_title = 'ID'
+        try:
+            date_title = header_elements.get('RecordDate', 'Record Date')
+        except KeyError:
+            print('Warning: the parameter "RecordDate" was not included in the list of configured data elements')
+            date_title = 'Date'
+
+        if isinstance(self.record_date, datetime.datetime):
+            record_date = settings.format_display_date(self.record_date)
+        else:
+            record_date = self.record_date
+
+        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
+        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                              font=main_font, background_color=bg_col, tooltip=id_tooltip),
+                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                      sg.Text(record_date, key=self.key_lookup('RecordDate'), auto_size_text=True, font=main_font,
+                              background_color=bg_col)]]
+        try:
+            amount_title = header_elements.get('Amount', 'Amount')
+        except KeyError:
+            print('Warning: the parameter "Amount" was not included in the list of configured data elements')
+            amount_title = 'Amount'
+        amount_layout = [[sg.Text('{}:'.format(amount_title), pad=((0, pad_el), 0), background_color=bg_col,
+                                   font=bold_font),
+                           sg.Text('{:,.2f}'.format(self.deposit), key=self.key_lookup('Amount'), size=(14, 1),
+                                   font=main_font, background_color=bg_col, border_width=1, relief="sunken",
+                                   tooltip='Import amount: {}'.format('{:,.2f}'.format(self.deposit)))]]
+
+        # Header layout
+        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
+                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                          background_color=bg_col, justification='c', expand_x=True),
+                   sg.Col(amount_layout, background_color=bg_col, justification='r')]]
+
+        return layout
+
+    def table_values(self):
+        """
+        Format parameter values as a table row.
+        """
+        parameters = self.parameters
+
+        columns = ['RecordID', 'RecordDate', 'MarkedForDeletion', 'Amount']
+        values = [self.record_id, self.record_date, self.marked_for_deletion, self.amount]
+
+        # Add parameter values
+        for param in parameters:
+            param_type = param.etype
+            if param_type == 'table':
+                col_summs = param.summarize_table()
+                columns += col_summs.index.values.tolist()
+                values += col_summs.values.tolist()
+            else:
+                columns.append(param.name)
+                values.append(param.value)
+
+        return pd.Series(values, index=columns)
+
+    def run_event(self, window, event, values, user):
+        """
+        Perform a record action.
+        """
+        default_col = mod_const.ACTION_COL
+        greater_col = mod_const.PASS_COL
+        lesser_col = mod_const.FAIL_COL
+
+        save_key = self.key_lookup('Save')
+        delete_key = self.key_lookup('Delete')
+        approved_key = self.key_lookup('Approved')
+        marked_key = self.key_lookup('MarkedForDeletion')
+
+        param_elems = [i for param in self.parameters for i in param.elements]
+        component_elems = [i for component in self.components for i in component.elements]
+        reference_elems = [i for reference in self.references for i in reference.elements]
+
+        if event == self.key_lookup('ReferencesButton'):
+            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='references')
+        elif event == self.key_lookup('ComponentsButton'):
+            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
+            self.collapse_expand(window, frame='components')
+        elif event in param_elems:  # parameter event
+            try:
+                param = self.fetch_element(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = param.run_event(window, event, values, user)
+        elif event in component_elems:  # component table event
+            try:
+                component_table = self.fetch_component(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find component associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = component_table.run_event(window, event, values, user)
+
+            amount_total = self.update_amount()
+            window[self.key_lookup('Amount')].update(value='{:,.2f}'.format(amount_total))
+        elif event in reference_elems:
+            try:
+                refbox = self.fetch_reference(event, by_key=True)
+            except KeyError:
+                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
+                      .format(ID=self.record_id, KEY=event))
+            else:
+                result = refbox.run_event(window, event, values, user)
+        elif event == approved_key:
+            self.approved = values[approved_key]
+            print('Info: record {ID}: setting approved to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.approved))
+        elif event == marked_key:
+            self.marked_for_deletion = values[marked_key]
+            print('Info: record {ID}: setting marked for deletion to be {VAL}'
+                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
+        elif event == save_key:
+            # Update record parameters in the record database table
+            # Remove any deleted references from the record reference table
+            for refbox in self.references:
+                refkey = refbox.key_lookup('Element')
+                ref_removed = window[refkey].metadata['deleted']
+                if ref_removed is True:
+                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
+                          .format(ID=self.record_id, REF=refbox.record_id))
+            # Remove any deleted components from the record reference table
+
+            return False
+        elif event == delete_key:
+            # Remove the record from the record table
+            # Remove any entry in the record reference table referencing the record
+            return False
+
+        return True
+
+    def update_amount(self):
+        """
+        Update the amount element and attribute based on transaction totals.
+        """
+        # Update the deposit element, in case a component was added or deleted
+        try:
+            table = self.fetch_component('transaction')
+        except KeyError:
+            print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "transaction"'
+                  .format(TYPE=self.record_type))
+            total = 0
+        else:
+            total = table.calculate_total()
+            print('Info: record {ID}: total income was calculated from the transaction table is {VAL}'
+                  .format(ID=self.record_id, VAL=total))
+
+        self.amount = total
+
+        return total
+
+
 class TAuditRecord(DatabaseRecord):
     """
     Class to manage the layout of an audit record.
