@@ -677,7 +677,7 @@ class DatabaseRecord:
         for param in self.parameters:
             param_type = param.etype
             if param_type == 'multiline':
-                param_size = (int(width / 9) - int(64/9), None)
+                param_size = (int((width - width % 9) / 9) - int((64 - 64 % 9)/9), None)
             elif param_type == 'table':
                 param_size = (width - 64, 1)
             else:
@@ -789,11 +789,13 @@ class DepositRecord(DatabaseRecord):
         except KeyError:
             print('Warning: the parameter "DepositAmount" was not included in the list of configured data elements')
             deposit_title = 'Deposit Total'
+
+        orig_amount = self.deposit
         deposit_layout = [[sg.Text('{}:'.format(deposit_title), pad=((0, pad_el), 0), background_color=bg_col,
                                    font=bold_font),
-                           sg.Text('{:,.2f}'.format(self.deposit), key=self.key_lookup('Deposit'), size=(14, 1),
-                                   font=main_font, background_color=bg_col, border_width=1, relief="sunken",
-                                   tooltip='Import amount: {}'.format('{:,.2f}'.format(self.deposit)))]]
+                           sg.Text('{:,.2f}'.format(self.update_deposit()), key=self.key_lookup('Deposit'),
+                                   size=(14, 1), font=main_font, background_color=bg_col, border_width=1,
+                                   relief="sunken", tooltip='Import amount: {}'.format('{:,.2f}'.format(orig_amount)))]]
 
         # Header layout
         layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
@@ -1011,11 +1013,13 @@ class AccountRecord(DatabaseRecord):
         except KeyError:
             print('Warning: the parameter "Amount" was not included in the list of configured data elements')
             amount_title = 'Amount'
+
+        orig_amount = self.amount
         amount_layout = [[sg.Text('{}:'.format(amount_title), pad=((0, pad_el), 0), background_color=bg_col,
-                                   font=bold_font),
-                           sg.Text('{:,.2f}'.format(self.deposit), key=self.key_lookup('Amount'), size=(14, 1),
-                                   font=main_font, background_color=bg_col, border_width=1, relief="sunken",
-                                   tooltip='Import amount: {}'.format('{:,.2f}'.format(self.deposit)))]]
+                                  font=bold_font),
+                          sg.Text('{:,.2f}'.format(self.update_amount()), key=self.key_lookup('Amount'), size=(14, 1),
+                                  font=main_font, background_color=bg_col, border_width=1, relief="sunken",
+                                  tooltip='Import amount: {}'.format('{:,.2f}'.format(orig_amount)))]]
 
         # Header layout
         layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
@@ -1219,11 +1223,14 @@ class TAuditRecord(DatabaseRecord):
         except KeyError:
             print('Warning: the parameter "Remainder" was not included in the list of configured data elements')
             remainder_title = 'Remainder'
+
+        orig_amount = self.remainder
         remainder_layout = [[sg.Text('{}:'.format(remainder_title), pad=((0, pad_el), 0), background_color=bg_col,
                                      font=bold_font),
-                             sg.Text('{:,.2f}'.format(self.remainder), key=self.key_lookup('Remainder'), size=(14, 1),
-                                     font=main_font, background_color=bg_col, border_width=1, relief="sunken",
-                                     tooltip='Import amount: {}'.format('{:,.2f}'.format(self.remainder)))]]
+                             sg.Text('{:,.2f}'.format(self.update_remainder()), key=self.key_lookup('Remainder'),
+                                     size=(14, 1), font=main_font, background_color=bg_col, border_width=1,
+                                     relief="sunken",
+                                     tooltip='Import amount: {}'.format('{:,.2f}'.format(orig_amount)))]]
 
         # Header layout
         layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
@@ -2654,8 +2661,10 @@ def import_records(record_entry, user):
 
     # Set the record object based on the record type
     record_type = record_entry.type
-    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
+    if record_type in ('transaction', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
+    elif record_type == 'account':
+        record_class = AccountRecord
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':
@@ -2678,8 +2687,10 @@ def load_record(record_entry, record_id):
 
     # Set the record object based on the record type
     record_type = record_entry.type
-    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
+    if record_type in ('transaction', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
+    elif record_type == 'account':
+        record_class = AccountRecord
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':
@@ -2698,8 +2709,10 @@ def create_record(record_entry, record_data):
     Create a new database record.
     """
     record_type = record_entry.type
-    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
+    if record_type in ('transaction', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
+    elif record_type == 'account':
+        record_class = AccountRecord
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':

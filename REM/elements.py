@@ -1805,19 +1805,23 @@ class DataElement:
         """
         Resize the data element.
         """
-        element_options = self.options
         if size is None:
-            width = int(window.size[0] * 0.5 / 11)
-            height = element_options.get('Rows', 1)
+            width = int(window.size[0] * 0.5)
+            height = 1
+            # Remove width of the combobox from element width, if needed
+            if self.etype == 'dropdown':  # remove width of combobox from element width
+                width_offset = 10
+            else:
+                width_offset = 0
+
+            # Convert from pixels to characters
+            width = int(((width - width % 9) / 9) - ((width_offset - width_offset % 9) / 9))
         else:
             width, height = size
-            if not height:
-                height = element_options.get('Rows', 1)
-            if not width:
-                width = int(window.size[0] * 0.5 / 11)
 
         elem_key = self.key_lookup('Element')
         window[elem_key].set_size(size=(width, height))
+        window[elem_key].expand(expand_x=True)
 
     def run_event(self, window, event, values, user):
         """
