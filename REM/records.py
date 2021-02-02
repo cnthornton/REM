@@ -930,7 +930,7 @@ class DepositRecord(DatabaseRecord):
         try:
             expense_table = self.fetch_component('cash_expense')
         except KeyError:
-            print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "cash_expense"'
+            print('Configuration Error: RecordEntry {TYPE}: missing component records of type "cash_expense"'
                   .format(TYPE=self.record_type))
             expense_total = 0
         else:

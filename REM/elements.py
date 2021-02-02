@@ -60,6 +60,9 @@ class TableElement:
 
         nrow (int): number of rows to display.
 
+        widths (list): list of relative column widths. If values are fractions < 1, values will be taken as percentages,
+            else relative widths will be calculated relative to size of largest column.
+
         row_color (str): hex code for the color of alternate rows.
 
         tooltip (str): table tooltip.
@@ -236,6 +239,11 @@ class TableElement:
             self.icon = entry['Icon']
         except KeyError:
             self.icon = None
+
+        try:
+            self.widths = entry['Widths']
+        except KeyError:
+            self.widths = None
 
         try:
             self.nrow = int(entry['Rows'])
@@ -940,6 +948,7 @@ class TableElement:
         Calculate the width of the table columns based on the number of columns displayed.
         """
         header = list(self.display_columns.keys())
+        widths = self.widths
 
         # Size of data
         ncol = len(header)
@@ -947,25 +956,42 @@ class TableElement:
         if ncol < 1:  # no columns in table
             return []
 
-        # When table columns not long enough, need to adjust so that the
-        # table fills the empty space.
-        try:
-            col_fraction = width / ncol
-        except ZeroDivisionError:
-            print('Warning: division by zero error encountered while attempting to calculate column widths')
-            col_fraction = width / 10
-
+        # Set table width based on whether size in pixels or characters
         if pixels:
-            max_size_per_col = int(col_fraction)
+            tbl_width = width
         else:
-            width = int(width / size)
-            max_size_per_col = int(col_fraction / size)
+            tbl_width = width / size
 
-        # Each column has size == max characters per column
-        lengths = [max_size_per_col for _ in header]
+        if widths is not None:
+            # Set an average width for unspecified columns
+            avg_width = sum(widths.values()) / len(widths.values())
+            col_widths = []
+            for colname in header:
+                try:
+                    col_widths.append(float(widths[colname]))
+                except (ValueError, KeyError):  # unsupported type or column not specified
+                    col_widths.append(avg_width)
+
+            # Adjust widths to the sum total
+            width_sum = sum(col_widths)
+            adj_widths = [i / width_sum for i in col_widths]
+
+            # Calculate column lengths
+            lengths = [int(tbl_width * i) for i in adj_widths]
+        else:
+            # When table columns not long enough, need to adjust so that the
+            # table fills the empty space.
+            try:
+                max_size_per_col = int(tbl_width / ncol)
+            except ZeroDivisionError:
+                print('Warning: division by zero error encountered while attempting to calculate column widths')
+                max_size_per_col = int(tbl_width / 10)
+
+            # Each column has size == max characters per column
+            lengths = [max_size_per_col for _ in header]
 
         # Add any remainder evenly between columns
-        remainder = width - (ncol * max_size_per_col)
+        remainder = tbl_width - sum(lengths)
 
         index = 0
         for one in [1 for _ in range(int(remainder))]:
