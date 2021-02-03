@@ -12,10 +12,13 @@ import numpy as np
 import pandas as pd
 import PySimpleGUI as sg
 import pdfkit
+from random import randint
 
-import REM.constants as const
-import REM.data_manipulation as dm
-import REM.layouts as lo
+import REM.constants as mod_const
+import REM.database as mod_db
+import REM.data_manipulation as mod_dm
+import REM.elements as mod_elem
+import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
@@ -120,8 +123,9 @@ class AuditRule:
     def __init__(self, name, main_entry):
 
         self.name = name
-        self.element_key = lo.as_key(name)
-        self.elements = ['TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'Audit', 'FrameWidth', 'FrameHeight']
+        self.element_key = mod_lo.as_key(name)
+        self.elements = ['Main', 'Summary', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
+                         'PanelHeight', 'FrameHeight', 'FrameWidth']
         try:
             self.menu_title = main_entry['MenuTitle']
         except KeyError:
@@ -167,25 +171,25 @@ class AuditRule:
 
         self.tabs = []
         try:
-            tdict = main_entry['Tabs']
+            tab_entries = main_entry['Tabs']
         except KeyError:
             msg = 'Configuration Error: AuditRule {NAME}: missing required parameter "Tabs"'.format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
 
-        for tab_name in tdict:
-            self.tabs.append(lo.TabItem(name, tab_name, tdict[tab_name]))
+        for tab_name in tab_entries:
+            self.tabs.append(TransactionRule(tab_name, tab_entries[tab_name]))
 
         try:
-            sdict = main_entry['Summary']
+            summary_entry = main_entry['Summary']
         except KeyError:
             msg = 'Configuration Error: AuditRule {NAME}: missing required parameter "Summary"'.format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
 
-        self.summary = SummaryPanel(name, sdict)
+        self.summary = SummaryPanel(name, summary_entry)
 
-        self.panel_keys = {0: self.key_lookup('Audit'), 1: self.summary.element_key}
+        self.panel_keys = {0: self.key_lookup('Main'), 1: self.summary.element_key}
         self.current_panel = 0
         self.first_panel = 0
         self.last_panel = 1
@@ -195,7 +199,7 @@ class AuditRule:
         Lookup element key for input control element.
         """
         if element in self.elements:
-            key = lo.as_key('{} {}'.format(self.name, element))
+            key = mod_lo.as_key('{} {}'.format(self.name, element))
         else:
             key = None
 
@@ -251,142 +255,280 @@ class AuditRule:
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         # Element parameters
-        inactive_col = const.INACTIVE_COL
-        bg_col = const.ACTION_COL
-        default_col = const.DEFAULT_COL
-        text_col = const.TEXT_COL
-        select_col = const.SELECT_TEXT_COL
-        font_h = const.HEADER_FONT
-        header_col = const.HEADER_COL
+        bttn_text_col = mod_const.WHITE_TEXT_COL
+        bttn_bg_col = mod_const.BUTTON_COL
+        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        disabled_bg_col = mod_const.DISABLED_BUTTON_COL
+        bg_col = mod_const.ACTION_COL
+        header_col = mod_const.HEADER_COL
 
-        pad_el = const.ELEM_PAD
-        pad_v = const.VERT_PAD
-        pad_frame = const.FRAME_PAD
+        font_h = mod_const.HEADER_FONT
 
-        # Audit parameters
+        inactive_col = mod_const.INACTIVE_COL
+        default_col = mod_const.DEFAULT_COL
+        text_col = mod_const.TEXT_COL
+        select_col = mod_const.SELECT_TEXT_COL
+
+        pad_el = mod_const.ELEM_PAD
+        pad_v = mod_const.VERT_PAD
+        pad_h = mod_const.HORZ_PAD
+        pad_frame = mod_const.FRAME_PAD
+
+        # Rule parameters
         params = self.parameters
 
         # Element sizes
-        layout_width = width - 120 if width >= 120 else width
         layout_height = height * 0.8
-        panel_height = layout_height * 0.5
+        frame_height = layout_height * 0.70
+        panel_height = frame_height - 80
+#        tbl_height = panel_height * 0.6
+        tab_height = panel_height * 0.6
 
-        bwidth = 0.5
+        layout_pad = 120
+        win_diff = width - mod_const.WIN_WIDTH
+        layout_pad = layout_pad + (win_diff / 5)
+
+        frame_width = width - layout_pad if layout_pad > 0 else width
+        panel_width = frame_width - 30
+#        tbl_width = panel_width - 30
+        tab_width = panel_width - 30
+
+#        layout_width = width - 120 if width >= 120 else width
+#        layout_height = height * 0.8
+#        panel_height = layout_height * 0.5
 
         # Layout elements
         # Title
         panel_title = self.menu_title
-        width_key = self.key_lookup('FrameWidth')
-        title_layout = [[sg.Col([
-            [sg.Canvas(key=width_key, size=(layout_width, 1), pad=(0, pad_v), visible=True,
-                       background_color=header_col)],
-            [sg.Text(panel_title, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
-            pad=(0, 0), justification='l', background_color=header_col, expand_x=True)]]
+#        width_key = self.key_lookup('FrameWidth')
+#        title_layout = [[sg.Col([
+#            [sg.Canvas(key=width_key, size=(layout_width, 1), pad=(0, pad_v), visible=True,
+#                       background_color=header_col)],
+#            [sg.Text(panel_title, pad=((pad_frame, 0), (0, pad_v)), font=font_h, background_color=header_col)]],
+#            pad=(0, 0), justification='l', background_color=header_col, expand_x=True)]]
+        title_layout = [[sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
         # Audit layout
         audit_layout = []
 
-        # Control elements
+        # Rule parameter elements
         param_elements = []
         for param in params:
-            element_layout = param.layout()
-            #            param_elements.append(element_layout)
+            element_layout = param.layout(padding=((0, pad_h), 0))
             param_elements += element_layout
+#        for param in params:
+#            element_layout = param.layout()
+#            param_elements += element_layout
 
-        param_layout = [
-            [sg.Col([param_elements], pad=(0, (0, pad_v)), background_color=bg_col, vertical_alignment='c',
-                    expand_x=True)],
-            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.HEADER_COL)]]
+        start_key = self.key_lookup('Start')
+        start_layout = [[mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False,
+                                   button_color=(bttn_text_col, bttn_bg_col),
+                                   disabled_button_color=(disabled_text_col, disabled_bg_col),
+                                   tooltip='Start bank reconciliation', use_ttk_buttons=True)]]
 
-        audit_layout.append([sg.Col(param_layout, pad=(pad_frame, 0), background_color=bg_col,
-                                    justification='l', expand_x=True)])
+        param_layout = [sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
+                               vertical_alignment='t', expand_x=True),
+                        sg.Col(start_layout, pad=(0, 0), background_color=bg_col, justification='r',
+                               element_justification='r', vertical_alignment='t')]
 
-        # Audit tabs
+#        param_layout = [
+#            [sg.Col([param_elements], pad=(0, (0, pad_v)), background_color=bg_col, vertical_alignment='c',
+#                    expand_x=True)],
+#            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=mod_const.HEADER_COL)]]
+#
+#        audit_layout.append([sg.Col(param_layout, pad=(pad_frame, 0), background_color=bg_col,
+#                                    justification='l', expand_x=True)])
+
+        # Tab layout
         tg_key = self.key_lookup('TG')
-        tg_layout = [
-            [sg.TabGroup([lo.tab_layout(self.tabs, win_size=win_size)], key=tg_key, pad=(0, 0),
-                         tab_background_color=inactive_col, selected_title_color=select_col, title_color=text_col,
-                         selected_background_color=bg_col, background_color=bg_col)]
-        ]
+        audit_tabs = []
+        for i, tab in enumerate(self.tabs):
+            if i == 0:
+                visiblity = True
+            else:
+                visiblity = False
 
-        audit_layout.append([sg.Col(tg_layout, pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True)])
+            audit_tabs.append(tab.layout((tab_width, tab_height), visible=visiblity))
+
+        tg_layout = [sg.TabGroup([audit_tabs], key=tg_key, pad=(0, 0),
+                                 tab_background_color=inactive_col, selected_title_color=select_col,
+                                 title_color=text_col, selected_background_color=bg_col, background_color=bg_col)]
+
+#        audit_layout.append([sg.Col(tg_layout, pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True)])
+
+        # Main panel layout
+        main_key = self.key_lookup('Main')
+        main_layout = sg.Col([param_layout,
+                              [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+                              tg_layout],
+                             key=main_key, pad=(0, 0), background_color=bg_col, vertical_alignment='t',
+                             visible=True, expand_y=True, expand_x=True)
 
         # Panels
-        summary_layout = self.summary.layout(win_size)
+        summary_layout = sg.Col(self.summary.layout(win_size), key=self.summary.element_key, background_color=bg_col,
+                                vertical_alignment='c', visible=False, expand_x=True, expand_y=True)
 
-        audit_key = self.key_lookup('Audit')
-        panels = [sg.Col(audit_layout, key=audit_key, background_color=bg_col, vertical_alignment='c',
-                         visible=True, expand_y=True, expand_x=True),
-                  sg.Col(summary_layout, key=self.summary.element_key, background_color=bg_col, vertical_alignment='c',
-                         visible=False, expand_y=True, expand_x=True)]
+#        audit_key = self.key_lookup('Audit')
+#        panels = [sg.Col(audit_layout, key=audit_key, background_color=bg_col, vertical_alignment='c',
+#                         visible=True, expand_y=True, expand_x=True),
+#                  sg.Col(summary_layout, key=self.summary.element_key, background_color=bg_col, vertical_alignment='c',
+#                         visible=False, expand_y=True, expand_x=True)]
+#
+#        panel_layout = [
+#            [sg.Col([[sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]],
+#                    pad=(0, pad_v), expand_x=True)]]
 
-        panel_layout = [
-            [sg.Col([[sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]],
-                    pad=(0, pad_v), expand_x=True)]]
+        panels = [main_layout, summary_layout]
+
+        pw_key = self.key_lookup('PanelWidth')
+        ph_key = self.key_lookup('PanelHeight')
+        panel_layout = [[sg.Canvas(key=pw_key, size=(panel_width, 0), background_color=bg_col)],
+                        [sg.Canvas(key=ph_key, size=(0, panel_height), background_color=bg_col),
+                         sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]]
 
         # Standard elements
         cancel_key = self.key_lookup('Cancel')
-        start_key = self.key_lookup('Start')
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         save_key = self.key_lookup('Save')
         bttn_layout = [
-            sg.Col([[lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), 0), disabled=False,
-                           tooltip='Return to home screen'),
-                     lo.B2('Start', key=start_key, pad=((pad_el, 0), 0), disabled=False, tooltip='Start audit')]],
+            sg.Col([[mod_lo.B2('Cancel', key=cancel_key, pad=((0, pad_el), 0), disabled=False,
+                               tooltip='Return to home screen')]],
                    pad=(0, (pad_v, 0)), justification='l', expand_x=True),
             sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-            sg.Col([[lo.B2('Back', key=back_key, pad=((0, pad_el), 0), disabled=True, tooltip='Return to audit'),
-                     lo.B2('Next', key=next_key, pad=(pad_el, 0), disabled=True, tooltip='Review audit'),
-                     lo.B2('Save', key=save_key, pad=((pad_el, 0), 0), disabled=True,
-                           tooltip='Save to database and generate summary report')]],
+            sg.Col([[mod_lo.B2('Back', key=back_key, pad=((0, pad_el), 0), disabled=True, tooltip='Return to audit'),
+                     mod_lo.B2('Next', key=next_key, pad=(pad_el, 0), disabled=True, tooltip='Review audit'),
+                     mod_lo.B2('Save', key=save_key, pad=((pad_el, 0), 0), disabled=True,
+                               tooltip='Save to database and generate summary report')]],
                    pad=(0, (pad_v, 0)), justification='r')]
 
-        # Pane elements must be columns
-        height_key = self.key_lookup('FrameHeight')
-        layout = [[sg.Col([[sg.Canvas(key=height_key, size=(0, panel_height), visible=True, background_color=bg_col)]]),
-                   sg.Col([
-                       [sg.Frame('', [
-                           [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col,
-                                   expand_x=True, expand_y=True)],
-                           [sg.Col(panel_layout, pad=(0, 0), background_color=bg_col)]
-                       ], background_color=bg_col, title_color=text_col, relief='raised')],
-                       bttn_layout])]]
+        fw_key = self.key_lookup('FrameWidth')
+        fh_key = self.key_lookup('FrameHeight')
+        frame_layout = [sg.Frame('', [
+            [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
+            [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+            [sg.Col([[sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col)]], vertical_alignment='t'),
+             sg.Col(panel_layout, pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
+                    expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True)]],
+                                 background_color=bg_col, relief='raised')]
+
+        layout = [frame_layout, bttn_layout]
 
         return sg.Col(layout, key=self.element_key, visible=False)
 
-    def resize_elements(self, window, win_size: tuple = None):
+#        # Pane elements must be columns
+#        height_key = self.key_lookup('FrameHeight')
+#        layout = [[sg.Col([[sg.Canvas(key=height_key, size=(0, panel_height), visible=True, background_color=bg_col)]]),
+#                   sg.Col([
+#                       [sg.Frame('', [
+#                           [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col,
+#                                   expand_x=True, expand_y=True)],
+#                           [sg.Col(panel_layout, pad=(0, 0), background_color=bg_col)]
+#                       ], background_color=bg_col, title_color=text_col, relief='raised')],
+#                       bttn_layout])]]
+#
+#        return sg.Col(layout, key=self.element_key, visible=False)
+
+    def summary_layout(self, win_size: tuple = None):
         """
-        Resize Audit Rule GUI elements based on window size
+        Generate a GUI layout for the Audit Rule Summary.
         """
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
-        # Resize space between action buttons
-        # For every five-pixel increase in window size, increase tab size by one
+        # Layout settings
+        pad_frame = mod_const.FRAME_PAD
+        pad_el = mod_const.ELEM_PAD
+        pad_v = mod_const.VERT_PAD
+
+        bg_col = mod_const.ACTION_COL
+        default_col = mod_const.DEFAULT_COL
+        inactive_col = mod_const.INACTIVE_COL
+        text_col = mod_const.TEXT_COL
+        select_col = mod_const.SELECT_TEXT_COL
+        header_col = mod_const.HEADER_COL
+
+        font_h = mod_const.BOLD_FONT
+
+        tabs = self.records
+
+        frame_width = width - 120
+
+        # Layout elements
+        layout = []
+
+        # Panel heading layout
+        title_key = self.key_lookup('SummaryTitle')
+        header_layout = [
+            [sg.Col([[sg.Text(self.summary_title, key=title_key, size=(40, 1), pad=(0, 0), font=font_h,
+                              background_color=bg_col, tooltip=self.title)]],
+                    vertical_alignment='c', background_color=bg_col, expand_x=True)],
+            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=mod_const.HEADER_COL)]]
+
+        layout.append([sg.Col(header_layout, pad=(pad_frame, 0), background_color=bg_col,
+                              justification='l', expand_x=True)])
+
+        # Main screen
+        tg_key = self.key_lookup('TG')
+        tg_layout = [[sg.TabGroup([mod_lo.tab_layout(tabs, win_size=win_size, initial_visibility='all')],
+                                  key=tg_key, pad=(0, 0), background_color=bg_col,
+                                  tab_background_color=inactive_col, selected_background_color=bg_col,
+                                  selected_title_color=select_col, title_color=text_col)]]
+
+        layout.append([sg.Col(tg_layout, pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True)])
+        panel_layout = []
+
+        summary_key = self.key_lookup('Summary')
+        layout = sg.Col(panel_layout, key=summary_key, pad=(0, 0), background_color=bg_col, vertical_alignment='t',
+                        visible=False, expand_y=True, expand_x=True)
+
+        return layout
+
+    def resize_elements(self, window, win_size: tuple = None):
+        """
+        Resize Audit Rule GUI elements.
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = window.size  # default to current window size
+
+        # For every five-pixel increase in window size, increase frame size by one
         layout_pad = 120
-        win_diff = width - const.WIN_WIDTH
+        win_diff = width - mod_const.WIN_WIDTH
         layout_pad = layout_pad + int(win_diff / 5)
 
-        layout_width = width - layout_pad if layout_pad > 0 else width
+        frame_width = width - layout_pad if layout_pad > 0 else width
+        panel_width = frame_width - 30
 
         width_key = self.key_lookup('FrameWidth')
-        window[width_key].set_size((layout_width, None))
+        window[width_key].set_size((frame_width, None))
 
-        layout_height = height * 0.8
+        pw_key = self.key_lookup('PanelWidth')
+        window[pw_key].set_size((panel_width, None))
+
+        layout_height = height * 0.8  # height of the panel, including buttons
+        frame_height = layout_height - 120  # minus the approximate height of the button row and title bar, with padding
+        panel_height = frame_height - 20  # minus top and bottom padding
 
         height_key = self.key_lookup('FrameHeight')
-        window[height_key].set_size((None, layout_height))
+        window[height_key].set_size((None, frame_height))
+
+        ph_key = self.key_lookup('PanelHeight')
+        window[ph_key].set_size((None, panel_height))
 
         # Resize tab elements
+        tab_height = panel_height - 30  # minus size of the tabs
+        tab_width = panel_width - 70
+
         tabs = self.tabs
         for tab in tabs:
-            tab.resize_elements(window, win_size)
+            tab.resize_elements(window, win_size=(tab_width, tab_height))
 
         # Resize summary elements
         self.summary.resize_elements(window, win_size)
@@ -518,7 +660,7 @@ class SummaryPanel:
     def __init__(self, rule_name, sdict):
 
         self.rule_name = rule_name
-        self.element_key = lo.as_key('{} Summary'.format(rule_name))
+        self.element_key = mod_lo.as_key('{} Summary'.format(rule_name))
         self.elements = ['Cancel', 'Back', 'Save', 'Title', 'TG', 'FrameWidth']
 
         self.tabs = []
@@ -590,7 +732,7 @@ class SummaryPanel:
         Lookup element key for input control element.
         """
         if element in self.elements:
-            key = lo.as_key('{} Summary {}'.format(self.rule_name, element))
+            key = mod_lo.as_key('{} Summary {}'.format(self.rule_name, element))
         else:
             print('Warning: rule {RULE}, Summary: unable to find GUI element {ELEM} in list of elements'
                   .format(RULE=self.rule_name, ELEM=element))
@@ -625,21 +767,21 @@ class SummaryPanel:
         if win_size:
             width, height = win_size
         else:
-            width, height = (const.WIN_WIDTH, const.WIN_HEIGHT)
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         # Layout settings
-        pad_frame = const.FRAME_PAD
-        pad_el = const.ELEM_PAD
-        pad_v = const.VERT_PAD
+        pad_frame = mod_const.FRAME_PAD
+        pad_el = mod_const.ELEM_PAD
+        pad_v = mod_const.VERT_PAD
 
-        bg_col = const.ACTION_COL
-        default_col = const.DEFAULT_COL
-        inactive_col = const.INACTIVE_COL
-        text_col = const.TEXT_COL
-        select_col = const.SELECT_TEXT_COL
-        header_col = const.HEADER_COL
+        bg_col = mod_const.ACTION_COL
+        default_col = mod_const.DEFAULT_COL
+        inactive_col = mod_const.INACTIVE_COL
+        text_col = mod_const.TEXT_COL
+        select_col = mod_const.SELECT_TEXT_COL
+        header_col = mod_const.HEADER_COL
 
-        font_h = const.BOLD_FONT
+        font_h = mod_const.BOLD_FONT
 
         tabs = self.tabs
 
@@ -654,14 +796,14 @@ class SummaryPanel:
             [sg.Col([[sg.Text(self.title, key=title_key, size=(40, 1), pad=(0, 0), font=font_h,
                               background_color=bg_col, tooltip=self.title)]],
                     vertical_alignment='c', background_color=bg_col, expand_x=True)],
-            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=const.HEADER_COL)]]
+            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=mod_const.HEADER_COL)]]
 
         layout.append([sg.Col(header_layout, pad=(pad_frame, 0), background_color=bg_col,
                               justification='l', expand_x=True)])
 
         # Main screen
         tg_key = self.key_lookup('TG')
-        tg_layout = [[sg.TabGroup([lo.tab_layout(tabs, win_size=win_size, initial_visibility='all')],
+        tg_layout = [[sg.TabGroup([mod_lo.tab_layout(tabs, win_size=win_size, initial_visibility='all')],
                                   key=tg_key, pad=(0, 0), background_color=bg_col,
                                   tab_background_color=inactive_col, selected_background_color=bg_col,
                                   selected_title_color=select_col, title_color=text_col)]]
@@ -685,11 +827,11 @@ class SummaryPanel:
         """
         Format summary item data elements for display.
         """
-        default_col = const.ACTION_COL
-        greater_col = const.PASS_COL
-        lesser_col = const.FAIL_COL
+        default_col = mod_const.ACTION_COL
+        greater_col = mod_const.PASS_COL
+        lesser_col = mod_const.FAIL_COL
 
-        tbl_error_col = const.TBL_ERROR_COL
+        tbl_error_col = mod_const.TBL_ERROR_COL
 
         tabs = self.tabs
         for tab in tabs:
@@ -741,7 +883,7 @@ class SummaryPanel:
             tally_rule = tab.totals['TallyRule']
 
             if tally_rule:
-                totals_sum = dm.evaluate_rule(tab.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
+                totals_sum = mod_dm.evaluate_rule(tab.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
             else:
                 totals_sum = tab.totals_df.iloc[0].sum()
 
@@ -768,9 +910,9 @@ class SummaryPanel:
             note_key = tab.key_lookup('Note')
             note_text = tab.notes['Value']
             if note_text:
-                window[note_key].update(image_data=const.EDIT_NOTE_ICON)
+                window[note_key].update(image_data=mod_const.EDIT_NOTE_ICON)
             else:
-                window[note_key].update(image_data=const.TAKE_NOTE_ICON)
+                window[note_key].update(image_data=mod_const.TAKE_NOTE_ICON)
 
     def initialize_tables(self, rule):
         """
@@ -817,7 +959,7 @@ class SummaryPanel:
 
                 # Add audit tab summaries to totals table
                 rule_values = []
-                for component in dm.parse_operation_string(reference):
+                for component in mod_dm.parse_operation_string(reference):
                     if component in operators:
                         rule_values.append(component)
                         continue
@@ -974,7 +1116,7 @@ class SummaryPanel:
 
                 # Subset rows based on subset rules in configuration
                 try:
-                    subset_df = dm.subset_dataframe(reference_df, section['Subset'])
+                    subset_df = mod_dm.subset_dataframe(reference_df, section['Subset'])
                 except KeyError:
                     subset_df = reference_df
                 except (NameError, SyntaxError) as e:
@@ -1010,7 +1152,7 @@ class SummaryPanel:
                                               sparsify=True, na_rep='')
 
                 # Highlight errors in html string
-                error_col = const.TBL_ERROR_COL
+                error_col = mod_const.TBL_ERROR_COL
                 errors = reference_tab.search_for_errors(dataframe=grouped_df)
                 try:
                     html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">'.format(error_col),
@@ -1084,7 +1226,7 @@ class SummaryPanel:
 
                     import_ids = tab.import_df[id_field]
 
-                    current_results = dm.evaluate_rule_set(tab.df, tbl_filter_param)
+                    current_results = mod_dm.evaluate_rule_set(tab.df, tbl_filter_param)
                     entry_ids = []
                     for row_index, result in enumerate(current_results):
                         # Determine if record already as an associated ID
@@ -1364,6 +1506,352 @@ class SummaryPanel:
             exists.append(tab.load_from_database(user, parameters))
 
         return all(exists)
+
+
+class TransactionRule:
+    """
+    Transaction Audit component.
+
+        name (str): rule name.
+
+        id (int): rule element number.
+
+        title (str): rule title.
+
+        element_key (str): rule element key.
+
+        elements (list): list of rule GUI element keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Arguments:
+
+            name (str): bank reconciliation rule name.
+
+            entry (dict): dictionary of optional and required bank rule arguments.
+
+            parent (str): name of the object's parent element.
+        """
+        self.name = name
+        self.parent = parent
+        self.id = randint(0, 1000000000)
+        self.element_key = '{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Element')
+        self.elements = ['Audit', 'Width', 'Height']
+
+        self._actions = ['scan', 'filter']
+
+        self.actions = []
+
+        try:
+            self.title = entry['Title']
+        except KeyError:
+            self.title = name
+
+        try:
+            import_rules = entry['ImportRules']
+        except KeyError:
+            msg = 'Configuration Error: AuditRuleTransaction {NAME}: missing required field "ImportRules".'\
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.import_rules = import_rules
+
+        try:
+            actions = entry['AuditMethods']
+        except KeyError:
+            self.actions = []
+        else:
+            for action in actions:
+                if action in self._actions:
+                    self.actions.append(action)
+                else:
+                    print('Configuration Warning: AuditRuleTransaction {NAME}: unknown audit method specified {METHOD}'
+                          .format(NAME=name, METHOD=action))
+
+        try:
+            self.codes = entry['Codes']
+        except KeyError:
+            self.codes = {}
+
+        try:
+            self.table = mod_elem.TableElement(name, entry['DisplayTable'])
+        except KeyError:
+            msg = 'Configuration Error: AuditRuleTransaction {NAME}: missing required parameter "DisplayTable"' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        except AttributeError as e:
+            msg = 'Configuration Error: AuditRuleTransaction {NAME}: unable to initialize DisplayTable - {ERR}' \
+                .format(NAME=name, ERR=e)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.elements += self.table.elements
+
+        self.in_progress = False
+
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i.split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            print('Warning: component {COMP} not found in list of bank rule {PARAM} components'
+                  .format(COMP=component, PARAM=self.name))
+            key = None
+
+        return key
+
+    def layout(self, size):
+        """
+        GUI layout for the audit rule transaction tab.
+        """
+        width, height = size
+
+        # Element parameters
+        bg_col = mod_const.ACTION_COL
+        bttn_text_col = mod_const.WHITE_TEXT_COL
+        bttn_bg_col = mod_const.BUTTON_COL
+        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        disabled_bg_col = mod_const.DISABLED_BUTTON_COL
+
+        pad_frame = mod_const.FRAME_PAD
+
+        # Element sizes
+        tbl_width = width - 40
+        tbl_height = height * 0.8
+
+        # Layout
+        audit_key = self.key_lookup('Audit')
+        main_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))],
+                       [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, disabled=True,
+                                           button_color=(bttn_text_col, bttn_bg_col),
+                                           disabled_button_color=(disabled_text_col, disabled_bg_col),
+                                           tooltip='Run audit on the transaction records', use_ttk_buttons=True)]],
+                               pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
+                               expand_x=True)]]
+
+        height_key = self.key_lookup('Height')
+        width_key = self.key_lookup('Width')
+        layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
+                  [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
+                   sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
+                          background_color=bg_col, expand_x=True)]]
+
+        return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col)
+
+    def resize_elements(self, window, width, height):
+        """
+        Resize the transaction tab.
+        """
+        # Reset tab element size
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(width, None))
+
+        height_key = self.key_lookup('Height')
+        window[height_key].set_size(size=(None, height))
+
+        # Reset table size
+        tbl_width = width - 30  # includes padding on both sides and scroll bar
+        tbl_height = int(height * 0.8)
+        self.table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
+
+    def audit_transactions(self, window, user, audit_params):
+        """
+        Search for missing transactions using scan.
+        """
+        dparse = dateutil.parser.parse
+        strptime = datetime.datetime.strptime
+
+        # Class attributes
+        table = self.table
+        pkey = table.id_column
+        df = table.sort()
+
+        id_list = table.row_ids()
+        main_table = [i for i in self.import_rules][0]
+
+        # Format audit parameters
+        audit_date = None
+        for audit_param in audit_params:
+            if audit_param.type.lower() == 'date':
+                date_col = audit_param.name
+                date_col_full = mod_dm.get_query_from_header(date_col, table.columns)
+                date_fmt = audit_param.format
+                try:
+                    audit_date = strptime(audit_param.value, date_fmt)
+                except ValueError:
+                    print('Warning: AuditRuleTransaction {NAME}: no date provided ... skipping checks for most recent ID'
+                          .format(NAME=self.name))
+                else:
+                    audit_date_iso = audit_date.strftime("%Y-%m-%d")
+
+        missing_transactions = []
+        # Search for missing data
+
+        try:
+            first_id = id_list[0]
+        except IndexError:
+            first_id = None
+        else:
+            first_number_comp = int(self.get_id_component(first_id, 'variable'))
+            first_date_comp = self.get_id_component(first_id, 'date')
+            print('Info: rule {RULE}, tab {NAME}: first transaction ID is {ID}'
+                  .format(RULE=self.rule_name, NAME=self.name, ID=first_id))
+
+        if audit_date and first_id:
+            ## Find date of last transaction
+            query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col_full, TBL=main_table)
+            try:
+                dates_df = user.thread_transaction(query_str, (), operation='read')
+            except Exception as e:
+                mod_win2.popup_error('Error: audit scan failed due to failure to connect to the database')
+                print(e)
+                return df
+
+            unq_dates = dates_df[date_col].tolist()
+            try:
+                unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
+            except TypeError:
+                print('Warning: AuditRuleTransaction {NAME}: date {DATE} is not formatted correctly as a datetime object'
+                      .format(NAME=self.name, DATE=audit_date_iso))
+                return df
+
+            unq_dates_iso.sort()
+
+            try:
+                current_date_index = unq_dates_iso.index(audit_date_iso)
+            except ValueError:
+                print('Warning: AuditRuleTransaction {NAME}: no transactions for audit date {DATE} found in list {DATES}'
+                      .format(NAME=self.name, DATE=audit_date_iso, DATES=unq_dates_iso))
+                return df
+
+            try:
+                prev_date = dparse(unq_dates_iso[current_date_index - 1], yearfirst=True)
+            except IndexError:
+                print('Warning: AuditRuleTransaction {NAME}: no date found prior to current audit date {DATE}'
+                      .format(NAME=self.name, DATE=audit_date_iso))
+                prev_date = None
+            except ValueError:
+                print('Warning: AuditRuleTransaction {NAME}: unknown format {DATE} provided'
+                      .format(NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
+                prev_date = None
+
+            ## Query last transaction from previous date
+            if prev_date:
+                print('Info: AuditRuleTransaction {NAME}: searching for most recent transaction created in {DATE}'
+                      .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
+
+                filters = ('{} = ?'.format(date_col_full), (prev_date.strftime(date_fmt),))
+                last_df = user.query(self.import_rules, columns=table.columns, filter_rules=filters)
+                last_df.sort_values(by=[pkey], inplace=True, ascending=False)
+
+                last_id = None
+                prev_ids = last_df[pkey].tolist()
+                for prev_id in prev_ids:
+                    prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
+                    prev_date_comp = self.get_id_component(prev_id, 'date')
+
+                    if prev_number_comp > first_number_comp:
+                        continue
+
+                    # Search only for IDs with correct ID formats (skip potential errors)
+                    if prev_id == self.format_id(prev_number_comp, date=prev_date_comp):
+                        last_id = prev_id
+                        break
+
+                if last_id:
+                    print('Info: AuditRuleTransaction {NAME}: last transaction ID is {ID} from {DATE}' \
+                          .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
+
+                    if first_date_comp != prev_date_comp:  # start of new month
+                        if first_number_comp != 1:
+                            missing_range = list(range(1, first_number_comp))
+                        else:
+                            missing_range = []
+
+                    else:  # still in same month
+                        if (prev_number_comp + 1) != first_number_comp:  # first not increment of last
+                            missing_range = list(range(prev_number_comp + 1, first_number_comp))
+                        else:
+                            missing_range = []
+
+                    for missing_number in missing_range:
+                        missing_id = self.format_id(missing_number, date=first_date_comp)
+                        if missing_id not in id_list:
+                            missing_transactions.append(missing_id)
+
+            ## Search for missed numbers at end of day
+            last_id_of_df = id_list[-1]
+
+            filters = ('{} = ?'.format(date_col_full), (audit_date.strftime(date_fmt),))
+            current_df = user.query(self.import_rules, columns=table.columns, filter_rules=filters)
+            current_df.sort_values(by=[pkey], inplace=True, ascending=False)
+
+            current_ids = current_df[pkey].tolist()
+            for current_id in current_ids:
+                if last_id_of_df == current_id:
+                    break
+
+                current_number_comp = int(self.get_id_component(current_id, 'variable'))
+                if current_id == self.format_id(current_number_comp, date=first_date_comp):
+                    missing_transactions.append(current_id)
+
+        ## Search for skipped transaction numbers
+        try:
+            id_list[1]
+        except IndexError:
+            pass
+        else:
+            prev_number = first_number_comp
+            for transaction_id in id_list[1:]:
+                trans_number = int(self.get_id_component(transaction_id, 'variable'))
+                if (prev_number + 1) != trans_number:
+                    missing_range = list(range(prev_number + 1, trans_number))
+                    for missing_number in missing_range:
+                        missing_id = self.format_id(missing_number, date=first_date_comp)
+                        if missing_id not in id_list:
+                            missing_transactions.append(missing_id)
+
+                prev_number = trans_number
+
+        print('Info: AuditRuleTransactions {NAME}: potentially missing transactions: {MISS}'
+              .format(NAME=self.name, MISS=missing_transactions))
+
+        # Query database for the potentially missing transactions
+        if missing_transactions:
+            pkey_fmt = mod_dm.get_query_from_header(pkey, table.columns)
+
+            filter_values = ['?' for _ in missing_transactions]
+            filter_str = '{PKEY} IN ({VALUES})'.format(PKEY=pkey_fmt, VALUES=', '.join(filter_values))
+
+            filters = [(filter_str, tuple(missing_transactions))]
+
+            # Drop missing transactions if they don't meet the import parameter requirements
+            filters += mod_db.format_import_filters(self.import_rules)
+            missing_df = user.query(self.import_rules, columns=table.columns, filter_rules=filters, order=pkey_fmt)
+        else:
+            missing_df = pd.DataFrame(columns=df.columns)
+
+        # Display import window with potentially missing data
+        if not missing_df.empty:
+            missing_df_fmt = self.format_display_table(mod_dm.sort_table(missing_df, pkey))
+            import_rows = mod_win2.import_window(missing_df_fmt, win_size=window.size)
+            import_df = missing_df.iloc[import_rows]
+
+            # Update dataframe with imported data
+            if not import_df.empty:
+                df = mod_dm.append_to_table(table.df, import_df)
+
+        print('Info: AuditRuleTransactions {NAME}: new size of dataframe is {NROW} rows and {NCOL} columns'
+              .format(NAME=self.name, NROW=df.shape[0], NCOL=df.shape[1]))
+
+        return df
 
 
 def replace_nth(s, sub, new, ns):

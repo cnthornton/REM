@@ -102,16 +102,19 @@ class BankRule:
         permissions (str): permissions required to view the accounting method. Default: user.
     """
 
-    def __init__(self, name, entry):
+    def __init__(self, name, entry, parent=None):
         """
         Arguments:
 
             name (str): bank reconciliation rule name.
 
             entry (dict): dictionary of optional and required bank rule arguments.
+
+            parent (str): name of the object's parent element.
         """
 
         self.name = name
+        self.parent = parent
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
         self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
@@ -391,15 +394,16 @@ class BankRule:
         disabled_text_col = mod_const.DISABLED_TEXT_COL
         disabled_bg_col = mod_const.DISABLED_BUTTON_COL
         bg_col = mod_const.ACTION_COL
-        font_h = mod_const.HEADER_FONT
         header_col = mod_const.HEADER_COL
+
+        font_h = mod_const.HEADER_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
         pad_h = mod_const.HORZ_PAD
         pad_frame = mod_const.FRAME_PAD
 
-        # Parameters
+        # Rule parameters
         params = self.parameters
 
         # Element sizes
@@ -426,7 +430,6 @@ class BankRule:
         for param in params:
             element_layout = param.layout(padding=((0, pad_h), 0))
             param_elements += element_layout
-        print('bank parameter elements: {}'.format(param_elements))
 
         start_key = self.key_lookup('Start')
         start_layout = [[mod_layout.B2('Start', key=start_key, pad=(0, 0), disabled=False,
@@ -501,11 +504,14 @@ class BankRule:
 
         return sg.Col(layout, key=self.element_key, visible=False)
 
-    def resize_elements(self, window):
+    def resize_elements(self, window, win_size: tuple = None):
         """
-        Resize Bank Reconciliation Rule GUI elements based on window size
+        Resize Bank Reconciliation Rule GUI elements.
         """
-        width, height = window.size  # current window size (width, height)
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = window.size  # current window size (width, height)
 
         # For every five-pixel increase in window size, increase the frame size by one
         layout_pad = 120  # padding between the window and border of the frame
@@ -944,59 +950,3 @@ class AssociationRule:
 
         return data_loaded
 
-
-class BankSummaryPanel:
-    """
-    Bank Reconciliation summary panel.
-    """
-
-    def __init__(self, name, entry):
-        """
-        name (str): rule summary name.
-
-        entry: (dict): rule summary configuration entry.
-        """
-        self.name = name
-        self.id = randint(0, 1000000000)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Summary', 'TG']]
-
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i.split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            print('Warning: component {COMP} not found in list of bank rule {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
-            key = None
-
-        return key
-
-    def layout(self, win_size: tuple = None):
-        """
-        Generate a GUI layout for the bank reconciliation summary panel.
-        """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
-
-        layout = [[]]
-
-        return layout
-
-    def resize_elements(self, window, win_size: tuple = None):
-        """
-        Resize the Bank Reconciliation summary tabs.
-        """
-        pass
-
-    def reset(self, window):
-        """
-        Reset the summary panel to default.
-        """
-        pass

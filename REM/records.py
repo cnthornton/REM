@@ -186,7 +186,7 @@ class DatabaseRecord:
                         print('Warning: record {ID}: imported data is missing a column for parameter {PARAM}'
                               .format(ID=self.record_id, PARAM=param))
                     else:
-                        if param_value:
+                        if not pd.isna(param_value):
                             print('Info: record {ID}: setting element {PARAM} value to {VAL}'
                                   .format(ID=self.record_id, PARAM=param_obj.name, VAL=param_value))
                             param_obj.value = param_obj.format_value(param_value)
@@ -596,7 +596,7 @@ class DatabaseRecord:
         # Create layout for record details
         details_layout = []
         for data_elem in self.parameters:
-            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, overwrite_edit=self.new)])
+            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True)])
 
         # Add reference boxes to the details section
         ref_key = self.key_lookup('ReferencesButton')
@@ -764,6 +764,9 @@ class DepositRecord(DatabaseRecord):
         """
         Generate the layout for the header section of the record layout.
         """
+        greater_col = mod_const.PASS_COL
+        lesser_col = mod_const.FAIL_COL
+
         record_layout = self.record_layout
 
         layout_header = record_layout['Header']
@@ -809,10 +812,17 @@ class DepositRecord(DatabaseRecord):
             deposit_title = 'Deposit Total'
 
         orig_amount = self.deposit
+        deposit_total = self.update_deposit()
+        if deposit_total > 0:
+            bg_color = greater_col
+        elif deposit_total < 0:
+            bg_color = lesser_col
+        else:
+            bg_color = bg_col
         deposit_layout = [[sg.Text('{}:'.format(deposit_title), pad=((0, pad_el), 0), background_color=bg_col,
                                    font=bold_font),
-                           sg.Text('{:,.2f}'.format(self.update_deposit()), key=self.key_lookup('Deposit'),
-                                   size=(14, 1), font=main_font, background_color=bg_col, border_width=1,
+                           sg.Text('{:,.2f}'.format(deposit_total), key=self.key_lookup('Deposit'),
+                                   size=(14, 1), font=main_font, background_color=bg_color, border_width=1,
                                    relief="sunken", tooltip='Import amount: {}'.format('{:,.2f}'.format(orig_amount)))]]
 
         # Header layout
@@ -1073,10 +1083,6 @@ class AccountRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        default_col = mod_const.ACTION_COL
-        greater_col = mod_const.PASS_COL
-        lesser_col = mod_const.FAIL_COL
-
         save_key = self.key_lookup('Save')
         delete_key = self.key_lookup('Delete')
         approved_key = self.key_lookup('Approved')
@@ -1200,6 +1206,9 @@ class TAuditRecord(DatabaseRecord):
         """
         Generate the layout for the header section of the record layout.
         """
+        greater_col = mod_const.PASS_COL
+        lesser_col = mod_const.FAIL_COL
+
         record_layout = self.record_layout
 
         layout_header = record_layout['Header']
@@ -1243,10 +1252,21 @@ class TAuditRecord(DatabaseRecord):
             remainder_title = 'Remainder'
 
         orig_amount = self.remainder
+        remainder = self.update_remainder()
+        if remainder > 0:
+            print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
+                  .format(NAME=self.name, ID=self.record_id, AMOUNT=remainder))
+            bg_color = greater_col
+        elif remainder < 0:
+            print('Info: {NAME}, record {ID}: account records are over-allocated by {AMOUNT}'
+                  .format(NAME=self.name, ID=self.record_id, AMOUNT=abs(remainder)))
+            bg_color = lesser_col
+        else:
+            bg_color = bg_col
         remainder_layout = [[sg.Text('{}:'.format(remainder_title), pad=((0, pad_el), 0), background_color=bg_col,
                                      font=bold_font),
-                             sg.Text('{:,.2f}'.format(self.update_remainder()), key=self.key_lookup('Remainder'),
-                                     size=(14, 1), font=main_font, background_color=bg_col, border_width=1,
+                             sg.Text('{:,.2f}'.format(remainder), key=self.key_lookup('Remainder'),
+                                     size=(14, 1), font=main_font, background_color=bg_color, border_width=1,
                                      relief="sunken",
                                      tooltip='Import amount: {}'.format('{:,.2f}'.format(orig_amount)))]]
 

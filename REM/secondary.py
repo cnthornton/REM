@@ -267,6 +267,8 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
                 except AttributeError:
                     print('Warning: unknown record type provided to record {ID}'.format(ID=record.record_id))
 
+                record = None
+
             break
 
         # Update the record parameters with user-input
@@ -1354,10 +1356,8 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
     window.finalize()
 
     screen_w, screen_h = window.get_screen_dimensions()
-    print('screen size is ({}, {})'.format(screen_w, screen_h))
     win_w = int(screen_w * 0.8)
     win_h = int(screen_h * 0.8)
-    print('desired window size is ({}, {})'.format(win_w, win_h))
 
     table.resize(window, size=(win_w, win_h))
 
@@ -1385,22 +1385,36 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
                 msg = 'Failed to create a new record - missing required configuration parameter "RecordType"'
                 popup_error(msg)
                 print('Warning: {}'.format(msg))
-                record_id = None
+                record = None
+
                 break
 
             # Create a new record object
             record_entry = configuration.records.fetch_entry(table.record_type)
 
             record_id = record_entry.create_id(table.creation_date)
+            print('Info: RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
 
             record_data = pd.Series(index=list(table.columns))
             record_data['RecordID'] = record_id
             record_data['RecordDate'] = table.creation_date
 
-            try:
-                record = mod_records.create_record(record_entry, record_data)
-            except Exception as e:
-                popup_error('Warning: table {TBL}: failed to create new record - {ERR}'.format(TBL=table.name, ERR=e))
+            record_type = record_entry.group
+            if record_type in ('transaction', 'bank_statement', 'cash_expense'):
+                record_class = mod_records.DatabaseRecord
+            elif record_type == 'account':
+                record_class = mod_records.AccountRecord
+            elif record_type == 'bank_deposit':
+                record_class = mod_records.DepositRecord
+            elif record_type == 'audit':
+                record_class = mod_records.TAuditRecord
+            else:
+                print('Warning: unknown record layout type provided {}'.format(record_type))
+                record = None
+
+                break
+
+            record = record_class(record_entry.name, record_layout, record_data, new_record=True, referenced=False)
 
             break
 
