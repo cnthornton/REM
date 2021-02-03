@@ -41,17 +41,22 @@ class DatabaseRecord:
         components (list): list of record components.
     """
 
-    def __init__(self, record_entry, record_data, new_record: bool = False):
+    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
         """
         Arguments:
-            record_entry (class): configuration entry for the record.
+            name (str): configured record type.
+
+            entry (class): configuration entry for the record.
 
             record_data (dict): dictionary or pandas series containing record data.
+
+            new_record (bool): record is newly created [default: False].
         """
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        record_entry = configuration.records.fetch_entry(name)
 
         approved_record_types = ['transaction', 'account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
-        self.name = record_entry.name
+        self.name = name
         self.record_group = record_entry.group
 
         self.id = randint(0, 1000000000)
@@ -60,9 +65,10 @@ class DatabaseRecord:
                           'ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'Height',
                           'Width']]
 
-        entry = record_entry.record_layout
         self.record_layout = entry
         self.new = new_record
+        self.referenced = referenced
+        print('record type {} is a reference link: {}'.format(self.name, self.referenced))
 
         # User permissions when accessing record
         try:
@@ -180,9 +186,13 @@ class DatabaseRecord:
                         print('Warning: record {ID}: imported data is missing a column for parameter {PARAM}'
                               .format(ID=self.record_id, PARAM=param))
                     else:
-                        print('Info: record {ID}: setting parameter {PARAM} to value {VAL}'
-                              .format(ID=self.record_id, PARAM=param_obj.name, VAL=param_value))
-                        param_obj.value = param_obj.format_value(param_value)
+                        if param_value:
+                            print('Info: record {ID}: setting element {PARAM} value to {VAL}'
+                                  .format(ID=self.record_id, PARAM=param_obj.name, VAL=param_value))
+                            param_obj.value = param_obj.format_value(param_value)
+                        else:
+                            print('Info: record {ID}: no value set for parameter {PARAM}'
+                                  .format(ID=self.record_id, PARAM=param_obj.name))
 
                 # Add the parameter to the record
                 self.parameters.append(param_obj)
@@ -490,12 +500,13 @@ class DatabaseRecord:
         record_layout = self.record_layout
 
         # GUI data elements
-        markable = True if user_access == 'admin' or self.permissions['mark'] == 'user' else False
+        markable = True if (user_access == 'admin' or self.permissions['mark'] == 'user') and self.new is False \
+            else False
         editable = True if user_access == 'admin' or self.permissions['save'] == 'user' else False
-        deletable = True if (user_access == 'admin' or self.permissions[
-            'delete'] == 'user') and delete is True else False
-        unlinkable = True if user_access == 'admin' or self.permissions['unlink'] == 'user' else False
-        approvable = True if user_access == 'admin' or self.permissions['approve'] == 'user' else False
+        deletable = True if (user_access == 'admin' or self.permissions['delete'] == 'user') and delete is True \
+            else False
+        approvable = True if (user_access == 'admin' or self.permissions['approve'] == 'user') and self.new is False \
+            else False
         savable = True if editable is True and save is True else False
 
         # Element parameters
@@ -565,13 +576,18 @@ class DatabaseRecord:
         else:
             approved_layout = []
 
+        if self.new is True:
+            annotation_layout = [[]]
+        else:
+            annotation_layout = [approved_layout, mark_layout]
+
         title = layout_header.get('Title', self.name)
         title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h,
                                           background_color=header_col)]],
                                 pad=(0, 0), justification='l', background_color=header_col, expand_x=True),
                          sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
                                 background_color=header_col, justification='c', expand_x=True),
-                         sg.Col([approved_layout, mark_layout], pad=(pad_frame, 0), background_color=header_col,
+                         sg.Col(annotation_layout, pad=(pad_frame, 0), background_color=header_col,
                                 justification='r', vertical_alignment='c')]]
 
         # Record header
@@ -591,13 +607,14 @@ class DatabaseRecord:
                                  metadata={'visible': True, 'disabled': False})]]
 
         ref_boxes = []
+        open_reference = True if savable is True and self.referenced is False else False
         for ref_box in self.references:
-            ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=unlinkable)])
+            ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=open_reference)])
 
         ref_layout.append([sg.pin(sg.Col(ref_boxes, key=self.key_lookup('ReferencesFrame'), background_color=bg_col,
                                          visible=True, expand_x=True, metadata={'visible': True}))])
 
-        if has_references is True:
+        if has_references is True and self.new is False:
             details_layout.append([sg.Col(ref_layout, expand_x=True, pad=(0, pad_el), background_color=bg_col)])
 
         # Add components to the details section
@@ -611,7 +628,8 @@ class DatabaseRecord:
         comp_tables = []
         for comp_table in self.components:
             comp_table.df = comp_table.set_datatypes(comp_table.df)
-            comp_tables.append([comp_table.layout(padding=(0, pad_v), width=width, height=height)])
+            comp_tables.append([comp_table.layout(padding=(0, pad_v), width=width, height=height,
+                                                  editable=open_reference)])
 
         comp_layout.append([sg.pin(sg.Col(comp_tables, key=self.key_lookup('ComponentsFrame'), background_color=bg_col,
                                           visible=True, expand_x=True, metadata={'visible': False}))])
@@ -725,11 +743,11 @@ class DepositRecord(DatabaseRecord):
     Class to manage the layout and display of an REM Deposit Record.
     """
 
-    def __init__(self, record_entry, record_data):
+    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
         """
         deposit (float): amount deposited into the bank account.
         """
-        super().__init__(record_entry, record_data)
+        super().__init__(name, entry, record_data, new_record, referenced)
         self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Deposit'))
 
         try:
@@ -949,11 +967,11 @@ class AccountRecord(DatabaseRecord):
     Class to manage the layout and display of an REM Account Record.
     """
 
-    def __init__(self, record_entry, record_data):
+    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
         """
         amount (float): amount .
         """
-        super().__init__(record_entry, record_data)
+        super().__init__(name, entry, record_data, new_record, referenced)
         self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Amount'))
 
         try:
@@ -1154,11 +1172,11 @@ class TAuditRecord(DatabaseRecord):
     Class to manage the layout of an audit record.
     """
 
-    def __init__(self, record_entry, record_data):
+    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
         """
         remainder (float): remaining total after subtracting component record totals.
         """
-        super().__init__(record_entry, record_data)
+        super().__init__(name, entry, record_data, new_record, referenced)
         for element in ['Remainder', 'Notes', 'NotesButton']:
             self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=element))
 
@@ -2630,54 +2648,6 @@ class AuditRecordSubset(AuditRecord):
         self.df = df
 
 
-def import_records(record_entry, user):
-    """
-    Load existing records from the program database to select from.
-    """
-    # Import all records of relevant type from the database
-    import_df = record_entry.import_records(user)
-
-    # Display the import record window
-    import_table = mod_elem.TableElement(record_entry.name, record_entry.import_table)
-    import_table.df = import_table.append(import_df)
-
-    record_id = mod_win2.data_import_window(user, import_table, create_new=False)
-
-    if record_id is None:
-        print('Warning: there are no existing records in the database to display')
-        return None
-
-    try:
-        trans_df = import_df[import_df['RecordID'] == record_id]
-    except KeyError:
-        print('warning: missing required column "RecordID"')
-        return None
-    else:
-        if trans_df.empty:
-            print('Warning: could not find record {ID} in data table'.format(ID=record_id))
-            return None
-        else:
-            record_data = trans_df.iloc[0]
-
-    # Set the record object based on the record type
-    record_type = record_entry.groud
-    if record_type in ('transaction', 'bank_statement', 'cash_expense'):
-        record_class = DatabaseRecord
-    elif record_type == 'account':
-        record_class = AccountRecord
-    elif record_type == 'bank_deposit':
-        record_class = DepositRecord
-    elif record_type == 'audit':
-        record_class = TAuditRecord
-    else:
-        print('Warning: unknown record layout type provided {}'.format(record_type))
-        return None
-
-    record = record_class(record_entry, record_data)
-
-    return record
-
-
 def load_record(record_entry, record_id):
     """
     Load an existing record from the program database.
@@ -2699,7 +2669,7 @@ def load_record(record_entry, record_id):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry, import_df)
+    record = record_class(record_entry.name, record_entry.record_layout, import_df, new_record=False, referenced=True)
 
     return record
 
@@ -2721,6 +2691,6 @@ def create_record(record_entry, record_data):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry, record_data, new_record=True)
+    record = record_class(record_entry.name, record_entry.record_layout, record_data, new_record=True, referenced=False)
 
     return record

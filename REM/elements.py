@@ -191,7 +191,7 @@ class TableElement:
         try:
             edit_columns = entry['EditColumns']
         except KeyError:
-            self.edit_columns = None
+            self.edit_columns = {}
         else:
             self.edit_columns = {}
             for edit_column in edit_columns:
@@ -333,9 +333,9 @@ class TableElement:
             self.collapse_expand(window, frame='summary')
         elif event == self.key_lookup('Filter'):
             print('Info: table {TBL}: filtering display table using user-supplied values'.format(TBL=self.name))
+            # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
-                print(param.value)
         elif event in param_elems:
             try:
                 param = self.fetch_parameter(event, by_key=True)
@@ -428,9 +428,6 @@ class TableElement:
 
         display_map = self.display_columns
         aliases = self.aliases
-
-        print(df)
-        print(df.dtypes)
 
         # Set display parameters
         date_fmt = date_fmt if date_fmt is not None else settings.format_date_str(date_str=settings.display_date_format)
@@ -659,7 +656,7 @@ class TableElement:
         return annotations
 
     def layout(self, tooltip: str = None, nrow: int = None, height: int = None, width: int = None, font: tuple = None,
-               padding: tuple = None, collapsible: bool = False, **kwargs):
+               padding: tuple = None, collapsible: bool = False, editable: bool = True, **kwargs):
         """
         Create table elements that have consistency in layout.
         """
@@ -828,8 +825,8 @@ class TableElement:
         # Data table
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
-        bind = True if self.actions['edit'] is True or self.actions['open'] is True else False
-        events = True if bind is False else False
+        bind = True if (self.actions['edit'] is True or self.actions['open'] is True) and editable is True else False
+        events = True if (bind is False and editable is True) else False
         print('table {TBL}: bind is set to {BIND}'.format(TBL=self.name, BIND=bind))
 
         col_widths = self.calc_column_widths(width=width - 16, size=font_size, pixels=False)
@@ -1508,7 +1505,7 @@ class ReferenceElement:
 
     """
 
-    def __init__(self, name, entry, parent = None):
+    def __init__(self, name, entry, parent=None):
         """
         GUI data element.
 
@@ -1612,7 +1609,10 @@ class ReferenceElement:
 
         bg_col = mod_const.ACTION_COL
         text_col = mod_const.TEXT_COL
-        select_text_col = mod_const.SELECT_TEXT_COL
+        if editable is True:
+            select_text_col = mod_const.SELECT_TEXT_COL
+        else:
+            select_text_col = mod_const.DISABLED_TEXT_COL
 
         discard_key = self.key_lookup('Unlink')
         row1 = [sg.Col([[sg.Text(self.title, auto_size_text=True, text_color=text_col, font=bold_font,
@@ -1629,7 +1629,7 @@ class ReferenceElement:
                 sg.Col([[sg.Text('ID:', auto_size_text=True, pad=((0, pad_el), 0), text_color=text_col,
                                  font=font, background_color=bg_col),
                          sg.Text(self.record_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
-                                 enable_events=True, text_color=select_text_col, font=font, background_color=bg_col,
+                                 enable_events=editable, text_color=select_text_col, font=font, background_color=bg_col,
                                  tooltip='Open reference record'),
                          sg.Text('Date:', auto_size_text=True, pad=((0, pad_el), 0), text_color=text_col,
                                  font=font, background_color=bg_col),
@@ -1678,25 +1678,13 @@ class ReferenceElement:
                 print('Warning: Reference {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Display the record window
-                result = mod_win2.record_window(record, user, save=True, delete=False)
+                record = mod_win2.record_window(record, user, save=True, delete=True)
+                if record is None:  # record was deleted by the user
+                    # Set element to deleted in metadata
+                    window[elem_key].metadata['deleted'] = True
+                    window[elem_key].update(visible=False)
 
         return result
-
-    def load_record(self):
-        """
-        Display a the reference record in a new window.
-        """
-        record_id = self.record_id
-        record_type = self.record_type
-        record_entry = configuration.records.fetch_entry(record_type)
-        if record_entry is None:
-            print('Configuration Warning: Record Reference {NAME}: unknown reference type {TYPE} specified for '
-                  'reference {ID}'.format(NAME=self.name, TYPE=record_type, ID=record_id))
-            return None
-
-        ref_record = record_entry.load_record(record_id)
-
-        return ref_record
 
 
 class DataElement:
