@@ -151,6 +151,8 @@ class AuditRule:
                 param_class = mod_param.RuleParameterInput
             elif param_layout == 'date':
                 param_class = mod_param.RuleParameterDate
+            elif param_layout == 'date_range':
+                param_class = mod_param.RuleParameterDateRange
             elif param_layout == 'checkbox':
                 param_class = mod_param.RuleParameterCheckbox
             else:

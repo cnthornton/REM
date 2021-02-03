@@ -95,7 +95,7 @@ class BankRule:
 
         menu_title (str): bank reconciliation rule title.
 
-        element_key (str): Main panel element key.
+        element_key (str): panel element key.
 
         elements (list): list of rule GUI element keys.
 

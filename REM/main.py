@@ -14,6 +14,7 @@ import REM.bank as bank
 import REM.cash as cash
 import REM.data_manipulation as mod_dm
 from REM.config import configuration, settings
+import REM.elements as mod_elem
 import REM.layouts as mod_lo
 import REM.records as mod_records
 import REM.secondary as mod_win2
@@ -54,7 +55,7 @@ class ToolBar:
         acct_records = {}
         record_rules = configuration.records.entries
         for record_entry in record_rules:
-            record_type = record_entry.type
+            record_type = record_entry.group
             record_title = record_entry.menu_title
             try:
                 record_group = record_map[record_type]
@@ -374,7 +375,7 @@ def main():
     bank_rules = bank.BankRules(configuration)
     startup_msgs = configuration.startup_msgs
 
-    acct_methods = [audit_rules, cash_rules, bank_rules]
+    acct_methods = [audit_rules, bank_rules]
 
     # Configure GUI layout
     toolbar = ToolBar([audit_rules, cash_rules, bank_rules])
@@ -390,7 +391,6 @@ def main():
 
     cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
     cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
-    cancel_keys += [i.key_lookup('Cancel') for i in cash_rules.rules]
 
     record_rules = configuration.records.entries
 
@@ -503,6 +503,16 @@ def main():
                             if perms != 'admin':  # permissions allow non-administrator access
                                 toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
 
+                # Enable cash reconciliation
+                for cash_rule in cash_rules.rules:
+                    rule_name = cash_rule.menu_title
+                    if admin:
+                        toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
+                    else:
+                        perms = acct_rule.permissions
+                        if perms != 'admin':  # permissions allow non-administrator access
+                            toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
+
                 # Enable record view permissions on per rule basis defined in config
                 for record_entry in record_rules:
                     if user.admin is True or record_entry.permissions == 'user':
@@ -587,13 +597,18 @@ def main():
             # Menu
             toolbar.toggle_menu(window, 'mmenu', 'settings', value='disable')
 
-            # Audit rules
+            # Disable accounting method rules
             for acct_method in acct_methods:
                 for acct_rule in acct_method.rules:
                     rule_name = acct_rule.menu_title
                     toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
 
-            # Reports
+            # Disable cash reconciliation rules
+            for cash_rule in cash_rules.rules:
+                rule_name = cash_rule.menu_title
+                toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
+
+            # Disable record lookup
             for record_entry in record_rules:
                 toolbar.toggle_menu(window, 'rmenu', record_entry.menu_title, value='disable')
 
@@ -632,25 +647,36 @@ def main():
         if event == '-RMENU-':
             # Get Record Type selection
             record_type = values['-RMENU-']
-            print('Info: displaying selection window for {} records'.format(record_type))
+            print('Info: displaying selection window for {TYPE} records'.format(TYPE=record_type))
 
             # Get record entry
             record_entry = configuration.records.fetch_entry(record_type, by_title=True)
-            print('record selected is {}'.format(record_entry.name))
+            print('Info: the record type selected is {TYPE}'.format(TYPE=record_entry.name))
 
-            # Display record import window
+            # Import all records of relevant type from the database
+            import_df = record_entry.import_records(user)
+
+            # Display the import record window
+            table_entry = record_entry.import_table
+            table_entry['RecordType'] = record_entry.name
+            import_table = mod_elem.TableElement(record_entry.name, table_entry)
+            import_table.df = import_table.append(import_df)
+
             try:
-                selected_record = mod_records.import_records(record_entry, user)
+                record = mod_win2.record_import_window(user, record_entry.record_layout, import_table, enable_new=False)
             except Exception as e:
-                msg = 'Failed to load record - {ERR}'.format(ERR=e)
+                raise
+                msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {}'.format(msg))
                 continue
-            if selected_record is None:
-                continue
+            else:
+                if record is None:
+                    print('Info: no record selected for importing')
+                    continue
 
             # Open the record display window
-            mod_win2.record_window(selected_record, user, save=True, delete=True)
+            mod_win2.record_window(record, user, save=True, delete=True)
 
             continue
 
@@ -678,23 +704,23 @@ def main():
                     current_rule = current_rule if not values['-AMENU-'] else values['-AMENU-']
                 else:
                     continue
-            elif cr_in_progress:  # ask to switch first
-                msg = _('Are you sure you would like to quit without saving the transaction?')
-                selection = mod_win2.popup_confirm(msg)
-
-                if selection == 'OK':
-                    # Reset to defaults
-                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                    cr_in_progress = False
-
-                    # Remove from list of used IDs any IDs created/deleted during the now cancelled reconciliation
-                    current_rule.remove_unsaved_keys()
-
-                    # Reset rule and update the panel
-                    current_panel = current_rule.reset_rule(window)
-                    current_rule = None if not values['-AMENU-'] else values['-AMENU-']
-                else:
-                    continue
+#            elif cr_in_progress:  # ask to switch first
+#                msg = _('Are you sure you would like to quit without saving the transaction?')
+#                selection = mod_win2.popup_confirm(msg)
+#
+#                if selection == 'OK':
+#                    # Reset to defaults
+#                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
+#                    cr_in_progress = False
+#
+#                    # Remove from list of used IDs any IDs created/deleted during the now cancelled reconciliation
+#                    current_rule.remove_unsaved_keys()
+#
+#                    # Reset rule and update the panel
+#                    current_panel = current_rule.reset_rule(window)
+#                    current_rule = None if not values['-AMENU-'] else values['-AMENU-']
+#                else:
+#                    continue
             else:  # no action being taken so ok to switch without asking
                 toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
                 current_rule.reset_parameters(window)
@@ -731,48 +757,40 @@ def main():
             # Obtain the selected rule object
             current_rule = cash_rules.fetch_rule(selected_action)
 
-            import_panel = current_rule.load_from_database(user)
-            if import_panel == '-HOME-':
-                current_rule = None
-                window[import_panel].update(visible=True)
+            # Get the record entry
+            record_type = current_rule.record_type
+            record_entry = configuration.records.fetch_entry(record_type)
+            if not record_entry:
+                print('Error: unable to find a configured record type with name {NAME}'.format(NAME=record_type))
                 continue
+            else:
+                print('Info: the record type selected is {TYPE}'.format(TYPE=record_type))
 
-            # Update ID field with the bank deposit number
-            id_param = current_rule.fetch_parameter(current_rule.required_parameters['ID'])
-            elem_size = len(id_param.value) + 1
+            # Import all records of relevant type from the database
+            import_df = record_entry.import_records(user)
 
-            id_key = id_param.element_key
-            window[id_key].set_size((elem_size, None))
-            window[id_key].update(value=id_param.value)
+            # Display the import record window
+            table_entry = current_rule.import_table_entry
+            table_entry['RecordType'] = record_type
+            import_table = mod_elem.TableElement(current_rule.name, table_entry)
+            import_table.df = import_table.append(import_df)
 
-            # Update parameter elements
-            for param in current_rule.parameters:
-                if param.hidden is True:
-                    continue
-                param_key = param.element_key
-                param_value = param.value
-                window[param_key].update(value=param_value)
-
-            current_rule.update_display(window)
-
-            window[current_panel].update(visible=False)
-            window[import_panel].update(visible=True)
-
-            # Query records database for any audit records unassociated with a transaction
-            ref_table = current_rule.records.table
-            ref_columns = list(current_rule.records.columns.keys())
-            filters = ('{COL} IS NULL'.format(COL=current_rule.records.refkey), None)
+            record_layout = current_rule.record_layout_entry
             try:
-                import_df = user.query(ref_table, ref_columns, filter_rules=filters, prog_db=True)
+                record = mod_win2.record_import_window(user, record_layout, import_table, enable_new=True)
             except Exception as e:
-                mod_win2.popup_error('Error: database query failed - {ERR}'.format(ERR=e))
+                raise
+                msg = 'Record importing failed - {ERR}'.format(ERR=e)
+                mod_win2.popup_error(msg)
+                print('Error: {}'.format(msg))
                 continue
+            else:
+                if record is None:
+                    print('Info: no record selected for importing')
+                    continue
 
-            current_rule.records.unassociated_df = current_rule.records.set_datatypes(import_df)
-
-            current_panel = import_panel
-            cr_in_progress = True
-            print('Info: the panel in view is {}'.format(current_rule.name))
+            # Open the record in a new window
+            mod_win2.record_window(record, user, save=True, delete=True)
 
             continue
 

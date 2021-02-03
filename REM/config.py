@@ -87,7 +87,7 @@ class RecordsConfiguration:
 
         try:
             index = rule_names.index(name)
-        except IndexError:
+        except ValueError:
             print('Warning: Records: entry {NAME} not in list of configured records. Available record entries are {ALL}'
                   .format(NAME=name, ALL=', '.join(rule_names)))
             rule = None

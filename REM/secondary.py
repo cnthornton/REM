@@ -16,6 +16,7 @@ import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
 import REM.layouts as mod_lo
 from REM.main import __version__
+import REM.records as mod_records
 
 
 # Popups
@@ -258,6 +259,14 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
         event, values = window.read()
 
         if event == sg.WIN_CLOSED:  # selected close-window without accepting changes
+            # Remove unsaved ID if record is new
+            if record.new is True:
+                record_entry = configuration.records.fetch_entry(record.name)
+                try:
+                    record_entry.remove_unsaved_id(record.record_id)
+                except AttributeError:
+                    print('Warning: unknown record type provided to record {ID}'.format(ID=record.record_id))
+
             break
 
         # Update the record parameters with user-input
@@ -1287,7 +1296,7 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     return select_rows
 
 
-def data_import_window(user, table, win_size: tuple = None, create_new: bool = False):
+def record_import_window(user, record_layout, table, win_size: tuple = None, enable_new: bool = False):
     """
     Display the import from database window.
     """
@@ -1331,7 +1340,7 @@ def data_import_window(user, table, win_size: tuple = None, create_new: bool = F
     bttn_layout = [[sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
                            pad=(0, 0), justification='l', expand_x=True),
                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                    sg.Col([[mod_lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=create_new,
+                    sg.Col([[mod_lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=enable_new,
                                        tooltip='Create new record'),
                              mod_lo.B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
                            pad=(0, 0), justification='r')]]
@@ -1364,16 +1373,36 @@ def data_import_window(user, table, win_size: tuple = None, create_new: bool = F
     display_df = table.update_display(window)
 
     # Main loop
-    record_id = None
     while True:
         event, values = window.read(timeout=500)
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
-            record_id = None
+            record = None
             break
 
         if event == '-NEW-':  # selected to create a new record
-            pass
+            if table.record_type is None:
+                msg = 'Failed to create a new record - missing required configuration parameter "RecordType"'
+                popup_error(msg)
+                print('Warning: {}'.format(msg))
+                record_id = None
+                break
+
+            # Create a new record object
+            record_entry = configuration.records.fetch_entry(table.record_type)
+
+            record_id = record_entry.create_id(table.creation_date)
+
+            record_data = pd.Series(index=list(table.columns))
+            record_data['RecordID'] = record_id
+            record_data['RecordDate'] = table.creation_date
+
+            try:
+                record = mod_records.create_record(record_entry, record_data)
+            except Exception as e:
+                popup_error('Warning: table {TBL}: failed to create new record - {ERR}'.format(TBL=table.name, ERR=e))
+
+            break
 
         # Enable the OK button if a record is selected
         if values[tbl_key]:
@@ -1391,8 +1420,41 @@ def data_import_window(user, table, win_size: tuple = None, create_new: bool = F
                 continue
             else:
                 record_id = display_df.at[row, record_col]
+                try:
+                    trans_df = table.df[table.df['RecordID'] == record_id]
+                except KeyError:
+                    print('warning: missing required column "RecordID"')
+                    return None
+                else:
+                    if trans_df.empty:
+                        print('Warning: could not find record {ID} in data table'.format(ID=record_id))
+                        return None
+                    else:
+                        record_data = trans_df.iloc[0]
 
-            break
+                # Set the record object based on the record type
+                record_type = table.record_type
+                record_group = configuration.records.fetch_entry(record_type).group
+                if record_group in ('transaction', 'bank_statement', 'cash_expense'):
+                    record_class = mod_records.DatabaseRecord
+                elif record_group == 'account':
+                    record_class = mod_records.AccountRecord
+                elif record_group == 'bank_deposit':
+                    record_class = mod_records.DepositRecord
+                elif record_group == 'audit':
+                    record_class = mod_records.TAuditRecord
+                else:
+                    print('Warning: unknown record layout type provided {}'.format(record_type))
+                    record_class = None
+
+                try:
+                    record = record_class(record_type, record_layout, record_data, new_record=False)
+                except Exception as e:
+                    raise
+                    print(e)
+                    record = None
+
+                break
 
         # Run table events
         if event in table_elements:
@@ -1404,7 +1466,7 @@ def data_import_window(user, table, win_size: tuple = None, create_new: bool = F
     window = None
     gc.collect()
 
-    return record_id
+    return record
 
 
 def import_window(df, win_size: tuple = None):

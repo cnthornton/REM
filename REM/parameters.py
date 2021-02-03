@@ -77,7 +77,6 @@ class RuleParameter:
         except KeyError:
             self.default = None
 
-        # Dynamic attributes
         self.value = None
 
     def key_lookup(self, component):
@@ -341,6 +340,14 @@ class RuleParameterInput(RuleParameter):
     """
     Input-style parameter.
     """
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+
+        # Dynamic attributes
+        self.value = self.format_value({self.key_lookup('Element'): self.default})
+        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
+              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
+                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -356,7 +363,7 @@ class RuleParameterInput(RuleParameter):
 
         # Parameter settings
         desc = '{}:'.format(self.description)
-        param_value = '' if self.value is None else self.value
+        param_value = self.format_display()
 
         # Element layout
         elem_key = self.key_lookup('Element')
@@ -389,7 +396,14 @@ class RuleParameterInput(RuleParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            return None
+            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+                  .format(NAME=self.name))
+            return self.value
+        else:
+            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
+            if input_value is None:
+                return None
 
         if dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
             try:
@@ -497,6 +511,11 @@ class RuleParameterCombo(RuleParameter):
                     aliases[value] = value
             self.aliases = aliases
 
+        self.value = self.format_value({self.key_lookup('Element'): self.default})
+        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
+              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
+                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
         Create a GUI layout for the parameter.
@@ -512,16 +531,14 @@ class RuleParameterCombo(RuleParameter):
         # Parameter settings
         aliases = self.aliases
         combo_values = self.combo_values
-        default_value = self.value
 
         elem_key = self.key_lookup('Element')
         desc = '{}:'.format(self.description)
         values = [aliases[i] for i in combo_values if i in aliases]
-        print('Info: parameter {PARAM} has values {VALS} with aliases {ALIASES}'.format(PARAM=self.name, VALS=combo_values, ALIASES=values))
         if '' not in values:  # the no selection option
             values.insert(0, '')
 
-        param_value = '' if default_value is None else default_value
+        param_value = self.format_display()
 
         # Parameter size
         width = max([len(i) for i in values]) + 1
@@ -555,7 +572,12 @@ class RuleParameterCombo(RuleParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            return None
+            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+                  .format(NAME=self.name))
+            return self.value
+        else:
+            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         aliases = {j: i for i, j in self.aliases.items()}
         value_fmt = aliases.get(input_value, input_value)
@@ -583,6 +605,11 @@ class RuleParameterDate(RuleParameter):
         super().__init__(name, entry)
         self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
 
+        self.value = self.format_value({self.key_lookup('Element'): self.default})
+        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
+              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
+                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
         Create a GUI layout for the parameter.
@@ -598,7 +625,7 @@ class RuleParameterDate(RuleParameter):
 
         # Parameter settings
         desc = '{}:'.format(self.description)
-        param_value = '' if self.value is None else self.value
+        param_value = self.format_display()
 
         # Element layout
         input_key = self.key_lookup('Element')
@@ -635,6 +662,14 @@ class RuleParameterDate(RuleParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
+            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+                  .format(NAME=self.name))
+            return self.value
+        else:
+            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
+
+        if not input_value:
             return None
 
         if isinstance(input_value, str):
@@ -699,6 +734,16 @@ class RuleParameterDateRange(RuleParameter):
         self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Element2'))
         self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar2'))
 
+        try:
+            self.value = self.format_value({self.key_lookup('Element'): self.default[0],
+                                            self.key_lookup('Element2'): self.default[1]})
+        except (IndexError, TypeError):
+            self.value = self.format_value({self.key_lookup('Element'): self.default,
+                                            self.key_lookup('Element2'): self.default})
+        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
+              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
+                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
         Create a GUI layout for the parameter.
@@ -718,10 +763,7 @@ class RuleParameterDateRange(RuleParameter):
         except ValueError:
             from_desc = to_desc = self.description
 
-        try:
-            from_value, to_value = self.default
-        except (TypeError, ValueError):
-            from_value = to_value = self.default if self.default is not None else ''
+        from_value, to_value = self.format_display()
 
         # Element layout
         from_key = self.key_lookup('Element')
@@ -777,10 +819,19 @@ class RuleParameterDateRange(RuleParameter):
         try:
             input_values = (values[self.key_lookup('Element')], values[self.key_lookup('Element2')])
         except KeyError:
-            return None
+            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+                  .format(NAME=self.name))
+            return self.value
+        else:
+            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+                  .format(NAME=self.name, ORIG=self.value, NEW=input_values))
 
         formatted_values = []
         for input_value in input_values:
+            if not input_value:
+                formatted_values.append(None)
+                continue
+
             if isinstance(input_value, str):
                 try:
                     value_fmt = strptime(input_value, '%Y-%m-%d')
@@ -809,6 +860,10 @@ class RuleParameterDateRange(RuleParameter):
 
         formatted_values = []
         for value in values:
+            if value is None:
+                formatted_values.append('')
+                continue
+
             if isinstance(value, str):
                 value_fmt = value
             elif isinstance(value, datetime.datetime):
@@ -816,7 +871,7 @@ class RuleParameterDateRange(RuleParameter):
             else:
                 print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
                       .format(PARAM=self.name, VAL=value))
-                value_fmt = None
+                value_fmt = ''
 
             formatted_values.append(value_fmt)
 
@@ -900,6 +955,11 @@ class RuleParameterCheckbox(RuleParameter):
             else:
                 self.type = value_type
 
+        self.value = self.format_value({self.key_lookup('Element'): self.default})
+        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
+              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
+                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
         Create a GUI layout for the parameter.
@@ -929,7 +989,12 @@ class RuleParameterCheckbox(RuleParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            return None
+            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+                  .format(NAME=self.name))
+            return self.value
+        else:
+            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         try:
             value_fmt = bool(int(input_value))

@@ -63,7 +63,7 @@ def format_import_columns(import_rules):
     for import_table in import_rules:
         import_rule = import_rules[import_table]
 
-        import_columns = list(import_rule['Columns'])
+        import_columns = import_rule['Columns']
 
         try:
             modifiers = import_rule['Modifiers']
