@@ -446,6 +446,7 @@ class TableElement:
             try:
                 col_to_add = mod_dm.generate_column_from_rule(df, col_rule)
             except Exception as e:
+                print(df)
                 print('Error: table {TBL}: unable to generate column from display rule {RULE} - {ERR}'
                       .format(TBL=self.name, RULE=col_rule, ERR=e))
                 continue
@@ -1079,10 +1080,8 @@ class TableElement:
 
         if add_df.empty:
             return df
-        elif df.empty:
-            return add_df
 
-        df = self.set_datatypes(df.append(add_df, ignore_index=True, sort=False))
+        df = self.set_datatypes(df.append(add_df, ignore_index=True))
 
         return df
 
@@ -1249,6 +1248,8 @@ class TableElement:
 
             return df
         else:
+            print('Info: table {TBL}: appending values {VALS} to the table'.format(TBL=self.name, VALS=record_values.tolist()))
+            print(df)
             df = self.append(record_values)
 
         return df
@@ -1721,6 +1722,7 @@ class DataElement:
 
             entry (dict): configuration entry for the data element.
         """
+        print(entry)
 
         self.name = name
         self.parent = parent
@@ -1774,9 +1776,17 @@ class DataElement:
             self.options = {}
 
         try:
-            self.value = self.format_value(entry['DefaultValue'])
+            self.default = entry['DefaultValue']
+        except KeyError:
+            self.default = None
+
+        try:
+            self.value = self.format_value(self.default)
         except (KeyError, TypeError):
             self.value = self.format_value(None)
+
+        print('Info: {PARAM}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF}, formatted '
+              'value {VAL}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def key_lookup(self, component):
         """
@@ -1987,7 +1997,7 @@ class DataElement:
         print('Info: formatting parameter {PARAM} value {VAL} for display'
               .format(PARAM=self.name, VAL=value))
 
-        if value == '' or value is None:
+        if pd.isna(value) is True:
             return ''
 
         elem_key = self.key_lookup('Element')
@@ -2151,6 +2161,9 @@ class DataElement:
 
         dtype = self.dtype
         options = self.options
+
+        if input_value is None or pd.isna(input_value):
+            return None
 
         try:
             aliases = {j: i for i, j in options['Aliases'].items()}
