@@ -52,6 +52,8 @@ class TableElement:
 
         annotation_rules (dict): rules used to annotate the data table.
 
+        filter_rules (dict): rules used to automatically filter the data table.
+
         summary_rules (dict): rules used to summarize the data table.
 
         df (DataFrame): pandas dataframe containing table data.
@@ -228,12 +230,27 @@ class TableElement:
             self.annotation_rules = None
 
         try:
+            self.filter_rules = entry['FilterRules']
+        except KeyError:
+            self.filter_rules = None
+
+        try:
             self.summary_rules = entry['SummaryRules']
         except KeyError:
             self.summary_rules = {}
         else:
             for summary_rule in self.summary_rules:
                 self.elements.append('{NAME}_{ID}_{EL}'.format(NAME=self.name, ID=self.id, EL=summary_rule))
+
+        try:
+            self.id_column = entry['IDColumn']
+        except KeyError:
+            self.id_column = 'RecordID'
+
+        try:
+            self.date_column = entry['DateColumn']
+        except KeyError:
+            self.date_column = 'RecordDate'
 
         try:
             self.icon = entry['Icon']
@@ -384,7 +401,7 @@ class TableElement:
             search_value = None
 
         if not search_value:
-            df = self.filter_table()
+            df = self.apply_filter()
         else:
             df = self.df
             try:
@@ -481,6 +498,54 @@ class TableElement:
 
         return display_df
 
+    def filter_table(self):
+        """
+        Filter the data table by applying the filter rules specified in the configuration.
+        """
+        # Tab attributes
+        filter_rules = self.filter_rules
+        df = self.df.copy()
+
+        if df.empty or not filter_rules:
+            return df
+
+        for filter_number in filter_rules:
+            filter_rule = filter_rules[filter_number]['Reference']
+            try:
+                filter_key = filter_rules[filter_number]['Key']
+            except KeyError:
+                filter_key = None
+
+            print('Info: table {TBL}: filtering table using filter rule {NUM}'.format(TBL=self.name, NUM=filter_number))
+
+            try:
+                filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
+            except Exception as e:
+                print('Info: table {TBL}: filtering table with filter rule {NO} failed - {ERR}'
+                      .format(TBL=self.name, NO=filter_number, ERR=e))
+                continue
+
+            if filter_key:
+                cond_str = '(df.duplicated(subset=["{KEY}"], keep=False)) & (filter_cond)'.format(KEY=filter_key)
+            else:
+                cond_str = '(filter_cond)'.format(KEY=filter_key, RES=filter_cond)
+
+            try:
+                failed = eval('df[{}].index'.format(cond_str))
+            except Exception as e:
+                print('Info: table {TBL}: filtering table with filter rule {NO} failed - {ERR}'
+                      .format(TBL=self.name, NO=filter_number, ERR=e))
+                continue
+
+            if len(failed) > 0:
+                print('Info: table {TBL}: rows {ROWS} removed due after applying filter rule {NO}'
+                      .format(TBL=self.name, ROWS=failed.tolist(), NO=filter_number))
+
+                df.drop(failed, axis=0, inplace=True)
+                df.reset_index(drop=True, inplace=True)
+
+        return df
+
     def summarize_table(self):
         """
         Update Summary element with data summary
@@ -551,7 +616,7 @@ class TableElement:
 
         return outputs
 
-    def filter_table(self):
+    def apply_filter(self):
         """
         Filter the table based on values supplied to the table filter parameters.
         """
@@ -1089,7 +1154,7 @@ class TableElement:
         """
         Sort the table on provided column name.
         """
-        sort_key = sort_key if sort_key is not None else self.search_field
+        sort_key = sort_key if sort_key is not None else self.id_column
         df = self.df.copy()
 
         if not df.empty:  # can't sort an empty table
@@ -1180,6 +1245,23 @@ class TableElement:
 
         return total
 
+    def row_ids(self):
+        """
+        Return a list of all row IDs in the dataframe.
+        """
+        id_field = self.id_column
+
+        df = self.sort()
+
+        try:
+            row_ids = df[id_field].tolist()
+        except KeyError:  # database probably PostGreSQL
+            print('Warning: table {TBL}: ID column {COL} not found in the data table'
+                  .format(TBL=self.name, COL=id_field))
+            row_ids = []
+
+        return row_ids
+
     def summarize_columns(self):
         """
         Summarize columns based on data type.
@@ -1222,8 +1304,8 @@ class TableElement:
         record_id = record_entry.create_id(self.creation_date)
 
         record_data = pd.Series(index=list(self.columns))
-        record_data['RecordID'] = record_id
-        record_data['RecordDate'] = self.creation_date
+        record_data[self.id_column] = record_id
+        record_data[self.date_column] = self.creation_date
 
         # Set values for editable columns with default values
         record_data = self.set_edit_values(record_data)
@@ -1306,10 +1388,10 @@ class TableElement:
                                  'index {IND} to edit'.format(TBL=self.name, IND=index + 1))
         else:
             try:
-                record_id = row['RecordID']
+                record_id = row[self.id_column]
             except KeyError:
                 mod_win2.popup_error('Warning: table {TBL}: failed to open record at row {IND} - missing required '
-                                     'column "RecordID"'.format(TBL=self.name, IND=index + 1))
+                                     'column "{COL}"'.format(TBL=self.name, IND=index + 1, COL=self.id_column))
                 return df
 
             # Create a record object from the row data
@@ -1347,7 +1429,7 @@ class TableElement:
         df = self.df.copy()
 
         # Get record IDs of selected rows
-        record_ids = df.iloc[indices]['RecordID']
+        record_ids = df.iloc[indices][self.id_column]
         print('Info: table {TBL}: removing records {IDS} from the table'.format(TBL=self.name, IDS=record_ids.tolist()))
 
         # Drop selected rows from the dataframe
