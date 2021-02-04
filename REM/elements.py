@@ -1299,7 +1299,7 @@ class TableElement:
             return df
 
         # Create a new record object
-        record_entry = configuration.records.fetch_entry(self.record_type)
+        record_entry = configuration.records.fetch_rule(self.record_type)
 
         record_id = record_entry.create_id(self.creation_date)
 
@@ -1395,7 +1395,7 @@ class TableElement:
                 return df
 
             # Create a record object from the row data
-            record_entry = configuration.records.fetch_entry(self.record_type)
+            record_entry = configuration.records.fetch_rule(self.record_type)
             print(record_entry.name)
             try:
                 record = mod_records.load_record(record_entry, record_id)
@@ -1437,7 +1437,7 @@ class TableElement:
         df.reset_index(drop=True, inplace=True)
 
         # Remove unsaved ID, if relevant
-        record_entry = configuration.records.fetch_entry(self.record_type)
+        record_entry = configuration.records.fetch_rule(self.record_type)
         if record_entry is not None:
             for record_id in record_ids:
                 record_entry.remove_unsaved_id(record_id)
@@ -1640,7 +1640,7 @@ class ReferenceElement:
         except KeyError:
             raise AttributeError('missing required Reference parameter "RefType"')
 
-        record_entry = configuration.records.fetch_entry(self.record_type)
+        record_entry = configuration.records.fetch_rule(self.record_type)
         if record_entry is not None:
             self.title = record_entry.menu_title
 
@@ -1751,7 +1751,7 @@ class ReferenceElement:
 
         # Load a reference record in a new window
         elif event == ref_key:
-            record_entry = configuration.records.fetch_entry(self.record_type)
+            record_entry = configuration.records.fetch_rule(self.record_type)
             print(record_entry.name)
             try:
                 record = mod_records.load_record(record_entry, self.record_id)
@@ -1939,6 +1939,8 @@ class DataElement:
         element_options = self.options
         aliases = element_options.get('Aliases', {})
         background = element_options.get('BackgroundColor', None)
+        if isinstance(background, str) and (not background.startswith('#') or len(background) != 7):  # hex color codes
+            background = None
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
