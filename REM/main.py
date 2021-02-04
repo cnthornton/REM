@@ -53,7 +53,7 @@ class ToolBar:
 
         # Program records menu items
         acct_records = {}
-        record_rules = configuration.records.entries
+        record_rules = configuration.records.rules
         for record_entry in record_rules:
             record_type = record_entry.group
             record_title = record_entry.menu_title
@@ -146,6 +146,51 @@ class ToolBar:
         layout = [sg.Frame('', toolbar, key='-TOOLBAR-', relief='groove', pad=(0, 0), background_color=header_col)]
 
         return layout
+
+    def disable(self, window, rules):
+        """
+        Disable toolbar buttons
+        """
+        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
+
+        # Database administration
+        window['-DBMENU-'].update(disabled=True)
+
+        # User administration
+        self.toggle_menu(window, 'umenu', 'manage accounts', value='disable')
+
+        # Disable settings modification
+        self.toggle_menu(window, 'mmenu', 'settings', value='disable')
+
+        # Disable all menu items
+        for rule_group in rules:
+            for rule in rule_group.rules:
+                menu_group = menu_groups[rule_group.name]
+                self.toggle_menu(window, menu_group, rule.menu_title, value='disable')
+
+    def enable(self, window, rules, admin=False):
+        """
+        Enable toolbar buttons
+        """
+        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
+
+        # Enable admin-only privileges
+        if admin is True:
+            # Database administration
+            window['-DBMENU-'].update(disabled=False)
+
+            # User administration
+            self.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
+
+        # Allow user to modify user-settings
+        self.toggle_menu(window, 'mmenu', 'settings', value='enable')
+
+        # Enable menu items based on configured permissions
+        for rule_group in rules:
+            for rule in rule_group.rules:
+                if admin is True or rule.permissions == 'user':
+                    menu_group = menu_groups[rule_group.name]
+                    self.toggle_menu(window, menu_group, rule.menu_title, value='enable')
 
     def update_username(self, window, username):
         """
@@ -284,7 +329,10 @@ def get_panels(account_methods, win_size: tuple = None):
     # Add Audit rule with summary panel
     for account_method in account_methods:
         for rule in account_method.rules:
+            print('Info: creating layout for accounting method {ACCT}, rule {RULE}'
+                  .format(ACCT=account_method.name, RULE=rule.name))
             panels.append(rule.layout(win_size=win_size))
+            print(panels)
 
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
@@ -306,7 +354,11 @@ def resize_elements(window, rules):
 
     # Update audit rule elements
     for rule in rules:
-        rule.resize_elements(window)
+        try:
+            rule.resize_elements(window)
+        except Exception as e:
+            print('Error: {}'.format(e))
+            continue
 
 
 def format_date_element(date_str):
@@ -335,8 +387,6 @@ def main():
     """
     Main function.
     """
-    strptime = datetime.datetime.strptime
-
     # Theme
     default_col = mod_const.DEFAULT_COL
     action_col = mod_const.ACTION_COL
@@ -373,9 +423,11 @@ def main():
     audit_rules = audit.AuditRules(configuration)
     cash_rules = cash.CashRules(configuration)
     bank_rules = bank.BankRules(configuration)
+    record_rules = configuration.records
     startup_msgs = configuration.startup_msgs
 
     acct_methods = [audit_rules, bank_rules]
+    all_rules = [audit_rules, cash_rules, bank_rules, record_rules]
 
     # Configure GUI layout
     toolbar = ToolBar([audit_rules, cash_rules, bank_rules])
@@ -389,25 +441,7 @@ def main():
     cash_names = cash_rules.print_rules()
     bank_names = bank_rules.print_rules()
 
-    cancel_keys = [i.key_lookup('Cancel') for i in audit_rules.rules]
-    cancel_keys += [i.summary.key_lookup('Cancel') for i in audit_rules.rules]
-
-    record_rules = configuration.records.entries
-
-    summ_tbl_keys = []
-    for rule in audit_rules.rules:
-        for tab in rule.summary.tabs:
-            summ_tbl_keys.append(tab.key_lookup('Table'))
-            summ_tbl_keys.append(tab.key_lookup('Totals'))
-
-    print('Info: current audit rules are {}'.format(', '.join(audit_names)))
-
     # Event modifiers
-    audit_in_progress = False
-    cr_in_progress = False
-    br_in_progress = False
-    summary_panel_active = False
-    current_tab = None
     current_rule = None
     debug_win = None
 
@@ -424,8 +458,8 @@ def main():
     user_image = tk.PhotoImage(data=mod_const.USER_ICON)
     userin_image = tk.PhotoImage(data=mod_const.USERIN_ICON)
 
-    all_rules = [i for acct_method in acct_methods for i in acct_method.rules]
-    resize_elements(window, all_rules)
+    acct_rules = [i for acct_method in acct_methods for i in acct_method.rules]
+    resize_elements(window, acct_rules)
     resized = False
 
     # Event Loop
@@ -459,7 +493,7 @@ def main():
             print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            resize_elements(window, all_rules)
+            resize_elements(window, acct_rules)
 
             current_w, current_h = (win_w, win_h)
             resized = True
@@ -479,44 +513,7 @@ def main():
                 window['-UMENU-'].Widget.configure(image=userin_image)
 
                 # Enable permission specific actions and menus
-
-                # Admin only actions and menus
-                admin = user.admin
-                if admin is True:
-                    # Database administration
-                    window['-DBMENU-'].update(disabled=False)
-
-                    # User
-                    toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
-
-                    # Menu
-                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-
-                # Enable accounting rules permissions on per rule basis defined in config
-                for acct_method in acct_methods:
-                    for acct_rule in acct_method.rules:
-                        rule_name = acct_rule.menu_title
-                        if admin:
-                            toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-                        else:
-                            perms = acct_rule.permissions
-                            if perms != 'admin':  # permissions allow non-administrator access
-                                toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-
-                # Enable cash reconciliation
-                for cash_rule in cash_rules.rules:
-                    rule_name = cash_rule.menu_title
-                    if admin:
-                        toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-                    else:
-                        perms = acct_rule.permissions
-                        if perms != 'admin':  # permissions allow non-administrator access
-                            toolbar.toggle_menu(window, 'amenu', rule_name, value='enable')
-
-                # Enable record view permissions on per rule basis defined in config
-                for record_entry in record_rules:
-                    if user.admin is True or record_entry.permissions == 'user':
-                        toolbar.toggle_menu(window, 'rmenu', record_entry.menu_title, value='enable')
+                toolbar.enable(window, all_rules, admin=user.admin)
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
@@ -526,42 +523,29 @@ def main():
 
         # User log-off
         if values['-UMENU-'] == 'Sign Out':  # user signs out
+            try:
+                in_progress = current_rule.in_progress
+            except AttributeError:
+                in_progress = False
+
             # Confirm sign-out
-            if audit_in_progress:  # ask to switch first
-                msg = _('An audit is ongoing. Are you sure you would like to quit without saving?')
+            if in_progress:  # ask to switch first
+                msg = 'An audit is ongoing. Are you sure you would like to quit without saving?'
                 selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
                     # Reset to defaults
-                    audit_in_progress = False
-                    summary_panel_active = False
                     # Remove from the list of used IDs any IDs created during the now cancelled audit
                     for tab in current_rule.summary.tabs:
                         tab.remove_unsaved_keys()
 
                     # Reset the rule and update the panel
-                    current_panel = current_rule.reset_rule(window)
-                    current_rule = None
-                else:
-                    continue
-            elif cr_in_progress:  # ask to switch first
-                msg = _('Are you sure you would like to quit without saving the transaction?')
-                selection = mod_win2.popup_confirm(msg)
-
-                if selection == 'OK':
-                    # Reset to defaults
-                    cr_in_progress = False
-
-                    # Remove from list of used IDs any IDs created/deleted during the now cancelled reconciliation
-                    current_rule.remove_unsaved_keys()
-
-                    # Reset rule and update the panel
-                    current_panel = current_rule.reset_rule(window)
-                    current_rule = None
+                    current_rule = current_rule.reset_rule(window)
+                    current_panel = '-HOME-'
                 else:
                     continue
             else:  # no action being taken so ok to switch without asking
-                msg = _('Are you sure you would like to sign-out?')
+                msg = 'Are you sure you would like to sign-out?'
                 selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'Cancel':
@@ -574,7 +558,6 @@ def main():
                     pass
 
                 window['-HOME-'].update(visible=True)
-
                 current_panel = '-HOME-'
 
             # Reset User attributes
@@ -588,29 +571,7 @@ def main():
             toolbar.toggle_menu(window, 'umenu', 'sign out', value='disable')
 
             # Disable all actions and menus
-            # Database administration
-            window['-DBMENU-'].update(disabled=True)
-
-            # User
-            toolbar.toggle_menu(window, 'umenu', 'manage accounts', value='disable')
-
-            # Menu
-            toolbar.toggle_menu(window, 'mmenu', 'settings', value='disable')
-
-            # Disable accounting method rules
-            for acct_method in acct_methods:
-                for acct_rule in acct_method.rules:
-                    rule_name = acct_rule.menu_title
-                    toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
-
-            # Disable cash reconciliation rules
-            for cash_rule in cash_rules.rules:
-                rule_name = cash_rule.menu_title
-                toolbar.toggle_menu(window, 'amenu', rule_name, value='disable')
-
-            # Disable record lookup
-            for record_entry in record_rules:
-                toolbar.toggle_menu(window, 'rmenu', record_entry.menu_title, value='disable')
+            toolbar.disable(window, all_rules)
 
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
@@ -650,7 +611,7 @@ def main():
             print('Info: displaying selection window for {TYPE} records'.format(TYPE=record_type))
 
             # Get record entry
-            record_entry = configuration.records.fetch_entry(record_type, by_title=True)
+            record_entry = configuration.records.fetch_rule(record_type, by_title=True)
             print('Info: the record type selected is {TYPE}'.format(TYPE=record_entry.name))
 
             # Import all records of relevant type from the database
@@ -680,60 +641,7 @@ def main():
 
             continue
 
-        # Switch to new panel
-        if current_panel != '-HOME-' and (event in cancel_keys or values['-AMENU-'] or values['-RMENU-']):
-            if audit_in_progress:  # ask to switch first
-                msg = _('An audit is ongoing. Are you sure you would like to quit without saving?')
-                selection = mod_win2.popup_confirm(msg)
-
-                if selection == 'OK':
-                    # Reset to defaults
-                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                    audit_in_progress = False
-                    summary_panel_active = False
-                    # Remove from the list of used IDs any IDs created during the now cancelled audit
-                    for tab in current_rule.summary.tabs:
-                        tab.remove_unsaved_keys()
-
-                    # Reset the rule and update the panel
-                    remain_in_panel = True if not values['-AMENU-'] else False
-                    if remain_in_panel is True:
-                        current_panel = current_rule.reset_rule(window, current=True)
-                    else:
-                        current_panel = current_rule.reset_rule(window, current=False)
-                    current_rule = current_rule if not values['-AMENU-'] else values['-AMENU-']
-                else:
-                    continue
-#            elif cr_in_progress:  # ask to switch first
-#                msg = _('Are you sure you would like to quit without saving the transaction?')
-#                selection = mod_win2.popup_confirm(msg)
-#
-#                if selection == 'OK':
-#                    # Reset to defaults
-#                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-#                    cr_in_progress = False
-#
-#                    # Remove from list of used IDs any IDs created/deleted during the now cancelled reconciliation
-#                    current_rule.remove_unsaved_keys()
-#
-#                    # Reset rule and update the panel
-#                    current_panel = current_rule.reset_rule(window)
-#                    current_rule = None if not values['-AMENU-'] else values['-AMENU-']
-#                else:
-#                    continue
-            else:  # no action being taken so ok to switch without asking
-                toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                current_rule.reset_parameters(window)
-
-                window[current_rule.element_key].update(visible=False)
-                window['-HOME-'].update(visible=True)
-
-                current_rule = None if not values['-AMENU-'] else values['-AMENU-']
-                current_panel = '-HOME-'
-
-            window.refresh()
-
-        # Activate appropriate audit panel
+        # Activate appropriate panel
         selected_action = values['-AMENU-']
         if selected_action in audit_names:
             # Obtain the selected rule object
@@ -743,12 +651,15 @@ def main():
 
             current_panel = current_rule.element_key
             window[current_panel].update(visible=True)
-            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
+#            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
 
             tab_windows = [i.name for i in current_rule.tabs]
-            final_index = len(tab_windows) - 1
+#            final_index = len(tab_windows) - 1
 
-            current_panel = current_rule.element_key
+#            current_panel = current_rule.element_key
+
+            # Disable toolbar
+            toolbar.disable(window, all_rules)
 
             print('Info: the panel in view is {} with tabs {}'.format(current_rule.name, ', '.join(tab_windows)))
             continue
@@ -759,7 +670,7 @@ def main():
 
             # Get the record entry
             record_type = current_rule.record_type
-            record_entry = configuration.records.fetch_entry(record_type)
+            record_entry = configuration.records.fetch_rule(record_type)
             if not record_entry:
                 print('Error: unable to find a configured record type with name {NAME}'.format(NAME=record_type))
                 continue
@@ -804,459 +715,26 @@ def main():
             window[current_panel].update(visible=True)
             window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
 
+            # Disable toolbar
+            toolbar.disable(window, all_rules)
+
             print('Info: the panel in view is {}'.format(current_rule.name))
             continue
 
         # Action events
         if current_rule and event in current_rule.elements:
             print('Info: running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
-            current_rule.run_event(window, event, values, user)
+            current_rule_name = current_rule.run_event(window, event, values, user)
+
+            if current_rule_name is None:
+                # Enable toolbar
+                toolbar.enable(window, all_rules, admin=user.admin)
+
+                # Reset current_rule
+                current_rule = None
+                current_panel = '-HOME-'
+
             continue
-
-        # Audit Rules
-        # Start the audit
-        try:
-            start_key = current_rule.key_lookup('Start')
-        except AttributeError:
-            start_key = None
-        if event == start_key:
-            # Check if all rule parameters elements have input
-            params = current_rule.parameters
-            inputs = []
-            for param in params:
-                param.set_value(values)
-                has_value = param.values_set()
-
-                if not has_value:
-                    param_desc = param.description
-                    msg = _('Correctly formatted input is required in the "{}" field').format(param_desc)
-                    mod_win2.popup_notice(msg)
-
-                inputs.append(has_value)
-
-            # Start Audit
-            if all(inputs):  # all rule parameters have input
-                # Verify that the audit has not already been performed with these parameters
-                audit_exists = current_rule.summary.load_from_database(user, current_rule.parameters)
-                if audit_exists is True:
-                    continue_audit = mod_win2.popup_confirm('An audit has already been performed using these parameters. '
-                                                        'Only an admin may edit an existing audit. Are you sure you '
-                                                        'would like to continue?')
-                    if continue_audit == 'Cancel':
-                        continue
-
-                # Initialize audit
-                initialized = True
-                tab_keys = []  # to track tabs displayed
-                for tab in current_rule.tabs:
-                    tab_key = tab.element_key
-                    tab_keys.append(tab_key)
-
-                    # Prepare the filter rules to filter query results
-                    main_table = [i for i in tab.import_rules][0]
-                    rule_params = current_rule.parameters  # to filter data tables
-                    filters = [i.filter_statement(table=main_table) for i in rule_params]
-
-                    # Check for tab-specific query parameters
-                    filters += tab.filter_statements()
-                    print(filters)
-
-                    # Extract data from database
-                    try:
-                        df = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
-                    except Exception as e:
-                        mod_win2.popup_error('Error: audit failed - {}'.format(e))
-                        initialized = False
-                        break
-
-                    # Update tab object and elements
-                    tab.df = df  # update tab data
-                    tab.update_id_components(rule_params)
-                    tab.update_table(window)  # display tab data in table
-                    tab.update_summary(window)  # summarize individual tab data
-
-                    # Enable / disable action buttons
-                    tab.toggle_actions(window, 'enable')
-
-                if initialized:
-                    audit_in_progress = True
-                    print('Info: {} audit in progress with parameters {}'
-                          .format(current_rule.name, ', '.join(['{}={}'.format(i.name, i.value) for i in params])))
-
-                    # Enable/Disable control buttons and parameter elements
-                    window[current_rule.key_lookup('Start')].update(disabled=True)
-
-                    current_rule.toggle_parameters(window, 'disable')
-
-                    # Disable user ability to modify settings while audit is in progress
-                    toolbar.toggle_menu(window, 'mmenu', 'settings', value='disable')
-                else:
-                    for tab in current_rule.tabs:
-                        tab.reset_dynamic_attributes()
-
-        # Scan for missing data if applicable
-        if audit_in_progress and not summary_panel_active:
-            tg_key = current_rule.key_lookup('TG')
-            previous_tab = current_tab
-            current_tab = window[tg_key].Get()
-
-            # Get current tab in view
-            tab = current_rule.fetch_tab(current_tab, by_key=True)
-
-            # Refresh audit table
-            if current_tab != previous_tab:
-                tab.update_table(window)
-
-            # Remove row from table when row is double-clicked.
-            tbl_key = tab.key_lookup('Table')
-            if event == tbl_key:
-                try:
-                    row = values[tbl_key][0]
-                except IndexError:  # user double-clicked too quickly
-                    continue
-
-                print('Info: removing row {ROW} from table element {TBL}'.format(ROW=row, TBL=tbl_key))
-
-                tab.df.drop(row, axis=0, inplace=True)
-                tab.df.reset_index(drop=True, inplace=True)
-
-                tab.update_table(window)
-                tab.update_summary(window)
-                continue
-
-            # Add row to table based on user input
-            if event == tab.key_lookup('Add'):  # clicked the 'Add' button
-                input_key = tab.key_lookup('Input')
-
-                # Extract transaction information from database
-                new_id = values[input_key]
-                all_ids = tab.row_ids()
-                if new_id not in all_ids:
-                    all_cols = tab.db_columns
-                    table = list(tab.import_rules.keys())[0]
-                    for table_item in all_cols:
-                        try:
-                            table_name, column_name = table_item.split('.')
-                        except ValueError:
-                            continue
-                        else:
-                            if tab.db_key == column_name:
-                                table = table_name
-                                break
-                    filters = ('{TABLE}.{COLUMN} = ?'.format(TABLE=table, COLUMN=tab.db_key), (new_id,))
-                    new_row = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
-                else:
-                    msg = _("Warning: {} is already in the table").format(new_id)
-                    mod_win2.popup_notice(msg)
-                    continue
-
-                if new_row.empty:  # query returned nothing
-                    msg = _("Warning: unable to find transaction {}").format(new_id)
-                    mod_win2.popup_notice(msg)
-                    window[input_key].update(value='')
-                    continue
-
-                # Clear user input from the Input element
-                window[input_key].update(value='')
-
-                # Append new rows to the table
-                df = mod_dm.append_to_table(tab.df, new_row)
-                tab.df = df
-
-                # Update display table
-                tab.update_table(window)
-                tab.update_summary(window)
-                continue
-
-            # Run audit
-            audit_key = tab.key_lookup('Audit')
-            if event == audit_key:
-                print('Info: tab in view is {}'.format(tab_windows[current_index]))
-
-                # Run schema action methods
-                print('Info: running audit on the {NAME} data'.format(NAME=tab.name))
-                params = current_rule.parameters
-                tab.run_audit(window, account=user, parameters=params)
-
-                # Update information elements - most actions modify tab data 
-                # in some way.
-                tab.update_table(window)
-                tab.update_summary(window)
-
-            # Enable movement to the next tab
-            current_index = tab_keys.index(current_tab)
-            next_index = current_index + 1
-            if tab.audit_performed and not next_index > final_index:
-                next_key = tab_keys[next_index]
-
-                # Enable next tab
-                window[next_key].update(disabled=False, visible=True)
-
-            # Enable the finalize button when all actions have been performed
-            # on all tabs.
-            if tab.audit_performed and current_index == final_index:
-                window[current_rule.key_lookup('Next')].update(disabled=False)
-
-            if event == current_rule.key_lookup('Next'):  # display summary panel
-                next_subpanel = current_rule.current_panel + 1
-
-                summary_panel_active = True
-                rule_summ = current_rule.summary
-
-                # Update summary table title with the current audit's parameter values
-                rule_summ.update_static_fields(window, current_rule)
-
-                # Update summary totals with tab summary totals
-                rule_summ.update_totals(current_rule)
-
-                # Update summary elements with mapped tab values
-                rule_summ.initialize_tables(current_rule)
-
-                # Format tables for displaying
-                window.refresh()
-                rule_summ.update_display(window)
-
-                # Hide tab panel and un-hide summary panel
-                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=False)
-                window[current_rule.panel_keys[next_subpanel]].update(visible=True)
-
-                # Switch the current panel element key to the summary panel
-                current_rule.current_panel = next_subpanel
-
-                if next_subpanel == current_rule.last_panel:
-                    window[current_rule.key_lookup('Next')].update(disabled=True)
-                    window[current_rule.key_lookup('Back')].update(disabled=False)
-                    window[current_rule.key_lookup('Save')].update(disabled=False)
-
-                # Reset tab table column widths
-                for tab in current_rule.tabs:
-                    tab.resize_elements(window, win_size=window.size)
-
-        # Audit summary panel
-        if audit_in_progress and summary_panel_active:
-            # Get current tab in view
-            tg_key = current_rule.summary.key_lookup('TG')
-            current_tab = window[tg_key].Get()
-            summ_tab = current_rule.summary.fetch_tab(current_tab, by_key=True)
-
-            # Add a row to the records table
-            if event == summ_tab.key_lookup('Add'):
-                rule_summ.update_display(window)
-
-                # Show the add row window to the user
-                summ_tab.add_row(win_size=window.size)
-
-                # Update display table
-                rule_summ.update_display(window)
-                continue
-
-            # Remove a row from the records table
-            if event == summ_tab.key_lookup('Delete'):
-                # Get selected row
-                tbl_index = values[summ_tab.key_lookup('Table')]
-                print('Info: rule {RULE}, summary {NAME}: the rows {IND} have been selected for removal'
-                      .format(RULE=summ_tab.rule_name, NAME=summ_tab.name, IND=tbl_index))
-
-                summ_tab.remove_row(tbl_index)
-                rule_summ.update_display(window)
-
-                continue
-
-            # Edit row in either the totals or records table
-            if event in summ_tbl_keys:
-                rule_summ.update_display(window)
-
-                # Find table row selected by user
-                try:
-                    select_row_index = values[event][0]
-                except IndexError:  # user double-clicked too quickly
-                    continue
-
-                # Show the modify row window to the user
-                summ_tab.edit_row(select_row_index, event, win_size=window.size)
-
-                # Update display table
-                rule_summ.update_display(window)
-                continue
-
-            # Return to the Audit Panel
-            if event == current_rule.key_lookup('Back'):
-                summary_panel_active = False
-                prev_subpanel = current_rule.current_panel - 1
-
-                # Return to tab display
-                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=False)
-                window[current_rule.panel_keys[prev_subpanel]].update(visible=True)
-
-                window[current_rule.key_lookup('Next')].update(disabled=False)
-                window[current_rule.key_lookup('Back')].update(disabled=True)
-
-                # Reset summary values
-                for tab in rule_summ.tabs:
-                    tab.remove_unsaved_keys()
-                    tab.reset_tables()
-
-                rule_summ.resize_elements(window, win_size=window.size)
-
-                # Switch to first tab
-                window[tg_key].Widget.select(0)
-
-                current_rule.current_panel = prev_subpanel
-
-                if prev_subpanel == current_rule.first_panel:
-                    window[current_rule.key_lookup('Next')].update(disabled=False)
-                    window[current_rule.key_lookup('Back')].update(disabled=True)
-                    window[current_rule.key_lookup('Save')].update(disabled=True)
-
-            # Add note to current summary panel
-            if event == summ_tab.key_lookup('Note'):
-                # Display notes window
-                for id_field in summ_tab.ids:
-                    id_param = summ_tab.ids[id_field]
-                    if id_param['IsPrimary'] is True:
-                        tab_title = id_param['Title']
-                        break
-
-                notes_title = summ_tab.notes['Title']
-                note_text = mod_win2.notes_window(summ_tab.id, summ_tab.notes['Value'], record=tab_title,
-                                                  title=notes_title).strip()
-                summ_tab.notes['Value'] = note_text
-
-                # Change edit note button to be highlighted if note field not empty
-                if note_text:
-                    window[event].update(image_data=mod_const.EDIT_NOTE_ICON)
-                else:
-                    window[event].update(image_data=mod_const.TAKE_NOTE_ICON)
-
-            # Save results of the audit
-            if event == current_rule.key_lookup('Save'):
-                # Get output file from user
-                title = current_rule.summary.title.replace(' ', '_')
-                outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
-                                            default_extension='pdf', no_window=True,
-                                            file_types=(('PDF - Portable Document Format', '*.pdf'),))
-
-                if not outfile:
-                    msg = _('Please select an output file before continuing')
-                    mod_win2.popup_error(msg)
-                    continue
-                else:
-                    print('Info: saving summary report to {}'.format(outfile))
-
-                # Save summary to the program database
-                try:
-                    save_status = rule_summ.save_to_database(user)
-                except Exception as e:
-                    raise
-                    msg = _('Database save failed - {}').format(e)
-                    mod_win2.popup_error(msg)
-                else:
-                    if save_status is False:
-                        msg = _('Database save failed.')
-                        mod_win2.popup_error(msg)
-                        continue
-
-                # Save summary to excel or csv file
-                try:
-                    rule_summ.save_report(outfile)
-                except Exception as e:
-                    print(e)
-                    msg = _('Save to file {} failed due to {}').format(outfile, e)
-                    mod_win2.popup_error(msg)
-
-                # Reset audit elements
-                toolbar.toggle_menu(window, 'mmenu', 'settings', value='enable')
-                audit_in_progress = False
-                summary_panel_active = False
-                rule_summ.reset_attributes()
-                rule_summ.resize_elements(window, win_size=window.size)
-                current_panel = current_rule.reset_rule(window, current=True)
-
-        # Cash Rules
-        if cr_in_progress:
-            # Add records to bank transaction
-            if event == current_rule.key_lookup('AddEntry'):
-                # Display window for adding records
-                current_rule.records.add_row()
-                current_rule.update_display(window)
-
-                continue
-
-            # Add an expense to the bank transaction
-            if event == current_rule.key_lookup('AddExpense'):
-                current_rule.expenses.add_row()
-                current_rule.update_display(window)
-
-                continue
-
-            # Remove a record from the bank transaction
-            if event == current_rule.key_lookup('RemoveEntry'):
-                # Get selected row
-                tbl_index = values[current_rule.key_lookup('EntryTable')]
-                print('Info: rule {RULE}, Records: the rows {IND} have been selected for removal'
-                      .format(RULE=current_rule.name, IND=tbl_index))
-
-                current_rule.records.remove_row(tbl_index)
-                current_rule.update_display(window)
-
-                continue
-
-            # Remove an expense from the bank transaction
-            if event == current_rule.key_lookup('RemoveExpense'):
-                # Get selected row
-                tbl_index = values[current_rule.key_lookup('ExpenseTable')]
-                print('Info: rule {RULE}, Expenses: the rows {IND} have been selected for removal'
-                      .format(RULE=current_rule.name, IND=tbl_index))
-
-                current_rule.expenses.remove_row(tbl_index)
-                current_rule.update_display(window)
-
-                continue
-
-            # Edit an expense
-            if event == current_rule.key_lookup('ExpenseTable'):
-                # Get selected row
-                tbl_index = values[current_rule.key_lookup('ExpenseTable')][0]
-                print('Info: row {} selected for editing'.format(tbl_index))
-
-                current_rule.expenses.edit_row(tbl_index)
-                current_rule.update_display(window)
-
-                continue
-
-            # Save bank transaction to database
-            if event == current_rule.key_lookup('Save'):
-                # Set parameter values
-                all_params = True
-                for param in current_rule.parameters:
-                    if param.hidden is True:
-                        continue
-
-                    param.set_value(values)
-                    print(param.name, param.value)
-                    print(values)
-                    has_value = param.values_set()
-
-                    if has_value is False:
-                        param_desc = param.description
-                        msg = _('Correctly formatted input is required in the "{}" field').format(param_desc)
-                        mod_win2.popup_notice(msg)
-
-                        all_params = False
-                        break
-
-                if all_params is not True:
-                    continue
-
-                save_status = current_rule.save_to_database(user)
-                if save_status is False:
-                    msg = _('Database save failed.')
-                    mod_win2.popup_error(msg)
-                    continue
-
-                cr_in_progress = False
-                summary_panel_active = False
-                current_panel = current_rule.reset_rule(window, current=False)
 
     window.close()
 
