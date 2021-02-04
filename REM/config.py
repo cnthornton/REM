@@ -60,30 +60,30 @@ class RecordsConfiguration:
             popup_error('Configuration Error: Records: the parameter "rules" is a required field')
             sys.exit(1)
 
-        self.entries = []
+        self.rules = []
         for record_group in record_entries:
             record_entry = record_entries[record_group]
-            self.entries.append(RecordEntry(record_group, record_entry))
+            self.rules.append(RecordEntry(record_group, record_entry))
 
-    def print_entries(self, by_title: bool = False):
+    def print_rules(self, by_title: bool = False):
         """
         Print rules of a the rule set by its name or title.
         """
         if by_title is True:
-            rule_names = [i.menu_title for i in self.entries]
+            rule_names = [i.menu_title for i in self.rules]
         else:
-            rule_names = [i.name for i in self.entries]
+            rule_names = [i.name for i in self.rules]
 
         return rule_names
 
-    def fetch_entry(self, name, by_title: bool = False):
+    def fetch_rule(self, name, by_title: bool = False):
         """
         Fetch a given rule from the rule set by its name or title.
         """
         if by_title is True:
-            rule_names = [i.menu_title for i in self.entries]
+            rule_names = [i.menu_title for i in self.rules]
         else:
-            rule_names = [i.name for i in self.entries]
+            rule_names = [i.name for i in self.rules]
 
         try:
             index = rule_names.index(name)
@@ -92,7 +92,7 @@ class RecordsConfiguration:
                   .format(NAME=name, ALL=', '.join(rule_names)))
             rule = None
         else:
-            rule = self.entries[index]
+            rule = self.rules[index]
 
         return rule
 
