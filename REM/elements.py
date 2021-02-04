@@ -1935,11 +1935,10 @@ class DataElement:
         etype = self.etype
         dtype = self.dtype
         is_disabled = False if overwrite_edit is True else not self.editable
+
         element_options = self.options
-        if 'Aliases' in element_options:
-            aliases = element_options['Aliases']
-        else:
-            aliases = {}
+        aliases = element_options.get('Aliases', {})
+        background = element_options.get('BackgroundColor', None)
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -1950,9 +1949,9 @@ class DataElement:
         bg_col = mod_const.ACTION_COL
         if is_disabled is True:
             text_col = mod_const.DISABLED_TEXT_COL
-            input_col = mod_const.DISABLED_BG_COL
+            input_col = mod_const.DISABLED_BG_COL if background is None else background
         else:
-            input_col = mod_const.INPUT_COL
+            input_col = mod_const.INPUT_COL if background is None else background
             text_col = mod_const.TEXT_COL
 
         # Element Icon, if provided
