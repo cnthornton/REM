@@ -53,7 +53,7 @@ class DatabaseRecord:
             new_record (bool): record is newly created [default: False].
         """
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        record_entry = configuration.records.fetch_entry(name)
+        record_entry = configuration.records.fetch_rule(name)
 
         approved_record_types = ['transaction', 'account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
         self.name = name
@@ -265,7 +265,7 @@ class DatabaseRecord:
 
                 # Import data to the table
                 ref_id = row['RefNo']
-                ref_record_entry = configuration.records.fetch_entry(reftype)
+                ref_record_entry = configuration.records.fetch_rule(reftype)
                 ref_record = ref_record_entry.load_record(ref_id)
 
                 comp_table.df = comp_table.append(ref_record)
@@ -488,7 +488,7 @@ class DatabaseRecord:
         return layout
 
     def layout(self, win_size: tuple = None, user_access: str = 'admin', save: bool = True, delete: bool = False,
-               title_bar: bool = True):
+               title_bar: bool = True, view_only: bool = False):
         """
         Generate a GUI layout for the account record.
         """
@@ -501,13 +501,13 @@ class DatabaseRecord:
 
         # GUI data elements
         markable = True if (user_access == 'admin' or self.permissions['mark'] == 'user') and self.new is False \
-            else False
+            and view_only is False else False
         editable = True if user_access == 'admin' or self.permissions['save'] == 'user' else False
         deletable = True if (user_access == 'admin' or self.permissions['delete'] == 'user') and delete is True \
-            else False
+            and view_only is False else False
         approvable = True if (user_access == 'admin' or self.permissions['approve'] == 'user') and self.new is False \
-            else False
-        savable = True if editable is True and save is True else False
+            and view_only is False else False
+        savable = True if editable is True and save is True and view_only is False else False
 
         # Element parameters
         header_col = mod_const.HEADER_COL
@@ -596,7 +596,7 @@ class DatabaseRecord:
         # Create layout for record details
         details_layout = []
         for data_elem in self.parameters:
-            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True)])
+            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, view_only=view_only)])
 
         # Add reference boxes to the details section
         ref_key = self.key_lookup('ReferencesButton')

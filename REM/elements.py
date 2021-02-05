@@ -225,22 +225,50 @@ class TableElement:
             self.tally_rule = None
 
         try:
-            self.annotation_rules = entry['AnnotationRules']
+            annot_rules = entry['AnnotationRules']
         except KeyError:
-            self.annotation_rules = None
+            self.annotation_rules = {}
+        else:
+            self.annotation_rules = {}
+            for annot_code in annot_rules:
+                annot_rule = annot_rules[annot_code]
+
+                if 'Condition' not in annot_rule:
+                    continue
+
+                self.annotation_rules[annot_code] = {'BackgroundColor': annot_rule.get('BackgroundColor', mod_const.FAIL_COL),
+                                                     'Description': annot_rule.get('Description', annot_code),
+                                                     'Condition': annot_rule['Condition']}
 
         try:
-            self.filter_rules = entry['FilterRules']
+            filter_rules = entry['FilterRules']
         except KeyError:
-            self.filter_rules = None
+            self.filter_rules = {}
+        else:
+            self.filter_rules = {}
+            for filter_key in filter_rules:
+                if filter_key in columns:
+                    self.filter_rules[filter_key] = filter_rules[filter_key]
+                else:
+                    print('Warning: table {NAME}: filter rule key {KEY} not found in table columns'
+                          .format(NAME=self.name, KEY=filter_key))
 
         try:
-            self.summary_rules = entry['SummaryRules']
+            summary_rules = entry['SummaryRules']
         except KeyError:
             self.summary_rules = {}
         else:
-            for summary_rule in self.summary_rules:
-                self.elements.append('{NAME}_{ID}_{EL}'.format(NAME=self.name, ID=self.id, EL=summary_rule))
+            self.summary_rules = {}
+            for summary_name in summary_rules:
+                summary_rule = summary_rules[summary_name]
+                if 'Column' not in summary_rule:
+                    continue
+
+                self.summary_rules[summary_name] = {'Column': summary_rule['Column'],
+                                                    'Description': summary_rule.get('Description', summary_name),
+                                                    'Condition': summary_rule.get('Condition', None)}
+
+                self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
 
         try:
             self.id_column = entry['IDColumn']
@@ -337,22 +365,27 @@ class TableElement:
             else:
                 if self.actions['open'] is True:
                     self.df = self.export_row(select_row_index, user)
-                else:
+                elif self.actions['open'] is False and self.actions['edit'] is True:
                     self.df = self.edit_row(select_row_index)
+
         elif event == self.key_lookup('CollapseButton'):
             print('Info: table {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
             self.collapse_expand(window)
+
         elif event == self.key_lookup('FilterButton'):
             print('Info: table {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='filter')
+
         elif event == self.key_lookup('SummaryButton'):
             print('Info: table {TBL}: expanding / collapsing summary frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='summary')
+
         elif event == self.key_lookup('Filter'):
             print('Info: table {TBL}: filtering display table using user-supplied values'.format(TBL=self.name))
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
+
         elif event in param_elems:
             try:
                 param = self.fetch_parameter(event, by_key=True)
@@ -361,8 +394,10 @@ class TableElement:
                       .format(TBL=self.name, KEY=event))
             else:
                 result = param.run_event(window, event, values)
+
         elif event == self.key_lookup('Add'):
             self.df = self.add_row(user)
+
         elif event == self.key_lookup('Delete'):
             # Find rows selected by user for deletion
             select_row_indices = values[self.key_lookup('Element')]
@@ -370,6 +405,7 @@ class TableElement:
                   .format(NAME=self.name, IND=select_row_indices))
 
             self.df = self.delete_rows(select_row_indices)
+
         elif event == self.key_lookup('Export'):
             export_df = self.update_display(window, values)
             print('Info: exporting the display table to a spreadsheet')
@@ -495,6 +531,10 @@ class TableElement:
                 print('Warning: table {TBL}: alias {ALIAS} not found in the list of display columns'
                       .format(TBL=self.name, ALIAS=alias_col))
                 continue
+            except TypeError:
+                print('Warning: table {TBL}: cannot replace values for column {ALIAS} with their aliases as alias '
+                      'values are not of the same data type'.format(TBL=self.name, ALIAS=alias_col))
+                continue
 
         return display_df
 
@@ -509,37 +549,28 @@ class TableElement:
         if df.empty or not filter_rules:
             return df
 
-        for filter_number in filter_rules:
-            filter_rule = filter_rules[filter_number]['Reference']
-            try:
-                filter_key = filter_rules[filter_number]['Key']
-            except KeyError:
-                filter_key = None
-
-            print('Info: table {TBL}: filtering table using filter rule {NUM}'.format(TBL=self.name, NUM=filter_number))
+        for column in filter_rules:
+            filter_rule = filter_rules[column]
+            print('Info: table {TBL}: filtering table on column {COL} with rule {RULE}'
+                  .format(TBL=self.name, COL=column, RULE=filter_rule))
 
             try:
                 filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
             except Exception as e:
-                print('Info: table {TBL}: filtering table with filter rule {NO} failed - {ERR}'
-                      .format(TBL=self.name, NO=filter_number, ERR=e))
+                print('Info: table {TBL}: filtering table on column {COL} failed - {ERR}'
+                      .format(TBL=self.name, COL=column, ERR=e))
                 continue
 
-            if filter_key:
-                cond_str = '(df.duplicated(subset=["{KEY}"], keep=False)) & (filter_cond)'.format(KEY=filter_key)
-            else:
-                cond_str = '(filter_cond)'.format(KEY=filter_key, RES=filter_cond)
-
             try:
-                failed = eval('df[{}].index'.format(cond_str))
+                failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_cond)].index
             except Exception as e:
-                print('Info: table {TBL}: filtering table with filter rule {NO} failed - {ERR}'
-                      .format(TBL=self.name, NO=filter_number, ERR=e))
+                print('Info: table {TBL}: filtering table on column {COL} failed - {ERR}'
+                      .format(TBL=self.name, COL=column, ERR=e))
                 continue
 
             if len(failed) > 0:
-                print('Info: table {TBL}: rows {ROWS} removed due after applying filter rule {NO}'
-                      .format(TBL=self.name, ROWS=failed.tolist(), NO=filter_number))
+                print('Info: table {TBL}: rows {ROWS} were removed after applying filter rule on column {COL}'
+                      .format(TBL=self.name, ROWS=failed.tolist(), COL=column))
 
                 df.drop(failed, axis=0, inplace=True)
                 df.reset_index(drop=True, inplace=True)
@@ -563,20 +594,16 @@ class TableElement:
         # Calculate totals defined by summary rules
         outputs = []
         for rule_name in summ_rules:
-            try:
-                summ_key = self.key_lookup(rule_name)
-            except KeyError:
-                print('Warning: table {NAME}: summary item {ITEM} not in list of elements'
-                      .format(NAME=self.name, ITEM=rule_name))
-                continue
-
             summ_rule = summ_rules[rule_name]
-            reference = summ_rule['Reference']
+            summ_key = self.key_lookup(rule_name)
+
+            column = summ_rule['Column']
 
             # Subset df if subset rule provided
-            if 'Subset' in summ_rule:
+            condition = summ_rule['Condition']
+            if condition is not None:
                 try:
-                    subset_df = self.subset(summ_rule['Subset'])
+                    subset_df = self.subset(summ_rule['Condition'])
                 except Exception as e:
                     print('Warning: table {NAME}: unable to subset dataframe with subset rule {SUB} - {ERR}'
                           .format(NAME=self.name, SUB=summ_rule['Subset'], ERR=e))
@@ -585,7 +612,7 @@ class TableElement:
                 subset_df = df
 
             rule_values = []
-            for component in mod_dm.parse_operation_string(reference):
+            for component in mod_dm.parse_operation_string(column):
                 if component in operators:
                     rule_values.append(component)
                     continue
@@ -696,28 +723,32 @@ class TableElement:
         if df.empty or rules is None:
             return []
 
-        print('Info: table {NAME}: annotating table based on defined annotation rules'.format(NAME=self.name))
-
         annotations = []
         rows_annotated = []
-        for color in rules:
-            rule = rules[color]
+        for annot_code in rules:
+            print('Info: table {NAME}: annotating table based on configured annotation rule {CODE}'
+                  .format(NAME=self.name, CODE=annot_code))
+            rule = rules[annot_code]
+            annot_color = rule['BackgroundColor']
+            annot_condition = rule['Condition']
             try:
-                results = mod_dm.evaluate_rule_set(df, {color: rule}, as_list=True)
+                results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=True)
             except Exception as e:
-                print(e)
-                raise
-            print('annotation results are {}'.format(results))
-            for row, result in enumerate(results):
+                print('Error: table {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
+                      .format(NAME=self.name, CODE=annot_code, ERR=e))
+                continue
+
+            print('InfoL table {NAME}: annotation results are {RES}'.format(NAME=self.name, RES=results))
+            for row_index, result in enumerate(results):
                 if result is True:
-                    print('Info: table {NAME}: table row {ROW} annotated as {COLOR}'
-                          .format(NAME=self.name, ROW=row, COLOR=color))
-                    if row in rows_annotated:
+                    print('Info: table {NAME}: table row {ROW} annotated with annotation code {CODE}'
+                          .format(NAME=self.name, ROW=row_index, CODE=annot_code))
+                    if row_index in rows_annotated:
                         print('Warning: table {NAME}: table row {ROW} has passed two or more annotation rules ... '
-                              'defaulting to the first configured'.format(NAME=self.name, ROW=row))
+                              'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
                     else:
-                        annotations.append((row, color))
-                        rows_annotated.append(row)
+                        annotations.append((row_index, annot_color))
+                        rows_annotated.append(row_index)
 
         return annotations
 
@@ -899,7 +930,7 @@ class TableElement:
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
         bind = True if (self.actions['edit'] is True or self.actions['open'] is True) and editable is True else False
-        events = True if (bind is False and editable is True) else False
+        events = False
 
         col_widths = self.calc_column_widths(width=width - 16, size=font_size, pixels=False)
         row4 = [sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
@@ -945,7 +976,7 @@ class TableElement:
             summary_c2 = []
             for summary_rule_name in summary_rules:
                 summary_rule = summary_rules[summary_rule_name]
-                summary_title = summary_rule.get('Title', summary_rule_name)
+                summary_title = summary_rule.get('Description', summary_rule_name)
                 summary_c1.append([sg.Text('{}:'.format(summary_title), pad=((0, pad_h), 0), font=font,
                                            text_color=text_col, background_color=filter_bg_col)])
                 summary_c2.append([sg.Text('0.00', key=self.key_lookup(summary_rule_name), size=(14, 1), font=font,
@@ -1424,7 +1455,7 @@ class TableElement:
 
         return df
 
-    def export_row(self, index, user):
+    def export_row(self, index, user, view_only: bool = False):
         """
         Open selected record in new record window.
         """
@@ -1454,7 +1485,8 @@ class TableElement:
                 return df
 
             # Display the record window
-            record = mod_win2.record_window(record, user, save=True, delete=True)
+            save = True if self.actions['edit'] is True else False
+            record = mod_win2.record_window(record, user, save=save, delete=False, view_only=view_only)
 
             # Update record table values
             try:
@@ -1810,7 +1842,7 @@ class ReferenceElement:
                 print('Warning: Reference {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Display the record window
-                record = mod_win2.record_window(record, user, save=True, delete=True)
+                record = mod_win2.record_window(record, user, save=True, delete=False)
                 if record is None:  # record was deleted by the user
                     # Set element to deleted in metadata
                     window[elem_key].metadata['deleted'] = True
@@ -1977,13 +2009,16 @@ class DataElement:
         return True
 
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), collapsible: bool = False,
-               overwrite_edit: bool = False, **kwargs):
+               overwrite_edit: bool = False, view_only: bool = False, **kwargs):
         """
         GUI layout for the data element.
         """
         etype = self.etype
         dtype = self.dtype
-        is_disabled = False if overwrite_edit is True else not self.editable
+        if view_only is True:
+            is_disabled = True
+        else:
+            is_disabled = False if overwrite_edit is True else not self.editable
 
         element_options = self.options
         aliases = element_options.get('Aliases', {})

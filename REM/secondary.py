@@ -223,7 +223,7 @@ def login_window(account):
     return account
 
 
-def record_window(record, user, win_size: tuple = None, save: bool = False, delete: bool = False):
+def record_window(record, user, win_size: tuple = None, save: bool = False, delete: bool = False, view_only: bool = False):
     """
     Display the record window.
     """
@@ -236,8 +236,8 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
     pad_v = mod_const.VERT_PAD
     bg_col = mod_const.ACTION_COL
 
-    layout = [[sg.Col(record.layout(win_size=(600, height), save=save, delete=delete), pad=(pad_v, pad_v),
-                      background_color=bg_col, expand_x=True)]]
+    layout = [[sg.Col(record.layout(win_size=(600, height), save=save, delete=delete, view_only=view_only),
+                      pad=(pad_v, pad_v), background_color=bg_col, expand_x=True)]]
     window = sg.Window('Database Record', layout, modal=True, keep_on_top=False, return_keyboard_events=True)
     window.finalize()
 
@@ -261,7 +261,7 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
         if event == sg.WIN_CLOSED:  # selected close-window without accepting changes
             # Remove unsaved ID if record is new
             if record.new is True:
-                record_entry = configuration.records.fetch_entry(record.name)
+                record_entry = configuration.records.fetch_rule(record.name)
                 try:
                     record_entry.remove_unsaved_id(record.record_id)
                 except AttributeError:
@@ -694,7 +694,7 @@ def database_importer_window(user, win_size: tuple = None):
                             print('Warning: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
 
                     # Create record IDs for each row in the final import table
-                    record_entry = configuration.records.fetch_entry(record_type, by_title=True)
+                    record_entry = configuration.records.fetch_rule(record_type, by_title=True)
 
                     failed_rows = []
                     for index, row in subset_df.iterrows():
@@ -1390,7 +1390,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
                 break
 
             # Create a new record object
-            record_entry = configuration.records.fetch_entry(table.record_type)
+            record_entry = configuration.records.fetch_rule(table.record_type)
 
             record_id = record_entry.create_id(table.creation_date)
             print('Info: RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
@@ -1448,7 +1448,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
 
                 # Set the record object based on the record type
                 record_type = table.record_type
-                record_group = configuration.records.fetch_entry(record_type).group
+                record_group = configuration.records.fetch_rule(record_type).group
                 if record_group in ('transaction', 'bank_statement', 'cash_expense'):
                     record_class = mod_records.DatabaseRecord
                 elif record_group == 'account':
