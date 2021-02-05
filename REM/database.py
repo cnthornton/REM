@@ -12,7 +12,12 @@ def format_import_filters(import_rules):
     filters = []
     for import_table in import_rules:
         import_rule = import_rules[import_table]
-        filter_rules = import_rule["Filters"]
+
+        try:
+            filter_rules = import_rule["Filters"]
+        except KeyError:
+            continue
+
         if filter_rules is None or not isinstance(filter_rules, dict):
             continue
 
@@ -129,45 +134,41 @@ def format_tables(import_rules):
                   .format(TBL=import_table))
         else:
             try:
-                tbl1_field, tbl2_field, join_clause = join_rule[0:3]
+                join_type, join_on = join_rule[0:2]
             except ValueError:
                 print('Configuration Error: import table {TBL} join rule {RULE} requires three components'
                       .format(TBL=import_table, RULE=join_rule))
                 continue
-            if join_clause not in joins:
+            if join_type not in joins:
                 print('Configuration Error: unknown join type {JOIN} provided for import table {TBL}'
-                      .format(TBL=import_table, JOIN=join_clause))
+                      .format(TBL=import_table, JOIN=join_type))
                 continue
 
-            opt_filters = ' AND '.join(join_rule[3:])
+            opt_filters = ' AND '.join(join_rule[2:])
             if opt_filters:
-                join_statement = '{JOIN} {TABLE} ON {F1}={F2} AND {OPTS}' \
-                    .format(JOIN=join_clause, TABLE=import_table, F1=tbl1_field, F2=tbl2_field, OPTS=opt_filters)
+                join_statement = '{JOIN} {TABLE} ON {ON} AND {OPTS}' \
+                    .format(JOIN=join_type, TABLE=import_table, ON=join_on, OPTS=opt_filters)
             else:
-                join_statement = '{JOIN} {TABLE} ON {F1}={F2}'.format(JOIN=join_clause, TABLE=import_table,
-                                                                      F1=tbl1_field, F2=tbl2_field)
+                join_statement = '{JOIN} {TABLE} ON {ON}'.format(JOIN=join_type, TABLE=import_table, ON=join_on)
             table_rules.append(join_statement)
 
     return ' '.join(table_rules)
 
 
-def get_primary_table(self):
+def get_primary_table(import_rules):
     """
     Get the primary record table.
     """
-    import_rules = self.import_rules
     return list(import_rules.keys())[0]
 
 
-def get_primary_id_column(self):
+def get_primary_id_column(import_rules):
     """
     Get the ID column of the primary record table
     """
-    import_rules = self.import_rules
-
     id_col = 'DocNo'
 
-    table = self.get_primary_table()
+    table = get_primary_table(import_rules)
     table_entry = import_rules[table]
 
     table_cols = table_entry['Columns']

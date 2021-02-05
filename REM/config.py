@@ -747,6 +747,28 @@ class Config:
         except KeyError:
             self.mongod_authdb = 'REM'
 
+        # Database parameters
+        try:
+            self.driver = cnfg['database']['odbc_driver']
+        except KeyError:
+            self.driver = 'SQL Server'
+        try:
+            self.server = cnfg['database']['odbc_server']
+        except KeyError:
+            self.server = 'localhost'
+        try:
+            self.port = cnfg['database']['odbc_port']
+        except KeyError:
+            self.port = '1433'
+        try:
+            self.dbname = cnfg['database']['default_database']
+        except KeyError:
+            self.dbname = 'REM'
+        try:
+            self.date_format = format_date_str(cnfg['database']['date_format'])
+        except KeyError:
+            self.date_format = format_date_str('YYYY-MM-DD HH:MI:SS')
+
         # Table field parameters
         try:
             self.creator_code = cnfg['fields']['creator_code_field']

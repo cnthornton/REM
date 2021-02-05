@@ -10,7 +10,7 @@ from random import randint
 
 import REM.constants as mod_const
 import REM.secondary as mod_win2
-from REM.config import settings
+from REM.config import configuration, settings
 
 
 class RuleParameter:
@@ -317,6 +317,8 @@ class RuleParameter:
         """
         Generate the filter clause for SQL querying.
         """
+        dtype = self.dtype
+
         if self.field is None:
             colname = self.name
         else:
@@ -328,8 +330,15 @@ class RuleParameter:
             db_field = colname
 
         value = self.value
-        if value is not None:
-            statement = ('{} = ?'.format(db_field), (value,))
+        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+            query_value = self.value.strftime(configuration.date_format)
+        elif dtype in ('bool', 'boolean'):
+            query_value = int(value)
+        else:
+            query_value = value
+
+        if query_value is not None:
+            statement = ('{} = ?'.format(db_field), (query_value,))
         else:
             statement = None
 

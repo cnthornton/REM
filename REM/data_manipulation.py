@@ -440,7 +440,7 @@ def evaluate_rule(data, condition, as_list: bool = True):
 
     eval_str = ' '.join(rule_value)
     try:
-#        print('Info: evaluating rule string {}'.format(eval_str))
+        print('Info: evaluating rule string {}'.format(eval_str))
         row_status = eval(eval_str)
     except SyntaxError:
         raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
