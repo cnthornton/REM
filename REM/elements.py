@@ -85,7 +85,7 @@ class TableElement:
         self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ['Element', 'Import', 'Add', 'Delete', 'Export', 'Total', 'Search', 'Filter',
                           'FilterFrame', 'FilterButton', 'SummaryFrame', 'SummaryButton', 'Width', 'CollapseButton',
-                          'CollapseFrame']]
+                          'CollapseFrame', 'SummaryWidth']]
         self.etype = 'table'
         self.creation_date = date if date is not None else datetime.datetime.now()
 
@@ -409,11 +409,11 @@ class TableElement:
             except KeyError:
                 print('Warning: search field {COL} not found in list of table columns'.format(COL=search_field))
 
+        # Highlight table rows using configured annotation rules
+        annotations = self.annotate_display(df)
+
         # Format the table
         display_df = self.format_display_table(df)
-
-        # Highlight table rows using configured annotation rules
-        annotations = self.annotate_display(display_df)
 
         # Update the GUI with table values and annotations
         tbl_key = self.key_lookup('Element')
@@ -703,7 +703,7 @@ class TableElement:
         for color in rules:
             rule = rules[color]
             try:
-                results = mod_dm.evaluate_rule(df, rule)
+                results = mod_dm.evaluate_rule_set(df, {color: rule}, as_list=True)
             except Exception as e:
                 print(e)
                 raise
@@ -722,7 +722,7 @@ class TableElement:
         return annotations
 
     def layout(self, tooltip: str = None, nrow: int = None, height: int = None, width: int = None, font: tuple = None,
-               padding: tuple = None, collapsible: bool = False, editable: bool = True, **kwargs):
+               padding: tuple = None, collapsible: bool = False, editable: bool = True, disabled: bool = False, **kwargs):
         """
         Create table elements that have consistency in layout.
         """
@@ -745,6 +745,8 @@ class TableElement:
         text_col = mod_const.TEXT_COL  # standard text color
         select_text_col = mod_const.WHITE_TEXT_COL  # row text highlight color
         select_bg_col = mod_const.TBL_SELECT_COL
+        disabled_text_col = mod_const.DISABLED_TEXT_COL  # disabled button text
+        disabled_bg_col = mod_const.INACTIVE_COL  # disabled button background
         alt_col = mod_const.TBL_ALT_COL  # alternate row color
         bg_col = mod_const.TBL_BG_COL  # primary table color is white
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
@@ -756,6 +758,7 @@ class TableElement:
         pad = padding if padding and isinstance(padding, tuple) else (pad_frame, pad_frame)
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
+        pad_v = mod_const.VERT_PAD
 
         font = font if font else mod_const.MID_FONT
         bold_font = mod_const.BOLD_FONT
@@ -784,75 +787,79 @@ class TableElement:
 
         # Table filters
         filter_params = self.parameters
+        use_center = True
+        if len(filter_params) <= 2 or len(filter_params) == 4:
+            use_center = False
+
+        left_cols = []
+        center_cols = []
+        right_cols = []
+        left_sizes = []
+
+        i = 0
+        for parameter in filter_params:
+            param_cols = parameter.layout(padding=(0, pad_el * 2), size=(14, 1), bg_col=filter_bg_col)
+            for param_layout in param_cols:
+                i += 1
+                if use_center is True:
+                    index_mod = i % 3
+                else:
+                    index_mod = i % 2
+
+                if use_center is True and index_mod == 1:
+                    left_cols.append([param_layout])
+                    left_sizes.append(len(parameter.description))
+                elif use_center is True and index_mod == 2:
+                    center_cols.append([param_layout])
+                elif use_center is True and index_mod == 0:
+                    right_cols.append([param_layout])
+                elif use_center is False and index_mod == 1:
+                    left_sizes.append(len(parameter.description))
+                    left_cols.append([param_layout])
+                    center_cols.append([sg.Canvas(size=(0, 0), visible=True)])
+                elif use_center is False and index_mod == 0:
+                    right_cols.append([param_layout])
+                else:
+                    print('Warning: cannot assign layout for filter parameter {PARAM}'.format(PARAM=parameter.name))
+
+        if len(right_cols) < 1:
+            right_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
+                                      background_color=filter_bg_col, expand_x=True)])
+        if len(left_cols) < 1:
+            left_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
+                                     background_color=filter_bg_col, expand_x=True)])
+        if len(center_cols) < 1:
+            center_cols.append([])
+
+        filters = [[sg.Frame('', [
+            [sg.Canvas(size=(width / 13, 0), key=self.key_lookup('Width'), background_color=alt_col)],
+            [sg.Col(left_cols, pad=(0, 0), background_color=filter_bg_col, justification='l',
+                    element_justification='r', vertical_alignment='t', expand_x=True),
+             sg.Col(center_cols, pad=(0, 0), background_color=filter_bg_col, justification='c',
+                    element_justification='c', vertical_alignment='t', expand_x=True),
+             sg.Col(right_cols, pad=(0, 0), background_color=filter_bg_col, justification='r',
+                    element_justification='l', vertical_alignment='t', expand_x=True)],
+            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, (0, pad_h)),
+                                button_color=(alt_col, filter_head_col),
+                                disabled_button_color=(disabled_text_col, disabled_bg_col), disabled=disabled)]],
+                    element_justification='c', background_color=filter_bg_col, expand_x=True)]],
+                             border_width=1, background_color=filter_bg_col)]]
+
         if len(filter_params) > 0 and self.actions['filter'] is True:
-            use_center = True
-            if len(filter_params) <= 2 or len(filter_params) == 4:
-                use_center = False
-
-            left_cols = []
-            center_cols = []
-            right_cols = []
-            left_sizes = []
-
-            i = 0
-            for parameter in filter_params:
-                param_cols = parameter.layout(padding=(0, pad_el * 2), size=(14, 1), bg_col=filter_bg_col)
-                for param_layout in param_cols:
-                    i += 1
-                    if use_center is True:
-                        index_mod = i % 3
-                    else:
-                        index_mod = i % 2
-
-                    if use_center is True and index_mod == 1:
-                        left_cols.append([param_layout])
-                        left_sizes.append(len(parameter.description))
-                    elif use_center is True and index_mod == 2:
-                        center_cols.append([param_layout])
-                    elif use_center is True and index_mod == 0:
-                        right_cols.append([param_layout])
-                    elif use_center is False and index_mod == 1:
-                        left_sizes.append(len(parameter.description))
-                        left_cols.append([param_layout])
-                        center_cols.append([sg.Canvas(size=(0, 0), visible=True)])
-                    elif use_center is False and index_mod == 0:
-                        right_cols.append([param_layout])
-                    else:
-                        print('Warning: cannot assign layout for filter parameter {PARAM}'.format(PARAM=parameter.name))
-
-            if len(right_cols) < 1:
-                right_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
-                                          background_color=filter_bg_col, expand_x=True)])
-            if len(left_cols) < 1:
-                left_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
-                                         background_color=filter_bg_col, expand_x=True)])
-            if len(center_cols) < 1:
-                center_cols.append([])
-
-            filters = [[sg.Frame('', [
-                [sg.Canvas(size=(width / 13, 0), key=self.key_lookup('Width'), background_color=alt_col)],
-                [sg.Col(left_cols, pad=(0, 0), background_color=filter_bg_col, justification='l',
-                        element_justification='r', vertical_alignment='t', expand_x=True),
-                 sg.Col(center_cols, pad=(0, 0), background_color=filter_bg_col, justification='c',
-                        element_justification='c', vertical_alignment='t', expand_x=True),
-                 sg.Col(right_cols, pad=(0, 0), background_color=filter_bg_col, justification='r',
-                        element_justification='l', vertical_alignment='t', expand_x=True)],
-                [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, (0, pad_h)),
-                                    button_color=(alt_col, filter_head_col))]],
-                        element_justification='c', background_color=filter_bg_col, expand_x=True)]],
-                                 border_width=1, background_color=filter_bg_col)]]
-
-            row1 = [
-                sg.Col([[sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=filter_head_col),
-                         sg.Text('Show table filters', pad=((0, pad_h), 0), text_color='white',
-                                 background_color=filter_head_col),
-                         sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FilterButton'),
-                                   button_color=(text_col, filter_head_col), border_width=0)]],
-                       pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True)]
-            row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('FilterFrame'), background_color=filter_bg_col,
-                                  visible=True, expand_x=True, metadata={'visible': True}))]
+            visible_filter = True
         else:
-            row1 = row2 = []
+            visible_filter = False
+
+        row1 = [
+            sg.Col([[sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=filter_head_col),
+                     sg.Text('Show table filters', pad=((0, pad_h), 0), text_color='white',
+                             background_color=filter_head_col),
+                     sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FilterButton'),
+                               button_color=(text_col, filter_head_col), border_width=0)]],
+                   pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
+                   visible=visible_filter)]
+        row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('FilterFrame'), background_color=filter_bg_col,
+                              visible=visible_filter, expand_x=True, metadata={'visible': visible_filter}))]
 
         # Table title
         row3 = []
@@ -893,7 +900,6 @@ class TableElement:
         data = display_df.values.tolist()
         bind = True if (self.actions['edit'] is True or self.actions['open'] is True) and editable is True else False
         events = True if (bind is False and editable is True) else False
-        print('table {TBL}: bind is set to {BIND}'.format(TBL=self.name, BIND=bind))
 
         col_widths = self.calc_column_widths(width=width - 16, size=font_size, pixels=False)
         row4 = [sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
@@ -906,23 +912,18 @@ class TableElement:
         # Control buttons and totals row
         row5 = []
 
-        mod_row = []
-        if self.actions['import'] is True:
-            mod_row.append(sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
-                                     button_color=(text_col, header_col), tooltip='Add existing record to the table'))
-        if self.actions['add'] is True:
-            mod_row.append(sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
-                                     button_color=(text_col, header_col), tooltip='Add a new row to the table'))
-        if self.actions['delete'] is True:
-            mod_row.append(sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
-                                     button_color=(text_col, header_col), tooltip='Remove selected row from the table'))
+        mod_row = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
+                             button_color=(text_col, header_col), disabled=disabled, visible=self.actions['import'],
+                             tooltip='Add existing record to the table'),
+                   sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
+                             button_color=(text_col, header_col), disabled=disabled, visible=self.actions['add'],
+                             tooltip='Add a new row to the table'),
+                   sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
+                             button_color=(text_col, header_col), disabled=disabled, visible=self.actions['delete'],
+                             tooltip='Remove selected row from the table')]
 
-        if len(mod_row) > 0:
-            row5.append(sg.Col([mod_row], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
-                               background_color=header_col, expand_x=True))
-        else:
-            row5.append(sg.Col([[sg.Canvas(size=(0, 0), background_color=header_col)]],
-                               justification='l', background_color=header_col, expand_x=True))
+        row5.append(sg.Col([mod_row], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
+                           background_color=header_col, expand_x=True))
 
         if self.tally_rule is not None:
             init_totals = self.calculate_total()
@@ -938,29 +939,29 @@ class TableElement:
 
         # Table summary rows
         summary_rules = self.summary_rules
+        summ_width = self.key_lookup('SummaryWidth')
         if summary_rules:
             summary_c1 = []
             summary_c2 = []
             for summary_rule_name in summary_rules:
                 summary_rule = summary_rules[summary_rule_name]
                 summary_title = summary_rule.get('Title', summary_rule_name)
-                summary_c1.append([sg.Text('{}:'.format(summary_title), font=font, text_color=text_col,
-                                           background_color=filter_bg_col)])
-                summary_c2.append([sg.Text('0', key=self.key_lookup(summary_rule_name), font=font, text_color=text_col,
-                                           background_color=filter_bg_col)])
-            summary_elements = [[sg.Col(summary_c1, background_color=filter_bg_col, vertical_alignment='t',
+                summary_c1.append([sg.Text('{}:'.format(summary_title), pad=((0, pad_h), 0), font=font,
+                                           text_color=text_col, background_color=filter_bg_col)])
+                summary_c2.append([sg.Text('0.00', key=self.key_lookup(summary_rule_name), size=(14, 1), font=font,
+                                           justification='r', text_color=text_col, background_color=filter_bg_col)])
+            summary_elements = [[sg.Canvas(key=summ_width, size=(width, 0), background_color=filter_bg_col)],
+                                [sg.Col(summary_c1, background_color=filter_bg_col, vertical_alignment='t',
                                         element_justification='r'),
                                  sg.Col(summary_c2, background_color=filter_bg_col, vertical_alignment='t',
-                                        expand_x=True),
-                                 sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
-                                        background_color=filter_bg_col, expand_x=True, expand_y=True)]]
+                                        expand_x=True)]]
 
             row6 = [sg.Col([[sg.Text('Summary', pad=((0, pad_h), 0), text_color='white',
                                      background_color=filter_head_col),
                              sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('SummaryButton'),
                                        button_color=(text_col, filter_head_col), border_width=0)]],
                            pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True)]
-            row7 = [sg.pin(sg.Col(summary_elements, key=self.key_lookup('SummaryFrame'), pad=(pad_frame, pad_frame),
+            row7 = [sg.pin(sg.Col(summary_elements, key=self.key_lookup('SummaryFrame'), pad=(pad_h, pad_v),
                                   background_color=filter_bg_col, visible=True, expand_x=True, expand_y=True,
                                   metadata={'visible': True}))]
         else:
@@ -1005,6 +1006,50 @@ class TableElement:
                               vertical_alignment='t', background_color=header_col, relief='ridge', border_width=2)
 
         return layout
+
+    def enable(self, window):
+        """
+        Enable data table element actions.
+        """
+        params = self.parameters
+        add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
+        import_key = self.key_lookup('Import')
+
+        # Enable filter parameters
+        if len(params) > 0 and self.actions['filter'] is True:
+            # Enable the apply button
+            filter_key = self.key_lookup('Filter')
+            window[filter_key].update(disabled=False)
+
+            # Enable parameter input
+
+        # Enable table modification buttons
+        window[add_key].update(disabled=False)
+        window[delete_key].update(disabled=False)
+        window[import_key].update(disabled=False)
+
+    def disable(self, window):
+        """
+        Disable data table element actions.
+        """
+        params = self.parameters
+        add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
+        import_key = self.key_lookup('Import')
+
+        # Enable filter parameters
+        if len(params) > 0 and self.actions['filter'] is True:
+            # Enable the apply button
+            filter_key = self.key_lookup('Filter')
+            window[filter_key].update(disabled=True)
+
+            # Enable parameter input
+
+        # Enable table modification buttons
+        window[add_key].update(disabled=True)
+        window[delete_key].update(disabled=True)
+        window[import_key].update(disabled=True)
 
     def calc_column_widths(self, width: int = 1200, size: int = 13, pixels: bool = False):
         """
@@ -1134,6 +1179,10 @@ class TableElement:
         if len(filter_params) > 0 and self.actions['filter'] is True:
             width_key = self.key_lookup('Width')
             window[width_key].set_size((width, None))
+
+        swidth_key = self.key_lookup('SummaryWidth')
+        if self.summary_rules:
+            window[swidth_key].set_size(size=(tbl_width, None))
 
         window.refresh()
 
@@ -2076,9 +2125,6 @@ class DataElement:
         group_sep = settings.thousands_sep
 
         dtype = self.dtype
-
-        print('Info: formatting parameter {PARAM} value {VAL} for display'
-              .format(PARAM=self.name, VAL=value))
 
         if pd.isna(value) is True:
             return ''
