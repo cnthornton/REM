@@ -1416,9 +1416,9 @@ class TableElement:
 
         return df
 
-    def import_row(self, import_df):
+    def import_rows(self, import_df):
         """
-        Import one or more records into the records table.
+        Import one or more records from a table of records.
         """
         df = self.df.copy()
 
@@ -1427,6 +1427,26 @@ class TableElement:
             return df
         else:
             df = self.append(select_df)
+
+        return df
+
+    def import_row(self, record_id):
+        """
+        Import a record from the database.
+        """
+        df = self.df.copy()
+
+        record_entry = configuration.records.fetch_rule(self.record_type)
+        if record_entry is None:
+            msg = 'unable to import record {ID} from the database - no record type was specified for the table'\
+                .format(ID=record_id)
+            mod_win2.popup_error(msg)
+            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+
+            return df
+
+        record_data = record_entry.load_record_data(record_id)
+        df = self.append(record_data)
 
         return df
 
@@ -1442,8 +1462,11 @@ class TableElement:
         try:
             row = df.iloc[index]
         except IndexError:
-            mod_win2.popup_error('Warning: table {TBL}: failed to edit record at row {IND} - no record found at table '
-                                 'index {IND} to edit'.format(TBL=self.name, IND=index + 1))
+            msg = 'failed to edit record at row {IND} - no record found at table index {IND} to edit'\
+                .format(TBL=self.name, IND=index + 1)
+            mod_win2.popup_error(msg)
+            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+
             return df
 
         # Display the modify row window
@@ -1464,42 +1487,55 @@ class TableElement:
         try:
             row = df.iloc[index]
         except IndexError:
-            mod_win2.popup_error('Warning: table {TBL}: failed to open record at row {IND} - no record found at table '
-                                 'index {IND} to edit'.format(TBL=self.name, IND=index + 1))
+            msg = 'failed to open record at row {IND} - no record found at table index {IND} to edit'\
+                .format(TBL=self.name, IND=index + 1)
+            mod_win2.popup_error(msg)
+            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+
+            return df
+
+        # Create a record object from the row data
+        record_entry = configuration.records.fetch_rule(self.record_type)
+        try:
+            record_group = record_entry.group
+        except AttributeError:
+            msg = 'failed to open record at row {IND} - no record type specified for the data table'\
+                .format(TBL=self.name, IND=index + 1)
+            mod_win2.popup_error(msg)
+            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+
+            return df
+
+        if record_group in ('transaction', 'bank_statement', 'cash_expense'):
+            record_class = mod_records.DatabaseRecord
+        elif record_group == 'account':
+            record_class = mod_records.AccountRecord
+        elif record_group == 'bank_deposit':
+            record_class = mod_records.DepositRecord
+        elif record_group == 'audit':
+            record_class = mod_records.TAuditRecord
         else:
-            try:
-                record_id = row[self.id_column]
-            except KeyError:
-                mod_win2.popup_error('Warning: table {TBL}: failed to open record at row {IND} - missing required '
-                                     'column "{COL}"'.format(TBL=self.name, IND=index + 1, COL=self.id_column))
-                return df
+            print('Warning: unknown record group provided {}'.format(record_group))
+            return df
 
-            # Create a record object from the row data
-            record_entry = configuration.records.fetch_rule(self.record_type)
-            print(record_entry.name)
-            try:
-                record = mod_records.load_record(record_entry, record_id)
-            except Exception as e:
-                mod_win2.popup_error('Warning: table {TBL}: failed to open record at row {IND} - {ERR}'
-                                     .format(TBL=self.name, IND=index + 1, ERR=e))
-                return df
+        record = record_class(self.record_type, record_entry.record_layout, row, new_record=False, referenced=True)
 
-            # Display the record window
-            save = True if self.actions['edit'] is True else False
-            record = mod_win2.record_window(record, user, save=save, delete=False, view_only=view_only)
+        # Display the record window
+        save = True if self.actions['edit'] is True else False
+        record = mod_win2.record_window(record, user, save=save, delete=False, view_only=view_only)
 
-            # Update record table values
-            try:
-                record_values = record.table_values()
-            except AttributeError:  # user selected to delete the reference record
-                # Remove the record from the table
-                df = self.delete_rows(index)
-            else:
-                for col_name, col_value in record_values.iteritems():
-                    try:
-                        df.at[index, col_name] = col_value
-                    except KeyError:
-                        continue
+        # Update record table values
+        try:
+            record_values = record.table_values()
+        except AttributeError:  # user selected to delete the reference record
+            # Remove the record from the table
+            df = self.delete_rows(index)
+        else:
+            for col_name, col_value in record_values.iteritems():
+                try:
+                    df.at[index, col_name] = col_value
+                except KeyError:
+                    continue
 
         return df
 
@@ -1722,8 +1758,12 @@ class ReferenceElement:
             raise AttributeError('missing required Reference parameter "RefType"')
 
         record_entry = configuration.records.fetch_rule(self.record_type)
+        self.record_data = record_entry.load_record_data(self.record_id)
+
         if record_entry is not None:
             self.title = record_entry.menu_title
+        else:
+            self.title = name
 
     def key_lookup(self, component):
         """
@@ -1832,10 +1872,8 @@ class ReferenceElement:
 
         # Load a reference record in a new window
         elif event == ref_key:
-            record_entry = configuration.records.fetch_rule(self.record_type)
-            print(record_entry.name)
             try:
-                record = mod_records.load_record(record_entry, self.record_id)
+                record = self.initialize_record()
             except Exception as e:
                 msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.record_id, ERR=e)
                 mod_win2.popup_error(msg)
@@ -1849,6 +1887,27 @@ class ReferenceElement:
                     window[elem_key].update(visible=False)
 
         return result
+
+    def initialize_record(self):
+        """
+        Create a record object from the reference.
+        """
+        record_entry = configuration.records.fetch_rule(self.record_type)
+        record_group = record_entry.group
+        if record_group in ('transaction', 'bank_statement', 'cash_expense'):
+            record_class = mod_records.DatabaseRecord
+        elif record_group == 'account':
+            record_class = mod_records.AccountRecord
+        elif record_group == 'bank_deposit':
+            record_class = mod_records.DepositRecord
+        elif record_group == 'audit':
+            record_class = mod_records.TAuditRecord
+        else:
+            raise TypeError('unknown record group provided {}'.format(record_group))
+
+        record = record_class(self.name, record_entry.record_layout, self.record_data, new_record=False,
+                              referenced=True)
+        return record
 
 
 class DataElement:

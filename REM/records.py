@@ -238,37 +238,36 @@ class DatabaseRecord:
 
         ref_rows = record_entry.import_references(self.record_id)
         for index, row in ref_rows.iterrows():
-            # Store imported references as references box objects
-            print(row)
-            print(ref_elements)
             doctype = row['DocType']
+            reftype = row['RefType']
+
+            # Store imported references as references box objects
             if doctype in ref_elements:
-                print('Info: record {ID}: adding reference {NAME} with record type {TYPE}'
-                      .format(ID=self.record_id, NAME=row['DocNo'], TYPE=doctype))
+                ref_id = row['DocNo']
+                print('Info: record {ID}: adding reference record {NAME} with record type {TYPE}'
+                      .format(ID=self.record_id, NAME=ref_id, TYPE=doctype))
+
                 try:
-                    ref_box = mod_elem.ReferenceElement('{}_Reference'.format(doctype), row, parent=self.name)
+                    ref_box = mod_elem.ReferenceElement(doctype, row, parent=self.name)
                 except Exception as e:
                     print('Warning: record {ID}: failed to add reference {NAME} to list of references - {ERR}'
-                          .format(ID=self.record_id, NAME=row['DocNo'], ERR=e))
+                          .format(ID=self.record_id, NAME=ref_id, ERR=e))
                     continue
                 else:
                     self.references.append(ref_box)
                     self.elements += ref_box.elements
 
             # Store imported components as table rows
-            reftype = row['RefType']
             if reftype in comp_types:
-                print('Info: record {ID}: adding component {NAME} with record type {TYPE}'
-                      .format(ID=self.record_id, NAME=row['RefNo'], TYPE=reftype))
+                ref_id = row['RefNo']
+                print('Info: record {ID}: adding component record {NAME} with record type {TYPE}'
+                      .format(ID=self.record_id, NAME=ref_id, TYPE=reftype))
+
                 # Fetch the relevant components table
                 comp_table = self.fetch_component(reftype, by_type=True)
 
-                # Import data to the table
-                ref_id = row['RefNo']
-                ref_record_entry = configuration.records.fetch_rule(reftype)
-                ref_record = ref_record_entry.load_record(ref_id)
-
-                comp_table.df = comp_table.append(ref_record)
+                # Append record to the components table
+                comp_table.df = comp_table.import_row(ref_id)
 
     def key_lookup(self, component):
         """
@@ -2673,7 +2672,7 @@ def load_record(record_entry, record_id):
     Load an existing record from the program database.
     """
     # Extract the record data from the database
-    import_df = record_entry.load_record(record_id)
+    import_df = record_entry.load_record_data(record_id)
 
     # Set the record object based on the record type
     record_type = record_entry.group
