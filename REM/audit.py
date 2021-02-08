@@ -105,6 +105,8 @@ class AuditRule:
 
         element_key (str): GUI element key.
 
+        elements (list): list of rule GUI element keys.
+
         permissions (str): permissions required to view the audit. Default: user.
 
         parameters (list): list of RuleParameter type objects.
@@ -217,22 +219,22 @@ class AuditRule:
 
         return key
 
-    def fetch_tab(self, name, by_key: bool = False):
+    def fetch_tab(self, fetch_key, by_key: bool = False):
         """
         """
         tabs = self.tabs
 
         if by_key is True:
-            element_type = name.split('_')[-1]
+            element_type = fetch_key.split('_')[-1]
             names = [i.key_lookup(element_type) for i in tabs]
         else:
             names = [i.name for i in tabs]
 
         try:
-            index = names.index(name)
+            index = names.index(fetch_key)
         except ValueError:
             print('Error: AuditRule {RULE}: {TAB} not in list of audit rule transactions'
-                  .format(RULE=self.name, TAB=name))
+                  .format(RULE=self.name, TAB=fetch_key))
             tab_item = None
         else:
             tab_item = tabs[index]
@@ -270,6 +272,7 @@ class AuditRule:
         back_key = self.key_lookup('Back')
         start_key = self.key_lookup('Start')
         save_key = self.key_lookup('Save')
+        tg_key = self.key_lookup('TG')
 
         # Rule component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
@@ -369,7 +372,7 @@ class AuditRule:
                 # Initialize audit
                 initialized = []
                 for tab in self.tabs:
-                    tab_key = tab.element_key
+                    tab_key = tab.key_lookup('Tab')
                     tab_keys.append(tab_key)
 
                     # Set tab parameters
@@ -377,29 +380,6 @@ class AuditRule:
 
                     # Import tab data from the database
                     initialized.append(tab.load_data(user))
-
-                    # Update the tab table display
-                    tab.table.update_display(window)
-
-#                    # Prepare the filter rules to filter query results
-#                    main_table = [i for i in tab.import_rules][0]
-#                    rule_params = current_rule.parameters  # to filter data tables
-#                    filters = [i.filter_statement(table=main_table) for i in rule_params]
-#
-#                    # Check for tab-specific query parameters
-#                    filters += tab.filter_statements()
-#                    print(filters)
-#
-#                    # Extract data from database
-#                    try:
-#                        import_df = user.query(tab.import_rules, columns=tab.db_columns, filter_rules=filters)
-#                    except Exception as e:
-#                        mod_win2.popup_error('Error: audit failed - {}'.format(e))
-#                        initialized = False
-#                        break
-#
-#                    # Update tab object and elements
-#                    tab.df = tab.table.append(df)  # update tab data
 
                 if all(initialized):  # data successfully imported from all configured audit rule transaction tabs
                     self.in_progress = True
@@ -410,13 +390,28 @@ class AuditRule:
                     window[start_key].update(disabled=True)
                     self.toggle_parameters(window, 'disable')
 
-                    # Enable table element events
                     for tab in self.tabs:
+                        # Enable table element events
                         tab.table.enable(window)
+
+                        # Update the tab table display
+                        tab.table.update_display(window)
+
+                        # Enable the tab audit button
+                        window[tab.key_lookup('Audit')].update(disabled=False)
 
                 else:  # reset tabs that may have already loaded
                     for tab in self.tabs:
                         tab.reset(window)
+
+        # Switch between tabs
+        elif event == tg_key:
+            tab_key = window[tg_key].Get()
+            tab = self.fetch_tab(tab_key, by_key=True)
+            print('Info: AuditRule {NAME}: moving to transaction audit tab {TAB}'.format(NAME=self.name, TAB=tab.name))
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
 
         # Run component parameter events
         elif event in param_keys:
@@ -519,7 +514,7 @@ class AuditRule:
 
             audit_tabs.append(tab.layout((tab_width, tab_height), visible=visiblity))
 
-        tg_layout = [sg.TabGroup([audit_tabs], key=tg_key, pad=(0, 0),
+        tg_layout = [sg.TabGroup([audit_tabs], key=tg_key, pad=(0, 0), enable_events=True,
                                  tab_background_color=inactive_col, selected_title_color=select_col,
                                  title_color=text_col, selected_background_color=bg_col, background_color=bg_col)]
 
@@ -536,16 +531,6 @@ class AuditRule:
         # Panels
         summary_layout = sg.Col(self.summary.layout(win_size), key=self.summary.element_key, background_color=bg_col,
                                 vertical_alignment='c', visible=False, expand_x=True, expand_y=True)
-
-#        audit_key = self.key_lookup('Audit')
-#        panels = [sg.Col(audit_layout, key=audit_key, background_color=bg_col, vertical_alignment='c',
-#                         visible=True, expand_y=True, expand_x=True),
-#                  sg.Col(summary_layout, key=self.summary.element_key, background_color=bg_col, vertical_alignment='c',
-#                         visible=False, expand_y=True, expand_x=True)]
-#
-#        panel_layout = [
-#            [sg.Col([[sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]],
-#                    pad=(0, pad_v), expand_x=True)]]
 
         panels = [main_layout, summary_layout]
 
@@ -673,6 +658,7 @@ class AuditRule:
                 tab.reset(window, first=True)
             else:
                 tab.reset(window, first=False)
+
 #            # Reset displays
 #            ## Reset table element
 #            table_key = tab.key_lookup('Table')
@@ -1601,9 +1587,8 @@ class AuditRuleTransaction:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        self.element_key = '{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='TAB')
         self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Audit', 'Width', 'Height']]
+                         ['Tab', 'Audit', 'Width', 'Height']]
 
         try:
             self.title = entry['Title']
@@ -1665,6 +1650,9 @@ class AuditRuleTransaction:
         # Disable table element events
         self.table.disable(window)
 
+        # Disable the audit button
+        window[self.key_lookup('Audit')].update(disabled=True)
+
         # Reset parameters
         self.parameters = None
 
@@ -1673,7 +1661,7 @@ class AuditRuleTransaction:
         print('Info: AuditRuleTransaction {NAME}: re-setting visibility of rule tab to {STATUS}'
               .format(NAME=self.name, STATUS=visible))
 
-        window[self.element_key].update(visible=visible)
+        window[self.key_lookup('Tab')].update(visible=visible)
 
     def layout(self, size, visible: bool = True):
         """
@@ -1711,7 +1699,7 @@ class AuditRuleTransaction:
                    sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
                           background_color=bg_col, expand_x=True)]]
 
-        return sg.Tab(self.title, layout, key=self.element_key, background_color=bg_col, visible=visible)
+        return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col, visible=visible)
 
     def resize_elements(self, window, size):
         """
@@ -1773,9 +1761,8 @@ class AuditRuleTransaction:
         else:
             print('Info: AuditRuleTransaction {NAME}: loaded data for audit rule {RULE}'
                   .format(NAME=self.name, RULE=self.parent))
-            print(df)
+            pd.set_option('max_columns', None)
             self.table.df = self.table.append(df)
-            print(self.table.df)
             self.table._df = self.table.df
             data_loaded = True
 
@@ -1800,7 +1787,7 @@ class AuditRuleTransaction:
         # Format audit parameters
         audit_date = None
         for audit_param in params:
-            if audit_param.type.lower() == 'date':
+            if audit_param.dtype.lower() == 'date':
                 date_col = audit_param.name
                 date_col_full = mod_dm.get_query_from_header(date_col, table.columns)
                 date_fmt = audit_param.format
