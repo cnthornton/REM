@@ -102,19 +102,16 @@ class BankRule:
         permissions (str): permissions required to view the accounting method. Default: user.
     """
 
-    def __init__(self, name, entry, parent=None):
+    def __init__(self, name, entry):
         """
         Arguments:
 
             name (str): bank reconciliation rule name.
 
             entry (dict): dictionary of optional and required bank rule arguments.
-
-            parent (str): name of the object's parent element.
         """
 
         self.name = name
-        self.parent = parent
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
         self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
@@ -207,7 +204,6 @@ class BankRule:
             assoc = AssociationRule(assoc_name, assoc_entry)
 
             self.associations.append(assoc)
-            self.elements.append(assoc.element_key)
             self.elements += assoc.elements
 
         self.panel_keys = {0: self.key_lookup('Main'), 1: self.key_lookup('Summary')}
@@ -443,7 +439,7 @@ class BankRule:
                                element_justification='r', vertical_alignment='t')]
 
         # Table layout
-        tbl_layout = [self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))]
+        tbl_layout = [self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0), disabled=True)]
 
         # Main Panel layout
         main_key = self.key_lookup('Main')
@@ -514,7 +510,7 @@ class BankRule:
             width, height = window.size  # current window size (width, height)
 
         # For every five-pixel increase in window size, increase the frame size by one
-        layout_pad = 120  # padding between the window and border of the frame
+        layout_pad = 100  # default padding between the window and border of the frame
         win_diff = width - mod_const.WIN_WIDTH  # difference between current window size and default
         layout_pad = layout_pad + int(win_diff / 5)  # padding +/- difference
 
@@ -527,7 +523,7 @@ class BankRule:
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        layout_height = height * 0.8  # height of the panel, including buttons
+        layout_height = height * 0.85  # height of the panel, including buttons
         frame_height = layout_height - 120  # minus the approximate height of the button row and title bar, with padding
         panel_height = frame_height - 20  # minus top and bottom padding
 
@@ -558,12 +554,15 @@ class BankRule:
         """
         Run a bank reconciliation event.
         """
+        current_rule = self.name
+
         # Rule action element events: Cancel, Next, Back, Start, Save, Reconcile
         cancel_key = self.key_lookup('Cancel')
         reconcile_key = self.key_lookup('Reconcile')
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         start_key = self.key_lookup('Start')
+        tg_key = self.key_lookup('TG')
 
         # Component element events
         param_elements = [i for j in self.parameters for i in j.elements]
@@ -581,14 +580,13 @@ class BankRule:
                     self.in_progress = False
 
                     # Reset rule and update the panel
-                    current_panel = self.reset(window)
-
-                    return current_panel
-                else:
-                    return False
+                    remain_in_panel = True if not values['-AMENU-'] else False
+                    if remain_in_panel is True:
+                        current_rule = self.reset_rule(window, current=True)
+                    else:
+                        current_rule = self.reset_rule(window, current=False)
             else:
-                current_panel = self.reset(window)
-                return False
+                current_rule = self.reset_rule(window, current=False)
 
         # Next button pressed
         elif event == next_key:  # display summary panel
@@ -661,7 +659,28 @@ class BankRule:
                     window[start_key].update(disabled=True)
                     window[reconcile_key].update(disabled=False)
 
+                    # Update the tab table display
+                    self.table.update_display(window)
+
+                    # Update the associate table events
+                    for assoc in self.associations:
+
+                        # Update the association display table
+                        assoc.table.update_display(window)
+
+                    # Enable table element events
+                    self.table.enable(window)
+
                     self.toggle_parameters(window, 'disable')
+
+        # Switch between tabs
+        elif event == tg_key:
+            tab_key = window[tg_key].Get()
+            tab = self.fetch_association(tab_key, by_key=True)
+            print('Info: BankRule {NAME}: moving to bank association {ASSOC}'.format(NAME=self.name, ASSOC=tab.name))
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
 
         # Run the bank reconciliation algorithm
         elif event == reconcile_key:
@@ -693,14 +712,12 @@ class BankRule:
             else:
                 result = param.run_event(window, event, values)
 
-        return True
+        return current_rule
 
-    def reset(self, window, current: bool = False):
+    def reset_rule(self, window, current: bool = False):
         """
         Reset rule to default.
         """
-        win_width, win_height = window.size
-
         panel_key = self.element_key
         current_key = self.panel_keys[self.current_panel]
 
@@ -725,7 +742,7 @@ class BankRule:
         window[start_key].update(disabled=False)
         window[reconcile_key].update(disabled=True)
 
-        # Switch to first tab in summary panel
+        # Switch to first tab in panel
         tg_key = self.key_lookup('TG')
         window[tg_key].Widget.select(0)
 
@@ -736,21 +753,22 @@ class BankRule:
         # Reset the table elements
         self.table.df = pd.DataFrame(columns=list(self.table.columns))
         self.table._df = pd.DataFrame(columns=list(self.table.columns))
+        self.table.update_display(window)
+
+        # Disable table element events
+        self.table.disable(window)
 
         for association in self.associations:
-            association.table.df = pd.DataFrame(columns=list(association.table.columns))
-            association.table._df = pd.DataFrame(columns=list(association.table.columns))
+            association.reset(window)
 
         if current:
             window['-HOME-'].update(visible=False)
             window[panel_key].update(visible=True)
             window[self.panel_keys[self.first_panel]].update(visible=True)
 
-            next_key = panel_key
+            return self.name
         else:
-            next_key = '-HOME-'
-
-        return next_key
+            return None
 
     def reset_parameters(self, window):
         """
@@ -775,13 +793,14 @@ class BankRule:
         # Prepare the database query statement
         import_rules = self.import_rules
 
+        main_table = mod_db.get_primary_table(import_rules)
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
         columns = mod_db.format_import_columns(import_rules)
 
         # Add parameter values to the filter statement
         rule_params = self.parameters  # to filter data tables
-        param_filters = [i.query_statement() for i in rule_params]
+        param_filters = [i.query_statement(table=main_table) for i in rule_params]
         filters += param_filters
 
         # Import primary bank data from database
@@ -801,7 +820,11 @@ class BankRule:
 
         # Import association data from database
         for association in self.associations:
-            data_loaded.append(association.load_data(user, param_filters))
+            # Set parameter attribute for the association
+            association.parameters = self.parameters
+
+            # Load data
+            data_loaded.append(association.load_data(user))
 
         return all(data_loaded)
 
@@ -816,7 +839,7 @@ class AssociationRule:
 
         title (str): association title.
 
-        element_key (str): association element key.
+        elements (list): list of rule GUI element keys.
     """
 
     def __init__(self, name, entry):
@@ -827,8 +850,7 @@ class AssociationRule:
         """
         self.name = name
         self.id = randint(0, 1000000000)
-        self.element_key = '{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Element')
-        self.elements = []
+        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in ['Tab']]
 
         try:
             self.title = entry['Title']
@@ -882,6 +904,8 @@ class AssociationRule:
             mod_win2.popup_error(msg)
             sys.exit(1)
 
+        self.parameters = None
+
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -899,7 +923,7 @@ class AssociationRule:
 
     def run_event(self, window, event, values, user):
         """
-        Run a bank reconciliation event.
+        Run an association table event.
         """
         # Component element events
         tbl_elements = self.table.elements
@@ -921,20 +945,49 @@ class AssociationRule:
 
         # Tab layout
         table_layout = [[self.table.layout(width=width, height=height, padding=(0, 0))]]
-        layout = sg.Tab(title, table_layout, key=self.element_key, background_color=bg_col)
+        layout = sg.Tab(title, table_layout, key=self.key_lookup('Tab'), background_color=bg_col)
 
         return layout
 
-    def load_data(self, user, filters):
+    def reset(self, window):
+        """
+        Reset the elements and attributes of the audit rule transaction tab.
+        """
+
+        # Reset the data table
+        self.table.df = pd.DataFrame(columns=list(self.table.columns))
+        self.table.update_display(window)
+
+        # Disable table element events
+        self.table.disable(window)
+
+        # Reset the parameter values
+        self.parameters = None
+
+        # Disable the reconcile button
+#        window[self.key_lookup('Reconcile')].update(disabled=True)
+
+        # Reset visible tabs
+#        print('Info: BankRuleAssociation {NAME}: re-setting visibility of rule tab to {STATUS}'
+#              .format(NAME=self.name, STATUS=visible))
+
+#        window[self.element_key].update(visible=visible)
+
+    def load_data(self, user):
         """
         Load association data from the database.
         """
         # Prepare the database query statement
         import_rules = self.import_rules
 
-        filters += mod_db.format_import_filters(import_rules)
+        main_table = mod_db.get_primary_table(import_rules)
+        filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
         columns = mod_db.format_import_columns(import_rules)
+
+        # Add parameter values to the filter statement
+        rule_params = self.parameters  # to filter data tables
+        filters += [i.query_statement(table=main_table) for i in rule_params]
 
         # Import primary bank data from database
         try:
