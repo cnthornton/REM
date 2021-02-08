@@ -454,7 +454,8 @@ class TableElement:
         # Update the GUI with table values and annotations
         tbl_key = self.key_lookup('Element')
         data = display_df.values.tolist()
-        window[tbl_key].update(values=data, row_colors=annotations)
+        row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
+        window[tbl_key].update(values=data, row_colors=row_colors)
 
         # Update table totals
         if self.tally_rule is not None:
@@ -466,6 +467,8 @@ class TableElement:
         summary = self.summarize_table()
         for summary_item in summary:
             summ_key, summ_value = summary_item
+            if isinstance(summ_value, float):
+                summ_value = '{:,.2f}'.format(summ_value)
             window[summ_key].update(value=summ_value)
 
         return display_df
@@ -477,6 +480,8 @@ class TableElement:
         relativedelta = dateutil.relativedelta.relativedelta
         strptime = datetime.datetime.strptime
         is_float_dtype = pd.api.types.is_float_dtype
+        is_integer_dtype = pd.api.types.is_integer_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
         display_map = self.display_columns
@@ -511,6 +516,7 @@ class TableElement:
                 col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
                                                          relativedelta(years=+date_offset)).strftime(date_fmt)
                 if pd.notnull(x) else '')
+
             display_df[col_name] = col_to_add
 
         # Map column values to the aliases specified in the configuration
@@ -522,19 +528,26 @@ class TableElement:
                       .format(TBL=self.name, ALIAS=alias_col))
                 continue
 
-            print('Info: table {TBL}: applying aliases {MAP} to {COL}'
-                  .format(TBL=self.name, MAP=alias_map, COL=alias_col))
-
             try:
-                display_df[alias_col].replace(alias_map, inplace=True)
+                col_dtype = display_df[alias_col].dtype
+                if is_integer_dtype(col_dtype):
+                    alias_map = {int(i): j for i, j in alias_map.items()}
+                elif is_bool_dtype(col_dtype):
+                    alias_map = {bool(i): j for i, j in alias_map.items()}
             except KeyError:
                 print('Warning: table {TBL}: alias {ALIAS} not found in the list of display columns'
                       .format(TBL=self.name, ALIAS=alias_col))
-                continue
-            except TypeError:
-                print('Warning: table {TBL}: cannot replace values for column {ALIAS} with their aliases as alias '
-                      'values are not of the same data type'.format(TBL=self.name, ALIAS=alias_col))
-                continue
+            except ValueError:
+                print('Warning: table {TBL}: aliases provided to column {ALIAS} should match data type {DTYPE} of the '
+                      'column'.format(TBL=self.name, ALIAS=alias_col, DTYPE=col_dtype))
+            else:
+                print('info: table {tbl}: applying aliases {map} to {col}'
+                      .format(tbl=self.name, map=alias_map, col=alias_col))
+                try:
+                    display_df[alias_col] = display_df[alias_col].apply(lambda x: alias_map[x] if x in alias_map else x)
+                except TypeError:
+                    print('Warning: table {TBL}: cannot replace values for column {ALIAS} with their aliases as alias '
+                          'values are not of the same data type'.format(TBL=self.name, ALIAS=alias_col))
 
         return display_df
 
@@ -721,15 +734,14 @@ class TableElement:
         """
         rules = self.annotation_rules
         if df.empty or rules is None:
-            return []
+            return {}
 
-        annotations = []
+        annotations = {}
         rows_annotated = []
         for annot_code in rules:
             print('Info: table {NAME}: annotating table based on configured annotation rule {CODE}'
                   .format(NAME=self.name, CODE=annot_code))
             rule = rules[annot_code]
-            annot_color = rule['BackgroundColor']
             annot_condition = rule['Condition']
             try:
                 results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=True)
@@ -738,7 +750,7 @@ class TableElement:
                       .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
-            print('InfoL table {NAME}: annotation results are {RES}'.format(NAME=self.name, RES=results))
+            print('Info: table {NAME}: annotation results are {RES}'.format(NAME=self.name, RES=results))
             for row_index, result in enumerate(results):
                 if result is True:
                     print('Info: table {NAME}: table row {ROW} annotated with annotation code {CODE}'
@@ -747,7 +759,7 @@ class TableElement:
                         print('Warning: table {NAME}: table row {ROW} has passed two or more annotation rules ... '
                               'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
                     else:
-                        annotations.append((row_index, annot_color))
+                        annotations[row_index] = annot_code
                         rows_annotated.append(row_index)
 
         return annotations
@@ -1226,7 +1238,8 @@ class TableElement:
         if add_df.empty:
             return df
 
-        df = self.set_datatypes(df.append(add_df, ignore_index=True))
+        df = df.append(add_df, ignore_index=True)
+        df = self.set_datatypes(df)
 
         return df
 
@@ -1306,7 +1319,7 @@ class TableElement:
             df.to_csv(outfile, sep=',', header=True, index=False)
         else:
             annotations = self.annotate_display(df)
-            annotation_map = {i[0]: i[1] for i in annotations}
+            annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
             df.style.apply(lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white')) for _ in x],
                            axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
 
@@ -1494,6 +1507,12 @@ class TableElement:
 
             return df
 
+        # Add any annotations to the exported row
+        annotations = self.annotate_display(df)
+        annot_code = annotations.get(index, None)
+        if annot_code is not None:
+            row['Warnings'] = self.annotation_rules[annot_code]['Description']
+
         # Create a record object from the row data
         record_entry = configuration.records.fetch_rule(self.record_type)
         try:
@@ -1672,19 +1691,21 @@ class TableElement:
                 if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
                     astype = np.datetime64
                 elif dtype in ('int', 'integer', 'bit'):
-                    astype = int
+                    astype = np.int64
                 elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-                    astype = float
+                    astype = np.float64
                 elif dtype in ('bool', 'boolean'):
-                    astype = bool
+                    astype = np.bool
                 elif dtype in ('char', 'varchar', 'binary', 'text'):
-                    astype = object
+                    astype = np.object
                 else:
-                    astype = object
+                    astype = np.object
 
             try:
+                print('Info: table {NAME}: settings the datatype of column {COL} from {ORIG} to {DTYPE}'
+                      .format(NAME=self.name, COL=column, ORIG=df[column].dtype, DTYPE=astype))
                 df[column] = df[column].astype(astype, errors='raise')
-            except (ValueError, TypeError):
+            except (KeyError, ValueError, TypeError):
                 print('Warning: table {NAME}: unable to set column {COL} to data type {DTYPE}'
                       .format(NAME=self.name, COL=column, DTYPE=dtype))
 
