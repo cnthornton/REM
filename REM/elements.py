@@ -1259,7 +1259,7 @@ class TableElement:
             else:
                 df.reset_index(drop=True, inplace=True)
 
-        return df
+        self.df = df
 
     def subset(self, subset_rule):
         """
@@ -1344,10 +1344,8 @@ class TableElement:
         """
         id_field = self.id_column
 
-        df = self.sort()
-
         try:
-            row_ids = df[id_field].tolist()
+            row_ids = self.df[id_field].tolist()
         except KeyError:  # database probably PostGreSQL
             print('Warning: table {TBL}: ID column {COL} not found in the data table'
                   .format(TBL=self.name, COL=id_field))
@@ -1702,8 +1700,6 @@ class TableElement:
                     astype = np.object
 
             try:
-                print('Info: table {NAME}: settings the datatype of column {COL} from {ORIG} to {DTYPE}'
-                      .format(NAME=self.name, COL=column, ORIG=df[column].dtype, DTYPE=astype))
                 df[column] = df[column].astype(astype, errors='raise')
             except (KeyError, ValueError, TypeError):
                 print('Warning: table {NAME}: unable to set column {COL} to data type {DTYPE}'
