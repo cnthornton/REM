@@ -52,8 +52,12 @@ def format_import_filters(import_rules):
             else:
                 value = '?'
 
-            filters.append(('{TBL}.{COL} {OPER} {VAL}'
-                            .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
+            if operator in ('IN', 'NOT IN') and 'NULL' not in parameters:
+                filters.append(('({TBL}.{COL} {OPER} {VAL} OR {TBL}.{COL} IS NULL)'
+                                .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
+            else:
+                filters.append(('{TBL}.{COL} {OPER} {VAL}'
+                                .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
 
     return filters
 
