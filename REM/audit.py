@@ -188,6 +188,9 @@ class AuditRule:
             self.tabs.append(tab_rule)
             self.elements += tab_rule.elements
 
+        self.current_tab = 0
+        self.final_tab = len(self.tabs)
+
         try:
             summary_entry = entry['Summary']
         except KeyError:
@@ -397,6 +400,9 @@ class AuditRule:
                         # Update the tab table display
                         tab.table.update_display(window)
 
+                        # Update tab ID components
+                        tab.update_id_components()
+
                         # Enable the tab audit button
                         window[tab.key_lookup('Audit')].update(disabled=False)
 
@@ -409,9 +415,15 @@ class AuditRule:
             tab_key = window[tg_key].Get()
             tab = self.fetch_tab(tab_key, by_key=True)
             print('Info: AuditRule {NAME}: moving to transaction audit tab {TAB}'.format(NAME=self.name, TAB=tab.name))
+
+            # Collapse the filter frame, if applicable
             filter_key = tab.table.key_lookup('FilterFrame')
             if window[filter_key].metadata['visible'] is True:
                 tab.table.collapse_expand(window, frame='filter')
+
+            # Set the current tab index
+            tabs = [i.key_lookup('Tab') for i in self.tabs]
+            self.current_tab = tabs.index(tab_key)
 
         # Run component parameter events
         elif event in param_keys:
@@ -432,7 +444,29 @@ class AuditRule:
                 print('Error: AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                result = tab.run_event(window, event, values, user)
+                success = tab.run_event(window, event, values, user)
+                if event == tab.key_lookup('Audit') and success is True:
+                    print('Info: AuditRule {NAME}: auditing of transaction {TITLE} was successful'
+                          .format(NAME=self.name, TITLE=tab.title))
+                    final_index = self.final_tab
+                    current_index = self.current_tab
+
+                    # Enable movement to the next tab
+                    next_index = current_index + 1
+                    if next_index < final_index:
+                        next_key = [i.key_lookup('Tab') for i in self.tabs][next_index]
+                        next_tab = self.fetch_tab(next_key, by_key=True)
+                        print('Info: AuditRule {NAME}: enabling next tab {TITLE} with index {IND}'
+                              .format(NAME=self.name, TITLE=next_tab.title, IND=next_index))
+
+                        # Enable next tab
+                        window[next_key].update(disabled=False, visible=True)
+
+                    # Enable the finalize button when an audit has been run on all tabs.
+                    if next_index == final_index:
+                        print('Info: AuditRule {NAME}: all audits have been performed - enabling summary panel'
+                              .format(NAME=self.name))
+                        window[self.key_lookup('Next')].update(disabled=False)
 
         return current_rule
 
@@ -1620,8 +1654,17 @@ class AuditRuleTransaction:
         else:
             self.elements += self.table.elements
 
+        try:
+            self.id_format = re.findall(r'\{(.*?)\}', entry['IDFormat'])
+        except KeyError:
+            msg = ('Configuration Error: AuditRuleTransaction {NAME}: missing required field "IDFormat".') \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+
         self.in_progress = False
         self.parameters = None
+        self.id_components = []
 
     def key_lookup(self, component):
         """
@@ -1638,6 +1681,27 @@ class AuditRuleTransaction:
 
         return key
 
+    def fetch_parameter(self, element, by_key: bool = False, by_type: bool = False):
+        """
+        Fetch a GUI parameter element by name or event key.
+        """
+        if by_key is True:
+            element_type = element.split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.parameters]
+        elif by_type is True:
+            element_names = [i.etype for i in self.parameters]
+        else:
+            element_names = [i.name for i in self.parameters]
+
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.parameters[index]
+        else:
+            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
+                           .format(ELEM=element, NAME=self.name))
+
+        return parameter
+
     def reset(self, window, first: bool = False):
         """
         Reset the elements and attributes of the audit rule transaction tab.
@@ -1653,8 +1717,9 @@ class AuditRuleTransaction:
         # Disable the audit button
         window[self.key_lookup('Audit')].update(disabled=True)
 
-        # Reset parameters
+        # Reset dynamic attributes
         self.parameters = None
+        self.id_components = []
 
         # Reset visible tabs
         visible = True if first is True else False
@@ -1726,16 +1791,27 @@ class AuditRuleTransaction:
         audit_key = self.key_lookup('Audit')
         table_keys = self.table.elements
 
+        success = True
         # Run component table events
         if event in table_keys:
             results = self.table.run_event(window, event, values, user)
 
         # Run a transaction audit
         elif event == audit_key:
-            self.table.df = self.audit_transactions(user)
-            self.table.update_display(window)
+            try:
+                self.table.df = self.table.append(self.audit_transactions(user))
+            except Exception as e:
+                msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
+                mod_win2.popup_error(msg)
+                print('Error: {MSG}'.format(MSG=sg))
+                raise
 
-        return True
+                success = False
+            else:
+                self.table.sort()
+                self.table.update_display(window)
+
+        return success
 
     def load_data(self, user):
         """
@@ -1772,75 +1848,60 @@ class AuditRuleTransaction:
         """
         Search for missing transactions using scan.
         """
-        dparse = dateutil.parser.parse
         strptime = datetime.datetime.strptime
 
         # Class attributes
+        import_rules = self.import_rules
         table = self.table
-        params = self.parameters
+        db_columns = {j: '{TBL}.{COL}'.format(TBL=table, COL=i) for table in import_rules
+                      for i, j in import_rules[table]['Columns'].items()}
+
         pkey = table.id_column
         df = table.sort()
-
         id_list = table.row_ids()
-        main_table = [i for i in self.import_rules][0]
 
-        # Format audit parameters
-        audit_date = None
-        for audit_param in params:
-            if audit_param.dtype.lower() == 'date':
-                date_col = audit_param.name
-                date_col_full = mod_dm.get_query_from_header(date_col, table.columns)
-                date_fmt = audit_param.format
-                try:
-                    audit_date = strptime(audit_param.value, date_fmt)
-                except ValueError:
-                    print('Warning: AuditRuleTransaction {NAME}: no date provided ... skipping checks for most recent ID'
-                          .format(NAME=self.name))
-                else:
-                    audit_date_iso = audit_date.strftime("%Y-%m-%d")
+        # Data importing parameters
+        main_table = mod_db.get_primary_table(import_rules)
+        filters = mod_db.format_import_filters(import_rules)
+        table_statement = mod_db.format_tables(import_rules)
+        import_columns = mod_db.format_import_columns(import_rules)
 
-        missing_transactions = []
+        # Audit parameters
+        date_param = self.fetch_parameter('date', by_type=True)
+        date_col = date_param.name
+        date_db_col = '{TBL}.{COL}'.format(TBL=main_table, COL=date_param.field)
+        audit_date = date_param.value
+        audit_date_iso = audit_date.strftime("%Y-%m-%d")
+
         # Search for missing data
-
+        print('Info: AuditRuleTransaction {NAME}: searching for missing transactions'.format(NAME=self.name))
+        missing_transactions = []
         try:
             first_id = id_list[0]
         except IndexError:
             first_id = None
+            first_number_comp = None
+            first_date_comp = None
         else:
             first_number_comp = int(self.get_id_component(first_id, 'variable'))
             first_date_comp = self.get_id_component(first_id, 'date')
-            print('Info: rule {RULE}, tab {NAME}: first transaction ID is {ID}'
-                  .format(RULE=self.rule_name, NAME=self.name, ID=first_id))
+            print('Info: AuditRuleTransaction {NAME}: first transaction ID is {ID}'
+                  .format(NAME=self.name, ID=first_id))
 
-        if audit_date and first_id:
-            ## Find date of last transaction
-            query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col_full, TBL=main_table)
-            try:
-                dates_df = user.thread_transaction(query_str, (), operation='read')
-            except Exception as e:
-                mod_win2.popup_error('Error: audit scan failed due to failure to connect to the database')
-                print(e)
-                return df
+        if audit_date and first_id:  # data table not empty
+            # Find the date of the most recent transaction prior to current date
+            query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_db_col, TBL=main_table)
+            dates_df = user.thread_transaction(query_str, (), operation='read')
 
             unq_dates = dates_df[date_col].tolist()
-            try:
-                unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
-            except TypeError:
-                print('Warning: AuditRuleTransaction {NAME}: date {DATE} is not formatted correctly as a datetime object'
-                      .format(NAME=self.name, DATE=audit_date_iso))
-                return df
+            unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
 
             unq_dates_iso.sort()
 
-            try:
-                current_date_index = unq_dates_iso.index(audit_date_iso)
-            except ValueError:
-                print('Warning: AuditRuleTransaction {NAME}: no transactions for audit date {DATE} found in list {DATES}'
-                      .format(NAME=self.name, DATE=audit_date_iso, DATES=unq_dates_iso))
-                return df
+            current_date_index = unq_dates_iso.index(audit_date_iso)
 
             try:
-                prev_date = dparse(unq_dates_iso[current_date_index - 1], yearfirst=True)
+                prev_date = strptime(unq_dates_iso[current_date_index - 1], '%Y-%m-%d')
             except IndexError:
                 print('Warning: AuditRuleTransaction {NAME}: no date found prior to current audit date {DATE}'
                       .format(NAME=self.name, DATE=audit_date_iso))
@@ -1850,16 +1911,18 @@ class AuditRuleTransaction:
                       .format(NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
                 prev_date = None
 
-            ## Query last transaction from previous date
+            # Query the last transaction from the previous date
             if prev_date:
-                print('Info: AuditRuleTransaction {NAME}: searching for most recent transaction created in {DATE}'
+                print('Info: AuditRuleTransaction {NAME}: searching for most recent transaction created on {DATE}'
                       .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
-                filters = ('{} = ?'.format(date_col_full), (prev_date.strftime(date_fmt),))
-                last_df = user.query(self.import_rules, columns=table.columns, filter_rules=filters)
+                import_filters = filters + [('{} = ?'.format(date_db_col), (prev_date.strftime(configuration.date_format),))]
+                last_df = user.query(table_statement, columns=import_columns, filter_rules=import_filters)
                 last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
                 last_id = None
+                prev_date_comp = None
+                prev_number_comp = None
                 prev_ids = last_df[pkey].tolist()
                 for prev_id in prev_ids:
                     prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
@@ -1873,7 +1936,7 @@ class AuditRuleTransaction:
                         last_id = prev_id
                         break
 
-                if last_id:
+                if prev_date_comp and prev_number_comp:
                     print('Info: AuditRuleTransaction {NAME}: last transaction ID is {ID} from {DATE}' \
                           .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
 
@@ -1895,13 +1958,14 @@ class AuditRuleTransaction:
                             missing_transactions.append(missing_id)
 
             ## Search for missed numbers at end of day
-            last_id_of_df = id_list[-1]
+            print('Info: AuditRuleTransaction {NAME}: searching for transactions created at the end of the day'
+                  .format(NAME=self.name))
+            last_id_of_df = id_list[-1]  # last transaction of the dataframe
 
-            filters = ('{} = ?'.format(date_col_full), (audit_date.strftime(date_fmt),))
-            current_df = user.query(self.import_rules, columns=table.columns, filter_rules=filters)
-            current_df.sort_values(by=[pkey], inplace=True, ascending=False)
+            import_filters = filters + [('{} = ?'.format(date_db_col), (audit_date.strftime(configuration.date_format),))]
+            current_df = user.query(table_statement, columns=import_columns, filter_rules=import_filters)
 
-            current_ids = current_df[pkey].tolist()
+            current_ids = sorted(current_df[pkey].tolist(), reverse=True)
             for current_id in current_ids:
                 if last_id_of_df == current_id:
                     break
@@ -1911,55 +1975,142 @@ class AuditRuleTransaction:
                     missing_transactions.append(current_id)
 
         ## Search for skipped transaction numbers
-        try:
-            id_list[1]
-        except IndexError:
-            pass
-        else:
-            prev_number = first_number_comp
-            for transaction_id in id_list[1:]:
-                trans_number = int(self.get_id_component(transaction_id, 'variable'))
-                if (prev_number + 1) != trans_number:
-                    missing_range = list(range(prev_number + 1, trans_number))
-                    for missing_number in missing_range:
-                        missing_id = self.format_id(missing_number, date=first_date_comp)
-                        if missing_id not in id_list:
-                            missing_transactions.append(missing_id)
+        print('Info: AuditRuleTransaction {NAME}: searching for skipped transactions'
+              .format(NAME=self.name))
+        prev_number = first_number_comp
+        for record_id in id_list:
+            record_number = int(self.get_id_component(record_id, 'variable'))
+            if (prev_number + 1) != record_number:
+                missing_range = list(range(prev_number + 1, record_number))
+                for missing_number in missing_range:
+                    missing_id = self.format_id(missing_number, date=first_date_comp)
+                    if missing_id not in id_list:
+                        missing_transactions.append(missing_id)
 
-                prev_number = trans_number
+            prev_number = record_number
 
         print('Info: AuditRuleTransactions {NAME}: potentially missing transactions: {MISS}'
               .format(NAME=self.name, MISS=missing_transactions))
 
         # Query database for the potentially missing transactions
         if missing_transactions:
-            pkey_fmt = mod_dm.get_query_from_header(pkey, table.columns)
+            pkey_db = db_columns[pkey]
 
             filter_values = ['?' for _ in missing_transactions]
-            filter_str = '{PKEY} IN ({VALUES})'.format(PKEY=pkey_fmt, VALUES=', '.join(filter_values))
+            filter_str = '{PKEY} IN ({VALUES})'.format(PKEY=pkey_db, VALUES=', '.join(filter_values))
 
             filters = [(filter_str, tuple(missing_transactions))]
 
             # Drop missing transactions if they don't meet the import parameter requirements
-            filters += mod_db.format_import_filters(self.import_rules)
-            missing_df = user.query(self.import_rules, columns=table.columns, filter_rules=filters, order=pkey_fmt)
+            missing_df = user.query(table_statement, columns=import_columns, filter_rules=filters, order=pkey_db)
         else:
             missing_df = pd.DataFrame(columns=df.columns)
 
         # Display import window with potentially missing data
         if not missing_df.empty:
-            missing_df_fmt = self.format_display_table(mod_dm.sort_table(missing_df, pkey))
+            missing_df_fmt = self.table.format_display_table(missing_df)
             import_rows = mod_win2.import_window(missing_df_fmt)
             import_df = missing_df.iloc[import_rows]
+        else:
+            import_df = pd.DataFrame(columns=df.columns)
 
-            # Update dataframe with imported data
-            if not import_df.empty:
-                df = mod_dm.append_to_table(table.df, import_df)
+            print('Info: AuditRuleTransactions {NAME}: adding {NROW} records to the table'
+                  .format(NAME=self.name, NROW=import_df.shape[0]))
 
-        print('Info: AuditRuleTransactions {NAME}: new size of dataframe is {NROW} rows and {NCOL} columns'
-              .format(NAME=self.name, NROW=df.shape[0], NCOL=df.shape[1]))
+        return import_df
 
-        return df
+    def update_id_components(self):
+        """
+        """
+        parameters = self.parameters
+        id_format = self.id_format
+        self.id_components = []
+
+        last_index = 0
+        print('Info: AuditRuleTransaction {NAME}: ID is formatted as {FORMAT}' \
+              .format(NAME=self.name, FORMAT=id_format))
+        param_fields = [i.name for i in parameters]
+        for component in id_format:
+            if len(component) > 1 and set(component).issubset(set('YMD-/ ')):  # component is datestr
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('date', component, index)
+            elif component in param_fields:
+                param = parameters[param_fields.index(component)]
+                value = param.value
+                component_len = len(value)
+                index = (last_index, last_index + component_len)
+                part_tup = (component, value, index)
+            elif component.isnumeric():  # component is an incrementing number
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('variable', component_len, index)
+            else:  # unknown component type, probably separator
+                component_len = len(component)
+                index = (last_index, last_index + component_len)
+                part_tup = ('separator', component, index)
+
+            self.id_components.append(part_tup)
+
+            last_index += component_len
+
+        print('Info: AuditRuleTransaction {NAME}: ID updated with components {COMP}'
+              .format(NAME=self.name, COMP=self.id_components))
+
+    def format_id(self, number, date=None):
+        """
+        """
+        number = str(number)
+
+        id_parts = []
+        for component in self.id_components:
+            comp_name, comp_value, comp_index = component
+
+            if comp_name == 'date':  # component is datestr
+                if not date:
+                    print('Warning: AuditRuleTransaction {NAME}: no date provided for ID number {NUM} ... reverting to '
+                          'today\'s date'.format(NAME=self.name, NUM=number))
+                    value = datetime.datetime.now().strftime(comp_value)
+                else:
+                    value = date
+            elif comp_name == 'variable':
+                value = number.zfill(comp_value)
+            else:
+                value = comp_value
+
+            id_parts.append(value)
+
+        return ''.join(id_parts)
+
+    def get_id_component(self, identifier, component):
+        """
+        Extract the specified component values from the provided identifier.
+        """
+        comp_value = ''
+        for id_component in self.id_components:
+            comp_name, comp_value, comp_index = id_component
+
+            if component == comp_name:
+                try:
+                    comp_value = identifier[comp_index[0]: comp_index[1]]
+                except IndexError:
+                    print('Warning: AuditRuleTransaction {NAME}: ID component {COMP} cannot be found in identifier {IDENT}'
+                          .format(NAME=self.name, COMP=component, IDENT=identifier))
+
+                break
+
+        return comp_value
+
+    def get_component(self, comp_id):
+        """
+        """
+        comp_tup = None
+        for component in self.id_components:
+            comp_name, comp_value, comp_index = component
+            if comp_name == comp_id:
+                comp_tup = component
+
+        return comp_tup
 
 
 def replace_nth(s, sub, new, ns):

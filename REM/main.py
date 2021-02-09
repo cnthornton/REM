@@ -332,7 +332,6 @@ def get_panels(account_methods, win_size: tuple = None):
             print('Info: creating layout for accounting method {ACCT}, rule {RULE}'
                   .format(ACCT=account_method.name, RULE=rule.name))
             panels.append(rule.layout(win_size=win_size))
-            print(panels)
 
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
@@ -357,6 +356,7 @@ def resize_elements(window, rules):
         try:
             rule.resize_elements(window)
         except Exception as e:
+            raise
             print('Error: {}'.format(e))
             continue
 
@@ -486,6 +486,8 @@ def main():
 
                 resized = False
 
+                continue
+
         # Resize screen
         ## Get window dimensions
         win_w, win_h = window.size
@@ -497,6 +499,7 @@ def main():
 
             current_w, current_h = (win_w, win_h)
             resized = True
+
             continue
 
         # User login
@@ -519,7 +522,8 @@ def main():
                 toolbar.update_username(window, user.uid)
             else:
                 print('Error: unable to login to the program')
-                continue
+
+            continue
 
         # User log-off
         if values['-UMENU-'] == 'Sign Out':  # user signs out
@@ -572,6 +576,8 @@ def main():
 
             # Disable all actions and menus
             toolbar.disable(window, all_rules)
+
+            continue
 
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
@@ -690,10 +696,11 @@ def main():
             try:
                 record = mod_win2.record_import_window(user, record_layout, import_table, enable_new=True)
             except Exception as e:
-                raise
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {}'.format(msg))
+
+                raise
                 continue
             else:
                 if record is None:
@@ -724,7 +731,14 @@ def main():
         # Action events
         if current_rule and event in current_rule.elements:
             print('Info: running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
-            current_rule_name = current_rule.run_event(window, event, values, user)
+            try:
+                current_rule_name = current_rule.run_event(window, event, values, user)
+            except Exception as e:
+                msg = 'failed to run window event {EVENT} of rule {RULE} - {ERR}'\
+                    .format(EVENT=event, RULE=current_rule.name, ERR=e)
+                mod_win2.popup_error(msg)
+                print('Error: {MSG}'.format(MSG=msg))
+                raise
 
             if current_rule_name is None:
                 # Enable toolbar
