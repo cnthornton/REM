@@ -250,8 +250,7 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
     window = center_window(window)
 
     # Update record display
-    for component_table in record.components:
-        display_df = component_table.update_display(window)
+    record.update_display(window)
 
     # Event window
     record_elements = [i for i in record.elements]

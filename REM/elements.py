@@ -70,7 +70,7 @@ class TableElement:
         tooltip (str): table tooltip.
     """
 
-    def __init__(self, name, entry, parent=None, date=None):
+    def __init__(self, name, entry, parent=None):
         """
         Table attributes.
 
@@ -87,7 +87,6 @@ class TableElement:
                           'FilterFrame', 'FilterButton', 'SummaryFrame', 'SummaryButton', 'Width', 'CollapseButton',
                           'CollapseFrame', 'SummaryWidth']]
         self.etype = 'table'
-        self.creation_date = date if date is not None else datetime.datetime.now()
 
         try:
             self.title = entry['Title']
@@ -466,7 +465,8 @@ class TableElement:
         # Update the table summary
         summary = self.summarize_table()
         for summary_item in summary:
-            summ_key, summ_value = summary_item
+            summ_rule, summ_value = summary_item
+            summ_key = self.key_lookup(summ_rule)
             if isinstance(summ_value, float):
                 summ_value = '{:,.2f}'.format(summ_value)
             window[summ_key].update(value=summ_value)
@@ -608,7 +608,6 @@ class TableElement:
         outputs = []
         for rule_name in summ_rules:
             summ_rule = summ_rules[rule_name]
-            summ_key = self.key_lookup(rule_name)
 
             column = summ_rule['Column']
 
@@ -652,7 +651,7 @@ class TableElement:
                         rule_values.append(component)
 
             summary_total = eval(' '.join([str(i) for i in rule_values]))
-            outputs.append((summ_key, summary_total))
+            outputs.append((rule_name, summary_total))
 
         return outputs
 
@@ -1315,13 +1314,14 @@ class TableElement:
 
         out_fmt = outfile.split('.')[-1]
 
-        if out_fmt == 'csv':
-            df.to_csv(outfile, sep=',', header=True, index=False)
-        else:
-            annotations = self.annotate_display(df)
-            annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-            df.style.apply(lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white')) for _ in x],
-                           axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
+        if outfile:
+            if out_fmt == 'csv':
+                df.to_csv(outfile, sep=',', header=True, index=False)
+            else:
+                annotations = self.annotate_display(df)
+                annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+                df.style.apply(lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white')) for _ in x],
+                               axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
 
     def calculate_total(self):
         """
@@ -1379,11 +1379,13 @@ class TableElement:
 
         return pd.Series(values, index=columns)
 
-    def add_row(self, user):
+    def add_row(self, user, record_date=None):
         """
         Add a new row to the records table.
         """
         df = self.df.copy()
+
+        creation_date = record_date if isinstance(record_date, datetime.datetime) else datetime.datetime.now()
 
         if self.record_type is None:
             print('Warning: attempting to add a new row to the table failed - missing required attribute record_type')
@@ -1392,11 +1394,11 @@ class TableElement:
         # Create a new record object
         record_entry = configuration.records.fetch_rule(self.record_type)
 
-        record_id = record_entry.create_id(self.creation_date)
+        record_id = record_entry.create_id(creation_date)
 
         record_data = pd.Series(index=list(self.columns))
         record_data[self.id_column] = record_id
-        record_data[self.date_column] = self.creation_date
+        record_data[self.date_column] = creation_date
 
         # Set values for editable columns with default values
         record_data = self.set_edit_values(record_data)
@@ -1992,7 +1994,7 @@ class DataElement:
         except KeyError:
             self.editable = True
         except ValueError:
-            print('Configuration Warning: parameter {NAME}: "IsEditable" must be either 0 (False) or 1 (True)'
+            print('Configuration Warning: DataElement {NAME}: "IsEditable" must be either 0 (False) or 1 (True)'
                   .format(NAME=name))
             self.editable = False
         else:
@@ -2003,7 +2005,7 @@ class DataElement:
         except KeyError:
             self.hidden = False
         except ValueError:
-            print('Configuration Warning: parameter {NAME}: "IsHidden" must be either 0 (False) or 1 (True)'
+            print('Configuration Warning: DataElement {NAME}: "IsHidden" must be either 0 (False) or 1 (True)'
                   .format(NAME=name))
             sys.exit(1)
         else:
@@ -2024,8 +2026,9 @@ class DataElement:
         except (KeyError, TypeError):
             self.value = self.format_value(None)
 
-        print('Info: {PARAM}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF}, formatted '
-              'value {VAL}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        print('Info: DataElement {PARAM}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
+              'and formatted value {VAL}'
+              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def key_lookup(self, component):
         """
@@ -2036,8 +2039,8 @@ class DataElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: component {COMP} not found in list of data element {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
+            print('Warning: DataElement {NAME}: component {COMP} not found in list of data element components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -2071,16 +2074,10 @@ class DataElement:
         elem_key = self.key_lookup('Element')
         expand_key = self.key_lookup('CollapseButton')
         if event == expand_key:
-            print('Info: data element {ELEM}: expanding / collapsing filter frame'.format(ELEM=self.name))
+            print('Info: DataElement {ELEM}: expanding / collapsing filter frame'.format(ELEM=self.name))
             self.collapse_expand(window)
         elif event == elem_key:
-            try:
-                param_value = values[elem_key]
-            except KeyError:
-                print('Error: failed to update the display value of parameter {PARAM}'.format(PARAM=self.name))
-            else:
-                display_value = self.format_display(window, param_value)
-                window[elem_key].update(value=display_value)
+            self.update_display(window, window_values=values)
 
         return True
 
@@ -2154,8 +2151,8 @@ class DataElement:
             try:
                 values = element_options['Values']
             except KeyError:
-                print('Configuration Warning: dropdown was selected for data element {NAME} but no values were '
-                      'provided to populate the dropdown'.format(NAME=self.name))
+                print('Configuration Warning: DataElement {NAME}: dropdown was selected for the data element but no '
+                      'values were provided to populate the dropdown'.format(NAME=self.name))
                 display_values = []
             else:
                 display_values = []
@@ -2227,6 +2224,20 @@ class DataElement:
 
         return layout
 
+    def update_display(self, window, window_values: dict = None):
+        """
+        Format element for display.
+        """
+        elem_key = self.key_lookup('Element')
+        try:
+            param_value = window_values[elem_key]
+        except (KeyError, TypeError):
+#            display_value = self.format_display(window, str(self.value))
+            print('Info: DataElement {NAME}: no values provided to update the display'.format(NAME=self.name))
+        else:
+            display_value = self.format_display(window, param_value)
+            window[elem_key].update(value=display_value)
+
     def format_display(self, window, value):
         """
         Format the display value.
@@ -2253,7 +2264,7 @@ class DataElement:
                 except ValueError:  # date is incorrectly formatted
                     msg = '{} is not a valid date format'.format(''.join(new_value))
                     mod_win2.popup_notice(msg)
-                    print('Warning: {}'.format(msg))
+                    print('Warning: DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     display_value = self.format_date(''.join(current_value))
                 else:
@@ -2305,15 +2316,12 @@ class DataElement:
             print(new_value)
 
             if len(current_value) > len(new_value):  # user removed a character
-                print('removing a character')
                 # Remove the decimal separator if last character is decimal
                 if new_value[-1] == dec_sep:
-                    print('removing decimal')
                     current_value = new_value[0:-1]
                 else:
                     current_value = new_value
             elif len(current_value) < len(new_value):  # user added new character
-                print('adding a character')
                 # Find the character and location of the user input
                 new_char = new_value[-1]  # defaults to the last character
                 new_index = len(new_value)  # defaults to the end of the string
@@ -2328,14 +2336,11 @@ class DataElement:
 
                 # Validate added character
                 if new_char.isnumeric():  # can add integers
-                    print('inserting new character {} at index {}'.format(new_char, new_index))
                     current_value.insert(new_index, new_char)
                 elif new_char == dec_sep:  # and also decimal character
                     if dec_sep not in current_value:  # can only add one decimal character
-                        print('inserting new character {} at index {}'.format(new_char, new_index))
                         current_value.insert(new_index, new_char)
             else:  # user replaced a character
-                print('replacing a character')
                 # Find the character and location of the user input
                 for new_index, new_char in enumerate(new_value):  # defaults to the last character
                     old_char = current_value[new_index]
@@ -2413,13 +2418,13 @@ class DataElement:
             try:
                 alias_value = aliases[input_value]
             except KeyError:
-                print('Info: no alias specified for parameter {PARAM} value {VAL}'.format(PARAM=self.name,
-                                                                                          VAL=input_value))
+                print('Info: DataElement {NAME}: no alias specified for value {VAL}'
+                      .format(NAME=self.name, VAL=input_value))
                 print(aliases)
                 input_value = input_value
             else:
-                print('Info: setting parameter {PARAM} value to {VAL} with alias {ALIAS}'
-                      .format(PARAM=self.name, VAL=input_value, ALIAS=alias_value))
+                print('Info: DataElement {NAME}: setting value to {VAL} with alias {ALIAS}'
+                      .format(NAME=self.name, VAL=input_value, ALIAS=alias_value))
                 input_value = alias_value
 
         if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
@@ -2427,8 +2432,8 @@ class DataElement:
                 try:
                     date_format = self.options['DateFormat']
                 except KeyError:
-                    print('Configuration Warning: date was selected for data element {NAME} a date format was not '
-                          'provided. Defaulting to "YYYY-MM-DD"'.format(NAME=self.name))
+                    print('Configuration Warning: DataElement {NAME}: date was selected for the data element but a date '
+                          'format was not provided ... defaulting to "YYYY-MM-DD"'.format(NAME=self.name))
                     year_first = True
                 else:
                     year_first = True if date_format[0] == 'Y' else False
@@ -2436,13 +2441,13 @@ class DataElement:
                 try:
                     value_fmt = dparse(input_value, yearfirst=year_first)
                 except (ValueError, TypeError):
-                    print('Warning: parameter {PARAM}: unable to parse date {VAL}'
+                    print('Warning: DataElement {PARAM}: unable to parse date {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     return None
             elif isinstance(input_value, datetime.datetime):
                 value_fmt = input_value
             else:
-                print('Warning: parameter {PARAM}: unknown object type for {VAL}'
+                print('Warning: DataElement {PARAM}: unknown object type for {VAL}'
                       .format(PARAM=self.name, VAL=input_value))
                 return None
         elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
@@ -2452,7 +2457,7 @@ class DataElement:
                 try:
                     value_fmt = float(input_value.replace(group_sep, ''))
                 except (ValueError, TypeError, AttributeError):
-                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                    print('Warning: DataElement {PARAM}: unknown object type for parameter value {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('int', 'integer', 'bit'):
@@ -2462,7 +2467,7 @@ class DataElement:
                 try:
                     value_fmt = input_value.replace(',', '')
                 except (ValueError, TypeError):
-                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                    print('Warning: DataElement {PARAM}: unknown object type for parameter value {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('bool', 'boolean'):
