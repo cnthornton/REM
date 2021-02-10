@@ -113,7 +113,7 @@ class AuditRule:
 
         tabs (list): list of AuditRuleTransaction objects.
 
-        summary (SummaryPanel): SummaryPanel object.
+        summary (AuditSummary): SummaryPanel object.
     """
 
     def __init__(self, name, entry):
@@ -128,7 +128,7 @@ class AuditRule:
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
         self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Main', 'Summary', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
+                         ['Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
                           'PanelHeight', 'FrameHeight', 'FrameWidth']]
 
         try:
@@ -198,11 +198,12 @@ class AuditRule:
             mod_win2.popup_error(msg)
             sys.exit(1)
 
-        self.summary = SummaryPanel(name, summary_entry)
+        self.summary = AuditSummary(name, summary_entry)
+        self.elements += self.summary.elements
 
         self.in_progress = False
 
-        self.panel_keys = {0: self.key_lookup('Main'), 1: self.key_lookup('Summary')}
+        self.panel_keys = {0: self.key_lookup('Panel'), 1: self.summary.element_key}
         self.current_panel = 0
         self.first_panel = 0
         self.last_panel = 1
@@ -280,6 +281,7 @@ class AuditRule:
         # Rule component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
         param_keys = [i for j in self.parameters for i in j.elements]
+        summary_keys = self.summary.elements
 
         # Cancel button pressed
         if event == cancel_key:
@@ -315,11 +317,22 @@ class AuditRule:
             # Reset current panel attribute
             self.current_panel = next_subpanel
 
-            # Enable / disable action buttons
+            # Prepare audit records
             if next_subpanel == self.last_panel:
+                # Disable / enable action buttons
                 window[self.key_lookup('Next')].update(disabled=True)
                 window[self.key_lookup('Back')].update(disabled=False)
                 window[self.key_lookup('Save')].update(disabled=False)
+
+                # Update the audit record totals tables
+                self.summary.map_summaries(self.tabs)
+
+                # Attempt to load existing audit from the database
+                audit_exists = self.summary.load_audits(user, self.parameters)
+
+                # Update the audit record's display
+                for tab in self.summary.tabs:
+                    tab.record.update_display(window)
 
         # Back button pressed
         elif event == back_key:
@@ -353,7 +366,7 @@ class AuditRule:
             for param in params:
                 param.value = param.format_value(values)
 
-                if param.value is None:
+                if not param.value:
                     param_desc = param.description
                     msg = 'Parameter {} requires correctly formatted input'.format(param_desc)
                     mod_win2.popup_notice(msg)
@@ -363,15 +376,6 @@ class AuditRule:
 
             # Load data from the database
             if all(inputs):  # all rule parameters have input
-                # Verify that the audit has not already been performed with these parameters
-#                audit_exists = current_rule.summary.load_from_database(user, current_rule.parameters)
-#                if audit_exists is True:
-#                    continue_audit = mod_win2.popup_confirm('An audit has already been performed using these parameters. '
-#                                                            'Only an admin may edit an existing audit. Are you sure you '
-#                                                            'would like to continue?')
-#                    if continue_audit == 'Cancel':
-#                        continue
-
                 # Initialize audit
                 initialized = []
                 for tab in self.tabs:
@@ -392,6 +396,9 @@ class AuditRule:
                     # Enable/Disable control buttons and parameter elements
                     window[start_key].update(disabled=True)
                     self.toggle_parameters(window, 'disable')
+
+                    # Update summary panel title with rule parameter values
+                    self.summary.update_title(window, self.parameters)
 
                     for tab in self.tabs:
                         # Enable table element events
@@ -467,6 +474,10 @@ class AuditRule:
                         print('Info: AuditRule {NAME}: all audits have been performed - enabling summary panel'
                               .format(NAME=self.name))
                         window[self.key_lookup('Next')].update(disabled=False)
+
+        # Run transaction summary events
+        elif event in summary_keys:
+            self.summary.run_event(window, event, values, user)
 
         return current_rule
 
@@ -555,7 +566,7 @@ class AuditRule:
 #        audit_layout.append([sg.Col(tg_layout, pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True)])
 
         # Main panel layout
-        main_key = self.key_lookup('Main')
+        main_key = self.key_lookup('Panel')
         main_layout = sg.Col([param_layout,
                               [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
                               tg_layout],
@@ -563,8 +574,7 @@ class AuditRule:
                              visible=True, expand_y=True, expand_x=True)
 
         # Panels
-        summary_layout = sg.Col(self.summary.layout(win_size), key=self.summary.element_key, background_color=bg_col,
-                                vertical_alignment='c', visible=False, expand_x=True, expand_y=True)
+        summary_layout = self.summary.layout(win_size)
 
         panels = [main_layout, summary_layout]
 
@@ -638,7 +648,7 @@ class AuditRule:
         window[ph_key].set_size((None, panel_height))
 
         # Resize tab elements
-        tab_height = panel_height - 60  # minus size of the tabs
+        tab_height = panel_height * 0.7  # minus size of the tabs and the panel title
         tab_width = panel_width - mod_const.FRAME_PAD * 2  # minus left and right padding
 
         tabs = self.tabs
@@ -646,7 +656,7 @@ class AuditRule:
             tab.resize_elements(window, size=(tab_width, tab_height))
 
         # Resize summary elements
-#        self.summary.resize_elements(window, win_size)
+        self.summary.resize_elements(window, (tab_width, tab_height))
 
     def reset_rule(self, window, current: bool = False):
         """
@@ -679,12 +689,15 @@ class AuditRule:
         window[tg_key].Widget.select(0)
 
         # Switch to first tab in summary panel
-#        tg_key = self.summary.key_lookup('TG')
-#        window[tg_key].Widget.select(0)
+        tg_key = self.summary.key_lookup('TG')
+        window[tg_key].Widget.select(0)
 
         # Reset rule item attributes and parameters.
         self.reset_parameters(window)
         self.toggle_parameters(window, 'enable')
+
+        # Reset summary panel
+        self.summary.reset()
 
         # Reset tab attributes
         for i, tab in enumerate(self.tabs):
@@ -692,26 +705,6 @@ class AuditRule:
                 tab.reset(window, first=True)
             else:
                 tab.reset(window, first=False)
-
-#            # Reset displays
-#            ## Reset table element
-#            table_key = tab.key_lookup('Table')
-#            window[table_key].update(values=tab.df.values.tolist())
-#
-#            tab.resize_elements(window, size=(win_width, win_height))
-#
-#            ## Reset summary element
-#            summary_key = tab.key_lookup('Summary')
-#            window[summary_key].update(value='')
-#
-#            # Reset action buttons
-#            tab.toggle_actions(window, 'disable')
-#
-#            # Reset visible tabs
-#            visible = True if i == 0 else False
-#            print('Info: rule {RULE}, tab {NAME}: re-setting visibility to {STATUS}'
-#                  .format(NAME=tab.name, RULE=tab.rule_name, STATUS=visible))
-#            window[tab.element_key].update(visible=visible)
 
         if current:
             window['-HOME-'].update(visible=False)
@@ -737,64 +730,45 @@ class AuditRule:
             param.toggle_parameter(window, value)
 
 
-class SummaryPanel:
+class AuditSummary:
     """
     AuditRule summary panel object.
     """
 
-    def __init__(self, rule_name, sdict):
+    def __init__(self, name, entry, parent=None):
 
-        self.rule_name = rule_name
-        self.element_key = mod_lo.as_key('{} Summary'.format(rule_name))
-        self.elements = ['Cancel', 'Back', 'Save', 'Title', 'TG', 'FrameWidth']
-
-        self.tabs = []
-
-        try:
-            self._title = sdict['Title']
-        except KeyError:
-            self._title = '{} Summary'.format(rule_name)
-
-        self.title = None
+        self.name = name
+        self.parent = parent
+        self.id = randint(0, 1000000000)
+        self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
+        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ['TG', 'Title']]
 
         try:
-            tabs = sdict['Tabs']
+            self._title = entry['Title']
         except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing required field "Tabs".') \
-                .format(RULE=rule_name)
+            self._title = '{} Summary'.format(name)
+
+        try:
+            record_tabs = entry['Tabs']
+        except KeyError:
+            msg = 'Configuration Error: AuditRuleSummary {NAME}: missing required configuration parameter "Records".'\
+                .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
+        else:
+            self.tabs = []
+            for record_type in record_tabs:
+                tab = AuditRecordTab(record_type, record_tabs[record_type])
 
-        for tab in tabs:
-            si_dict = tabs[tab]
-            try:
-                summ_type = si_dict['Type']
-            except KeyError:
-                msg = _('Configuration Error: rule {RULE}, summary {NAME}:  missing required field "Type".') \
-                    .format(RULE=rule_name, NAME=tab)
-                mod_win2.popup_error(msg)
-                sys.exit(1)
-
-            if summ_type == 'Subset':
-                self.tabs.append(mod_records.AuditRecordSubset(rule_name, tab, si_dict))
-            elif summ_type == 'Add':
-                self.tabs.append(mod_records.AuditRecordAdd(rule_name, tab, si_dict))
-            else:
-                msg = _('Configuration Error: rule {RULE}, summary {NAME}:  unknown type "{TYPE}" provided to the '
-                        'Types parameter.').format(RULE=rule_name, NAME=tab, TYPE=summ_type)
-                mod_win2.popup_error(msg)
-                sys.exit(1)
+                self.tabs.append(tab)
+                self.elements += tab.elements
 
         try:
-            self.aliases = sdict['Aliases']
+            report = entry['Report']
         except KeyError:
-            self.aliases = []
-
-        try:
-            report = sdict['Report']
-        except KeyError:
-            msg = _('Configuration Error: rule {RULE}: Summary missing required field "Report".') \
-                .format(RULE=rule_name)
+            msg = 'Configuration Error: AuditRuleSummary {NAME}: missing required configuration parameter "Report".'\
+                .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
         for tab_name in report:
@@ -802,48 +776,96 @@ class SummaryPanel:
             for section_name in report_tab:
                 section = report_tab[section_name]
 
-                msg = _('Configuration Error: rule {RULE}, Summary Report: missing required parameter "{PARAM}"'
-                        'in report section {NAME}')
+                msg = 'Configuration Error: AuditRuleSummary {NAME}: summary report {SEC} is missing required ' \
+                      'parameter "{PARAM}"'
                 if 'Title' not in section:
                     section['Title'] = section_name
                 if 'Columns' not in section:
-                    mod_win2.popup_error(msg.format(RULE=rule_name, PARAM='Columns', NAME=section_name))
+                    mod_win2.popup_error(msg.format(NAME=name, PARAM='Columns', SEC=section_name))
                     sys.exit(1)
 
         self.report = report
 
-    def key_lookup(self, element):
+        # Dynamic attributes
+        self.parameters = None
+        self.title = None
+
+    def key_lookup(self, component):
         """
-        Lookup element key for input control element.
+        Lookup a component's GUI element key using the component's name.
         """
-        if element in self.elements:
-            key = mod_lo.as_key('{} Summary {}'.format(self.rule_name, element))
+        element_names = [i.split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
         else:
-            print('Warning: rule {RULE}, Summary: unable to find GUI element {ELEM} in list of elements'
-                  .format(RULE=self.rule_name, ELEM=element))
+            print('Warning: AuditRuleSummary {NAME}: component {COMP} not found in list of components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
 
-    def fetch_tab(self, name, by_key: bool = False):
+    def fetch_tab(self, fetch_key, by_key: bool = False):
         """
-        Fetch a select summary item by the summary item name or element key.
+        Fetch a transaction audit summary tab object from the list of tabs.
         """
-        if not by_key:
-            names = [i.name for i in self.tabs]
+        tabs = self.tabs
+
+        if by_key is True:
+            element_type = fetch_key.split('_')[-1]
+            names = [i.key_lookup(element_type) for i in tabs]
         else:
-            names = [i.element_key for i in self.tabs]
+            names = [i.name for i in tabs]
 
         try:
-            index = names.index(name)
+            index = names.index(fetch_key)
         except ValueError:
-            print('Error: rule {RULE}, Summary: summary item {TAB} not in list of summary items'
-                  .format(RULE=self.rule_name, TAB=name))
+            print('Error: AuditRuleSummary {RULE}: {TAB} not in list of audit rule summary records'
+                  .format(RULE=self.name, TAB=fetch_key))
             tab_item = None
         else:
-            tab_item = self.tabs[index]
+            tab_item = tabs[index]
 
         return tab_item
+
+    def fetch_parameter(self, element, by_key: bool = False):
+        """
+        Fetch a GUI parameter element by name or event key.
+        """
+        if by_key is True:
+            element_type = element.split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.parameters]
+        else:
+            element_names = [i.name for i in self.parameters]
+
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.parameters[index]
+        else:
+            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
+                           .format(ELEM=element, NAME=self.name))
+
+        return parameter
+
+    def reset(self):
+        """
+        Reset summary item attributes.
+        """
+        self.title = None
+        self.parameters = None
+
+        for tab in self.tabs:
+            tab.reset()
+
+    def run_event(self, window, event, values, user):
+        """
+        Run a transaction audit event.
+        """
+        # Run a summary tab event
+        tab_keys = [i for j in self.tabs for i in j.elements]
+        if event in tab_keys:
+            tab = self.fetch_tab(event, by_key=True)
+            tab.run_event(window, event, values, user)
 
     def layout(self, win_size: tuple = None):
         """
@@ -855,316 +877,119 @@ class SummaryPanel:
             width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         # Layout settings
-        pad_frame = mod_const.FRAME_PAD
-        pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
 
         bg_col = mod_const.ACTION_COL
-        default_col = mod_const.DEFAULT_COL
         inactive_col = mod_const.INACTIVE_COL
         text_col = mod_const.TEXT_COL
         select_col = mod_const.SELECT_TEXT_COL
-        header_col = mod_const.HEADER_COL
 
         font_h = mod_const.BOLD_FONT
 
-        tabs = self.tabs
+        # Element sizes
+        layout_height = height * 0.8
+        frame_height = layout_height * 0.70
+        panel_height = frame_height - 80
+        tab_height = panel_height * 0.6
 
-        frame_width = width - 120
+        layout_pad = 120
+        win_diff = width - mod_const.WIN_WIDTH
+        layout_pad = layout_pad + (win_diff / 5)
 
-        # Layout elements
-        layout = []
+        frame_width = width - layout_pad if layout_pad > 0 else width
+        panel_width = frame_width - 30
+        tab_width = panel_width - 30
 
-        # Panel heading layout
+        # Panel Title
         title_key = self.key_lookup('Title')
-        header_layout = [
-            [sg.Col([[sg.Text(self.title, key=title_key, size=(40, 1), pad=(0, 0), font=font_h,
-                              background_color=bg_col, tooltip=self.title)]],
-                    vertical_alignment='c', background_color=bg_col, expand_x=True)],
-            [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=mod_const.HEADER_COL)]]
+        title_layout = [sg.Col([[sg.Text(self.title, key=title_key, size=(int(frame_width / int(font_h[1])), 1),
+                                         font=font_h, background_color=bg_col, tooltip=self.title)]],
+                               vertical_alignment='c', background_color=bg_col, expand_x=True)]
 
-        layout.append([sg.Col(header_layout, pad=(pad_frame, 0), background_color=bg_col,
-                              justification='l', expand_x=True)])
+        # Record tabs
+        record_tabs = []
+        for tab in self.tabs:
+            tab_key = tab.key_lookup('Tab')
+            tab_title = tab.title
+            tab_layout = tab.record.layout(win_size=(tab_width, tab_height), title_bar=False, buttons=False)
+            record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col))
 
-        # Main screen
         tg_key = self.key_lookup('TG')
-        tg_layout = [[sg.TabGroup([mod_lo.tab_layout(tabs, win_size=win_size, initial_visibility='all')],
-                                  key=tg_key, pad=(0, 0), background_color=bg_col,
-                                  tab_background_color=inactive_col, selected_background_color=bg_col,
-                                  selected_title_color=select_col, title_color=text_col)]]
+        tg_layout = [sg.TabGroup([record_tabs], key=tg_key, pad=(0, 0), background_color=bg_col,
+                                 tab_background_color=inactive_col, selected_background_color=bg_col,
+                                 selected_title_color=select_col, title_color=text_col)]
 
-        layout.append([sg.Col(tg_layout, pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True)])
+        # Panel layout
+        layout = sg.Col([title_layout, [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)], tg_layout],
+                        key=self.element_key, background_color=bg_col, vertical_alignment='t', visible=False,
+                        expand_y=True, expand_x=True)
 
         return layout
 
-    def resize_elements(self, window, win_size: tuple = None):
+    def resize_elements(self, window, size):
         """
-        Resize summary items tables
+        Resize the summary panel.
         """
-        win_size = win_size if win_size else window.size
-
         tabs = self.tabs
         for tab in tabs:
             # Reset summary item attributes
-            tab.resize_elements(window, win_size=win_size)
+            tab.record.resize(window, win_size=size)
 
-    def update_display(self, window):
-        """
-        Format summary item data elements for display.
-        """
-        default_col = mod_const.ACTION_COL
-        greater_col = mod_const.PASS_COL
-        lesser_col = mod_const.FAIL_COL
-
-        tbl_error_col = mod_const.TBL_ERROR_COL
-
-        tabs = self.tabs
-        for tab in tabs:
-            # Update audit field with the tab document number
-            doc_no = tab.id
-            elem_size = len(doc_no)
-
-            no_key = tab.key_lookup('DocNo')
-            window[no_key].set_size((elem_size, None))
-            window[no_key].update(value=doc_no)
-
-            # Reset column data types
-            tab.set_datatypes()
-
-            # Modify records tables for displaying
-            print('Info: rule {RULE}, summary {NAME}: formatting records table for displaying'
-                  .format(RULE=self.rule_name, NAME=tab.name))
-
-            id_column = tab.records['IDColumn']
-            record_ids = tab.df[id_column].dropna().unique().tolist()
-            if len(record_ids) < 1:
-                print('Info: rule {RULE}, summary {NAME}: no records to display'
-                      .format(RULE=self.rule_name, NAME=tab.name))
-                data = []
-                error_colors = []
-            else:
-                display_df = tab.format_display_table(tab.df, columns=tab.records['DisplayColumns'])
-                data = display_df.values.tolist()
-
-                # Highlight rows with discrepancies
-                errors = tab.search_for_errors()
-                error_colors = [(i, tbl_error_col) for i in errors]
-
-            tbl_key = tab.key_lookup('Table')
-            window[tbl_key].update(values=data, row_colors=error_colors)
-            window.refresh()
-
-            # Modify totals tables for displaying
-            print('Info: rule {RULE}, summary {NAME}: formatting totals table for displaying'
-                  .format(RULE=self.rule_name, NAME=tab.name))
-            totals_display_df = tab.format_display_table(tab.totals_df, columns=tab.totals['DisplayColumns'])
-            totals_data = totals_display_df.values.tolist()
-
-            totals_key = tab.key_lookup('Totals')
-            window[totals_key].update(values=totals_data)
-
-            # Update summary totals elements
-            total_key = tab.key_lookup('Total')
-            tally_rule = tab.totals['TallyRule']
-
-            if tally_rule:
-                totals_sum = mod_dm.evaluate_rule(tab.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
-            else:
-                totals_sum = tab.totals_df.iloc[0].sum()
-
-            window[total_key].update(value='{:,.2f}'.format(totals_sum))
-
-            sum_column = tab.records['SumColumn']
-            records_sum = tab.df[sum_column].sum()
-            remainder = int(totals_sum - records_sum)
-            if remainder > 0:
-                print('Info: rule {RULE}, summary {NAME}: records are under-allocated by {AMOUNT}'
-                      .format(RULE=self.rule_name, NAME=tab.name, AMOUNT=remainder))
-                bg_color = greater_col
-            elif remainder < 0:
-                print('Info: rule {RULE}, summary {NAME}: records are over-allocated by {AMOUNT}'
-                      .format(RULE=self.rule_name, NAME=tab.name, AMOUNT=abs(remainder)))
-                bg_color = lesser_col
-            else:
-                bg_color = default_col
-
-            remain_key = tab.key_lookup('Remainder')
-            window[remain_key].update(value='{:,.2f}'.format(remainder), background_color=bg_color)
-
-            # Change edit note button to be highlighted if note field not empty
-            note_key = tab.key_lookup('Note')
-            note_text = tab.notes['Value']
-            if note_text:
-                window[note_key].update(image_data=mod_const.EDIT_NOTE_ICON)
-            else:
-                window[note_key].update(image_data=mod_const.TAKE_NOTE_ICON)
-
-    def initialize_tables(self, rule):
+    def map_records(self, rule_tabs):
         """
         Update summary item tables with data from tab item dataframes.
         """
         tabs = self.tabs
         for tab in tabs:
-            tab.initialize_table(rule)
+            tab.map_records(rule_tabs)
 
-    def reset_attributes(self):
+    def map_summaries(self, rule_tabs):
         """
-        Reset summary item attributes.
+        Update audit records with transaction table totals.
         """
         tabs = self.tabs
         for tab in tabs:
-            # Reset summary item attributes
-            tab.reset_dynamic_attributes()
+            tab.map_summary(rule_tabs)
 
-    def update_totals(self, rule):
+    def update_title(self, window, params):
         """
-        Populate totals table with audit tab summary totals.
+        Update summary panel title to include audit parameters.
         """
-        operators = set('+-*/')
-
-        tabs = self.tabs
-        for tab in tabs:
-            name = tab.name
-            totals = tab.totals
-            df = tab.totals_df
-
-            db_columns = totals['TableColumns']
-            mapping_columns = totals['MappingColumns']
-            edit_columns = totals['EditColumns']
-            for column in db_columns:
-                try:
-                    reference = mapping_columns[column]
-                except KeyError:
-                    if column not in edit_columns:
-                        print('Error: rule {RULE}, summary {NAME}: column {COL} not found in either mapping columns or '
-                              'edit columns'.format(RULE=self.rule_name, NAME=name, COL=column))
-                    df.at[0, column] = 0
-                    df[column] = pd.to_numeric(df[column], downcast='float')
-                    continue
-
-                # Add audit tab summaries to totals table
-                rule_values = []
-                for component in mod_dm.parse_operation_string(reference):
-                    if component in operators:
-                        rule_values.append(component)
-                        continue
-
-                    try:  # component is numeric
-                        float(component)
-                    except ValueError:
-                        try:  # component is potentially a data table column
-                            ref_table, ref_col = component.split('.')
-                        except ValueError:  # unaccepted type
-                            if component in edit_columns:
-                                rule_values.append(0)
-                                continue
-                            else:
-                                print('Error: rule {RULE}, summary {NAME}: unknown data type {COMP} in rule {REF}'
-                                      .format(RULE=self.rule_name, NAME=name, COMP=component, REF=reference))
-                                rule_values.append(0)
-                                continue
-                        else:
-                            try:
-                                tab_summary = rule.fetch_tab(ref_table).summary_rules
-                            except AttributeError:
-                                print('Error: rule {RULE}, summary {NAME}: tab item {TAB} not in list of Tabs'
-                                      .format(RULE=self.rule_name, NAME=name, TAB=ref_table))
-                                rule_values.append(0)
-                                continue
-
-                            if ref_col in tab_summary:
-                                try:
-                                    rule_values.append(tab_summary[ref_col]['Total'])
-                                except KeyError:
-                                    rule_values.append(0)
-                            else:
-                                print('Error: rule {RULE}, summary {NAME}: column {COL} not found in tab {TAB} summary'
-                                      .format(RULE=self.rule_name, NAME=name, COL=ref_col, TAB=ref_table))
-                                rule_values.append(0)
-
-                    else:
-                        rule_values.append(component)
-
-                try:
-                    summary_total = eval(' '.join([str(i) for i in rule_values]))
-                except Exception as e:
-                    print('Error: rule {RULE}, summary {NAME}: {ERR}'
-                          .format(RULE=self.rule_name, NAME=tab.name, ERR=e))
-                    summary_total = 0
-
-                print('Info: rule {RULE}, summary {NAME}: adding {SUMM} to column {COL}'
-                      .format(RULE=self.rule_name, NAME=name, SUMM=summary_total, COL=column))
-
-                df.at[0, column] = summary_total
-                df[column] = pd.to_numeric(df[column], downcast='float')
-
-            tab.totals_df = df
-
-    def update_static_fields(self, window, rule):
-        """
-        Update summary panel static fields to include audit parameters.
-        """
-        aliases = self.aliases
-
-        params = rule.parameters
-
         # Update summary title with parameter values, if specified in title format
         try:
             title_components = re.findall(r'\{(.*?)\}', self._title)
         except TypeError:
             title_components = []
         else:
-            print('Info: rule {RULE}, Summary: summary title components are {COMPS}'
-                  .format(RULE=self.rule_name, COMPS=title_components))
+            print('Info: AuditRuleSummary {NAME}: summary title components are {COMPS}'
+                  .format(NAME=self.name, COMPS=title_components))
 
         title_params = {}
         for param in params:
             param_col = param.name
-            value = param.value_obj
-
-            print('Info: rule {RULE}, Summary: value for summary parameter {PARAM} is {VAL}'
-                  .format(RULE=self.rule_name, PARAM=param_col, VAL=value))
 
             # Check if parameter composes part of title
             if param_col in title_components:
-                if param_col in aliases:
-                    try:
-                        final_val = aliases[param_col][value]
-                    except KeyError:
-                        print('Warning: rule {RULE}, Summary: value {VAL} not found in alias list for alias {ALIAS}'
-                              .format(RULE=self.rule_name, VAL=value, ALIAS=param_col))
-                        final_val = value
-                else:
-                    final_val = value
-
-                print('Info: rule {RULE}, Summary: adding parameter value {VAL} to title'
-                      .format(RULE=self.rule_name, VAL=final_val))
-
-                if isinstance(final_val, datetime.datetime):
-                    final_val = settings.apply_date_offset(final_val)
-                    title_params[param_col] = final_val.strftime('%Y-%m-%d')
-                else:
-                    title_params[param_col] = final_val
+                display_value = param.format_display()
+                print('Info: AuditRuleSummary {NAME}: adding parameter value {VAL} to title'
+                      .format(NAME=self.name, VAL=display_value))
+                title_params[param_col] = display_value
             else:
-                print('Warning: rule {RULE}, Summary: parameter {PARAM} not found in title'
-                      .format(RULE=self.rule_name, PARAM=param_col))
+                print('Warning: AuditRuleSummary {NAME}: parameter {PARAM} not found in title'
+                      .format(NAME=self.name, PARAM=param_col))
 
         try:
             summ_title = self._title.format(**title_params)
         except KeyError as e:
-            print('Error: rule {RULE}, Summary: formatting summary title failed due to {ERR}'
-                  .format(RULE=self.rule_name, ERR=e))
+            print('Error: AuditRuleSummary {NAME}: formatting summary title failed due to {ERR}'
+                  .format(NAME=self.name, ERR=e))
             summ_title = self._title
 
-        print('Info: rule {RULE}, Summary: formatted summary title is {TITLE}'
-              .format(RULE=self.rule_name, TITLE=summ_title))
+        print('Info: AuditRuleSummary {NAME}: formatted summary title is {TITLE}'
+              .format(NAME=self.name, TITLE=summ_title))
 
         title_key = self.key_lookup('Title')
         window[title_key].update(value=summ_title)
-
-        # Add rule parameters to tab parameters
-        for tab in self.tabs:
-            tab.parameters = params
 
         self.title = summ_title
 
@@ -1582,13 +1407,13 @@ class SummaryPanel:
 
         return all(success)
 
-    def load_from_database(self, user, parameters):
+    def load_audits(self, user, parameters):
         """
         Load previous audit from the program database.
         """
         exists = []
         for tab in self.tabs:
-            exists.append(tab.load_from_database(user, parameters))
+            exists.append(tab.load_data(user, parameters))
 
         return all(exists)
 
@@ -1853,11 +1678,12 @@ class AuditRuleTransaction:
         # Class attributes
         import_rules = self.import_rules
         table = self.table
+        table.sort()
         db_columns = {j: '{TBL}.{COL}'.format(TBL=table, COL=i) for table in import_rules
                       for i, j in import_rules[table]['Columns'].items()}
 
         pkey = table.id_column
-        df = table.sort()
+        df = table.df
         id_list = table.row_ids()
 
         # Data importing parameters
@@ -2094,8 +1920,8 @@ class AuditRuleTransaction:
                 try:
                     comp_value = identifier[comp_index[0]: comp_index[1]]
                 except IndexError:
-                    print('Warning: AuditRuleTransaction {NAME}: ID component {COMP} cannot be found in identifier {IDENT}'
-                          .format(NAME=self.name, COMP=component, IDENT=identifier))
+                    print('Warning: AuditRuleTransaction {NAME}: ID component {COMP} cannot be found in identifier '
+                          '{IDENT}'.format(NAME=self.name, COMP=component, IDENT=identifier))
 
                 break
 
@@ -2132,3 +1958,397 @@ def replace_nth(s, sub, new, ns):
         new_s = before + after
 
     return new_s
+
+
+class AuditRecordTab:
+    """
+    Class to store information about an audit record.
+    """
+
+    def __init__(self, name, entry):
+
+        self.name = name
+        self.id = randint(0, 1000000000)
+        self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
+        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ['Tab']]
+
+        record_entry = configuration.records.fetch_rule(name)
+        self.record = mod_records.TAuditRecord(name, record_entry.record_layout, {}, new_record=True)
+        self.elements += self.record.elements
+
+        try:
+            self.merge = bool(int(entry['MergeTransactions']))
+        except KeyError:
+            msg = 'missing required configuration parameter "MergeTransactions"'
+            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            sys.exit(1)
+        except ValueError:
+            msg = 'unsupported value provided to configuration parameter "MergeTransactions". Supported values are 0 ' \
+                  '(False) or 1 (True)'
+            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            sys.exit(1)
+
+        try:
+            self.title = entry['Title']
+        except KeyError:
+            self.title = name
+
+        try:
+            self.summary_mapping = entry['SummaryMapping']
+        except KeyError:
+            msg = 'missing required configuration parameter "SummaryMapping"'
+            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            sys.exit(1)
+
+        try:
+            self.record_mapping = entry['RecordMapping']
+        except KeyError:
+            msg = 'missing required configuration parameter "RecordMapping"'
+            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            sys.exit(1)
+
+        try:
+            self.defaults = entry['Defaults']
+        except KeyError:
+            self.defaults = {}
+
+        # Dynamic attributes
+        self.unused_records = []
+
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i.split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            print('Warning: component {COMP} not found in list of bank rule {PARAM} components'
+                  .format(COMP=component, PARAM=self.name))
+            key = None
+
+        return key
+
+    def reset(self):
+        """
+        Reset Summary tab record.
+        """
+        record_type = self.name
+        record_entry = configuration.records.fetch_rule(record_type)
+        record = mod_records.TAuditRecord(record_type, record_entry.record_layout, {}, new_record=True)
+
+        self.record = record
+        self.unused_records = []
+
+    def run_event(self, window, event, values, user):
+        """
+        Run an audit summary record event.
+        """
+        # Run a summary tab event
+        record_keys = self.record.elements
+        if event in record_keys:
+            self.record.run_event(window, event, values, user)
+
+    def remove_unsaved_keys(self):
+        """
+        Remove unsaved IDs from the table IDs lists.
+        """
+        for id_field in self.ids:
+            id_param = self.ids[id_field]
+            db_table = id_param['DatabaseTable']
+            print('Info: rule {RULE}, summary {NAME}: removing unsaved IDs created in cancelled audit from table '
+                  '{TBL}, column {ID}'.format(RULE=self.rule_name, NAME=self.name, TBL=db_table, ID=id_field))
+
+            try:
+                all_ids = self.df[id_field].dropna().unique().tolist()
+                existing_ids = self.import_df[id_field].dropna().unique().tolist()
+            except KeyError:
+                created_ids = set()
+            else:
+                created_ids = set(all_ids).difference(set(existing_ids))
+
+            for record_id in created_ids:
+                try:
+                    current_tbl_pkeys[db_table].remove(record_id)
+                except ValueError:
+                    print('Warning: attempting to remove non-existent ID "{ID}" from the list of '
+                          'database table {TBL} IDs'.format(ID=record_id, TBL=db_table))
+                    continue
+                else:
+                    print('Info: rule {RULE}, summary {NAME}: removed ID {ID} from the list of database table {TBL} IDs'
+                          .format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
+
+    def load_data(self, user, params):
+        """
+        Load previous audit (if exists) and IDs from the program database.
+        """
+        # Prepare the database query statement
+        record_entry = configuration.records.fetch_rule(self.name)
+        import_rules = record_entry.import_rules
+
+        main_table = mod_db.get_primary_table(import_rules)
+        filters = mod_db.format_import_filters(import_rules)
+        table_statement = mod_db.format_tables(import_rules)
+        columns = mod_db.format_import_columns(import_rules)
+
+        # Add parameter values to the filter statement
+        param_filters = [i.query_statement(table=main_table) for i in params]
+        filters += param_filters
+
+        # Import primary bank data from database
+        try:
+            import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
+        except Exception as e:
+            mod_win2.popup_error('Error: AuditSummaryTab {NAME}: failed to import data from the database - {ERR}'
+                                 .format(NAME=self.name, ERR=e))
+            data_loaded = False
+        else:
+            if not import_df.empty:
+                # Update record parameters and attributes with imported data
+                data_loaded = True
+            else:
+                data_loaded = False
+
+        return data_loaded
+
+    def map_summary(self, rule_tabs):
+        """
+        Populate totals table with audit tab summary totals.
+        """
+        operators = set('+-*/%')
+
+        name = self.name
+        totals = self.record.fetch_element('Totals')
+        df = totals.df.copy()
+
+        # Store transaction table summaries for mapping
+        summary_map = {}
+        for tab in rule_tabs:
+            tab_name = tab.name
+            summary = tab.table.summarize_table()
+            for rule_name, rule_value in summary:
+                summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=rule_name)] = rule_value
+
+        # Map audit totals columns to transaction table summaries
+        db_columns = totals.df.columns.tolist()
+        mapping_columns = self.summary_mapping
+        for column in db_columns:
+            try:
+                mapper = mapping_columns[column]
+            except KeyError:
+                print('Info: AuditSummaryTab {NAME}: column {COL} not found in list of mapping columns ... '
+                      'setting value to zero'.format(NAME=name, COL=column))
+                summary_total = 0
+            else:
+                # Add audit tab summaries to totals table
+                rule_values = []
+                for component in mod_dm.parse_operation_string(mapper):
+                    if component in operators:
+                        rule_values.append(component)
+                        continue
+
+                    try:  # component is numeric
+                        float(component)
+                    except ValueError:
+                        if component in summary_map:
+                            rule_values.append(summary_map[component])
+                        else:
+                            print('Error: AuditSummaryTab {NAME}: column {COL} not found in transaction table summaries'
+                                  .format(NAME=name, COL=component))
+                            rule_values.append(0)
+
+                    else:
+                        rule_values.append(component)
+
+                try:
+                    summary_total = eval(' '.join([str(i) for i in rule_values]))
+                except Exception as e:
+                    print('Error: AuditSummaryTab {NAME}: {ERR}'
+                          .format(NAME=self.name, ERR=e))
+                    summary_total = 0
+
+            print('Info: AuditSummaryTab {NAME}: adding {SUMM} to column {COL}'
+                  .format(NAME=name, SUMM=summary_total, COL=column))
+
+            df.at[0, column] = summary_total
+            df[column] = pd.to_numeric(df[column], downcast='float')
+
+        totals.df = df
+
+    def map_records(self):
+        """
+        Map transaction records from the audit to account records.
+        """
+        pass
+
+
+class AuditRecordAdd(AuditRecordTab):
+    """
+    """
+
+    def __init__(self, rule_name, name, sdict):
+        super().__init__(rule_name, name, sdict)
+        self.type = 'Add'
+
+    def initialize_table(self, rule):
+        """
+        Populate the summary item dataframe with added records.
+        """
+        df = self.import_df.copy()
+        print('Info: rule {RULE}, summary {NAME}: updating table'
+              .format(RULE=self.rule_name, NAME=self.name))
+
+        if self.import_df.empty:  # no records for selected parameters in database
+            # Add empty row to the dataframe
+            if df.shape[0]:  # no rows in table
+                df = df.append(pd.Series(), ignore_index=True)
+
+            # Create identifiers as defined in the configuration
+            df = self.assign_record_ids(df, 0)
+
+            # Set parameter values
+            for param in rule.parameters:
+                colname = param.alias
+                value = param.value_obj
+                df.at[0, colname] = value
+
+            # Update amount column
+            sum_column = self.records['SumColumn']
+            df[sum_column] = pd.to_numeric(df[sum_column], downcast='float')
+
+            tally_rule = self.totals['TallyRule']
+            if tally_rule:
+                totals_sum = mod_dm.evaluate_rule(self.totals_df.iloc[[0]], tally_rule, as_list=False).sum()
+            else:
+                totals_sum = self.totals_df.iloc[0].sum()
+
+            df.at[0, sum_column] = totals_sum
+
+        # Update static columns with default values, if specified in rules
+        df = self.update_static_columns(df)
+
+        # Update edit columns with default values, if specified in rules
+        df = self.update_edit_columns(df)
+
+        self.df = df
+
+
+class AuditRecordSubset(AuditRecordTab):
+    """
+    """
+
+    def __init__(self, rule_name, name, sdict):
+        super().__init__(rule_name, name, sdict)
+        self.type = 'Subset'
+
+    def initialize_table(self, rule):
+        """
+        Populate the summary item dataframe with rows from the TabItem dataframes specified in the configuration.
+        """
+        df = import_df = self.import_df.copy()
+
+        records = self.records
+
+        db_columns = records['TableColumns']
+        mapping_columns = records['MappingColumns']
+        references = records['ReferenceTables']
+
+        # Get list of existing records
+        id_column = records['IDColumn']
+        try:
+            existing_ids = import_df[id_column].tolist()
+        except KeyError:
+            print('Configuration Warning: rule {RULE}, summary {NAME}: IDColumn "{COL}" not found in the database table'
+                  .format(RULE=self.rule_name, NAME=self.name, COL=id_column))
+            existing_ids = []
+
+        print('Info: rule {RULE}, summary {NAME}: updating table'.format(RULE=self.rule_name, NAME=self.name))
+
+        # Extract desired records from the audit tab summaries
+        for reference in references:
+            subset_rule = references[reference]
+            try:
+                tab_df = rule.fetch_tab(reference).df
+            except AttributeError:
+                print('Warning: rule {RULE}, summary {NAME}: reference table {REF} not found in tab items'
+                      .format(RULE=self.rule_name, NAME=self.name, REF=reference))
+                continue
+
+            # Subset tab item dataframe using subset rules defined in the ReferenceTable parameter
+            print('Info: rule {RULE}, summary {NAME}: subsetting reference table {REF}'
+                  .format(RULE=self.rule_name, NAME=self.name, REF=reference))
+            try:
+                subset_df = mod_dm.subset_dataframe(tab_df, subset_rule)
+            except Exception as e:
+                print('Warning: rule {RULE}, summary {NAME}: subsetting table {REF} failed due to {ERR}'
+                      .format(RULE=self.rule_name, NAME=self.name, REF=reference, ERR=e))
+                continue
+            else:
+                if subset_df.empty:
+                    print('Info: rule {RULE}, summary {NAME}: no data from reference table {REF} to add to summary'
+                          .format(RULE=self.rule_name, NAME=self.name, REF=reference))
+                    continue
+
+            # Select columns based on MappingColumns parameter
+            append_df = pd.DataFrame(columns=df.columns.values.tolist())
+            for mapping_column in mapping_columns:
+                if mapping_column not in db_columns:
+                    print('Error: rule {RULE}, summary {NAME}: mapping column {COL} not in list of table columns'
+                          .format(RULE=self.rule_name, NAME=self.name, COL=mapping_column))
+                    continue
+
+                mapping_rule = mapping_columns[mapping_column]
+                col_to_add = mod_dm.generate_column_from_rule(subset_df, mapping_rule)
+                append_df[mapping_column] = col_to_add
+
+            # Find rows from the dataframe to append that are already found in the existing dataset
+            append_ids = append_df[id_column].tolist()
+
+            rows_to_drop = []
+            for record_index, record_id in enumerate(append_ids):
+                if record_id in existing_ids:
+                    print('Info: rule {RULE}, summary {NAME}: record "{ID}" already exists in the database'
+                          .format(RULE=self.rule_name, NAME=self.name, ID=record_id))
+                    rows_to_drop.append(record_id)
+                else:
+                    append_df = self.assign_record_ids(append_df, record_index)
+
+            # Filter records from dataframe of records to append that were marked for removal
+            append_df = append_df[~append_df[id_column].isin(rows_to_drop)]
+
+            # Append data to the records dataframe
+            df = mod_dm.append_to_table(df, append_df)
+
+        self.df = df
+        if df.empty:  # no records generated from database or tab summaries
+            # Create the primary identifier for the summary tab
+            for id_field in self.ids:
+                id_param = self.ids[id_field]
+                if id_param['IsPrimary'] is True:
+                    db_table = id_param['DatabaseTable']
+                    all_ids = current_tbl_pkeys[db_table]
+
+                    pkey_param = id_param
+
+                    break
+
+            primary_id = self.create_id(pkey_param, all_ids)
+
+            self.id = primary_id
+            current_tbl_pkeys[db_table].append(primary_id)
+        else:
+            # Set parameter values
+            for param in self.parameters:
+                colname = param.alias
+                value = param.value_obj
+                df[colname] = value
+
+            # Update static columns with default values, if specified in rules
+            df = self.update_static_columns(df)
+
+            # Update edit columns with default values, if specified in rules
+            df = self.update_edit_columns(df)
+
+        self.df = df
