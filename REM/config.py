@@ -374,7 +374,7 @@ class RecordEntry:
 
         return import_df
 
-    def load_record(self, record_id):
+    def load_record_data(self, record_id):
         """
         Load a record from the database using the record ID.
         """
@@ -798,6 +798,14 @@ class Config:
             self.date_field = cnfg['fields']['date_field']
         except KeyError:
             self.date_field = 'DocDate'
+        try:
+            self.notes_field = cnfg['field']['notes_field']
+        except KeyError:
+            self.notes_field = 'Notes'
+        try:
+            self.warnings_field = cnfg['field']['warnings_field']
+        except KeyError:
+            self.warnings_field = 'Warnings'
 
         # Lookup tables
         try:
