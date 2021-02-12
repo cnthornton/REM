@@ -119,6 +119,8 @@ class DatabaseRecord:
 
         self.creator = record_data.get(configuration.creator_code, None)
         self.creation_date = record_data.get(configuration.creation_date, None)
+        self.editor = record_data.get(configuration.editor_code, None)
+        self.edit_date = record_data.get(configuration.edit_date, None)
 
         # Required record elements
         self.parameters = []
@@ -172,7 +174,6 @@ class DatabaseRecord:
                             continue
 
                     param_obj.df = param_obj.df.append(table_data, ignore_index=True)
-                    print(param_obj.df)
                 else:  # parameter is a data element
                     try:
                         param_value = record_data[param]
@@ -274,8 +275,8 @@ class DatabaseRecord:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            raise KeyError('component {COMP} not found in list of data element {PARAM} components'
-                           .format(COMP=component, PARAM=self.name))
+            raise KeyError('component {COMP} not found in list of record {NAME} components'
+                           .format(COMP=component, NAME=self.name))
 
         return key
 
@@ -293,43 +294,45 @@ class DatabaseRecord:
         reference_elems = [i for reference in self.references for i in reference.elements]
 
         if event == self.key_lookup('ReferencesButton'):
-            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
+            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing References frame'
+                  .format(NAME=self.name, ID=self.record_id))
             self.collapse_expand(window, frame='references')
         elif event == self.key_lookup('ComponentsButton'):
-            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
+            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing Components frame'
+                  .format(NAME=self.name, ID=self.record_id))
             self.collapse_expand(window, frame='components')
         elif event in param_elems:  # parameter event
             try:
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                print('Error: RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
                 result = param.run_event(window, event, values, user)
         elif event in component_elems:  # component table event
             try:
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find component associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                print('Error: RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
                 result = component_table.run_event(window, event, values, user)
         elif event in reference_elems:
             try:
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                print('Error: RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
                 result = refbox.run_event(window, event, values, user)
         elif event == approved_key:
             self.approved = values[approved_key]
-            print('Info: record {ID}: setting approved to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.approved))
+            print('Info: RecordType {NAME}, Record {ID}: setting approved to be {VAL}'
+                  .format(NAME=self.name, ID=self.record_id, VAL=self.approved))
         elif event == marked_key:
             self.marked_for_deletion = values[marked_key]
-            print('Info: record {ID}: setting marked for deletion to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
+            print('Info: RecordType {NAME}, Record {ID}: setting marked for deletion to be {VAL}'
+                  .format(NAME=self.name, ID=self.record_id, VAL=self.marked_for_deletion))
         elif event == save_key:
             # Update record parameters in the record database table
             # Remove any deleted references from the record reference table
@@ -337,8 +340,8 @@ class DatabaseRecord:
                 refkey = refbox.key_lookup('Element')
                 ref_removed = window[refkey].metadata['deleted']
                 if ref_removed is True:
-                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
-                          .format(ID=self.record_id, REF=refbox.record_id))
+                    print('Info: RecordType {NAME}, Record {ID}: deleting link between records {ID} and {REF} in '
+                          'record reference table'.format(NAME=self.name, ID=self.record_id, REF=refbox.record_id))
             # Remove any deleted components from the record reference table
 
             return False
@@ -363,7 +366,7 @@ class DatabaseRecord:
             index = element_names.index(element)
             parameter = self.parameters[index]
         else:
-            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
+            raise KeyError('element {ELEM} not found in list of record {NAME} elements'
                            .format(ELEM=element, NAME=self.name))
 
         return parameter
@@ -384,7 +387,7 @@ class DatabaseRecord:
             index = references.index(reference)
             ref_elem = self.references[index]
         else:
-            raise KeyError('reference {ELEM} not found in list of {NAME} references'
+            raise KeyError('reference {ELEM} not found in list of record {NAME} references'
                            .format(ELEM=reference, NAME=self.name))
 
         return ref_elem
@@ -405,7 +408,7 @@ class DatabaseRecord:
             index = components.index(component)
             comp_tbl = self.components[index]
         else:
-            raise KeyError('component {ELEM} not found in list of {NAME} component tables'
+            raise KeyError('component {ELEM} not found in list of record {NAME} component tables'
                            .format(ELEM=component, NAME=self.name))
 
         return comp_tbl
@@ -469,12 +472,12 @@ class DatabaseRecord:
 
         id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
         id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
                               font=main_font, background_color=bg_col, tooltip=id_tooltip,
                               metadata={'visible': True, 'disabled': False, 'value': self.record_id}),
                       sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
                       sg.Text(record_date, key=self.key_lookup('RecordDate'), font=main_font,
-                              background_color=bg_col, auto_size_text=True,
+                              background_color=bg_col, size=(14, 1),
                               metadata={'visible': True, 'disabled': False, 'value': self.record_date})]]
 
         # Header layout
@@ -715,8 +718,22 @@ class DatabaseRecord:
         for param in self.parameters:
             param.update_display(window, window_values=window_values)
 
+        # Update the components display table
         for component in self.components:
             component.update_display(window, window_values=window_values)
+
+        # Update records header
+        id_key = self.key_lookup('RecordID')
+        date_key = self.key_lookup('RecordDate')
+        record_id = self.record_id
+        record_date = settings.format_display_date(self.record_date)
+        window[id_key].set_size(size=(len(record_id) + 1, None))
+        window[id_key].update(value=record_id)
+        window[date_key].set_size(size=(len(record_date) + 1, None))
+        window[date_key].update(value=record_date)
+
+        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
+        window[id_key].set_tooltip(id_tooltip)
 
     def collapse_expand(self, window, frame: str = 'references'):
         """
@@ -803,10 +820,10 @@ class DepositRecord(DatabaseRecord):
 
         id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
         id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
                               font=main_font, background_color=bg_col, tooltip=id_tooltip),
                       sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(record_date, key=self.key_lookup('RecordDate'), auto_size_text=True, font=main_font,
+                      sg.Text(record_date, key=self.key_lookup('RecordDate'), size=(14, 1), font=main_font,
                               background_color=bg_col)]]
         try:
             deposit_title = header_elements.get('DepositAmount', 'Deposit Total')
@@ -891,7 +908,20 @@ class DepositRecord(DatabaseRecord):
                 print('Error: record {ID}: unable to find component associated with event key {KEY}'
                       .format(ID=self.record_id, KEY=event))
             else:
-                component_table.run_event(window, event, values, user)
+                # Check if component table is an account table
+                comp_record_type = component_table.record_type
+                if comp_record_type in configuration.records.group_elements('account'):
+                    if event == component_table.key_lookup('Import'):  # import account records
+                        comp_entry = configuration.records.fetch_rule(comp_record_type)
+                        export_columns = {j: i for i, j in comp_entry.import_rules['Columns']}
+                        filters = [[export_columns['Approved'], '=', self.approved],
+                                   [export_columns['PaymentType'], '=', self.fetch_element('PaymentType').value]]
+
+                        component_table.df = component_table.import_rows(filters)
+
+                else:
+                    component_table.run_event(window, event, values, user)
+
                 self.update_display(window, window_values=values)
         elif event in reference_elems:
             try:
@@ -943,6 +973,19 @@ class DepositRecord(DatabaseRecord):
         # Update the components display table
         for component in self.components:
             component.update_display(window, window_values=window_values)
+
+        # Update records header
+        id_key = self.key_lookup('RecordID')
+        date_key = self.key_lookup('RecordDate')
+        record_id = self.record_id
+        record_date = settings.format_display_date(self.record_date)
+        window[id_key].set_size(size=(len(record_id) + 1, None))
+        window[id_key].update(value=record_id)
+        window[date_key].set_size(size=(len(record_date) + 1, None))
+        window[date_key].update(value=record_date)
+
+        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
+        window[id_key].set_tooltip(id_tooltip)
 
         # Update the deposit total
         try:
@@ -1039,10 +1082,10 @@ class AccountRecord(DatabaseRecord):
 
         id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
         id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
                               font=main_font, background_color=bg_col, tooltip=id_tooltip),
                       sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(record_date, key=self.key_lookup('RecordDate'), auto_size_text=True, font=main_font,
+                      sg.Text(record_date, key=self.key_lookup('RecordDate'), size=(14, 1), font=main_font,
                               background_color=bg_col)]]
         try:
             amount_title = header_elements.get('Amount', 'Amount')
@@ -1162,12 +1205,26 @@ class AccountRecord(DatabaseRecord):
         """
         Update the display of the record's elements and components.
         """
+        # Update data element values
         for param in self.parameters:
             param.update_display(window, window_values=window_values)
 
-        # Update the
+        # Update the components display table
         for component in self.components:
             component.update_display(window, window_values=window_values)
+
+        # Update the record's header
+        id_key = self.key_lookup('RecordID')
+        date_key = self.key_lookup('RecordDate')
+        record_id = self.record_id
+        record_date = settings.format_display_date(self.record_date)
+        window[id_key].set_size(size=(len(record_id) + 1, None))
+        window[id_key].update(value=record_id)
+        window[date_key].set_size(size=(len(record_date) + 1, None))
+        window[date_key].update(value=record_date)
+
+        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
+        window[id_key].set_tooltip(id_tooltip)
 
         # Update the total amount
         try:
@@ -1247,11 +1304,11 @@ class TAuditRecord(DatabaseRecord):
 
         id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
         id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), auto_size_text=True,
+                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
                               font=main_font, background_color=bg_col, tooltip=id_tooltip),
                       sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
                       sg.Text(record_date, key=self.key_lookup('RecordDate'), pad=((0, pad_h), 0),
-                              auto_size_text=True, font=main_font, background_color=bg_col),
+                              size=(14, 1), font=main_font, background_color=bg_col),
                       sg.Button('', key=self.key_lookup('NotesButton'), image_data=mod_const.TAKE_NOTE_ICON,
                                 button_color=(text_col, bg_col), border_width=0, tooltip=notes_title),
                       sg.Text(self.note, key=self.key_lookup('Notes'), size=(1, 1), visible=False)]
@@ -1341,11 +1398,7 @@ class TAuditRecord(DatabaseRecord):
             note_text = mod_win2.notes_window(self.record_id, self.note, id_title=id_title, title=notes_title).strip()
             self.note = note_text
 
-            # Change edit note button to be highlighted if note field not empty
-            if note_text:
-                window[event].update(image_data=mod_const.EDIT_NOTE_ICON)
-            else:
-                window[event].update(image_data=mod_const.TAKE_NOTE_ICON)
+            self.update_display(window, window_values=values)
         elif event in param_elems:  # parameter event
             try:
                 param = self.fetch_element(event, by_key=True)
@@ -1414,6 +1467,27 @@ class TAuditRecord(DatabaseRecord):
         # Update the components display table
         for component in self.components:
             component.update_display(window, window_values=window_values)
+
+        # Update the record's header
+        id_key = self.key_lookup('RecordID')
+        date_key = self.key_lookup('RecordDate')
+        record_id = self.record_id
+        record_date = settings.format_display_date(self.record_date)
+        window[id_key].set_size(size=(len(record_id) + 1, None))
+        window[date_key].set_size(size=(len(record_date) + 1, None))
+
+        window[id_key].update(value=record_id)
+        window[date_key].update(value=record_date)
+
+        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
+        window[id_key].set_tooltip(id_tooltip)
+
+        # Change edit note button to be highlighted if note field not empty
+        note_key = self.key_lookup('NotesButton')
+        if self.note:
+            window[note_key].update(image_data=mod_const.EDIT_NOTE_ICON)
+        else:
+            window[note_key].update(image_data=mod_const.TAKE_NOTE_ICON)
 
         # Update the remainder
         totals_table = self.fetch_element('Totals')
@@ -1490,3 +1564,25 @@ def create_record(record_entry, record_data):
     record = record_class(record_entry.name, record_entry.record_layout, record_data, new_record=True, referenced=False)
 
     return record
+
+
+def remove_unsaved_keys(record):
+    """
+    Remove any unsaved IDs associated with the record, including the records own ID.
+    """
+    # Remove unsaved ID if record is new
+    if record.new is True:
+        record_entry = configuration.records.fetch_rule(record.name)
+        record_entry.remove_unsaved_id(record.record_id)
+
+    # Remove unsaved components
+    for comp_table in record.components:
+        comp_type = comp_table.record_type
+        if comp_type is None:
+            continue
+        else:
+            comp_entry = configuration.records.fetch_rule(comp_type)
+
+        for index, row in comp_table.df.iterrows():
+            row_id = row[comp_table.id_column]
+            comp_entry.remove_unsaved_id(row_id)

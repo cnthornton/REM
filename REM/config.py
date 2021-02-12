@@ -76,6 +76,17 @@ class RecordsConfiguration:
 
         return rule_names
 
+    def group_elements(self, record_group):
+        """
+        Return a list of record names matching the supplied record group.
+        """
+        types = []
+        for rule in self.rules:
+            if rule.group == record_group:
+                types.append(rule.name)
+
+        return types
+
     def fetch_rule(self, name, by_title: bool = False):
         """
         Fetch a given rule from the rule set by its name or title.
@@ -195,7 +206,12 @@ class RecordEntry:
         filters = []
         for import_table in import_rules:
             import_rule = import_rules[import_table]
-            filter_rules = import_rule["Filters"]
+
+            try:
+                filter_rules = import_rule["Filters"]
+            except KeyError:
+                continue
+
             if filter_rules is None or not isinstance(filter_rules, dict):
                 continue
 
@@ -220,6 +236,9 @@ class RecordEntry:
                     print('Error: the "Filters" parameters of import table {TBL} requires one or more import values'
                           .format(TBL=import_table))
                     continue
+                else:
+                    if len(parameters) == 1:
+                        parameters = parameters[0]
 
                 if isinstance(parameters, list) or isinstance(parameters, tuple):
                     values = ['?' for _ in parameters]
@@ -227,8 +246,12 @@ class RecordEntry:
                 else:
                     value = '?'
 
-                filters.append(('{TBL}.{COL} {OPER} {VAL}'
-                                .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
+                if operator in ('IN', 'NOT IN') and 'NULL' not in parameters:
+                    filters.append(('({TBL}.{COL} {OPER} {VAL} OR {TBL}.{COL} IS NULL)'
+                                    .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
+                else:
+                    filters.append(('{TBL}.{COL} {OPER} {VAL}'
+                                    .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
 
         return filters
 
@@ -275,7 +298,7 @@ class RecordEntry:
                         column = import_column
                     else:
                         if col_size is not None:
-                            column = '{FUNC}({COL} AS {DTYPE}({SIZE}))'\
+                            column = '{FUNC}({COL} AS {DTYPE}({SIZE}))' \
                                 .format(FUNC=converter, COL=column, DTYPE=dtype, SIZE=col_size)
                         else:
                             column = '{FUNC}({COL} AS {DTYPE})'.format(FUNC=converter, COL=column, DTYPE=dtype)
@@ -307,27 +330,26 @@ class RecordEntry:
             if join_rule is None and i == 0:
                 table_rules.append(import_table)
             elif join_rule is None and i > 0:
-                print('Configuration Error: RecordEntry {NAME}: a join rule is required to join data from import '
-                      'table {TBL}'.format(NAME=self.name, TBL=import_table))
+                print('Configuration Error: a join rule is required to join data from import table {TBL}'
+                      .format(TBL=import_table))
             else:
                 try:
-                    tbl1_field, tbl2_field, join_clause = join_rule[0:3]
+                    join_type, join_on = join_rule[0:2]
                 except ValueError:
-                    print('Configuration Error: RecordEntry {NAME}: import table {TBL} join rule {RULE} requires '
-                          'three components'.format(NAME=self.name, TBL=import_table, RULE=join_rule))
+                    print('Configuration Error: import table {TBL} join rule {RULE} requires three components'
+                          .format(TBL=import_table, RULE=join_rule))
                     continue
-                if join_clause not in joins:
-                    print('Configuration Error: RecordEntry {NAME}: unknown join type {JOIN} provided for import table '
-                          '{TBL}'.format(NAME=self.name, TBL=import_table, JOIN=join_clause))
+                if join_type not in joins:
+                    print('Configuration Error: unknown join type {JOIN} provided for import table {TBL}'
+                          .format(TBL=import_table, JOIN=join_type))
                     continue
 
-                opt_filters = ' AND '.join(join_rule[3:])
+                opt_filters = ' AND '.join(join_rule[2:])
                 if opt_filters:
-                    join_statement = '{JOIN} {TABLE} ON {F1}={F2} AND {OPTS}'\
-                        .format(JOIN=join_clause, TABLE=import_table, F1=tbl1_field, F2=tbl2_field, OPTS=opt_filters)
+                    join_statement = '{JOIN} {TABLE} ON {ON} AND {OPTS}' \
+                        .format(JOIN=join_type, TABLE=import_table, ON=join_on, OPTS=opt_filters)
                 else:
-                    join_statement = '{JOIN} {TABLE} ON {F1}={F2}'.format(JOIN=join_clause, TABLE=import_table,
-                                                                          F1=tbl1_field, F2=tbl2_field)
+                    join_statement = '{JOIN} {TABLE} ON {ON}'.format(JOIN=join_type, TABLE=import_table, ON=join_on)
                 table_rules.append(join_statement)
 
         return ' '.join(table_rules)

@@ -13,6 +13,7 @@ import textwrap
 
 from REM.config import configuration, settings
 import REM.constants as mod_const
+import REM.database as mod_db
 import REM.data_manipulation as mod_dm
 import REM.layouts as mod_lo
 from REM.main import __version__
@@ -223,7 +224,8 @@ def login_window(account):
     return account
 
 
-def record_window(record, user, win_size: tuple = None, save: bool = False, delete: bool = False, view_only: bool = False):
+def record_window(record, user, win_size: tuple = None, save: bool = False, delete: bool = False,
+                  view_only: bool = False):
     """
     Display the record window.
     """
@@ -258,15 +260,8 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
         event, values = window.read()
 
         if event == sg.WIN_CLOSED:  # selected close-window without accepting changes
-            # Remove unsaved ID if record is new
-            if record.new is True:
-                record_entry = configuration.records.fetch_rule(record.name)
-                try:
-                    record_entry.remove_unsaved_id(record.record_id)
-                except AttributeError:
-                    print('Warning: unknown record type provided to record {ID}'.format(ID=record.record_id))
-
-                record = None
+            # Remove unsaved IDs associated with the record
+            mod_records.remove_unsaved_keys(record)
 
             break
 
@@ -327,8 +322,9 @@ def notes_window(docno, note, id_title='RecordID', title='Note'):
                              background_color=header_col)]]
 
     header_layout = [
-        [sg.Text('{}:'.format(id_title), pad=((pad_el*2, pad_el), pad_el*2), font=bold_font, background_color=bg_col),
-         sg.Text(docno, size=(12, 1), pad=((pad_el, pad_el*2), pad_el*2), justification='l', font=main_font,
+        [sg.Text('{}:'.format(id_title), pad=((pad_el * 2, pad_el), pad_el * 2), font=bold_font,
+                 background_color=bg_col),
+         sg.Text(docno, size=(12, 1), pad=((pad_el, pad_el * 2), pad_el * 2), justification='l', font=main_font,
                  background_color=bg_col, auto_size_text=True, border_width=0)]]
 
     note_layout = [[sg.Text('{}:'.format(title), pad=(0, (0, pad_el)), background_color=bg_col, font=bold_font)],
@@ -337,7 +333,8 @@ def notes_window(docno, note, id_title='RecordID', title='Note'):
 
     main_layout = [[sg.Frame('', header_layout, pad=(pad_frame, pad_frame), background_color=header_col,
                              border_width=1, relief='raised')],
-                   [sg.Col(note_layout, pad=(pad_frame, (0, pad_frame)), background_color=input_col, justification='l')]]
+                   [sg.Col(note_layout, pad=(pad_frame, (0, pad_frame)), background_color=input_col,
+                           justification='l')]]
 
     bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=((0, pad_el), 0), tooltip='Cancel'),
                     mod_lo.B2('Save', key='-SAVE-', pad=((pad_el, 0), 0), tooltip='Save note')]]
@@ -460,7 +457,7 @@ def database_importer_window(user, win_size: tuple = None):
                 row_values = row.replace({np.nan: None}).values.tolist()
                 records_saved.append(user.insert(table, tbl_columns, row_values))
 
-            msg = 'Successfully saved {SUCCESS} rows to the database. Failed to save {FAIL} rows'\
+            msg = 'Successfully saved {SUCCESS} rows to the database. Failed to save {FAIL} rows' \
                 .format(SUCCESS=len([i for i in records_saved if i is True]),
                         FAIL=len([i for i in records_saved if i is False]))
             popup_notice(msg)
@@ -486,7 +483,8 @@ def database_importer_window(user, win_size: tuple = None):
             if out_fmt == 'csv':
                 subset_df.to_csv(outfile, sep=',', header=True, index=False)
             else:
-                subset_df.style.apply(highlight_bool, column=success_col, axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
+                subset_df.style.apply(highlight_bool, column=success_col, axis=1).to_excel(outfile, engine='openpyxl',
+                                                                                           header=True, index=False)
 
             break
 
@@ -620,7 +618,7 @@ def database_importer_window(user, win_size: tuple = None):
                                                                         dayfirst=values['-DAYFIRST-'],
                                                                         yearfirst=values['-YEARFIRST-'])
                                 except Exception as e:
-                                    msg = 'Unable to convert values in column {COL} to a datetime format - {ERR}'\
+                                    msg = 'Unable to convert values in column {COL} to a datetime format - {ERR}' \
                                         .format(COL=date_col, ERR=e)
                                     popup_error(msg)
                                     print('Error: {}'.format(msg))
@@ -645,7 +643,7 @@ def database_importer_window(user, win_size: tuple = None):
                         try:
                             sub_dtype = columns[sub_col][0]
                         except KeyError:
-                            msg = 'The column {COL} selected for subset rule {RULE} must be a valid table column'\
+                            msg = 'The column {COL} selected for subset rule {RULE} must be a valid table column' \
                                 .format(COL=sub_col, RULE=sub_num + 1)
                             popup_error(msg)
                             print('Warning: {}'.format(msg))
@@ -656,7 +654,7 @@ def database_importer_window(user, win_size: tuple = None):
                         try:
                             sub_val_fmt = sub_obj(sub_val)
                         except ValueError:
-                            msg = 'Unable to convert the value {VAL} from subset rule {RULE} to {DTYPE}'\
+                            msg = 'Unable to convert the value {VAL} from subset rule {RULE} to {DTYPE}' \
                                 .format(VAL=sub_val, RULE=sub_num + 1, DTYPE=sub_dtype)
                             popup_error(msg)
                             print('Warning: {}'.format(msg))
@@ -770,7 +768,7 @@ def database_importer_window(user, win_size: tuple = None):
 
                         # Create the evaluation string
                         if is_numeric_dtype(elem_obj):
-                            eval_str = 'subset_df["{COL}"] {OPER} {VAL}'\
+                            eval_str = 'subset_df["{COL}"] {OPER} {VAL}' \
                                 .format(COL=elem_col, OPER=elem_oper, VAL=elem_val_fmt)
                             try:
                                 subset_df[elem_col] = eval(eval_str)
@@ -808,7 +806,7 @@ def database_importer_window(user, win_size: tuple = None):
                             try:
                                 subset_df[elem_col] = subset_df[elem_col].apply(lambda x: x + offset)
                             except Exception as e:
-                                msg = 'Failed to modify the values of column {COL} using rule {RULE} - {ERR}'\
+                                msg = 'Failed to modify the values of column {COL} using rule {RULE} - {ERR}' \
                                     .format(COL=elem_col, RULE=elem_num + 1, ERR=e)
                                 popup_error(msg)
                                 print('Error: {}'.format(msg))
@@ -1212,8 +1210,9 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
                                                tooltip='Double-click row to add row to the collection', nrow=10,
                                                width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
                                                table_name=from_title),
-                    mod_lo.create_table_layout(mod_dm.format_display_table(to_df, column_map).values.tolist(), column_header,
-                                           '-TO-', events=True,
+                    mod_lo.create_table_layout(mod_dm.format_display_table(to_df, column_map).values.tolist(),
+                                               column_header,
+                                               '-TO-', events=True,
                                                tooltip='Double-click row to remove row from the collection', nrow=10,
                                                width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
                                                table_name=to_title)]]
@@ -1482,7 +1481,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
     return record
 
 
-def import_window(df, win_size: tuple = None):
+def import_window(user, table, import_rules, win_size: tuple = None):
     """
     Display the importer window.
     """
@@ -1490,11 +1489,6 @@ def import_window(df, win_size: tuple = None):
         width, height = [i * 0.8 for i in win_size]
     else:
         width, height = (mod_const.WIN_WIDTH * 0.8, mod_const.WIN_HEIGHT * 0.8)
-
-    # Format dataframe as list for input into sg
-    data = df.values.tolist()
-    header = df.columns.values.tolist()
-    all_rows = list(range(df.shape[0]))
 
     # Window and element size parameters
     font_h = mod_const.HEADER_FONT
@@ -1504,88 +1498,85 @@ def import_window(df, win_size: tuple = None):
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
 
+    bttn_text_col = mod_const.WHITE_TEXT_COL
+    bttn_bg_col = mod_const.BUTTON_COL
     bg_col = mod_const.ACTION_COL
-    tbl_bg_col = mod_const.TBL_BG_COL
-    tbl_alt_col = mod_const.TBL_ALT_COL
-    tbl_vfy_col = mod_const.TBL_VFY_COL
     header_col = mod_const.HEADER_COL
 
+    tbl_width = width - 4  # width minus border
+
     # GUI layout
-    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel import')),
-                    mod_lo.B2(_('Import'), bind_return_key=True, key='-IMPORT-', pad=(pad_el, 0),
-                              tooltip=_('Import the selected transaction orders'))]]
+    header_layout = [[sg.Text('Import Missing Data', pad=(pad_frame, pad_frame), background_color=header_col,
+                              font=font_h)]]
 
-    tbl_key = mod_lo.as_key('Import Table')
-    layout = [[sg.Col([[sg.Text(_('Import Missing Data'), pad=(pad_frame, (pad_frame, pad_v)),
-                                background_color=header_col, font=font_h)]],
-                      pad=(0, 0), background_color=header_col, justification='l', expand_x=True, expand_y=True)],
-              [sg.Frame('', [[mod_lo.create_table_layout(data, header, tbl_key, bind=True, height=height, width=width,
-                                                         pad=(0, 0))]],
-                        background_color=bg_col, element_justification='c', pad=(pad_frame, 0), border_width=0)],
-              [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
+    main_layout = [[sg.Text('Record ID:', pad=((pad_frame, pad_v), (pad_v, 0)), background_color=bg_col),
+                    sg.Input('', key='-ID-', pad=((0, pad_v), (pad_v, 0)), size=(14, 1), background_color=bg_col),
+                    mod_lo.B2('Find', key='-FIND-', pad=(0, (pad_v, 0)), button_color=(bttn_text_col, bttn_bg_col),
+                              use_ttk_buttons=True, bind_return_key=True)],
+                   [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)],
+                   [table.layout(width=tbl_width, nrow=10, tooltip='Select rows to import')]]
 
-    window = sg.Window(_('Import Data'), layout, font=main_font, modal=True, resizable=False)
+    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel importing'),
+                    mod_lo.B2('Import', key='-IMPORT-', pad=(pad_el, 0),
+                              tooltip='Import the selected transaction orders')]]
+
+    layout = [[sg.Col(header_layout, pad=(pad_frame, 0), background_color=header_col, element_justification='l',
+                      expand_x=True, expand_y=True)],
+              [sg.Col(main_layout, background_color=bg_col, element_justification='l', pad=(pad_frame, 0),
+                      expand_x=True)],
+              [sg.Col(bttn_layout, element_justification='c', pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
+
+    window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=False)
+    window.finalize()
+
+    win_w, win_h = window.get_screen_dimensions()
+    table.resize(window, size=(win_w * 0.8, win_h * 0.8))
+
+    window = center_window(window)
+
+    table_statement = mod_db.format_tables(import_rules)
+    import_columns = mod_db.format_import_columns(import_rules)
+    id_column = mod_db.get_primary_id_column(import_rules)
+    main_table = mod_db.get_primary_table(import_rules)
 
     # Start event loop
-    vfy_orders = []
+    selected_rows = []
     while True:
         event, values = window.read()
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             break
 
-        if event == tbl_key:  # double-clicked on row in table
-            try:
-                row_index = int(values[tbl_key][0])
-            except IndexError:  # empty table
+        if event == '-FIND-':
+            record_id = values['-ID-']
+            if not record_id:
+                popup_notice('no record ID provided')
                 continue
 
-            print('Info: Importer: row selected is {}'.format(row_index))
+            record_filter = ('{TBL}.{COL} = ?'.format(TBL=main_table, COL=id_column), (record_id,))
 
-            if row_index is not None and row_index not in vfy_orders:
-                vfy_orders.append(row_index)  # add row to list of verified
+            try:
+                record_df = user.query(table_statement, columns=import_columns, filter_rules=record_filter)
+            except Exception as e:
+                popup_error('failed to import record {ID} from the database - {ERR}'.format(ID=record_id, ERR=e))
+                continue
 
-            elif row_index is not None and row_index in vfy_orders:
-                vfy_orders.remove(row_index)  # remove row from list of verified
+            table.df = table.append(record_df)
+            table.update_display(window)
 
-            # Get row colors for rows that have been selected
-            print('Info: Importer: selected orders are {}'.format(', '.join([str(i) for i in vfy_orders])))
-            selected = [(i, tbl_vfy_col) for i in vfy_orders]
-
-            # Get row colors for rows that have not been selected
-            unselected = []
-            for index in all_rows:
-                if index not in vfy_orders:
-                    if index % 2 == 0:
-                        color = tbl_bg_col
-                    else:
-                        color = tbl_alt_col
-                    unselected.append((index, color))
-
-            # Update table row colors
-            all_row_colors = selected + unselected
-            window[tbl_key].update(row_colors=all_row_colors)
-            window.Refresh()
             continue
 
         if event == '-IMPORT-':  # click 'Import' button
-            if len(data) != len(vfy_orders):  # not all orders selected
-                msg = _("Not all rows have been selected importing. Are you sure you would like to continue?")
-                selection = popup_confirm(msg)
-
-                if selection == 'OK':  # continue anyway
-                    break
-                else:  # oops, a mistake was made
-                    continue
-            else:  # all transactions selected already
-                break
+            # Get index of selected rows
+            selected_rows = values[table.key_lookup('Element')]
+            break
 
     window.close()
     layout = None
     window = None
     gc.collect()
 
-    return vfy_orders
+    return table.df.iloc[selected_rows]
 
 
 def about():

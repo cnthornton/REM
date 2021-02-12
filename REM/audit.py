@@ -111,7 +111,7 @@ class AuditRule:
 
         parameters (list): list of RuleParameter type objects.
 
-        tabs (list): list of AuditRuleTransaction objects.
+        tabs (list): list of AuditTransactionTab objects.
 
         summary (AuditSummary): SummaryPanel object.
     """
@@ -183,7 +183,7 @@ class AuditRule:
             sys.exit(1)
 
         for tab_name in tab_entries:
-            tab_rule = AuditRuleTransaction(tab_name, tab_entries[tab_name], parent=self.name)
+            tab_rule = AuditTransactionTab(tab_name, tab_entries[tab_name], parent=self.name)
 
             self.tabs.append(tab_rule)
             self.elements += tab_rule.elements
@@ -217,8 +217,8 @@ class AuditRule:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: component {COMP} not found in list of bank rule {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
+            print('Warning: AuditRule {NAME}: component {COMP} not found in list of rule components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -294,8 +294,8 @@ class AuditRule:
                     self.in_progress = False
 
                     # Remove from the list of used IDs any IDs created during the now cancelled audit
-#                    for audit_record in self.summary.tabs:
-#                        audit_record.remove_unsaved_keys()
+                    for tab in self.summary.tabs:
+                        mod_records.remove_unsaved_keys(tab.record)
 
                     # Reset the rule and update the panel
                     remain_in_panel = True if not values['-AMENU-'] else False
@@ -319,27 +319,44 @@ class AuditRule:
 
             # Prepare audit records
             if next_subpanel == self.last_panel:
+                for tab in self.summary.tabs:
+                    window.refresh()
+
+                    # Update audit record totals
+                    tab.map_summary(self.tabs)
+
+                    # Map transactions to transaction records
+                    tab.map_records(self.tabs)
+
+                    # Attempt to load existing audit from the database
+                    tab.load_record(user, self.parameters)
+
+                    # Update the audit record's display
+                    tab.update_display(window)
+
                 # Disable / enable action buttons
                 window[self.key_lookup('Next')].update(disabled=True)
                 window[self.key_lookup('Back')].update(disabled=False)
                 window[self.key_lookup('Save')].update(disabled=False)
 
-                # Update the audit record totals tables
-                self.summary.map_summaries(self.tabs)
-
-                # Attempt to load existing audit from the database
-                audit_exists = self.summary.load_audits(user, self.parameters)
-
-                # Update the audit record's display
-                for tab in self.summary.tabs:
-                    tab.record.update_display(window)
+                window.refresh()
 
         # Back button pressed
         elif event == back_key:
-            prev_subpanel = self.current_panel - 1
+            current_panel = self.current_panel
 
-            # Return to tab display
-            window[self.panel_keys[self.current_panel]].update(visible=False)
+            # Delete unsaved keys if returning from summary panel
+            if current_panel == self.last_panel:
+                for tab in self.summary.tabs:
+                    # Remove unsaved IDs associated with the record
+                    mod_records.remove_unsaved_keys(tab.record)
+
+                    # Reset audit records
+                    tab.reset()
+
+            # Return to previous display
+            prev_subpanel = current_panel - 1
+            window[self.panel_keys[current_panel]].update(visible=False)
             window[self.panel_keys[prev_subpanel]].update(visible=True)
 
             window[self.key_lookup('Next')].update(disabled=False)
@@ -357,6 +374,8 @@ class AuditRule:
                 window[self.key_lookup('Next')].update(disabled=False)
                 window[self.key_lookup('Back')].update(disabled=True)
                 window[self.key_lookup('Save')].update(disabled=True)
+
+                window.refresh()
 
         # Start button pressed
         elif event == start_key:
@@ -386,6 +405,7 @@ class AuditRule:
                     tab.parameters = self.parameters
 
                     # Import tab data from the database
+                    window.refresh()
                     initialized.append(tab.load_data(user))
 
                 if all(initialized):  # data successfully imported from all configured audit rule transaction tabs
@@ -440,7 +460,7 @@ class AuditRule:
                 print('Error: AuditRule {NAME}: unable to find parameter associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                result = param.run_event(window, event, values)
+                param.run_event(window, event, values)
 
         # Run transaction tab events
         elif event in tab_keys:
@@ -812,60 +832,49 @@ class AuditSummary:
         tabs = self.tabs
 
         if by_key is True:
-            element_type = fetch_key.split('_')[-1]
-            names = [i.key_lookup(element_type) for i in tabs]
+            tab_item = None
+            for tab in self.tabs:
+                if fetch_key in tab.elements:
+                    tab_item = tab
+                    break
+
+            if tab_item is None:
+                raise KeyError('{TAB} not in list of audit rule summary tab elements'.format(TAB=fetch_key))
         else:
             names = [i.name for i in tabs]
 
-        try:
-            index = names.index(fetch_key)
-        except ValueError:
-            print('Error: AuditRuleSummary {RULE}: {TAB} not in list of audit rule summary records'
-                  .format(RULE=self.name, TAB=fetch_key))
-            tab_item = None
-        else:
-            tab_item = tabs[index]
+            try:
+                index = names.index(fetch_key)
+            except ValueError:
+                raise KeyError('{TAB} not in list of audit rule summary tabs'.format(TAB=fetch_key))
+            else:
+                tab_item = tabs[index]
 
         return tab_item
-
-    def fetch_parameter(self, element, by_key: bool = False):
-        """
-        Fetch a GUI parameter element by name or event key.
-        """
-        if by_key is True:
-            element_type = element.split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.parameters]
-        else:
-            element_names = [i.name for i in self.parameters]
-
-        if element in element_names:
-            index = element_names.index(element)
-            parameter = self.parameters[index]
-        else:
-            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
-                           .format(ELEM=element, NAME=self.name))
-
-        return parameter
 
     def reset(self):
         """
         Reset summary item attributes.
         """
         self.title = None
-        self.parameters = None
 
         for tab in self.tabs:
             tab.reset()
 
     def run_event(self, window, event, values, user):
         """
-        Run a transaction audit event.
+        Run a transaction audit summary event.
         """
         # Run a summary tab event
         tab_keys = [i for j in self.tabs for i in j.elements]
         if event in tab_keys:
-            tab = self.fetch_tab(event, by_key=True)
-            tab.run_event(window, event, values, user)
+            try:
+                tab = self.fetch_tab(event, by_key=True)
+            except Exception as e:
+                print('Error: AuditRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
+                      .format(NAME=self.name, EVENT=event, ERR=e))
+            else:
+                tab.run_event(window, event, values, user)
 
     def layout(self, win_size: tuple = None):
         """
@@ -934,22 +943,6 @@ class AuditSummary:
         for tab in tabs:
             # Reset summary item attributes
             tab.record.resize(window, win_size=size)
-
-    def map_records(self, rule_tabs):
-        """
-        Update summary item tables with data from tab item dataframes.
-        """
-        tabs = self.tabs
-        for tab in tabs:
-            tab.map_records(rule_tabs)
-
-    def map_summaries(self, rule_tabs):
-        """
-        Update audit records with transaction table totals.
-        """
-        tabs = self.tabs
-        for tab in tabs:
-            tab.map_summary(rule_tabs)
 
     def update_title(self, window, params):
         """
@@ -1407,18 +1400,8 @@ class AuditSummary:
 
         return all(success)
 
-    def load_audits(self, user, parameters):
-        """
-        Load previous audit from the program database.
-        """
-        exists = []
-        for tab in self.tabs:
-            exists.append(tab.load_data(user, parameters))
 
-        return all(exists)
-
-
-class AuditRuleTransaction:
+class AuditTransactionTab:
     """
     Transaction Audit component.
 
@@ -1457,7 +1440,7 @@ class AuditRuleTransaction:
         try:
             import_rules = entry['ImportRules']
         except KeyError:
-            msg = 'Configuration Error: AuditRuleTransaction {NAME}: missing required field "ImportRules".'\
+            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required field "ImportRules".'\
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
@@ -1467,12 +1450,12 @@ class AuditRuleTransaction:
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
         except KeyError:
-            msg = 'Configuration Error: AuditRuleTransaction {NAME}: missing required parameter "DisplayTable"' \
+            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required parameter "DisplayTable"' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
         except AttributeError as e:
-            msg = 'Configuration Error: AuditRuleTransaction {NAME}: unable to initialize DisplayTable - {ERR}' \
+            msg = 'Configuration Error: AuditTransactionTab {NAME}: unable to initialize DisplayTable - {ERR}' \
                 .format(NAME=name, ERR=e)
             mod_win2.popup_error(msg)
             sys.exit(1)
@@ -1482,7 +1465,7 @@ class AuditRuleTransaction:
         try:
             self.id_format = re.findall(r'\{(.*?)\}', entry['IDFormat'])
         except KeyError:
-            msg = ('Configuration Error: AuditRuleTransaction {NAME}: missing required field "IDFormat".') \
+            msg = ('Configuration Error: AuditTransactionTab {NAME}: missing required field "IDFormat".') \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
@@ -1548,7 +1531,7 @@ class AuditRuleTransaction:
 
         # Reset visible tabs
         visible = True if first is True else False
-        print('Info: AuditRuleTransaction {NAME}: re-setting visibility of rule tab to {STATUS}'
+        print('Info: AuditTransactionTab {NAME}: re-setting visibility of rule tab to {STATUS}'
               .format(NAME=self.name, STATUS=visible))
 
         window[self.key_lookup('Tab')].update(visible=visible)
@@ -1619,7 +1602,25 @@ class AuditRuleTransaction:
         success = True
         # Run component table events
         if event in table_keys:
-            results = self.table.run_event(window, event, values, user)
+            table = self.table
+
+            tbl_key = self.table.key_lookup('Element')
+            import_key = self.table.key_lookup('Import')
+            if event == tbl_key:  # user clicked to open a table record
+                # Find index of row
+                try:
+                    row_index = values[event][0]
+                except IndexError:  # user double-clicked too quickly
+                    print('Warning: AuditTransactionTab {NAME}: no row selected for exporting'.format(NAME=self.name))
+                else:
+                    table.export_row(row_index, user, view_only=True)
+
+            elif event == import_key:
+                table.df = table.import_rows(user, self.import_rules, id_only=True)
+                table.update_display(window, window_values=values)
+
+            else:
+                table.run_event(window, event, values, user)
 
         # Run a transaction audit
         elif event == audit_key:
@@ -1656,13 +1657,12 @@ class AuditRuleTransaction:
         try:
             df = user.query(table_statement, columns=columns, filter_rules=filters)
         except Exception as e:
-            mod_win2.popup_error('Error: AuditRuleTransaction {NAME}: failed to import data from the database - {ERR}'
+            mod_win2.popup_error('Error: AuditTransactionTab {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))
             data_loaded = False
         else:
-            print('Info: AuditRuleTransaction {NAME}: loaded data for audit rule {RULE}'
+            print('Info: AuditTransactionTab {NAME}: loaded data for audit rule {RULE}'
                   .format(NAME=self.name, RULE=self.parent))
-            pd.set_option('max_columns', None)
             self.table.df = self.table.append(df)
             self.table._df = self.table.df
             data_loaded = True
@@ -1678,13 +1678,12 @@ class AuditRuleTransaction:
         # Class attributes
         import_rules = self.import_rules
         table = self.table
-        table.sort()
         db_columns = {j: '{TBL}.{COL}'.format(TBL=table, COL=i) for table in import_rules
                       for i, j in import_rules[table]['Columns'].items()}
 
         pkey = table.id_column
         df = table.df
-        id_list = table.row_ids()
+        id_list = sorted(table.row_ids(), reverse=False)
 
         # Data importing parameters
         main_table = mod_db.get_primary_table(import_rules)
@@ -1694,27 +1693,30 @@ class AuditRuleTransaction:
 
         # Audit parameters
         date_param = self.fetch_parameter('date', by_type=True)
-        date_col = date_param.name
-        date_db_col = '{TBL}.{COL}'.format(TBL=main_table, COL=date_param.field)
+        date_col = date_param.field
+        date_db_col = '{TBL}.{COL}'.format(TBL=main_table, COL=date_col)
         audit_date = date_param.value
         audit_date_iso = audit_date.strftime("%Y-%m-%d")
 
         # Search for missing data
-        print('Info: AuditRuleTransaction {NAME}: searching for missing transactions'.format(NAME=self.name))
+        print('Info: AuditTransactionTab {NAME}: searching for missing transactions'.format(NAME=self.name))
         missing_transactions = []
-        try:
-            first_id = id_list[0]
-        except IndexError:
-            first_id = None
-            first_number_comp = None
-            first_date_comp = None
-        else:
-            first_number_comp = int(self.get_id_component(first_id, 'variable'))
-            first_date_comp = self.get_id_component(first_id, 'date')
-            print('Info: AuditRuleTransaction {NAME}: first transaction ID is {ID}'
-                  .format(NAME=self.name, ID=first_id))
+        first_id = None
+        first_number_comp = None
+        first_date_comp = None
+        for index, record_id in enumerate(id_list):
+            number_comp = int(self.get_id_component(record_id, 'variable'))
+            date_comp = self.get_id_component(record_id, 'date')
+            if record_id == self.format_id(number_comp, date=date_comp):
+                first_id = record_id
+                first_number_comp = number_comp
+                first_date_comp = date_comp
+                id_list = id_list[index:]
+                break
 
         if audit_date and first_id:  # data table not empty
+            print('Info: AuditTransactionTab {NAME}: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
+
             # Find the date of the most recent transaction prior to current date
             query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_db_col, TBL=main_table)
             dates_df = user.thread_transaction(query_str, (), operation='read')
@@ -1729,17 +1731,17 @@ class AuditRuleTransaction:
             try:
                 prev_date = strptime(unq_dates_iso[current_date_index - 1], '%Y-%m-%d')
             except IndexError:
-                print('Warning: AuditRuleTransaction {NAME}: no date found prior to current audit date {DATE}'
+                print('Warning: AuditTransactionTab {NAME}: no date found prior to current audit date {DATE}'
                       .format(NAME=self.name, DATE=audit_date_iso))
                 prev_date = None
             except ValueError:
-                print('Warning: AuditRuleTransaction {NAME}: unknown format {DATE} provided'
+                print('Warning: AuditTransactionTab {NAME}: unknown format {DATE} provided'
                       .format(NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
                 prev_date = None
 
             # Query the last transaction from the previous date
             if prev_date:
-                print('Info: AuditRuleTransaction {NAME}: searching for most recent transaction created on {DATE}'
+                print('Info: AuditTransactionTab {NAME}: searching for most recent transaction created on {DATE}'
                       .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 import_filters = filters + [('{} = ?'.format(date_db_col), (prev_date.strftime(configuration.date_format),))]
@@ -1763,7 +1765,7 @@ class AuditRuleTransaction:
                         break
 
                 if prev_date_comp and prev_number_comp:
-                    print('Info: AuditRuleTransaction {NAME}: last transaction ID is {ID} from {DATE}' \
+                    print('Info: AuditTransactionTab {NAME}: last transaction ID is {ID} from {DATE}' \
                           .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
 
                     if first_date_comp != prev_date_comp:  # start of new month
@@ -1784,7 +1786,7 @@ class AuditRuleTransaction:
                             missing_transactions.append(missing_id)
 
             ## Search for missed numbers at end of day
-            print('Info: AuditRuleTransaction {NAME}: searching for transactions created at the end of the day'
+            print('Info: AuditTransactionTab {NAME}: searching for transactions created at the end of the day'
                   .format(NAME=self.name))
             last_id_of_df = id_list[-1]  # last transaction of the dataframe
 
@@ -1801,7 +1803,7 @@ class AuditRuleTransaction:
                     missing_transactions.append(current_id)
 
         ## Search for skipped transaction numbers
-        print('Info: AuditRuleTransaction {NAME}: searching for skipped transactions'
+        print('Info: AuditTransactionTab {NAME}: searching for skipped transactions'
               .format(NAME=self.name))
         prev_number = first_number_comp
         for record_id in id_list:
@@ -1834,9 +1836,12 @@ class AuditRuleTransaction:
 
         # Display import window with potentially missing data
         if not missing_df.empty:
-            missing_df_fmt = self.table.format_display_table(missing_df)
-            import_rows = mod_win2.import_window(missing_df_fmt)
-            import_df = missing_df.iloc[import_rows]
+            table_layout = {'Columns': table.columns, 'DisplayColumns': table.display_columns, 'Aliases': table.aliases,
+                            'RowColor': table.row_color, 'Widths': table.widths, 'IDColumn': table.id_column,
+                            'RecordType': table.record_type, 'Title': table.title}
+            import_table = mod_elem.TableElement(table.name, table_layout)
+            import_table.df = import_table.append(missing_df)
+            import_df = mod_win2.import_window(user, import_table, self.import_rules)
         else:
             import_df = pd.DataFrame(columns=df.columns)
 
@@ -1853,7 +1858,7 @@ class AuditRuleTransaction:
         self.id_components = []
 
         last_index = 0
-        print('Info: AuditRuleTransaction {NAME}: ID is formatted as {FORMAT}' \
+        print('Info: AuditTransactionTab {NAME}: ID is formatted as {FORMAT}'
               .format(NAME=self.name, FORMAT=id_format))
         param_fields = [i.name for i in parameters]
         for component in id_format:
@@ -1880,7 +1885,7 @@ class AuditRuleTransaction:
 
             last_index += component_len
 
-        print('Info: AuditRuleTransaction {NAME}: ID updated with components {COMP}'
+        print('Info: AuditTransactionTab {NAME}: ID updated with components {COMP}'
               .format(NAME=self.name, COMP=self.id_components))
 
     def format_id(self, number, date=None):
@@ -1894,7 +1899,7 @@ class AuditRuleTransaction:
 
             if comp_name == 'date':  # component is datestr
                 if not date:
-                    print('Warning: AuditRuleTransaction {NAME}: no date provided for ID number {NUM} ... reverting to '
+                    print('Warning: AuditTransactionTab {NAME}: no date provided for ID number {NUM} ... reverting to '
                           'today\'s date'.format(NAME=self.name, NUM=number))
                     value = datetime.datetime.now().strftime(comp_value)
                 else:
@@ -1920,7 +1925,7 @@ class AuditRuleTransaction:
                 try:
                     comp_value = identifier[comp_index[0]: comp_index[1]]
                 except IndexError:
-                    print('Warning: AuditRuleTransaction {NAME}: ID component {COMP} cannot be found in identifier '
+                    print('Warning: AuditTransactionTab {NAME}: ID component {COMP} cannot be found in identifier '
                           '{IDENT}'.format(NAME=self.name, COMP=component, IDENT=identifier))
 
                 break
@@ -2014,7 +2019,7 @@ class AuditRecordTab:
             self.defaults = {}
 
         # Dynamic attributes
-        self.unused_records = []
+        self.unused_records = {}
 
     def key_lookup(self, component):
         """
@@ -2025,8 +2030,8 @@ class AuditRecordTab:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: component {COMP} not found in list of bank rule {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
+            print('Warning: AuditRecordTab {NAME}: component {COMP} not found in list of components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -2040,47 +2045,81 @@ class AuditRecordTab:
         record = mod_records.TAuditRecord(record_type, record_entry.record_layout, {}, new_record=True)
 
         self.record = record
-        self.unused_records = []
+        self.unused_records = {}
 
     def run_event(self, window, event, values, user):
         """
         Run an audit summary record event.
         """
-        # Run a summary tab event
-        record_keys = self.record.elements
-        if event in record_keys:
-            self.record.run_event(window, event, values, user)
+        record = self.record
+        record_keys = record.elements
 
-    def remove_unsaved_keys(self):
-        """
-        Remove unsaved IDs from the table IDs lists.
-        """
-        for id_field in self.ids:
-            id_param = self.ids[id_field]
-            db_table = id_param['DatabaseTable']
-            print('Info: rule {RULE}, summary {NAME}: removing unsaved IDs created in cancelled audit from table '
-                  '{TBL}, column {ID}'.format(RULE=self.rule_name, NAME=self.name, TBL=db_table, ID=id_field))
+        accounts = configuration.records.group_elements('account')
+        if len(accounts) == 1:
+            # Fetch the relevant components table
+            account_name = account[0]
+            comp_table = self.record.fetch_component(account_name)
+            add_key = comp_table.key_lookup('Add')
+        else:
+            account_name = None
+            comp_table = None
+            add_key = None
+
+        # Run a summary tab event
+        if event == add_key:
+            df = comp_table.df.copy()
+
+            # Create a new record object
+            creation_date = record.record_date
+            record_entry = configuration.records.fetch_rule(account_name)
+            record_id = record_entry.create_id(creation_date)
+
+            record_data = pd.Series(index=list(comp_table.columns))
+            record_data[comp_table.id_column] = record_id
+            record_data[comp_table.date_column] = creation_date
+
+            # Set values for editable columns with default values
+            record_data = comp_table.set_edit_values(record_data)
+
+            # Set values for static columns with default values
+            record_data = comp_table.set_default_values(record_data)
 
             try:
-                all_ids = self.df[id_field].dropna().unique().tolist()
-                existing_ids = self.import_df[id_field].dropna().unique().tolist()
-            except KeyError:
-                created_ids = set()
-            else:
-                created_ids = set(all_ids).difference(set(existing_ids))
+                record = mod_records.create_record(record_entry, record_data)
+            except Exception as e:
+                mod_win2.popup_error('Warning: {NAME}, ComponentTable {TBL}: failed to add record at row {IND} - {ERR}'
+                                     .format(NAME=self.name, TBL=comp_table.name, IND=df.shape[0] + 2, ERR=e))
+                return df
 
-            for record_id in created_ids:
-                try:
-                    current_tbl_pkeys[db_table].remove(record_id)
-                except ValueError:
-                    print('Warning: attempting to remove non-existent ID "{ID}" from the list of '
-                          'database table {TBL} IDs'.format(ID=record_id, TBL=db_table))
-                    continue
-                else:
-                    print('Info: rule {RULE}, summary {NAME}: removed ID {ID} from the list of database table {TBL} IDs'
-                          .format(RULE=self.rule_name, NAME=self.name, ID=record_id, TBL=db_table))
+            # Add account component table imports
 
-    def load_data(self, user, params):
+            # Display the record window
+            record = mod_win2.record_window(record, user, save=True)
+            if record is not None:
+                record_values = record.table_values()
+                print('Info: {NAME}, ComponentTable {TBL}: appending values {VALS} to the table'
+                      .format(NAME=self.name, TBL=self.name, VALS=record_values.tolist()))
+                print(df)
+                comp_table.df = comp_table.append(record_values)
+
+        elif event in record_keys:
+            self.record.run_event(window, event, values, user)
+
+    def remove_unused_record(self, record_id):
+        """
+        Remove a record from the list of unused records.
+        """
+        unused_records = self.unused_records
+        for payment_type in unused_records:
+            for index, record in enumerate(unused_records[payment_type]):
+                if record_id == record.record_id:
+                    print('Info: AuditRecordTab {NAME}: removing {ID} from list of unused records'
+                          .format(NAME=self.name, ID=record_id))
+                    unused_records[payment_type].pop(index)
+
+        self.unused_records = unused_records
+
+    def load_record(self, user, params):
         """
         Load previous audit (if exists) and IDs from the program database.
         """
@@ -2097,21 +2136,107 @@ class AuditRecordTab:
         param_filters = [i.query_statement(table=main_table) for i in params]
         filters += param_filters
 
+        print('Info: AuditRecordTab {NAME}: loading audit record'.format(NAME=self.name))
+
         # Import primary bank data from database
         try:
             import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
         except Exception as e:
             mod_win2.popup_error('Error: AuditSummaryTab {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))
-            data_loaded = False
         else:
+            record = self.record
             if not import_df.empty:
-                # Update record parameters and attributes with imported data
-                data_loaded = True
-            else:
-                data_loaded = False
+                record_data = import_df.iloc[0]
 
-        return data_loaded
+                # Update record parameters and attributes with imported data
+                record_id = record_data["RecordID"]
+                print('Info: AuditSummaryTab {NAME}: loading existing audit record {ID} based on the supplied parameters'
+                      .format(NAME=self.name, ID=record_id))
+                record.record_id = record_id
+
+                if isinstance(record_data["RecordDate"], str):
+                    record.record_date = datetime.datetime.strptime(record_data["RecordDate"],
+                                                                    configuration.date_format)
+                else:
+                    record.record_date = record_data["RecordDate"]
+                record.note = record_data[configuration.notes_field]
+                record.creator = record_data[configuration.creator_code]
+                record.creation_date = record_data[configuration.creation_date]
+                record.editor = user.uid
+                record.edit_date = datetime.datetime.now()
+
+                for element in record.parameters:
+                    elem_name = element.name
+                    try:
+                        elem_value = record_data[elem_name]
+                    except KeyError:
+                        continue
+                    else:
+                        print('Info: AuditRuleTab {NAME}: adding existing record data {VAL} to data element {ELEM}'
+                              .format(NAME=self.name, VAL=elem_value, ELEM=elem_name))
+                        element.value = element.format_value(elem_value)
+
+                # Update components
+                audit_references = record_entry.import_references(record_id)
+                for index, row in audit_references.iterrows():
+                    reftype = row['RefType']
+                    if reftype not in configuration.records.group_elements('account'):
+                        continue
+
+                    # Fetch the relevant components table
+                    try:
+                        comp_table = record.fetch_component(reftype, by_type=True)
+                    except KeyError:
+                        print('Warning: AuditRecordTab {NAME}: unable to find component table {TBL}'
+                              .format(NAME=self.name, TBL=reftype))
+                        continue
+
+                    # Store imported components as table rows
+                    ref_id = row['RefNo']
+                    print('Info: record {ID}: adding component record {NAME} with record type {TYPE}'
+                          .format(ID=record_id, NAME=ref_id, TYPE=reftype))
+
+                    # Append record to the components table
+                    comp_table.df = comp_table.import_row(ref_id)
+
+                    # Remove record from list of unused records
+                    account_references = record_entry.import_references(ref_id)
+                    for acct_index, acct_row in account_references.iterrows():
+                        acct_reftype = acct_row['RefType']
+                        if acct_reftype not in configuration.records.group_elements('transaction'):
+                            continue
+
+                        transaction_id = acct_row['RefNo']
+                        self.remove_unused_record(transaction_id)
+
+            else:
+                print('Info: AuditSummaryTab {NAME}: no existing audit record for the supplied parameters ... '
+                      'creating a new record'.format(NAME=self.name))
+                record_entry = configuration.records.fetch_rule(self.name)
+                param_types = [i.etype for i in params]
+                param_names = [i.name for i in params]
+                date_index = param_types.index('date')
+
+                # Create new record
+                record_date = params[date_index].value
+                record.record_id = record_entry.create_id(record_date)
+                record.record_date = record_date
+                record.creator = user.uid
+                record.creation_date = datetime.datetime.now()
+
+                for element in record.parameters:
+                    element_name = element.name
+                    if element_name in param_names:
+                        param = params[param_names.index(element_name)]
+                        print('Info: AuditRuleTab {NAME}: adding value {VAL} from rule parameter {PARAM} to data element '
+                              '{ELEM}'.format(NAME=self.name, VAL=param.value, PARAM=param.name, ELEM=element_name))
+                        element.value = param.value
+                    else:
+                        print('Info: AuditRuleTab {NAME}: no parameters for data element {ELEM}'
+                              .format(NAME=self.name, ELEM=element_name))
+
+                # Create record components from transactions
 
     def map_summary(self, rule_tabs):
         """
@@ -2122,6 +2247,9 @@ class AuditRecordTab:
         name = self.name
         totals = self.record.fetch_element('Totals')
         df = totals.df.copy()
+
+        print('Info: AuditRuleTab {NAME}: mapping transaction summaries to audit totals'
+              .format(NAME=self.name))
 
         # Store transaction table summaries for mapping
         summary_map = {}
@@ -2177,11 +2305,62 @@ class AuditRecordTab:
 
         totals.df = df
 
-    def map_records(self):
+    def map_records(self, rule_tabs):
         """
         Map transaction records from the audit to account records.
         """
-        pass
+        tab_names = [i.name for i in rule_tabs]
+
+        print('Info: AuditRuleTab {NAME}: mapping records from the transaction tables to the audit record'
+              .format(NAME=self.name))
+
+        # Map records
+        records = {}
+        record_mapping = self.record_mapping
+        for payment_type in record_mapping:
+            table_rules = record_mapping[payment_type]
+            for table in table_rules:
+                subset_rule = table_rules[table]
+
+                if table not in tab_names:
+                    print('Warning: AuditRuleTab {NAME}: unknown transaction table {TBL} provided to record_mapping '
+                          '{TYPE}'.format(NAME=self.name, TBL=table, TYPE=payment_type))
+                    continue
+
+                tab = rule_tabs[tab_names.index(table)]
+                record_type = tab.table.record_type
+                record_entry = configuration.records.fetch_rule(record_type)
+                # Subset tab item dataframe using subset rules defined in the ReferenceTable parameter
+                print('Info: AuditRuleTab {NAME}: sub-setting reference table {REF} based on defined payment {TYPE} '
+                      'rule {RULE}'.format(NAME=self.name, REF=table, TYPE=payment_type, RULE=subset_rule))
+                try:
+                    subset_df = tab.table.subset(subset_rule)
+                except Exception as e:
+                    print('Warning: AuditRuleTab {NAME}: sub-setting table {REF} - {ERR}'
+                          .format(NAME=self.name, REF=table, ERR=e))
+                    continue
+                pd.set_option('display.max_columns', None)
+                print(subset_df.head(n=5))
+
+                if subset_df.empty:
+                    print('Info: AuditRuleTab {NAME}: no data from reference table {REF} to add to the audit record'
+                          .format(NAME=self.name, REF=table))
+                    continue
+
+                for index, row in subset_df.iterrows():
+                    record = mod_records.DatabaseRecord(tab.table.record_type, record_entry.record_layout, row)
+                    try:
+                        records[payment_type].append(record)
+                    except KeyError:
+                        records[payment_type] = [record]
+
+        self.unused_records = records
+
+    def update_display(self, window):
+        """
+        Update the audit record summary tab's record display.
+        """
+        self.record.update_display(window)
 
 
 class AuditRecordAdd(AuditRecordTab):

@@ -13,6 +13,7 @@ import sys
 
 from REM.config import configuration, settings
 import REM.constants as mod_const
+import REM.database as mod_db
 import REM.data_manipulation as mod_dm
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
@@ -107,7 +108,7 @@ class TableElement:
                 try:
                     action_val = bool(int(self.actions[action]))
                 except ValueError:
-                    print('Configuration Error: table {TBL}: action {ACT} must be either 0 (False) or 1 (True)'
+                    print('Configuration Error: DataTable {TBL}: action {ACT} must be either 0 (False) or 1 (True)'
                           .format(TBL=self.name, ACT=action))
                     action_val = False
 
@@ -138,8 +139,8 @@ class TableElement:
             self.search_field = None
         else:
             if search_field not in columns:
-                print('Warning: search field {} not found in list of table columns ... setting to None'
-                      .format(search_field))
+                print('Warning: DataTable {NAME}: search field {FIELD} is not found in list of table columns ... '
+                      'setting to None'.format(NAME=name, FIELD=search_field))
                 self.search_field = None
             else:
                 self.search_field = search_field
@@ -185,8 +186,8 @@ class TableElement:
                         self.parameters.append(param_obj)
                         self.elements += param_obj.elements
                     else:
-                        print('Configuration Warning: filter parameters {PARAM} must be listed in the table columns'
-                              .format(PARAM=param))
+                        print('Configuration Warning: DataTable {NAME}: filter parameters {PARAM} must be listed in '
+                              'the table columns'.format(NAME=name, PARAM=param))
                         print(self.display_columns)
 
         try:
@@ -249,7 +250,7 @@ class TableElement:
                 if filter_key in columns:
                     self.filter_rules[filter_key] = filter_rules[filter_key]
                 else:
-                    print('Warning: table {NAME}: filter rule key {KEY} not found in table columns'
+                    print('Warning: DataTable {NAME}: filter rule key {KEY} not found in table columns'
                           .format(NAME=self.name, KEY=filter_key))
 
         try:
@@ -294,7 +295,8 @@ class TableElement:
         except KeyError:
             self.nrow = None
         except ValueError:
-            print('Warning: table {TBL}: input to the Rows parameter must be an integer value'.format(TBL=self.name))
+            print('Warning: DataTable {TBL}: input to the Rows parameter must be an integer value'
+                  .format(TBL=self.name))
             self.nrow = None
 
         try:
@@ -303,7 +305,7 @@ class TableElement:
             self.row_color = mod_const.TBL_BG_COL
         else:
             if not row_color.startswith('#') or not len(row_color) == 7:
-                print('Configuration Error: table {TBL}: row color {COL} is not a valid hexadecimal code'
+                print('Configuration Error: DataTable {TBL}: row color {COL} is not a valid hexadecimal code'
                       .format(TBL=self.name, COL=row_color))
                 self.row_color = mod_const.TBL_BG_COL
 
@@ -324,8 +326,8 @@ class TableElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: component {COMP} not found in list of data element {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
+            print('Warning: DataTable {NAME}: component {COMP} not found in list of element components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -470,6 +472,8 @@ class TableElement:
             if isinstance(summ_value, float):
                 summ_value = '{:,.2f}'.format(summ_value)
             window[summ_key].update(value=summ_value)
+
+        window.refresh()
 
         return display_df
 
@@ -1177,6 +1181,8 @@ class TableElement:
 
             window[frame_key].metadata['visible'] = True
 
+        window.refresh()
+
     def resize(self, window, size: tuple = None, row_rate: int = 80):
         """
         Resize the table element.
@@ -1418,9 +1424,6 @@ class TableElement:
         try:
             record_values = record.table_values()
         except AttributeError:  # record creation was cancelled
-            # Remove record_id from list of unsaved IDs
-            record_entry.remove_unsaved_id(record_id)
-
             return df
         else:
             print('Info: table {TBL}: appending values {VALS} to the table'.format(TBL=self.name, VALS=record_values.tolist()))
@@ -1429,13 +1432,33 @@ class TableElement:
 
         return df
 
-    def import_rows(self, import_df):
+    def import_rows(self, user, import_rules, filter_rules: list = [], id_only: bool = False):
         """
         Import one or more records from a table of records.
         """
         df = self.df.copy()
 
-        select_df = mod_win2.import_window(import_df)
+        # Initialize the import table
+        table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
+                        'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
+                        'RecordType': self.record_type, 'Title': self.title}
+        import_table = TableElement(self.name, table_layout)
+
+        # Import data from the database
+        import_filters = mod_db.format_import_filters(import_rules) + filter_rules
+        table_statement = mod_db.format_tables(import_rules)
+        import_columns = mod_db.format_import_columns(import_rules)
+
+        if id_only is False:
+            try:
+                df = user.query(table_statement, columns=import_columns, filter_rules=import_filters)
+            except Exception as e:
+                print('Warning: failed to import data from the database - {ERR}'.format(ERR=e))
+            else:
+                import_table.df = import_table.append(df)
+
+        select_df = mod_win2.import_window(user, import_table, import_rules)
+
         if select_df.empty:
             return df
         else:
@@ -1454,7 +1477,7 @@ class TableElement:
             msg = 'unable to import record {ID} from the database - no record type was specified for the table'\
                 .format(ID=record_id)
             mod_win2.popup_error(msg)
-            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
 
             return df
 
@@ -1469,7 +1492,7 @@ class TableElement:
         """
         edit_columns = self.edit_columns
         if not edit_columns:
-            print('Warning: table {TBL}: no columns have been configured to be editable'.format(TBL=self.name))
+            print('Warning: DataTable {TBL}: no columns have been configured to be editable'.format(TBL=self.name))
         df = self.df.copy()
 
         try:
@@ -1478,7 +1501,7 @@ class TableElement:
             msg = 'failed to edit record at row {IND} - no record found at table index {IND} to edit'\
                 .format(TBL=self.name, IND=index + 1)
             mod_win2.popup_error(msg)
-            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
 
             return df
 
@@ -1491,7 +1514,7 @@ class TableElement:
 
         return df
 
-    def export_row(self, index, user, view_only: bool = False):
+    def export_row(self, index, user, view_only: bool = False, new_record: bool = False):
         """
         Open selected record in new record window.
         """
@@ -1503,7 +1526,7 @@ class TableElement:
             msg = 'failed to open record at row {IND} - no record found at table index {IND} to edit'\
                 .format(TBL=self.name, IND=index + 1)
             mod_win2.popup_error(msg)
-            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
 
             return df
 
@@ -1521,7 +1544,7 @@ class TableElement:
             msg = 'failed to open record at row {IND} - no record type specified for the data table'\
                 .format(TBL=self.name, IND=index + 1)
             mod_win2.popup_error(msg)
-            print('Error: table {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
 
             return df
 
@@ -1537,7 +1560,8 @@ class TableElement:
             print('Warning: unknown record group provided {}'.format(record_group))
             return df
 
-        record = record_class(self.record_type, record_entry.record_layout, row, new_record=False, referenced=True)
+        print('Info: DataTable {NAME}: opening record at row {IND}'.format(NAME=self.name, IND=index))
+        record = record_class(self.record_type, record_entry.record_layout, row, new_record=new_record, referenced=True)
 
         # Display the record window
         save = True if self.actions['edit'] is True else False
@@ -1675,37 +1699,36 @@ class TableElement:
         Set column data types based on header mapping
         """
         dtype_map = self.columns
+        header = df.columns.tolist()
 
         if not isinstance(dtype_map, dict):
-            print('Configuration Warning: table {NAME}: unable to set column datatype. Columns must be configured as '
-                  'an object in order to use this feature'.format(NAME=self.name))
+            print('Configuration Warning: DataTable {NAME}: unable to set column datatype. Columns must be configured '
+                  'as an object in order to use this feature'.format(NAME=self.name))
             return df
 
         for column in dtype_map:
-            try:
-                dtype = dtype_map[column]
-            except KeyError:
-                dtype = 'varchar'
-                astype = object
-            else:
-                if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                    astype = np.datetime64
-                elif dtype in ('int', 'integer', 'bit'):
-                    astype = np.int64
-                elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-                    astype = np.float64
-                elif dtype in ('bool', 'boolean'):
-                    astype = np.bool
-                elif dtype in ('char', 'varchar', 'binary', 'text'):
-                    astype = np.object
-                else:
-                    astype = np.object
+            dtype = dtype_map[column]
+
+            if column not in header:
+                continue
 
             try:
-                df[column] = df[column].astype(astype, errors='raise')
-            except (KeyError, ValueError, TypeError):
-                print('Warning: table {NAME}: unable to set column {COL} to data type {DTYPE}'
-                      .format(NAME=self.name, COL=column, DTYPE=dtype))
+                if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                    df[column] = pd.to_datetime(df[column], errors='coerce', format=configuration.date_format)
+                elif dtype in ('int', 'integer', 'bit'):
+                    df[column] = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+                elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+                    df[column] = pd.to_numeric(df[column], errors='coerce')
+                elif dtype in ('bool', 'boolean'):
+                    df[column] = df[column].astype(np.bool, errors='raise')
+                elif dtype in ('char', 'varchar', 'binary', 'text'):
+                    df[column] = df[column].astype(np.object, errors='raise')
+                else:
+                    df[column] = df[column].astype(np.object, errors='raise')
+            except Exception as e:
+                print('Warning: DataTable {NAME}: unable to set column {COL} to data type {DTYPE} - {ERR}'
+                      .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                print(df[column])
 
         return df
 
@@ -1793,8 +1816,8 @@ class ReferenceElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: component {COMP} not found in list of reference box element {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
+            print('Warning: ReferenceElement {NAME}: component {COMP} not found in list of element components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -1814,6 +1837,8 @@ class ReferenceElement:
 
         height_key = self.key_lookup('Height')
         window[height_key].set_size(size=(None, height))
+
+        window.refresh()
 
     def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), editable: bool = False):
         """
@@ -1877,7 +1902,7 @@ class ReferenceElement:
         ref_key = self.key_lookup('Reference')
 
         # Delete a reference from the record reference database table
-        print('Info: table {TBL}: running event {EVENT}'.format(TBL=self.name, EVENT=event))
+        print('Info: ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
         if event == del_key:
             msg = 'Are you sure that you would like to disassociate reference {REF} from {RECORD}? This action ' \
                   'cannot be undone. Disassociating a reference does not delete the reference record.' \
@@ -1896,7 +1921,7 @@ class ReferenceElement:
             except Exception as e:
                 msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.record_id, ERR=e)
                 mod_win2.popup_error(msg)
-                print('Warning: Reference {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                print('Warning: ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Display the record window
                 record = mod_win2.record_window(record, user, save=True, delete=False)
@@ -2026,9 +2051,9 @@ class DataElement:
         except (KeyError, TypeError):
             self.value = self.format_value(None)
 
-        print('Info: DataElement {PARAM}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
+        print('Info: DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
               'and formatted value {VAL}'
-              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def key_lookup(self, component):
         """
@@ -2039,7 +2064,7 @@ class DataElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: DataElement {NAME}: component {COMP} not found in list of data element components'
+            print('Warning: DataElement {NAME}: component {COMP} not found in list of element components'
                   .format(NAME=self.name, COMP=component))
             key = None
 
@@ -2067,6 +2092,8 @@ class DataElement:
         window[elem_key].set_size(size=(width, height))
         window[elem_key].expand(expand_x=True)
 
+        window.refresh()
+
     def run_event(self, window, event, values, user):
         """
         Perform an action.
@@ -2077,7 +2104,10 @@ class DataElement:
             print('Info: DataElement {ELEM}: expanding / collapsing filter frame'.format(ELEM=self.name))
             self.collapse_expand(window)
         elif event == elem_key:
-            self.update_display(window, window_values=values)
+            display_value = self.enforce_formatting(window, values)
+            window[elem_key].update(value=display_value)
+
+            window.refresh()
 
         return True
 
@@ -2232,13 +2262,16 @@ class DataElement:
         try:
             param_value = window_values[elem_key]
         except (KeyError, TypeError):
-#            display_value = self.format_display(window, str(self.value))
-            print('Info: DataElement {NAME}: no values provided to update the display'.format(NAME=self.name))
+            display_value = self.format_display()
         else:
-            display_value = self.format_display(window, param_value)
-            window[elem_key].update(value=display_value)
+            self.value = self.format_value(param_value)
+            display_value = self.format_display()
 
-    def format_display(self, window, value):
+        window[elem_key].update(value=display_value)
+
+        window.refresh()
+
+    def enforce_formatting(self, window, values):
         """
         Format the display value.
         """
@@ -2247,6 +2280,13 @@ class DataElement:
         group_sep = settings.thousands_sep
 
         dtype = self.dtype
+
+        elem_key = self.key_lookup('Element')
+        try:
+            value = values[elem_key]
+        except (KeyError, TypeError):
+            print('Info: DataElement {NAME}: no values provided to update the display'.format(NAME=self.name))
+            value = None
 
         if pd.isna(value) is True:
             return ''
@@ -2308,12 +2348,10 @@ class DataElement:
 
         elif dtype == 'money':
             current_value = list(window[elem_key].metadata['value'])
-            print(current_value)
 
             # Remove currency and grouping separator
 #            new_value = value[len(currency_sym):].replace(group_sep, '')
             new_value = list(value.replace(group_sep, ''))
-            print(new_value)
 
             if len(current_value) > len(new_value):  # user removed a character
                 # Remove the decimal separator if last character is decimal
@@ -2332,7 +2370,6 @@ class DataElement:
                         new_index = index
                         break
 
-                print(new_char, new_index)
 
                 # Validate added character
                 if new_char.isnumeric():  # can add integers
@@ -2393,6 +2430,45 @@ class DataElement:
 
         return display_value
 
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        dec_sep = settings.decimal_sep
+        group_sep = settings.thousands_sep
+
+        dtype = self.dtype
+        value = self.value
+        options = self.options
+        print('Info: DataElement {NAME}: formatting element value {VAL} of type {TYPE} for display'
+              .format(NAME=self.name, VAL=value, TYPE=type(value)))
+
+        if value == '' or value is None:
+            return ''
+
+        if (isinstance(value, float) or isinstance(value, int) or isinstance(value, str)) and dtype == 'money':
+            value = str(value)
+            if dec_sep in value:
+                integers, decimals = value.split(dec_sep)
+                decimals = decimals[0:2]
+                display_value = ''.join([group_sep * (n % 3 == 2) + i
+                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
+            else:
+                display_value = ''.join([group_sep * (n % 3 == 2) + i
+                                         for n, i in enumerate(value[::-1])][::-1]).lstrip(',')
+
+        elif isinstance(value, float) and dtype != 'money':
+            display_value = str(value)
+
+        elif isinstance(value, datetime.datetime):
+            display_value = value.strftime('%Y-%m-%d')
+
+        else:
+            aliases = options.get('Aliases', {})
+            display_value = aliases.get(value, str(value))
+
+        return display_value
+
     def format_value(self, input_value):
         """
         Set the value of the data element from user input.
@@ -2418,9 +2494,6 @@ class DataElement:
             try:
                 alias_value = aliases[input_value]
             except KeyError:
-                print('Info: DataElement {NAME}: no alias specified for value {VAL}'
-                      .format(NAME=self.name, VAL=input_value))
-                print(aliases)
                 input_value = input_value
             else:
                 print('Info: DataElement {NAME}: setting value to {VAL} with alias {ALIAS}'
@@ -2521,3 +2594,5 @@ class DataElement:
             window[frame_key].update(visible=True)
 
             window[frame_key].metadata['visible'] = True
+
+        window.refresh()
