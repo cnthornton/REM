@@ -143,17 +143,19 @@ class BankRule:
 
             param_layout = param_entry['ElementType']
             if param_layout == 'dropdown':
-                param_class = mod_param.RuleParameterCombo
+                param_class = mod_param.DataParameterCombo
             elif param_layout == 'input':
-                param_class = mod_param.RuleParameterInput
+                param_class = mod_param.DataParameterInput
             elif param_layout == 'date':
-                param_class = mod_param.RuleParameterDate
+                param_class = mod_param.DataParameterDate
             elif param_layout == 'date_range':
-                param_class = mod_param.RuleParameterDateRange
+                param_class = mod_param.DataParameterDateRange
             elif param_layout == 'checkbox':
-                param_class = mod_param.RuleParameterCheckbox
+                param_class = mod_param.DataParameterCheckbox
+            elif param_layout == 'button':
+                param_class = mod_param.DataParameterButton
             else:
-                msg = 'Configuration Error: BankRule {NAME}: unknown type {TYPE} provided to RuleParameter {PARAM}' \
+                msg = 'Configuration Error: BankRule {NAME}: unknown type {TYPE} provided to DataParameter {PARAM}' \
                     .format(NAME=name, TYPE=param_layout, PARAM=param)
                 mod_win2.popup_error(msg)
                 sys.exit(1)
@@ -222,8 +224,8 @@ class BankRule:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: component {COMP} not found in list of bank rule {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
+            print('Warning: BankRule {NAME}: component {COMP} not found in list of rule components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -689,7 +691,7 @@ class BankRule:
 
         # Run component table events
         elif event in self.table.elements:
-            results = self.table.run_event(window, event, values, user)
+            self.table.run_event(window, event, values, user)
 
         # Run association table events
         elif event in association_elements:
@@ -700,7 +702,7 @@ class BankRule:
                 print('Error: BankRule {NAME}: unable to find association table associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                result = association_table.run_event(window, event, values, user)
+                association_table.run_event(window, event, values, user)
 
         # Run component parameter events
         elif event in param_elements:
@@ -710,7 +712,7 @@ class BankRule:
                 print('Error: BankRule {NAME}: unable to find parameter associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                result = param.run_event(window, event, values)
+                param.run_event(window, event, values, user)
 
         return current_rule
 
@@ -793,14 +795,13 @@ class BankRule:
         # Prepare the database query statement
         import_rules = self.import_rules
 
-        main_table = mod_db.get_primary_table(import_rules)
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
         columns = mod_db.format_import_columns(import_rules)
 
         # Add parameter values to the filter statement
         rule_params = self.parameters  # to filter data tables
-        param_filters = [i.query_statement(table=main_table) for i in rule_params]
+        param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in rule_params]
         filters += param_filters
 
         # Import primary bank data from database
@@ -915,8 +916,8 @@ class AssociationRule:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: component {COMP} not found in list of bank rule {PARAM} components'
-                  .format(COMP=component, PARAM=self.name))
+            print('Warning: BankAssociation {NAME}: component {COMP} not found in list of association components'
+                  .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -980,14 +981,13 @@ class AssociationRule:
         # Prepare the database query statement
         import_rules = self.import_rules
 
-        main_table = mod_db.get_primary_table(import_rules)
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
         columns = mod_db.format_import_columns(import_rules)
 
         # Add parameter values to the filter statement
         rule_params = self.parameters  # to filter data tables
-        filters += [i.query_statement(table=main_table) for i in rule_params]
+        filters += [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in rule_params]
 
         # Import primary bank data from database
         try:

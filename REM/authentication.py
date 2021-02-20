@@ -46,8 +46,18 @@ class UserAccount:
     def __init__(self):
         self.uid = None
         self.pwd = None
+        self.group = None
         self.logged_in = False
         self.admin = False
+
+    def privileges(self):
+        """
+        Get user privilege escalation.
+        """
+        if self.admin:
+            return ['admin', 'user']
+        else:
+            return ['user']
 
     def login(self, uid, pwd):
         """
@@ -89,6 +99,7 @@ class UserAccount:
 
         self.uid = uid
         self.pwd = pwd
+        self.group = ugroup
         self.logged_in = True
 
         if ugroup == 'admin':
@@ -185,7 +196,7 @@ class UserAccount:
                     print('DB Read Error: unable to read the schema for table {}'.format(table))
                     return None
 
-    def thread_transaction(self, statement, params, database: str = None, operation: str = 'read', timeout: int = 10):
+    def thread_transaction(self, statement, params, database: str = None, operation: str = 'read', timeout: int = 20):
         """
         Thread a database operation.
         """
@@ -321,34 +332,6 @@ class UserAccount:
         # Define column component of query statement
         colnames = ', '.join(columns) if type(columns) in (type(list()), type(tuple())) else columns
 
-        # Define table component of query statement
-        table_names = [i for i in tables] if isinstance(tables, dict) else [tables]
-        first_table = table_names[0]
-        if len(table_names) > 1:
-            table_rules = [first_table]
-            for table in table_names[1:]:
-                table_rule = tables[table]
-                try:
-                    tbl1_field, tbl2_field, join_clause = table_rule[0:3]
-                except ValueError:
-                    print('Query Error: table join rule {} requires three components'.format(table_rule))
-                    continue
-                if join_clause not in joins:
-                    print('Query Error: unknown join type {JOIN} in {RULE}'.format(JOIN=join_clause, RULE=table_rule))
-                    continue
-
-                opt_filters = ' AND '.join(table_rule[3:])
-                if opt_filters:
-                    join_statement = '{JOIN} {TABLE} ON {F1}={F2} AND {OPTS}'\
-                        .format(JOIN=join_clause, TABLE=table, F1=tbl1_field, F2=tbl2_field, OPTS=opt_filters)
-                else:
-                    join_statement = '{JOIN} {TABLE} ON {F1}={F2}'.format(JOIN=join_clause, TABLE=table, F1=tbl1_field,
-                                                                          F2=tbl2_field)
-                table_rules.append(join_statement)
-            table_component = ' '.join(table_rules)
-        else:
-            table_component = first_table
-
         # Construct filtering rules
         try:
             where_clause, params = construct_where_clause(filter_rules)
@@ -356,7 +339,7 @@ class UserAccount:
             print('Query Error: {}'.format(e))
             return pd.DataFrame()
 
-        query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'.format(COLS=colnames, TABLE=table_component,
+        query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'.format(COLS=colnames, TABLE=tables,
                                                                         WHERE=where_clause, SORT=order_by)
 
         print('Query string supplied was: {} with parameters {}'.format(query_str, params))

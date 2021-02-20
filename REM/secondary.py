@@ -224,8 +224,7 @@ def login_window(account):
     return account
 
 
-def record_window(record, user, win_size: tuple = None, save: bool = False, delete: bool = False,
-                  view_only: bool = False):
+def record_window(record, user, win_size: tuple = None, view_only: bool = False):
     """
     Display the record window.
     """
@@ -235,11 +234,59 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
     # GUI layout
-    pad_v = mod_const.VERT_PAD
-    bg_col = mod_const.ACTION_COL
 
-    layout = [[sg.Col(record.layout(win_size=(600, height), save=save, delete=delete, view_only=view_only),
-                      pad=(pad_v, pad_v), background_color=bg_col, expand_x=True)]]
+    # Element parameters
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+
+    bg_col = mod_const.ACTION_COL
+    header_col = mod_const.HEADER_COL
+
+    font_h = mod_const.HEADER_FONT
+
+    user_priv = user.privileges()
+
+    # User permissions
+    deletable = True if record.permissions['delete'] in user_priv and record.level < 1 \
+                        and view_only is False else False
+    savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
+    markable = True if record.permissions['mark'] in user_priv and record.new is False \
+                       and view_only is False else False
+    approvable = True if record.permissions['approve'] in user_priv and record.new is False \
+                         and view_only is False else False
+
+    # Window Title
+    modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': deletable}
+    if record.new is False:
+        annotation_layout = []
+        for modifier in record.modifiers:
+            modifier_name = modifier.name
+            if modifier_name in modifier_perms:
+                modifier.editable = modifier_perms[modifier_name]
+
+            annotation_layout.append(modifier.layout(bg_col=header_col))
+    else:
+        annotation_layout = [[]]
+
+    title = record.title
+    title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
+                            pad=(0, 0), justification='l', background_color=header_col, expand_x=True),
+                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+                            background_color=header_col, justification='c', expand_x=True),
+                     sg.Col(annotation_layout, pad=(pad_frame, 0), background_color=header_col,
+                            justification='r', vertical_alignment='c')]]
+
+    # Button layout
+    bttn_layout = [[mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=(not savable), tooltip='Accept changes'),
+                    mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=savable, tooltip='Save to database')]]
+
+    # Window layout
+    layout = [[sg.Col(title_layout, background_color=header_col, expand_x=True)],
+              [sg.Col(record.layout(win_size=(600, height), view_only=view_only, ugroup=user_priv),
+                      pad=(0, 0), background_color=bg_col, expand_x=True)],
+              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+              [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]]
+
     window = sg.Window('Database Record', layout, modal=True, keep_on_top=False, return_keyboard_events=True)
     window.finalize()
 
@@ -262,29 +309,32 @@ def record_window(record, user, win_size: tuple = None, save: bool = False, dele
         if event == sg.WIN_CLOSED:  # selected close-window without accepting changes
             # Remove unsaved IDs associated with the record
             mod_records.remove_unsaved_keys(record)
+            record = None
+
+            break
+
+        if event == '-OK-':
+            # Update data element values
+            for param_elem in record.parameters:
+                param_elem.value = param_elem.update_display(window, window_values=values)
+
+            break
+
+        if event == '-SAVE-':
+            # Update data element values
+            for param_elem in record.parameters:
+                param_elem.value = param_elem.update_display(window, window_values=values)
+
+            # Save the record to the database table
+            record_entry = configuration.records.fetch_rule(record.name)
+            record_entry.export_record(user, record)
 
             break
 
         # Update the record parameters with user-input
         if event in record_elements:
             print(event)
-            result = record.run_event(window, event, values, user)
-            if result is True:  # event is something other than the action buttons save or delete
-                continue
-            else:  # event is save or delete
-                if event == record.key_lookup('Delete'):  # delete the record selected
-                    record = None
-                else:  # save changes selected
-                    # Update parameter values
-                    for param in record.parameters:
-                        elem_key = param.key_lookup('Element')
-                        try:
-                            param_value = values[elem_key]
-                        except KeyError:
-                            continue
-                        param.value = param.format_value(param_value)
-
-                break
+            record.run_event(window, event, values, user)
 
     window.close()
     layout = None
@@ -1398,10 +1448,8 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
             record_data['RecordDate'] = table.creation_date
 
             record_type = record_entry.group
-            if record_type in ('transaction', 'bank_statement', 'cash_expense'):
+            if record_type in ('account', 'bank_statement', 'cash_expense'):
                 record_class = mod_records.DatabaseRecord
-            elif record_type == 'account':
-                record_class = mod_records.AccountRecord
             elif record_type == 'bank_deposit':
                 record_class = mod_records.DepositRecord
             elif record_type == 'audit':
@@ -1412,7 +1460,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
 
                 break
 
-            record = record_class(record_entry.name, record_layout, record_data, new_record=True, referenced=False)
+            record = record_class(record_entry.name, record_layout, record_data, new_record=True, level=0)
 
             break
 
@@ -1447,10 +1495,8 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
                 # Set the record object based on the record type
                 record_type = table.record_type
                 record_group = configuration.records.fetch_rule(record_type).group
-                if record_group in ('transaction', 'bank_statement', 'cash_expense'):
+                if record_group in ('account', 'bank_statement', 'cash_expense'):
                     record_class = mod_records.DatabaseRecord
-                elif record_group == 'account':
-                    record_class = mod_records.AccountRecord
                 elif record_group == 'bank_deposit':
                     record_class = mod_records.DepositRecord
                 elif record_group == 'audit':
@@ -1481,7 +1527,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
     return record
 
 
-def import_window(user, table, import_rules, win_size: tuple = None):
+def import_window(user, table, import_rules, win_size: tuple = None, program_database: bool = False):
     """
     Display the importer window.
     """
@@ -1536,8 +1582,7 @@ def import_window(user, table, import_rules, win_size: tuple = None):
 
     table_statement = mod_db.format_tables(import_rules)
     import_columns = mod_db.format_import_columns(import_rules)
-    id_column = mod_db.get_primary_id_column(import_rules)
-    main_table = mod_db.get_primary_table(import_rules)
+    id_column = mod_db.get_import_column(import_rules, 'RecordID')
 
     # Start event loop
     selected_rows = []
@@ -1553,10 +1598,11 @@ def import_window(user, table, import_rules, win_size: tuple = None):
                 popup_notice('no record ID provided')
                 continue
 
-            record_filter = ('{TBL}.{COL} = ?'.format(TBL=main_table, COL=id_column), (record_id,))
+            record_filter = ('{COL} = ?'.format(COL=id_column), (record_id,))
 
             try:
-                record_df = user.query(table_statement, columns=import_columns, filter_rules=record_filter)
+                record_df = user.query(table_statement, columns=import_columns, filter_rules=record_filter,
+                                       prog_db=program_database)
             except Exception as e:
                 popup_error('failed to import record {ID} from the database - {ERR}'.format(ID=record_id, ERR=e))
                 continue

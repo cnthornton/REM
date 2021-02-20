@@ -9,8 +9,9 @@ import pandas as pd
 import PySimpleGUI as sg
 
 import REM.constants as mod_const
+import REM.database as mod_db
 import REM.elements as mod_elem
-import REM.layouts as mod_lo
+import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.config import configuration, settings
 
@@ -37,7 +38,7 @@ class DatabaseRecord:
         components (list): list of record components.
     """
 
-    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
+    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False, level: int = 0):
         """
         Arguments:
             name (str): configured record type.
@@ -53,31 +54,39 @@ class DatabaseRecord:
 
         approved_record_types = ['transaction', 'account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
         self.name = name
-        self.record_group = record_entry.group
+        try:
+            self.record_group = record_entry.group
+        except AttributeError:
+            self.record_group = None
 
         self.id = randint(0, 1000000000)
         self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Delete', 'Save', 'RecordID', 'RecordDate', 'MarkedForDeletion', 'Approved',
-                          'ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'Height',
-                          'Width']]
+                         ['RecordID', 'RecordDate', 'ReferencesButton', 'ReferencesFrame', 'ComponentsButton',
+                          'ComponentsFrame', 'Height', 'Width']]
 
         self.record_layout = entry
         self.new = new_record
+        self.level = level
         self.referenced = referenced
-        print('record type {} is a reference link: {}'.format(self.name, self.referenced))
 
         # User permissions when accessing record
         try:
             permissions = entry['Permissions']
         except KeyError:
-            self.permissions = {'edit': 'admin', 'delete': 'admin', 'mark': 'admin', 'unlink': 'admin',
-                                'approve': 'admin'}
+            self.permissions = {'edit': 'admin', 'delete': 'admin', 'mark': 'admin', 'references': 'admin',
+                                'components': 'admin', 'approve': 'admin'}
         else:
             self.permissions = {'edit': permissions.get('Edit', 'admin'),
                                 'delete': permissions.get('Delete', 'admin'),
                                 'mark': permissions.get('MarkForDeletion', 'admin'),
-                                'unlink': permissions.get('RemoveAssociations', 'admin'),
+                                'references': permissions.get('ModifyReferences', 'admin'),
+                                'components': permissions.get('ModifyComponents', 'admin'),
                                 'approve': permissions.get('Approve', 'admin')}
+
+        try:
+            self.title = entry['Title']
+        except KeyError:
+            self.title = name
 
         if isinstance(record_data, pd.Series):
             record_data = record_data.to_dict()
@@ -113,14 +122,26 @@ class DatabaseRecord:
             else:
                 raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
 
-        self.deleted = record_data.get('Deleted', False)
-        self.marked_for_deletion = record_data.get('MarkedForDeletion', None)
-        self.approved = record_data.get('Approved', None)
-
         self.creator = record_data.get(configuration.creator_code, None)
         self.creation_date = record_data.get(configuration.creation_date, None)
         self.editor = record_data.get(configuration.editor_code, None)
         self.edit_date = record_data.get(configuration.edit_date, None)
+
+        # Record modifiers
+        self.modifiers = []
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = []
+        else:
+            for param_name in modifiers:
+                param_entry = modifiers[param_name]
+                param_entry['ElementType'] = 'checkbox'
+                param_entry['DataType'] = 'bool'
+                param = mod_param.DataParameterCheckbox(param_name, param_entry)
+
+                self.modifiers.append(param)
+                self.elements += param.elements
 
         # Required record elements
         self.parameters = []
@@ -232,7 +253,7 @@ class DatabaseRecord:
                     self.elements += comp_table.elements
 
         # Import components and references for existing records
-        if new_record is False:
+        if new_record is False and record_entry is not None:
             ref_rows = record_entry.import_references(self.record_id)
             for index, row in ref_rows.iterrows():
                 doctype = row['DocType']
@@ -284,23 +305,34 @@ class DatabaseRecord:
         """
         Perform a record action.
         """
-        save_key = self.key_lookup('Save')
-        delete_key = self.key_lookup('Delete')
-        approved_key = self.key_lookup('Approved')
-        marked_key = self.key_lookup('MarkedForDeletion')
-
         param_elems = [i for param in self.parameters for i in param.elements]
+        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
 
+        # Expand or collapse the references frame
         if event == self.key_lookup('ReferencesButton'):
             print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing References frame'
                   .format(NAME=self.name, ID=self.record_id))
             self.collapse_expand(window, frame='references')
+
+        # Expand or collapse the component tables frame
         elif event == self.key_lookup('ComponentsButton'):
             print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing Components frame'
                   .format(NAME=self.name, ID=self.record_id))
             self.collapse_expand(window, frame='components')
+
+        # Run a modifier event
+        elif event in modifier_elems:
+            try:
+                param = self.fetch_modifier(event, by_key=True)
+            except KeyError:
+                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id, KEY=event))
+            else:
+                param.run_event(window, event, values, user)
+
+        # Run a component element event
         elif event in param_elems:  # parameter event
             try:
                 param = self.fetch_element(event, by_key=True)
@@ -308,15 +340,23 @@ class DatabaseRecord:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                result = param.run_event(window, event, values, user)
+                param.run_event(window, event, values, user)
+
+        # Run a component table event
         elif event in component_elems:  # component table event
+            # Update data elements
+            for param in self.parameters:
+                param.value = param.update_display(window, window_values=values)
+
             try:
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                result = component_table.run_event(window, event, values, user)
+                component_table.run_event(window, event, values, user)
+
+        # Run a reference-box event
         elif event in reference_elems:
             try:
                 refbox = self.fetch_reference(event, by_key=True)
@@ -324,31 +364,7 @@ class DatabaseRecord:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                result = refbox.run_event(window, event, values, user)
-        elif event == approved_key:
-            self.approved = values[approved_key]
-            print('Info: RecordType {NAME}, Record {ID}: setting approved to be {VAL}'
-                  .format(NAME=self.name, ID=self.record_id, VAL=self.approved))
-        elif event == marked_key:
-            self.marked_for_deletion = values[marked_key]
-            print('Info: RecordType {NAME}, Record {ID}: setting marked for deletion to be {VAL}'
-                  .format(NAME=self.name, ID=self.record_id, VAL=self.marked_for_deletion))
-        elif event == save_key:
-            # Update record parameters in the record database table
-            # Remove any deleted references from the record reference table
-            for refbox in self.references:
-                refkey = refbox.key_lookup('Element')
-                ref_removed = window[refkey].metadata['deleted']
-                if ref_removed is True:
-                    print('Info: RecordType {NAME}, Record {ID}: deleting link between records {ID} and {REF} in '
-                          'record reference table'.format(NAME=self.name, ID=self.record_id, REF=refbox.record_id))
-            # Remove any deleted components from the record reference table
-
-            return False
-        elif event == delete_key:
-            # Remove the record from the record table
-            # Remove any entry in the record reference table referencing the record
-            return False
+                refbox.run_event(window, event, values, user)
 
         return True
 
@@ -365,6 +381,25 @@ class DatabaseRecord:
         if element in element_names:
             index = element_names.index(element)
             parameter = self.parameters[index]
+        else:
+            raise KeyError('element {ELEM} not found in list of record {NAME} elements'
+                           .format(ELEM=element, NAME=self.name))
+
+        return parameter
+
+    def fetch_modifier(self, element, by_key: bool = False):
+        """
+        Fetch a GUI data element by name or event key.
+        """
+        if by_key is True:
+            element_type = element.split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.modifiers]
+        else:
+            element_names = [i.name for i in self.modifiers]
+
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.modifiers[index]
         else:
             raise KeyError('element {ELEM} not found in list of record {NAME} elements'
                            .format(ELEM=element, NAME=self.name))
@@ -418,9 +453,15 @@ class DatabaseRecord:
         Format parameter values as a table row.
         """
         parameters = self.parameters
+        modifiers = self.modifiers
 
-        columns = ['RecordID', 'RecordDate', 'Approved', 'MarkedForDeletion']
-        values = [self.record_id, self.record_date, self.approved, self.marked_for_deletion]
+        columns = ['RecordID', 'RecordDate']
+        values = [self.record_id, self.record_date]
+
+        # Add modifier values
+        for modifier in modifiers:
+            columns.append(modifier.name)
+            values.append(modifier.value)
 
         # Add parameter values
         for param in parameters:
@@ -441,8 +482,7 @@ class DatabaseRecord:
         """
         record_layout = self.record_layout
 
-        layout_header = record_layout['Header']
-        header_elements = layout_header['Elements']
+        header_elements = record_layout['Header']
 
         # Element parameters
         bg_col = mod_const.ACTION_COL
@@ -485,8 +525,7 @@ class DatabaseRecord:
 
         return layout
 
-    def layout(self, win_size: tuple = None, user_access: str = 'admin', save: bool = True, delete: bool = False,
-               title_bar: bool = True, buttons: bool = True, view_only: bool = False):
+    def layout(self, win_size: tuple = None, view_only: bool = False, ugroup: list = None):
         """
         Generate a GUI layout for the account record.
         """
@@ -498,35 +537,22 @@ class DatabaseRecord:
         record_layout = self.record_layout
 
         # GUI data elements
-        markable = True if (user_access == 'admin' or self.permissions['mark'] == 'user') and self.new is False \
-            and view_only is False else False
-        editable = True if user_access == 'admin' or self.permissions['save'] == 'user' else False
-        deletable = True if (user_access == 'admin' or self.permissions['delete'] == 'user') and delete is True \
-            and view_only is False else False
-        approvable = True if (user_access == 'admin' or self.permissions['approve'] == 'user') and self.new is False \
-            and view_only is False else False
-        savable = True if editable is True and save is True and view_only is False else False
+        editable = True if view_only is False else False
+        ugroup = ugroup if ugroup is not None and len(ugroup) > 0 else ['admin']
 
         # Element parameters
-        header_col = mod_const.HEADER_COL
         bg_col = mod_const.ACTION_COL
         text_col = mod_const.TEXT_COL
 
-        font_h = mod_const.HEADER_FONT
-        main_font = mod_const.MAIN_FONT
         bold_font = mod_const.BOLD_LARGE_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
-        pad_h = mod_const.HORZ_PAD
         pad_frame = mod_const.FRAME_PAD
 
         # Element sizes
 
         # Layout elements
-        layout_header = record_layout['Header']
-        header_elements = layout_header['Elements']
-
         try:
             reference_title = record_layout['References'].get('Title', 'References')
         except KeyError:
@@ -543,61 +569,13 @@ class DatabaseRecord:
         else:
             has_components = True
 
-        # Window Title
-        if self.marked_for_deletion is not None:
-            try:
-                is_marked_for_deletion = bool(self.marked_for_deletion)
-            except (ValueError, TypeError):
-                is_marked_for_deletion = False
-
-            mark_title = header_elements.get('MarkedForDeletion', 'Marked for deletion')
-            mark_layout = [sg.Checkbox(mark_title, key=self.key_lookup('MarkedForDeletion'),
-                                       default=is_marked_for_deletion, enable_events=True,
-                                       font=main_font, background_color=header_col, disabled=(not markable),
-                                       metadata={'visible': True, 'disabled': (not markable),
-                                                 'value': self.marked_for_deletion})]
-        else:
-            mark_layout = []
-
-        if self.approved is not None:
-            try:
-                is_approved = bool(self.approved)
-            except (ValueError, TypeError):
-                is_approved = False
-
-            approved_title = header_elements.get('Approved', 'Approved')
-            approved_layout = [sg.Checkbox(approved_title, default=is_approved,
-                                           key=self.key_lookup('Approved'), font=main_font, enable_events=True,
-                                           background_color=header_col, disabled=(not approvable),
-                                           metadata={'visible': True, 'disabled': (not markable),
-                                                     'value': self.approved})]
-        else:
-            approved_layout = []
-
-        if self.new is True:
-            annotation_layout = [[]]
-        else:
-            annotation_layout = [approved_layout, mark_layout]
-
-        title = layout_header.get('Title', self.name)
-        if title_bar is True:
-            title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h,
-                                              background_color=header_col)]],
-                                    pad=(0, 0), justification='l', background_color=header_col, expand_x=True),
-                             sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-                                    background_color=header_col, justification='c', expand_x=True),
-                             sg.Col(annotation_layout, pad=(pad_frame, 0), background_color=header_col,
-                                    justification='r', vertical_alignment='c')]]
-        else:
-            title_layout = [[]]
-
         # Record header
         header_layout = self.header_layout()
 
         # Create layout for record details
         details_layout = []
         for data_elem in self.parameters:
-            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, view_only=view_only)])
+            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, editable=editable)])
 
         # Add reference boxes to the details section
         ref_key = self.key_lookup('ReferencesButton')
@@ -608,9 +586,10 @@ class DatabaseRecord:
                                  metadata={'visible': True, 'disabled': False})]]
 
         ref_boxes = []
-        open_reference = True if savable is True and self.referenced is False else False
+        modify_reference = True if editable is True and self.level < 1 and self.permissions['references'] in ugroup \
+            else False
         for ref_box in self.references:
-            ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=open_reference)])
+            ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=modify_reference)])
 
         ref_layout.append([sg.pin(sg.Col(ref_boxes, key=self.key_lookup('ReferencesFrame'), background_color=bg_col,
                                          visible=True, expand_x=True, metadata={'visible': True}))])
@@ -626,11 +605,13 @@ class DatabaseRecord:
                                   border_width=0, visible=True, disabled=False,
                                   metadata={'visible': True, 'disabled': False})]]
 
+        modify_component = True if editable is True and self.level < 1 and self.permissions['components'] in ugroup \
+            else False
         comp_tables = []
         for comp_table in self.components:
             comp_table.df = comp_table.set_datatypes(comp_table.df)
             comp_tables.append([comp_table.layout(padding=(0, pad_v), width=width, height=height,
-                                                  editable=open_reference)])
+                                                  editable=modify_component)])
 
         comp_layout.append([sg.pin(sg.Col(comp_tables, key=self.key_lookup('ComponentsFrame'), background_color=bg_col,
                                           visible=True, expand_x=True, metadata={'visible': False}))])
@@ -643,28 +624,14 @@ class DatabaseRecord:
                         sg.Col(details_layout, pad=(0, 0), background_color=bg_col, expand_x=True, expand_y=True,
                                scrollable=True, vertical_scroll_only=True, vertical_alignment='t')]]
 
-        # Flow control buttons
-        delete_key = self.key_lookup('Delete')
-        save_key = self.key_lookup('Save')
-        if buttons is True:
-            bttn_layout = [[mod_lo.B2('Delete', key=delete_key, pad=(pad_el, 0), visible=deletable,
-                                      tooltip='Delete record'),
-                            mod_lo.B2('Save', key=save_key, pad=(pad_el, 0), visible=savable,
-                                      tooltip='Save record')]]
-        else:
-            bttn_layout = [[]]
-
         # Pane elements must be columns
         width_key = self.key_lookup('Width')
         width_layout = [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)]]
         layout = [[sg.Col(width_layout, pad=(0, 0), background_color=bg_col)],
-                  [sg.Col(title_layout, background_color=header_col, expand_x=True)],
+#                  [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                   [sg.Col(header_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, expand_x=True)],
                   [sg.HorizontalSeparator(pad=(pad_frame, (pad_v, pad_frame)), color=mod_const.INACTIVE_COL)],
-                  [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)],
-                  [sg.HorizontalSeparator(pad=(pad_frame, 0), color=mod_const.INACTIVE_COL)],
-                  [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c',
-                          background_color=bg_col, expand_x=True)]]
+                  [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)]]
 
         return layout
 
@@ -763,11 +730,11 @@ class DepositRecord(DatabaseRecord):
     Class to manage the layout and display of an REM Deposit Record.
     """
 
-    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
+    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False, level: int = 0):
         """
         deposit (float): amount deposited into the bank account.
         """
-        super().__init__(name, entry, record_data, new_record, referenced)
+        super().__init__(name, entry, record_data, new_record, referenced, level)
         self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Deposit'))
 
         try:
@@ -789,8 +756,7 @@ class DepositRecord(DatabaseRecord):
 
         record_layout = self.record_layout
 
-        layout_header = record_layout['Header']
-        header_elements = layout_header['Elements']
+        header_elements = record_layout['Header']
 
         # Element parameters
         bg_col = mod_const.ACTION_COL
@@ -857,9 +823,15 @@ class DepositRecord(DatabaseRecord):
         Format parameter values as a table row.
         """
         parameters = self.parameters
+        modifiers = self.modifiers
 
-        columns = ['RecordID', 'RecordDate', 'Approved', 'MarkedForDeletion', 'DepositAmount']
-        values = [self.record_id, self.record_date, self.approved, self.marked_for_deletion, self.deposit]
+        columns = ['RecordID', 'RecordDate', 'DepositAmount']
+        values = [self.record_id, self.record_date, self.deposit]
+
+        # Add modifier values
+        for modifier in modifiers:
+            columns.append(modifier.name)
+            values.append(modifier.value)
 
         # Add parameter values
         for param in parameters:
@@ -878,21 +850,34 @@ class DepositRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        save_key = self.key_lookup('Save')
-        delete_key = self.key_lookup('Delete')
-        approved_key = self.key_lookup('Approved')
-        marked_key = self.key_lookup('MarkedForDeletion')
-
         param_elems = [i for param in self.parameters for i in param.elements]
+        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
 
+        # Collapse or expand the references frame
         if event == self.key_lookup('ReferencesButton'):
-            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
+            print('Info: {NAME}, Record {ID}: expanding / collapsing References frame'
+                  .format(NAME=self.name, ID=self.record_id))
             self.collapse_expand(window, frame='references')
+
+        # Collapse or expand the component tables frame
         elif event == self.key_lookup('ComponentsButton'):
-            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
+            print('Info: {NAME}, Record {ID}: expanding / collapsing Components frame'
+                  .format(NAME=self.name, ID=self.record_id))
             self.collapse_expand(window, frame='components')
+
+        # Run a modifier event
+        elif event in modifier_elems:
+            try:
+                param = self.fetch_modifier(event, by_key=True)
+            except KeyError:
+                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id, KEY=event))
+            else:
+                param.run_event(window, event, values, user)
+
+        # Run a data element event
         elif event in param_elems:  # parameter event
             try:
                 param = self.fetch_element(event, by_key=True)
@@ -901,7 +886,12 @@ class DepositRecord(DatabaseRecord):
                       .format(ID=self.record_id, KEY=event))
             else:
                 param.run_event(window, event, values, user)
+
         elif event in component_elems:  # component table event
+            # Update data elements
+            for param in self.parameters:
+                param.value = param.update_display(window, window_values=values)
+
             try:
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
@@ -913,16 +903,22 @@ class DepositRecord(DatabaseRecord):
                 if comp_record_type in configuration.records.group_elements('account'):
                     if event == component_table.key_lookup('Import'):  # import account records
                         comp_entry = configuration.records.fetch_rule(comp_record_type)
-                        export_columns = {j: i for i, j in comp_entry.import_rules['Columns']}
-                        filters = [[export_columns['Approved'], '=', self.approved],
-                                   [export_columns['PaymentType'], '=', self.fetch_element('PaymentType').value]]
+                        approved_col = mod_db.get_import_column(comp_entry.import_rules, 'Approved')
+                        payment_col = mod_db.get_import_column(comp_entry.import_rules, 'PaymentType')
+                        filters = [('{COL} = ?'.format(COL=approved_col), (0,)),
+                                   ('{COL} = ?'.format(COL=payment_col), (self.fetch_element('PaymentType').value,))]
 
-                        component_table.df = component_table.import_rows(filters)
-
+                        component_table.df = component_table.import_rows(user, comp_entry.import_rules,
+                                                                         filter_rules=filters, program_database=True)
+                    elif event == component_table.key_lookup('Add'):  # add account records
+                        component_table.add_row(user, record_date=self.record_date)
+                    else:
+                        component_table.run_event(window, event, values, user)
                 else:
                     component_table.run_event(window, event, values, user)
 
                 self.update_display(window, window_values=values)
+
         elif event in reference_elems:
             try:
                 refbox = self.fetch_reference(event, by_key=True)
@@ -931,30 +927,6 @@ class DepositRecord(DatabaseRecord):
                       .format(ID=self.record_id, KEY=event))
             else:
                 refbox.run_event(window, event, values, user)
-        elif event == approved_key:
-            self.approved = values[approved_key]
-            print('Info: record {ID}: setting approved to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.approved))
-        elif event == marked_key:
-            self.marked_for_deletion = values[marked_key]
-            print('Info: record {ID}: setting marked for deletion to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
-        elif event == save_key:
-            # Update record parameters in the record database table
-            # Remove any deleted references from the record reference table
-            for refbox in self.references:
-                refkey = refbox.key_lookup('Element')
-                ref_removed = window[refkey].metadata['deleted']
-                if ref_removed is True:
-                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
-                          .format(ID=self.record_id, REF=refbox.record_id))
-            # Remove any deleted components from the record reference table
-
-            return False
-        elif event == delete_key:
-            # Remove the record from the record table
-            # Remove any entry in the record reference table referencing the record
-            return False
 
         return True
 
@@ -1023,235 +995,16 @@ class DepositRecord(DatabaseRecord):
         self.deposit = deposit_total
 
 
-class AccountRecord(DatabaseRecord):
-    """
-    Class to manage the layout and display of an REM Account Record.
-    """
-
-    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
-        """
-        amount (float): amount .
-        """
-        super().__init__(name, entry, record_data, new_record, referenced)
-        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Amount'))
-
-        try:
-            amount = float(record_data['Amount'])
-        except (KeyError, TypeError):
-            self.amount = 0
-        else:
-            if np.isnan(amount):
-                self.amount = 0.00
-            else:
-                self.amount = amount
-
-    def header_layout(self):
-        """
-        Generate the layout for the header section of the record layout.
-        """
-        record_layout = self.record_layout
-
-        layout_header = record_layout['Header']
-        header_elements = layout_header['Elements']
-
-        # Element parameters
-        bg_col = mod_const.ACTION_COL
-
-        main_font = mod_const.MAIN_FONT
-        bold_font = mod_const.BOLD_LARGE_FONT
-
-        pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
-
-        # Header components
-        try:
-            id_title = header_elements.get('RecordID', 'Record ID')
-        except KeyError:
-            print('Warning: the parameter "RecordID" was not included in the list of configured data elements')
-            id_title = 'ID'
-        try:
-            date_title = header_elements.get('RecordDate', 'Record Date')
-        except KeyError:
-            print('Warning: the parameter "RecordDate" was not included in the list of configured data elements')
-            date_title = 'Date'
-
-        if isinstance(self.record_date, datetime.datetime):
-            record_date = settings.format_display_date(self.record_date)
-        else:
-            record_date = self.record_date
-
-        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
-        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
-                              font=main_font, background_color=bg_col, tooltip=id_tooltip),
-                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(record_date, key=self.key_lookup('RecordDate'), size=(14, 1), font=main_font,
-                              background_color=bg_col)]]
-        try:
-            amount_title = header_elements.get('Amount', 'Amount')
-        except KeyError:
-            print('Warning: the parameter "Amount" was not included in the list of configured data elements')
-            amount_title = 'Amount'
-
-        amount_total = self.amount
-        amount_layout = [[sg.Text('{}:'.format(amount_title), pad=((0, pad_el), 0), background_color=bg_col,
-                                  font=bold_font),
-                          sg.Text('{:,.2f}'.format(amount_total), key=self.key_lookup('Amount'), size=(14, 1),
-                                  font=main_font, background_color=bg_col, border_width=1, relief="sunken",
-                                  tooltip='Import amount: {}'.format('{:,.2f}'.format(amount_total)))]]
-
-        # Header layout
-        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
-                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-                          background_color=bg_col, justification='c', expand_x=True),
-                   sg.Col(amount_layout, background_color=bg_col, justification='r')]]
-
-        return layout
-
-    def table_values(self):
-        """
-        Format parameter values as a table row.
-        """
-        parameters = self.parameters
-
-        columns = ['RecordID', 'RecordDate', 'MarkedForDeletion', 'Amount']
-        values = [self.record_id, self.record_date, self.marked_for_deletion, self.amount]
-
-        # Add parameter values
-        for param in parameters:
-            param_type = param.etype
-            if param_type == 'table':
-                col_summs = param.summarize_table()
-                columns += col_summs.index.values.tolist()
-                values += col_summs.values.tolist()
-            else:
-                columns.append(param.name)
-                values.append(param.value)
-
-        return pd.Series(values, index=columns)
-
-    def run_event(self, window, event, values, user):
-        """
-        Perform a record action.
-        """
-        save_key = self.key_lookup('Save')
-        delete_key = self.key_lookup('Delete')
-        approved_key = self.key_lookup('Approved')
-        marked_key = self.key_lookup('MarkedForDeletion')
-
-        param_elems = [i for param in self.parameters for i in param.elements]
-        component_elems = [i for component in self.components for i in component.elements]
-        reference_elems = [i for reference in self.references for i in reference.elements]
-
-        if event == self.key_lookup('ReferencesButton'):
-            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
-            self.collapse_expand(window, frame='references')
-        elif event == self.key_lookup('ComponentsButton'):
-            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
-            self.collapse_expand(window, frame='components')
-        elif event in param_elems:  # parameter event
-            try:
-                param = self.fetch_element(event, by_key=True)
-            except KeyError:
-                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
-            else:
-                param.run_event(window, event, values, user)
-        elif event in component_elems:  # component table event
-            try:
-                component_table = self.fetch_component(event, by_key=True)
-            except KeyError:
-                print('Error: record {ID}: unable to find component associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
-            else:
-                component_table.run_event(window, event, values, user)
-                self.update_display(window, window_values=values)
-        elif event in reference_elems:
-            try:
-                refbox = self.fetch_reference(event, by_key=True)
-            except KeyError:
-                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
-            else:
-                refbox.run_event(window, event, values, user)
-        elif event == approved_key:
-            self.approved = values[approved_key]
-            print('Info: record {ID}: setting approved to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.approved))
-        elif event == marked_key:
-            self.marked_for_deletion = values[marked_key]
-            print('Info: record {ID}: setting marked for deletion to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
-        elif event == save_key:
-            # Update record parameters in the record database table
-            # Remove any deleted references from the record reference table
-            for refbox in self.references:
-                refkey = refbox.key_lookup('Element')
-                ref_removed = window[refkey].metadata['deleted']
-                if ref_removed is True:
-                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
-                          .format(ID=self.record_id, REF=refbox.record_id))
-            # Remove any deleted components from the record reference table
-
-            return False
-        elif event == delete_key:
-            # Remove the record from the record table
-            # Remove any entry in the record reference table referencing the record
-            return False
-
-        return True
-
-    def update_display(self, window, window_values: dict = None):
-        """
-        Update the display of the record's elements and components.
-        """
-        # Update data element values
-        for param in self.parameters:
-            param.update_display(window, window_values=window_values)
-
-        # Update the components display table
-        for component in self.components:
-            component.update_display(window, window_values=window_values)
-
-        # Update the record's header
-        id_key = self.key_lookup('RecordID')
-        date_key = self.key_lookup('RecordDate')
-        record_id = self.record_id
-        record_date = settings.format_display_date(self.record_date)
-        window[id_key].set_size(size=(len(record_id) + 1, None))
-        window[id_key].update(value=record_id)
-        window[date_key].set_size(size=(len(record_date) + 1, None))
-        window[date_key].update(value=record_date)
-
-        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
-        window[id_key].set_tooltip(id_tooltip)
-
-        # Update the total amount
-        try:
-            table = self.fetch_component('transaction')
-        except KeyError:
-            print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "transaction"'
-                  .format(TYPE=self.name))
-            total = 0
-        else:
-            total = table.calculate_total()
-            print('Info: record {ID}: total income was calculated from the transaction table is {VAL}'
-                  .format(ID=self.record_id, VAL=total))
-
-        window[self.key_lookup('Amount')].update(value='{:,.2f}'.format(total))
-        self.amount = total
-
-
 class TAuditRecord(DatabaseRecord):
     """
     Class to manage the layout of an audit record.
     """
 
-    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False):
+    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False, level: int = 0):
         """
         remainder (float): remaining total after subtracting component record totals.
         """
-        super().__init__(name, entry, record_data, new_record, referenced)
+        super().__init__(name, entry, record_data, new_record, referenced, level)
         for element in ['Remainder', 'Notes', 'NotesButton']:
             self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=element))
 
@@ -1279,8 +1032,7 @@ class TAuditRecord(DatabaseRecord):
 
         record_layout = self.record_layout
 
-        layout_header = record_layout['Header']
-        header_elements = layout_header['Elements']
+        header_elements = record_layout['Header']
 
         # Element parameters
         bg_col = mod_const.ACTION_COL
@@ -1350,9 +1102,15 @@ class TAuditRecord(DatabaseRecord):
         Format parameter values as a table row.
         """
         parameters = self.parameters
+        modifiers = self.modifiers
 
-        columns = ['RecordID', 'RecordDate', 'Approved', 'MarkedForDeletion', 'Remainder', 'Notes']
-        values = [self.record_id, self.record_date, self.approved, self.marked_for_deletion, self.remainder, self.note]
+        columns = ['RecordID', 'RecordDate', 'Remainder', 'Notes']
+        values = [self.record_id, self.record_date, self.remainder, self.note]
+
+        # Add modifier values
+        for modifier in modifiers:
+            columns.append(modifier.name)
+            values.append(modifier.value)
 
         # Add parameter values
         for param in parameters:
@@ -1371,26 +1129,24 @@ class TAuditRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        save_key = self.key_lookup('Save')
-        delete_key = self.key_lookup('Delete')
-        approved_key = self.key_lookup('Approved')
-        marked_key = self.key_lookup('MarkedForDeletion')
         notes_key = self.key_lookup('NotesButton')
 
         param_elems = [i for param in self.parameters for i in param.elements]
+        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
 
         if event == self.key_lookup('ReferencesButton'):
             print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='references')
+
         elif event == self.key_lookup('ComponentsButton'):
             print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='components')
+
         elif event == notes_key:
             record_layout = self.record_layout
-            layout_header = record_layout['Header']
-            header_elements = layout_header['Elements']
+            header_elements = record_layout['Header']
 
             notes_title = header_elements.get('Notes', 'Notes')
             id_title = header_elements.get('RecordID', 'Record ID')
@@ -1399,6 +1155,18 @@ class TAuditRecord(DatabaseRecord):
             self.note = note_text
 
             self.update_display(window, window_values=values)
+
+        # Run a modifier event
+        elif event in modifier_elems:
+            try:
+                param = self.fetch_modifier(event, by_key=True)
+            except KeyError:
+                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id, KEY=event))
+            else:
+                param.run_event(window, event, values, user)
+
+        # Run a data element event
         elif event in param_elems:  # parameter event
             try:
                 param = self.fetch_element(event, by_key=True)
@@ -1408,15 +1176,39 @@ class TAuditRecord(DatabaseRecord):
             else:
                 param.run_event(window, event, values, user)
                 self.update_display(window, window_values=values)
+
         elif event in component_elems:  # component table event
+            # Update data elements
+            for param in self.parameters:
+                param.value = param.update_display(window, window_values=values)
+
             try:
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
                 print('Error: record {ID}: unable to find component associated with event key {KEY}'
                       .format(ID=self.record_id, KEY=event))
             else:
-                component_table.run_event(window, event, values, user)
+                # Check if component table is an account table
+                comp_record_type = component_table.record_type
+                if comp_record_type in configuration.records.group_elements('account'):
+                    if event == component_table.key_lookup('Import'):  # import account records
+                        comp_entry = configuration.records.fetch_rule(comp_record_type)
+                        approved_col = mod_db.get_import_column(comp_entry.import_rules, 'Approved')
+                        date_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordDate')
+                        filters = [('{COL} = ?'.format(COL=approved_col), (0,)),
+                                   ('{COL} = ?'.format(COL=date_col), (self.record_date,))]
+
+                        component_table.df = component_table.import_rows(user, comp_entry.import_rules,
+                                                                         filter_rules=filters, program_database=True)
+                    elif event == component_table.key_lookup('Add'):  # add account records
+                        component_table.add_row(user, record_date=self.record_date)
+                    else:
+                        component_table.run_event(window, event, values, user)
+                else:
+                    component_table.run_event(window, event, values, user)
+
                 self.update_display(window, window_values=values)
+
         elif event in reference_elems:
             try:
                 refbox = self.fetch_reference(event, by_key=True)
@@ -1425,30 +1217,6 @@ class TAuditRecord(DatabaseRecord):
                       .format(ID=self.record_id, KEY=event))
             else:
                 refbox.run_event(window, event, values, user)
-        elif event == approved_key:
-            self.approved = values[approved_key]
-            print('Info: record {ID}: setting approved to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.approved))
-        elif event == marked_key:
-            self.marked_for_deletion = values[marked_key]
-            print('Info: record {ID}: setting marked for deletion to be {VAL}'
-                  .format(ID=self.record_id, VAL=self.marked_for_deletion))
-        elif event == save_key:
-            # Update record parameters in the record database table
-            # Remove any deleted references from the record reference table
-            for refbox in self.references:
-                refkey = refbox.key_lookup('Element')
-                ref_removed = window[refkey].metadata['deleted']
-                if ref_removed is True:
-                    print('Info: record {ID}: deleting link between records {ID} and {REF} in record reference table'
-                          .format(ID=self.record_id, REF=refbox.record_id))
-            # Remove any deleted components from the record reference table
-
-            return False
-        elif event == delete_key:
-            # Remove the record from the record table
-            # Remove any entry in the record reference table referencing the record
-            return False
 
         return True
 
@@ -1484,6 +1252,7 @@ class TAuditRecord(DatabaseRecord):
 
         # Change edit note button to be highlighted if note field not empty
         note_key = self.key_lookup('NotesButton')
+        print(self.note)
         if self.note:
             window[note_key].update(image_data=mod_const.EDIT_NOTE_ICON)
         else:
@@ -1502,6 +1271,7 @@ class TAuditRecord(DatabaseRecord):
             account_total = account_table.calculate_total()
 
         remainder = totals_sum - account_total
+        print(remainder)
 
         if remainder > 0:
             print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
@@ -1518,7 +1288,7 @@ class TAuditRecord(DatabaseRecord):
         self.remainder = remainder
 
 
-def load_record(record_entry, record_id):
+def load_record(record_entry, record_id, level: int = 1):
     """
     Load an existing record from the program database.
     """
@@ -1539,20 +1309,19 @@ def load_record(record_entry, record_id):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry.name, record_entry.record_layout, import_df, new_record=False, referenced=True)
+    record = record_class(record_entry.name, record_entry.record_layout, import_df, new_record=False, referenced=True,
+                          level=level)
 
     return record
 
 
-def create_record(record_entry, record_data):
+def create_record(record_entry, record_data, level: int = 1):
     """
     Create a new database record.
     """
     record_type = record_entry.group
-    if record_type in ('transaction', 'bank_statement', 'cash_expense'):
+    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
-    elif record_type == 'account':
-        record_class = AccountRecord
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':
@@ -1561,7 +1330,8 @@ def create_record(record_entry, record_data):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry.name, record_entry.record_layout, record_data, new_record=True, referenced=False)
+    record = record_class(record_entry.name, record_entry.record_layout, record_data, new_record=True, referenced=False,
+                          level=level)
 
     return record
 
