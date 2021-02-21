@@ -4,6 +4,7 @@ REM settings initializer.
 
 import datetime
 import PySimpleGUI as sg
+import numpy as np
 import os
 import pandas as pd
 from pymongo import MongoClient, errors
@@ -159,23 +160,6 @@ class RecordEntry:
                     import_rule['Filters'] = None
 
         self.import_rules = import_rules
-
-        # Database export rules
-        try:
-            export_rules = entry['ExportRules']
-        except KeyError:
-            popup_error('Configuration Error: RecordEntry {NAME}: missing required parameter "ExportRules"'
-                        .format(NAME=name))
-            sys.exit(1)
-        else:
-            for export_table in export_rules:
-                export_rule = export_rules[export_table]
-                if 'Columns' not in export_rule:
-                    popup_error('Configuration Error: RecordEntry {NAME}: missing required "ExportRules" {TBL} parameter '
-                                '"Columns"'.format(NAME=name, TBL=export_table))
-                    sys.exit(1)
-
-        self.export_rules = export_rules
 
         # Import table layout configuration
         try:
@@ -412,12 +396,16 @@ class RecordEntry:
         query_str = 'SELECT {COL} FROM {TBL} WHERE {FILT}'.format(COL=', '.join(columns), TBL=table_statement, FILT=filters)
 
         import_df = program_account.query(query_str, params=(record_id, ))
+        nrow = import_df.shape[0]
 
-        if import_df.empty:
+        if nrow < 1:
             popup_error('Record {ID} not found in the database'.format(ID=record_id))
             record_data = None
+        elif nrow == 1:
+            record_data = import_df.iloc[0]
         else:
-            record_data = import_df
+            popup_error('More than one database entry found for record {ID}'.format(ID=record_id))
+            record_data = import_df.iloc[0]
 
         return record_data
 
@@ -427,41 +415,30 @@ class RecordEntry:
         """
         ref_table = configuration.reference_lookup
         delete_code = configuration.delete_code
-        export_rules = self.export_rules
+        import_rules = self.import_rules
 
         # Check if the record is already in the database and remove from list of unsaved IDs, if applicable
         record_id = record.record_id
 
         id_exists = not self.remove_unsaved_id(record_id)
 
-        # Iterate over export columns
+        # Iterate over export tables
         saved = []
-        for table in export_rules:
-            table_entry = export_rules[table]
+        for table in import_rules:
+            table_entry = import_rules[table]
 
-            references = table_entry['Columns']
+            references = {j: i for i, j in table_entry['Columns'].items()}
             id_col = references['RecordID']
 
             # Prepare column value updates
-            export_columns = []
-            export_values = []
-            for param in record.parameters:
-                param_col = param.name
-
-                try:
-                    db_col = references[param_col]
-                except KeyError:
-                    print('Warning: RecordEntry {NAME}: parameter {PARAM} not found in list of export columns'
-                          .format(NAME=self.name, PARAM=param_col))
-                    continue
-
-                export_columns.append(db_col)
-                export_values.append(param.value)
+            record_data = record.table_values()
+            export_columns = [references[i] for i in record_data.index.tolist()]
+            export_values = record_data.replace(np.nan, None).values.tolist()
 
             if id_exists is True:  # record already exists in the database
                 # Edit an existing record in the database
                 export_columns += [configuration.editor_code, configuration.edit_date]
-                export_values += [user.id, datetime.datetime.now().strftime(settings.format_date_str())]
+                export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
 
                 filters = ('{} = ?'.format(id_col), (record_id,))
                 saved.append(user.update(table, export_columns, export_values, filters))
@@ -469,16 +446,13 @@ class RecordEntry:
                 # Add / remove associations
 
                 # References
-                orig_refs = [i.ref_id for i in record._references]
-                current_refs = [i.ref_id for i in record.references]
-
-                deleted_refs = set(orig_refs).difference(set(current_refs))
+                deleted_refs = [i.ref_id for i in record.references if i.linked is False]
                 for deleted_ref in deleted_refs:
                     ref_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_ref)]
                     saved.append(user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
                                              [user.name, datetime.datetime.now(), 1], ref_filters))
 
-                added_refs = set(current_refs).difference(set(orig_refs))
+                added_refs = [i.ref_id for i in record.references if i.linked is True]
                 for added_ref in added_refs:
                     ref_record = record.fetch_reference(added_ref, by_id=True)
                     ref_type = ref_record.ref_type
@@ -504,7 +478,7 @@ class RecordEntry:
                               .format(NAME=self.name, TBL=comp_table))
                         continue
 
-                    current_comps = comp_table.df['RecordID']
+                    current_comps = comp_table.df[comp_table.id_column]
 
                     deleted_comps = set(orig_comps).difference(set(current_comps))
                     for deleted_comp in deleted_comps:
@@ -523,7 +497,7 @@ class RecordEntry:
             else:  # record does not exist yet, must be inserted
                 # Create new entry for the record in the database
                 export_columns += [configuration.creator_code, configuration.creation_date]
-                export_values += [user.id, datetime.datetime.now().strftime(settings.format_date_str())]
+                export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
 
                 saved.append(user.insert(table, export_columns, export_values))
 
@@ -715,7 +689,8 @@ class RecordEntry:
                   .format(NAME=self.name, ID=record_id, TYPE=self.name))
             success = False
         else:
-            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID}'.format(NAME=self.name, ID=record_id))
+            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID} from the list of unsaved records'
+                  .format(NAME=self.name, ID=record_id))
             success = True
 
         return success
