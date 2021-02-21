@@ -118,6 +118,40 @@ def format_import_columns(import_rules):
     return columns
 
 
+def format_record_columns(import_rules):
+    """
+    Format columns for record creation.
+    """
+    columns = []
+    for import_table in import_rules:
+        import_rule = import_rules[import_table]
+
+        import_columns = import_rule['Columns']
+        for import_column in import_columns:
+            column_alias = import_columns[import_column]
+            columns.append(column_alias)
+
+    return columns
+
+
+def get_import_column(import_rules, column):
+    """
+    Format a table column for querying.
+    """
+    query_column = None
+
+    for import_table in import_rules:
+        import_rule = import_rules[import_table]
+
+        import_columns = import_rule['Columns']
+        for import_column in import_columns:
+            column_alias = import_columns[import_column]
+            if column_alias == column:
+                query_column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+
+        return query_column
+
+
 def format_tables(import_rules):
     """
     Define the table component of query statement.
