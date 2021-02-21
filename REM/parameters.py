@@ -120,15 +120,13 @@ class DataParameter:
 
         return key
 
-    def run_event(self, window, event, values, **kwargs):
+    def run_event(self, window, event, values, user):
         """
         Run a window event associated with the parameter.
         """
         if event in self.elements:
             display_value = self.enforce_formatting(window, values, event)
             window[event].update(value=display_value)
-
-            window.refresh()
 
     def enforce_formatting(self, window, values, elem_key):
         """
@@ -421,9 +419,9 @@ class DataParameterInput(DataParameter):
                             sg.Text(param_value, key=elem_key, size=size, font=font, background_color=bg_col,
                                     border_width=1)]
 
-        layout = icon_layout + param_layout
+        layout = [icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col)]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
 
     def format_value(self, values):
         """
@@ -612,9 +610,9 @@ class DataParameterCombo(DataParameter):
                             sg.Text(param_value, key=elem_key, size=size, font=font, background_color=bg_col,
                                     border_width=1)]
 
-        layout = icon_layout + param_layout
+        layout = [icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col)]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
 
     def format_value(self, values):
         """
@@ -712,9 +710,9 @@ class DataParameterDate(DataParameter):
                             sg.Text(param_value, key=input_key, size=size, font=font, background_color=bg_col,
                                     border_width=1, metadata={'value': param_value, 'disabled': True})]
 
-        layout = icon_layout + param_layout
+        layout = [icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col)]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
 
     def format_value(self, values):
         """
@@ -789,8 +787,6 @@ class DataParameterDate(DataParameter):
         window[element_key].update(disabled=status)
         window[calendar_key].update(disabled=status)
 
-        window.refresh()
-
 
 class DataParameterDateRange(DataParameter):
     """
@@ -862,7 +858,7 @@ class DataParameterDateRange(DataParameter):
                          sg.CalendarButton('', target=from_key, key=from_date_key, format='%Y-%m-%d',
                                            image_data=date_ico, font=font, border_width=0,
                                            tooltip='Select date from calendar menu')]],
-                       pad=padding, background_color=bg_col),
+                       pad=padding, background_color=bg_col, visible=(not self.hidden)),
                 sg.Col([icon_layout +
                         [sg.Text('{}:'.format(to_desc), auto_size_text=True, pad=((0, pad_el), 0),
                                  font=bold_font, background_color=bg_col),
@@ -872,7 +868,7 @@ class DataParameterDateRange(DataParameter):
                                   metadata={'value': [], 'disabled': False}),
                          sg.CalendarButton('', target=to_key, key=to_date_key, format='%Y-%m-%d', image_data=date_ico,
                                            font=font, border_width=0, tooltip='Select date from calendar menu')]],
-                       pad=padding, background_color=bg_col)]
+                       pad=padding, background_color=bg_col, visible=(not self.hidden))]
         else:
             layout = [
                 sg.Col([icon_layout +
@@ -880,13 +876,13 @@ class DataParameterDateRange(DataParameter):
                                  background_color=bg_col),
                          sg.Text(from_value, key=from_key, size=size, font=font, background_color=bg_col,
                                  border_width=1, metadata={'value': [], 'disabled': True})]],
-                       pad=padding, background_color=bg_col),
+                       pad=padding, background_color=bg_col, visible=(not self.hidden)),
                 sg.Col([icon_layout +
                         [sg.Text(to_desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                  background_color=bg_col),
                          sg.Text(to_value, key=to_key, size=size, font=font,
                                  background_color=bg_col, border_width=1, metadata={'value': [], 'disabled': True})]],
-                       pad=padding, background_color=bg_col)]
+                       pad=padding, background_color=bg_col, visible=(not self.hidden))]
 
         return layout
 
@@ -992,8 +988,6 @@ class DataParameterDateRange(DataParameter):
         window[self.key_lookup('Element')].update(value='')
         window[self.key_lookup('Element2')].update(value='')
 
-        window.refresh()
-
     def toggle_parameter(self, window, value: str = 'enable'):
         """
         Toggle parameter elements on and off.
@@ -1012,8 +1006,6 @@ class DataParameterDateRange(DataParameter):
         window[calendar_key].update(disabled=status)
         window[element2_key].update(disabled=status)
         window[calendar2_key].update(disabled=status)
-
-        window.refresh()
 
 
 class DataParameterCheckbox(DataParameter):
@@ -1063,12 +1055,12 @@ class DataParameterCheckbox(DataParameter):
                 icon_layout = []
 
         # Parameter layout
-        param_layout = [[sg.Checkbox(desc, default=param_value, key=key, pad=padding, font=bold_font,
-                                     enable_events=True, background_color=bg_col, disabled=disabled)]]
+        param_layout = [sg.Checkbox(desc, default=param_value, key=key, pad=padding, font=bold_font,
+                                    enable_events=True, background_color=bg_col, disabled=disabled)]
 
-        layout = icon_layout + param_layout
+        layout = [icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col)]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
 
     def format_value(self, values):
         """
@@ -1138,33 +1130,28 @@ class DataParameterButton(DataParameter):
 
         # Icon layout
         bttn_key = self.key_lookup('Button')
+        elem_key = self.key_lookup('Element')
         if icon is None:
             icon_layout = []
         else:
             icon_path = configuration.get_icon_path(icon)
             if icon_path is not None:
-                icon_layout = [sg.Button('', key=bttn_key, image_filename=icon_path, button_color=(text_col, bg_col),
-                                         border_width=0)]
+                icon_layout = [sg.Button('', key=bttn_key, target=elem_key, image_filename=icon_path, font=font,
+                                         button_color=(text_col, bg_col), border_width=0, tooltip=desc,
+                                         disabled=(not self.editable), enable_events=True)]
             else:
-                icon_layout = []
+                icon_layout = [sg.Button('', key=bttn_key, target=elem_key, button_color=(text_col, bg_col), font=font,
+                                         tooltip=desc, border_width=0, disabled=(not self.editable),
+                                         enable_events=True)]
 
         # Element layout
-        elem_key = self.key_lookup('Element')
-        if self.editable is True:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
-                                    background_color=bg_col),
-                            sg.Input(param_value, key=elem_key, size=size, enable_events=True, font=font,
-                                     background_color=in_col, tooltip='Input value for {}'.format(self.description),
-                                     metadata={'value': param_value, 'disabled': False})]
-        else:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
-                                    background_color=bg_col),
-                            sg.Text(param_value, key=elem_key, size=size, font=font, background_color=bg_col,
-                                    border_width=1)]
+        param_layout = [sg.Input(param_value, key=elem_key, visible=False,
+                                 tooltip='Input value for {}'.format(self.description),
+                                 metadata={'value': param_value, 'disabled': (not self.editable), 'visible': False})]
 
-        layout = icon_layout + param_layout
+        layout = [icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col)]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
 
     def format_value(self, values):
         """
