@@ -618,7 +618,6 @@ def main():
 
             # Get record entry
             record_entry = configuration.records.fetch_rule(record_type, by_title=True)
-            print('Info: the record type selected is {TYPE}'.format(TYPE=record_entry.name))
 
             # Import all records of relevant type from the database
             import_df = record_entry.import_records(user)
@@ -643,7 +642,7 @@ def main():
                     continue
 
             # Open the record display window
-            mod_win2.record_window(record, user, save=True, delete=True)
+            mod_win2.record_window(record, user)
 
             continue
 
@@ -653,21 +652,19 @@ def main():
             # Obtain the selected rule object
             current_rule = audit_rules.fetch_rule(selected_action)
 
+            # Reset rule
+            current_rule.reset_rule(window, current=True)
+
+            # Update panel-in-display
             window[current_panel].update(visible=False)
 
             current_panel = current_rule.element_key
             window[current_panel].update(visible=True)
-#            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
-
-            tab_windows = [i.name for i in current_rule.tabs]
-#            final_index = len(tab_windows) - 1
-
-#            current_panel = current_rule.element_key
 
             # Disable toolbar
             toolbar.disable(window, all_rules)
 
-            print('Info: the panel in view is {} with tabs {}'.format(current_rule.name, ', '.join(tab_windows)))
+            print('Info: panel in view is {NAME}'.format(NAME=current_rule.name))
             continue
 
         elif selected_action in cash_names:
@@ -708,7 +705,7 @@ def main():
                     continue
 
             # Open the record in a new window
-            mod_win2.record_window(record, user, save=True, delete=True)
+            mod_win2.record_window(record, user)
 
             continue
 
@@ -716,6 +713,7 @@ def main():
             # Obtain the selected rule object
             current_rule = bank_rules.fetch_rule(selected_action)
 
+            # Update panel-in-display
             window[current_panel].update(visible=False)
 
             current_panel = current_rule.element_key
@@ -725,7 +723,7 @@ def main():
             # Disable toolbar
             toolbar.disable(window, all_rules)
 
-            print('Info: the panel in view is {}'.format(current_rule.name))
+            print('Info: panel in view is {NAME}'.format(NAME=current_rule.name))
             continue
 
         # Action events
