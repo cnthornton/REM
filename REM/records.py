@@ -253,7 +253,7 @@ class DatabaseRecord:
                     self.elements += comp_table.elements
 
         # Import components and references for existing records
-        if new_record is False and record_entry is not None:
+        if new_record is False and self.record_id is not None and record_entry is not None:
             ref_rows = record_entry.import_references(self.record_id)
             for index, row in ref_rows.iterrows():
                 doctype = row['DocType']
@@ -537,7 +537,7 @@ class DatabaseRecord:
         record_layout = self.record_layout
 
         # GUI data elements
-        editable = True if view_only is False else False
+        editable = True if view_only is False or self.new is True else False
         ugroup = ugroup if ugroup is not None and len(ugroup) > 0 else ['admin']
 
         # Element parameters
@@ -575,7 +575,9 @@ class DatabaseRecord:
         # Create layout for record details
         details_layout = []
         for data_elem in self.parameters:
-            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, editable=editable)])
+            print(data_elem.name, data_elem.key_lookup('Element'))
+            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, editable=editable,
+                                                    overwrite_edit=self.new)])
 
         # Add reference boxes to the details section
         ref_key = self.key_lookup('ReferencesButton')
@@ -675,8 +677,6 @@ class DatabaseRecord:
         tbl_height = int(height * 0.2)  # each table has height that is 20% of window height
         for comp_table in self.components:
             comp_table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
-
-        window.refresh()
 
     def update_display(self, window, window_values: dict = None):
         """
@@ -1005,7 +1005,7 @@ class TAuditRecord(DatabaseRecord):
         remainder (float): remaining total after subtracting component record totals.
         """
         super().__init__(name, entry, record_data, new_record, referenced, level)
-        for element in ['Remainder', 'Notes', 'NotesButton']:
+        for element in ['Remainder']:
             self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=element))
 
         try:
@@ -1017,11 +1017,6 @@ class TAuditRecord(DatabaseRecord):
                 self.remainder = 0.00
             else:
                 self.remainder = remainder
-
-        try:
-            self.note = record_data['Notes']
-        except KeyError:
-            self.note = ''
 
     def header_layout(self):
         """
@@ -1047,7 +1042,6 @@ class TAuditRecord(DatabaseRecord):
         # Header components
         id_title = header_elements.get('RecordID', 'Record ID')
         date_title = header_elements.get('RecordDate', 'Record Date')
-        notes_title = header_elements.get('Notes', 'Notes')
 
         if isinstance(self.record_date, datetime.datetime):
             record_date = settings.format_display_date(self.record_date)
@@ -1060,11 +1054,7 @@ class TAuditRecord(DatabaseRecord):
                               font=main_font, background_color=bg_col, tooltip=id_tooltip),
                       sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
                       sg.Text(record_date, key=self.key_lookup('RecordDate'), pad=((0, pad_h), 0),
-                              size=(14, 1), font=main_font, background_color=bg_col),
-                      sg.Button('', key=self.key_lookup('NotesButton'), image_data=mod_const.TAKE_NOTE_ICON,
-                                button_color=(text_col, bg_col), border_width=0, tooltip=notes_title),
-                      sg.Text(self.note, key=self.key_lookup('Notes'), size=(1, 1), visible=False)]
-                     ]
+                              size=(14, 1), font=main_font, background_color=bg_col)]]
         try:
             remainder_title = header_elements.get('Remainder', 'Remainder')
         except KeyError:
@@ -1104,8 +1094,8 @@ class TAuditRecord(DatabaseRecord):
         parameters = self.parameters
         modifiers = self.modifiers
 
-        columns = ['RecordID', 'RecordDate', 'Remainder', 'Notes']
-        values = [self.record_id, self.record_date, self.remainder, self.note]
+        columns = ['RecordID', 'RecordDate', 'Remainder']
+        values = [self.record_id, self.record_date, self.remainder]
 
         # Add modifier values
         for modifier in modifiers:
@@ -1129,8 +1119,6 @@ class TAuditRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        notes_key = self.key_lookup('NotesButton')
-
         param_elems = [i for param in self.parameters for i in param.elements]
         modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
@@ -1144,18 +1132,6 @@ class TAuditRecord(DatabaseRecord):
             print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='components')
 
-        elif event == notes_key:
-            record_layout = self.record_layout
-            header_elements = record_layout['Header']
-
-            notes_title = header_elements.get('Notes', 'Notes')
-            id_title = header_elements.get('RecordID', 'Record ID')
-
-            note_text = mod_win2.notes_window(self.record_id, self.note, id_title=id_title, title=notes_title).strip()
-            self.note = note_text
-
-            self.update_display(window, window_values=values)
-
         # Run a modifier event
         elif event in modifier_elems:
             try:
@@ -1167,7 +1143,7 @@ class TAuditRecord(DatabaseRecord):
                 param.run_event(window, event, values, user)
 
         # Run a data element event
-        elif event in param_elems:  # parameter event
+        elif event in param_elems:
             try:
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
@@ -1250,14 +1226,6 @@ class TAuditRecord(DatabaseRecord):
         id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
         window[id_key].set_tooltip(id_tooltip)
 
-        # Change edit note button to be highlighted if note field not empty
-        note_key = self.key_lookup('NotesButton')
-        print(self.note)
-        if self.note:
-            window[note_key].update(image_data=mod_const.EDIT_NOTE_ICON)
-        else:
-            window[note_key].update(image_data=mod_const.TAKE_NOTE_ICON)
-
         # Update the remainder
         totals_table = self.fetch_element('Totals')
         totals_sum = totals_table.calculate_total()
@@ -1297,10 +1265,8 @@ def load_record(record_entry, record_id, level: int = 1):
 
     # Set the record object based on the record type
     record_type = record_entry.group
-    if record_type in ('transaction', 'bank_statement', 'cash_expense'):
+    if record_type in ('account', 'bank_statement', 'cash_expense'):
         record_class = DatabaseRecord
-    elif record_type == 'account':
-        record_class = AccountRecord
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':

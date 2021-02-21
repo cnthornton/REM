@@ -316,14 +316,14 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
         if event == '-OK-':
             # Update data element values
             for param_elem in record.parameters:
-                param_elem.value = param_elem.update_display(window, window_values=values)
+                param_elem.update_display(window, window_values=values)
 
             break
 
         if event == '-SAVE-':
             # Update data element values
             for param_elem in record.parameters:
-                param_elem.value = param_elem.update_display(window, window_values=values)
+                param_elem.update_display(window, window_values=values)
 
             # Save the record to the database table
             record_entry = configuration.records.fetch_rule(record.name)
@@ -333,8 +333,12 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
 
         # Update the record parameters with user-input
         if event in record_elements:
-            print(event)
-            record.run_event(window, event, values, user)
+            try:
+                record.run_event(window, event, values, user)
+            except Exception as e:
+                print('Warning: Record {NAME}: failed to run record event {EVENT} - {ERR}'
+                      .format(NAME=record.name, EVENT=event, ERR=e))
+                continue
 
     window.close()
     layout = None
@@ -342,77 +346,6 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
     gc.collect()
 
     return record
-
-
-def notes_window(docno, note, id_title='RecordID', title='Note'):
-    """
-    Display the note-taking window.
-    """
-    # Window and element size parameters
-    pad_frame = mod_const.FRAME_PAD
-    pad_v = mod_const.VERT_PAD
-    pad_el = mod_const.ELEM_PAD
-
-    bg_col = mod_const.ACTION_COL
-    default_col = mod_const.DEFAULT_COL
-    input_col = mod_const.INPUT_COL
-    text_col = mod_const.TEXT_COL
-    header_col = mod_const.HEADER_COL
-
-    main_font = mod_const.MAIN_FONT
-    header_font = mod_const.HEADER_FONT
-    bold_font = mod_const.BOLD_MID_FONT
-
-    width = 80
-    height = 20
-
-    # GUI layout
-    title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
-                    [sg.Text('Add Note to Record', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
-                             background_color=header_col)]]
-
-    header_layout = [
-        [sg.Text('{}:'.format(id_title), pad=((pad_el * 2, pad_el), pad_el * 2), font=bold_font,
-                 background_color=bg_col),
-         sg.Text(docno, size=(12, 1), pad=((pad_el, pad_el * 2), pad_el * 2), justification='l', font=main_font,
-                 background_color=bg_col, auto_size_text=True, border_width=0)]]
-
-    note_layout = [[sg.Text('{}:'.format(title), pad=(0, (0, pad_el)), background_color=bg_col, font=bold_font)],
-                   [sg.Multiline(default_text=note, key='-NOTE-', size=(width, height), pad=(0, 0),
-                                 background_color=bg_col, text_color=text_col, border_width=1, focus=False)]]
-
-    main_layout = [[sg.Frame('', header_layout, pad=(pad_frame, pad_frame), background_color=header_col,
-                             border_width=1, relief='raised')],
-                   [sg.Col(note_layout, pad=(pad_frame, (0, pad_frame)), background_color=input_col,
-                           justification='l')]]
-
-    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=((0, pad_el), 0), tooltip='Cancel'),
-                    mod_lo.B2('Save', key='-SAVE-', pad=((pad_el, 0), 0), tooltip='Save note')]]
-
-    layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-              [sg.Frame('', main_layout, pad=(pad_frame, 0), background_color=bg_col)],
-              [sg.Col(bttn_layout, pad=(0, (pad_v, pad_frame)), background_color=default_col, justification='c')]]
-
-    window = sg.Window('', layout, font=main_font, modal=True, keep_on_top=True, return_keyboard_events=True)
-    window.finalize()
-
-    # Event window
-    while True:
-        event, values = window.read()
-
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window
-            break
-
-        if event == '-SAVE-':
-            note = values['-NOTE-']
-            break
-
-    window.close()
-    layout = None
-    window = None
-    gc.collect()
-
-    return note
 
 
 def database_importer_window(user, win_size: tuple = None):
@@ -1440,12 +1373,13 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
             # Create a new record object
             record_entry = configuration.records.fetch_rule(table.record_type)
 
-            record_id = record_entry.create_id(table.creation_date)
+            record_date = datetime.datetime.now()
+            record_id = record_entry.create_id(record_date)
             print('Info: RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
 
             record_data = pd.Series(index=list(table.columns))
             record_data['RecordID'] = record_id
-            record_data['RecordDate'] = table.creation_date
+            record_data['RecordDate'] = record_date
 
             record_type = record_entry.group
             if record_type in ('account', 'bank_statement', 'cash_expense'):
@@ -1460,7 +1394,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
 
                 break
 
-            record = record_class(record_entry.name, record_layout, record_data, new_record=True, level=0)
+            record = record_class(record_entry.name, record_layout, record_data, level=0)
 
             break
 
