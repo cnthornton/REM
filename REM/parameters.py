@@ -51,7 +51,7 @@ class DataParameter:
         """
         self.name = name
         self.id = randint(0, 1000000000)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in ['Element']]
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in ['Element']]
 
         try:
             self.description = entry['Description']
@@ -109,7 +109,7 @@ class DataParameter:
         """
         Lookup an element's component GUI key using the name of the component element.
         """
-        element_names = [i.split('_')[-1] for i in self.elements]
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
@@ -319,7 +319,7 @@ class DataParameter:
 
         return ''.join(buff)
 
-    def reset_parameter(self, window):
+    def reset(self, window):
         """
         Reset the parameter's values.
         """
@@ -329,7 +329,8 @@ class DataParameter:
         self.value = None
 
         # Update the parameter window element
-        window[self.key_lookup('Element')].update(value='')
+        if self.hidden is False:
+            window[self.key_lookup('Element')].update(value='')
 
     def toggle_parameter(self, window, value: str = 'enable'):
         """
@@ -656,7 +657,7 @@ class DataParameterDate(DataParameter):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
-        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
+        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
         print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
@@ -795,9 +796,9 @@ class DataParameterDateRange(DataParameter):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
-        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
-        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Element2'))
-        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Calendar2'))
+        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
+        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Element2'))
+        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar2'))
 
         try:
             self.value = self.format_value({self.key_lookup('Element'): self.default[0],
@@ -969,7 +970,7 @@ class DataParameterDateRange(DataParameter):
 
         return statement
 
-    def reset_parameter(self, window):
+    def reset(self, window):
         """
         Reset the parameter's values.
         """
@@ -1102,7 +1103,7 @@ class DataParameterButton(DataParameter):
     """
     def __init__(self, name, entry):
         super().__init__(name, entry)
-        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Button'))
+        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Button'))
 
         # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): self.default})

@@ -268,7 +268,7 @@ class TableElement:
                                                     'Description': summary_rule.get('Description', summary_name),
                                                     'Condition': summary_rule.get('Condition', None)}
 
-                self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
+                self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
 
         try:
             self.id_column = entry['IDColumn']
@@ -333,6 +333,18 @@ class TableElement:
 
         return key
 
+    def reset(self, window):
+        """
+        Reset data table to default.
+        """
+        columns = list(self.columns)
+
+        self._df = pd.DataFrame(columns=columns)
+        self.df = pd.DataFrame(columns=columns)
+        self.import_df = pd.DataFrame(columns=columns)
+
+        self.update_display(window)
+
     def fetch_parameter(self, element, by_key: bool = False):
         """
         Fetch a GUI parameter element by name or event key.
@@ -395,7 +407,7 @@ class TableElement:
                 print('Error: table {TBL}: unable to find parameter associated with event key {KEY}'
                       .format(TBL=self.name, KEY=event))
             else:
-                param.run_event(window, event, values)
+                param.run_event(window, event, values, user)
 
         elif event == self.key_lookup('Add'):
             self.df = self.add_row(user)
@@ -460,7 +472,10 @@ class TableElement:
         data = display_df.values.tolist()
         row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
 
-        window[tbl_key].update(values=data, row_colors=row_colors)
+        window.refresh()
+        window_element = window.find_element(tbl_key, silent_on_error=False)
+        window_element.update(values=data, row_colors=row_colors)
+        window.refresh()
 
         # Update table totals
         if self.tally_rule is not None:
@@ -470,17 +485,25 @@ class TableElement:
                 print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
                 print(self.calculate_total())
                 tbl_total = 0
+
+            window.refresh()
             total_key = self.key_lookup('Total')
-            window[total_key].update(value=tbl_total)
+            window_element = window.find_element(total_key, silent_on_error=False)
+            window_element.update(value=tbl_total)
+            window.refresh()
 
         # Update the table summary
         summary = self.summarize_table()
         for summary_item in summary:
             summ_rule, summ_value = summary_item
             summ_key = self.key_lookup(summ_rule)
+            window_element = window.find_element(summ_key, silent_on_error=False)
+
             if isinstance(summ_value, float):
                 summ_value = '{:,.2f}'.format(summ_value)
-            window[summ_key].update(value=summ_value)
+            window.refresh()
+            window_element.update(value=summ_value)
+            window.refresh()
 
         return display_df
 
@@ -1571,7 +1594,8 @@ class TableElement:
             record_layout = record_entry.record_layout
             record_type = self.record_type
 
-        record = record_class(record_type, record_layout, row, new_record=new_record, referenced=True, level=level)
+        record = record_class(record_type, record_layout, level=level)
+        record.initialize(row, new=new_record)
 
         return record
 
@@ -2031,8 +2055,9 @@ class ReferenceElement:
         else:
             raise TypeError('unknown record group provided {}'.format(record_group))
 
-        record = record_class(self.name, record_entry.record_layout, self.record_data, new_record=False,
-                              referenced=True, level=level)
+        record = record_class(self.name, record_entry.record_layout, level=level)
+        record.initialize(self.record_data, new=False)
+
         return record
 
     def as_table(self):
@@ -2159,6 +2184,23 @@ class DataElement:
             key = None
 
         return key
+
+    def reset(self, window):
+        """
+        Reset data element value to default.
+        """
+        try:
+            default = self.format_value(self.default)
+        except (KeyError, TypeError):
+            default = self.format_value(None)
+
+        print('Info: DataElement {NAME}: resetting data element to default {DEF}'
+              .format(NAME=self.name, DEF=self.default))
+
+        self.value = default
+
+        # Update the parameter window element
+        window[self.key_lookup('Element')].update(value=default)
 
     def resize(self, window, size: tuple = None):
         """

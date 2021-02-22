@@ -12,7 +12,6 @@ import REM.constants as mod_const
 import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
-import REM.secondary as mod_win2
 from REM.config import configuration, settings
 
 
@@ -38,18 +37,15 @@ class DatabaseRecord:
         components (list): list of record components.
     """
 
-    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False, level: int = 0):
+    def __init__(self, name, entry, level: int = 0):
         """
         Arguments:
             name (str): configured record type.
 
             entry (class): configuration entry for the record.
 
-            record_data (dict): dictionary or pandas series containing record data.
-
-            new_record (bool): record is newly created [default: False].
+            level (int): depth at which record was opened [Default: 0].
         """
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         record_entry = configuration.records.fetch_rule(name)
 
         approved_record_types = ['transaction', 'account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
@@ -60,14 +56,13 @@ class DatabaseRecord:
             self.record_group = None
 
         self.id = randint(0, 1000000000)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['RecordID', 'RecordDate', 'ReferencesButton', 'ReferencesFrame', 'ComponentsButton',
                           'ComponentsFrame', 'Height', 'Width']]
 
         self.record_layout = entry
-        self.new = new_record
+        self.new = False
         self.level = level
-        self.referenced = referenced
 
         # User permissions when accessing record
         try:
@@ -88,44 +83,12 @@ class DatabaseRecord:
         except KeyError:
             self.title = name
 
-        if isinstance(record_data, pd.Series):
-            record_data = record_data.to_dict()
-        elif isinstance(record_data, dict):
-            record_data = record_data
-        elif isinstance(record_data, pd.DataFrame):
-            if record_data.shape[0] > 1:
-                raise AttributeError('more than one record provided to record class {TYPE}'.format(TYPE=self.name))
-            elif record_data.shape[0] < 1:
-                raise AttributeError('empty dataframe provided to record class {TYPE}'.format(TYPE=self.name))
-            else:
-                record_data = record_data.iloc[0]
-        else:
-            raise AttributeError('unknown object type provided to record class {TYPE}'.format(TYPE=self.name))
-
-        try:
-            self.record_id = record_data['RecordID']
-        except KeyError:
-            self.record_id = None
-
-        try:
-            record_date = record_data['RecordDate']
-        except KeyError:
-            self.record_date = None
-        else:
-            if is_datetime_dtype(record_date) or isinstance(record_date, datetime.datetime):
-                self.record_date = record_date
-            elif isinstance(record_date, str):
-                try:
-                    self.record_date = datetime.datetime.strptime(record_date, '%Y-%m-%d')
-                except ValueError:
-                    raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
-            else:
-                raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
-
-        self.creator = record_data.get(configuration.creator_code, None)
-        self.creation_date = record_data.get(configuration.creation_date, None)
-        self.editor = record_data.get(configuration.editor_code, None)
-        self.edit_date = record_data.get(configuration.edit_date, None)
+        self.record_id = None
+        self.record_date = None
+        self.creator = None
+        self.creation_date = None
+        self.editor = None
+        self.edit_date = None
 
         # Record modifiers
         self.modifiers = []
@@ -185,62 +148,41 @@ class DatabaseRecord:
                     raise AttributeError('failed to initialize {NAME} record {ID}, element {PARAM} - {ERR}'
                                          .format(NAME=self.name, ID=self.record_id, PARAM=param, ERR=e))
 
-                if param_type == 'table':  # parameter is a data table
-                    param_cols = list(param_obj.columns)
-                    table_data = pd.Series(index=param_cols)
-                    for param_col in param_cols:
-                        try:
-                            table_data[param_col] = record_data[param_col]
-                        except KeyError:
-                            continue
-
-                    param_obj.df = param_obj.df.append(table_data, ignore_index=True)
-                else:  # parameter is a data element
-                    try:
-                        param_value = record_data[param]
-                    except KeyError:
-                        print('Warning: record {ID}: imported data is missing a column for parameter {PARAM}'
-                              .format(ID=self.record_id, PARAM=param))
-                    else:
-                        if not pd.isna(param_value):
-                            print('Info: record {ID}: setting element {PARAM} value to {VAL}'
-                                  .format(ID=self.record_id, PARAM=param_obj.name, VAL=param_value))
-                            param_obj.value = param_obj.format_value(param_value)
-                        else:
-                            print('Info: record {ID}: no value set for parameter {PARAM}'
-                                  .format(ID=self.record_id, PARAM=param_obj.name))
-
                 # Add the parameter to the record
                 self.parameters.append(param_obj)
                 self.elements += param_obj.elements
 
         self.references = []
+        self.reference_types = []
         try:
             ref_entry = entry['References']
         except KeyError:
             print('Warning: No reference record types configured for {NAME}'.format(NAME=self.name))
-            ref_elements = []
         else:
             try:
                 ref_elements = ref_entry['Elements']
             except KeyError:
                 print('Configuration Warning: missing required References parameter "Elements"'.format(NAME=self.name))
-                ref_elements = []
+            else:
+                for ref_element in ref_elements:
+                    if ref_element not in [i.name for i in configuration.records.rules]:
+                        print('Configuration Error: RecordEntry {NAME}: reference {TYPE} must be a pre-configured '
+                              'record type'.format(NAME=self.name, TYPE=ref_element))
+                    else:
+                        self.reference_types.append(ref_element)
 
         self.components = []
+        self.component_types = []
         try:
             comp_entry = entry['Components']
         except KeyError:
             print('Warning: No component record types configured for {NAME}'.format(NAME=self.name))
-            comp_types = []
         else:
             try:
                 comp_elements = comp_entry['Elements']
             except KeyError:
                 print('Configuration Warning: missing required References parameter "Elements"'.format(NAME=self.name))
-                comp_types = []
             else:
-                comp_types = []
                 for comp_element in comp_elements:
                     if comp_element not in approved_record_types:
                         print('Configuration Error: RecordEntry {TYPE}: component table {TBL} must be an acceptable '
@@ -248,19 +190,140 @@ class DatabaseRecord:
                         continue
                     table_entry = comp_elements[comp_element]
                     comp_table = mod_elem.TableElement(comp_element, table_entry, parent=self.name)
-                    comp_types.append(comp_table.record_type)
+                    self.component_types.append(comp_table.record_type)
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
 
+        self.import_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType'])
+
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            raise KeyError('component {COMP} not found in list of record {NAME} components'
+                           .format(COMP=component, NAME=self.name))
+
+        return key
+
+    def initialize(self, data, new: bool = False):
+        """
+        Initialize record attributes.
+
+        Arguments:
+            data (dict): dictionary or pandas series containing record data.
+
+            new (bool): record is newly created [default: False].
+        """
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+        parameters = self.parameters
+        modifiers = self.modifiers
+        comp_types = self.component_types
+        ref_types = self.reference_types
+
+        self.new = new
+
+        record_entry = configuration.records.fetch_rule(self.name)
+
+        if isinstance(data, pd.Series):
+            record_data = data.to_dict()
+        elif isinstance(data, dict):
+            record_data = data
+        elif isinstance(data, pd.DataFrame):
+            if data.shape[0] > 1:
+                raise AttributeError('more than one record provided to record class {TYPE}'.format(TYPE=self.name))
+            elif data.shape[0] < 1:
+                raise AttributeError('empty dataframe provided to record class {TYPE}'.format(TYPE=self.name))
+            else:
+                record_data = data.iloc[0]
+        else:
+            raise AttributeError('unknown object type provided to record class {TYPE}'.format(TYPE=self.name))
+
+        # Set attributes from required columns
+        try:
+            self.record_id = record_data['RecordID']
+        except KeyError:
+            raise AttributeError('input data is missing required column "RecordID"')
+
+        try:
+            record_date = record_data['RecordDate']
+        except KeyError:
+            raise AttributeError('input data is missing required column "RecordDate"')
+        else:
+            if is_datetime_dtype(record_date) or isinstance(record_date, datetime.datetime):
+                self.record_date = record_date
+            elif isinstance(record_date, str):
+                try:
+                    self.record_date = datetime.datetime.strptime(record_date, '%Y-%m-%d')
+                except ValueError:
+                    raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
+            else:
+                raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
+
+        self.creator = record_data.get(configuration.creator_code, None)
+        self.creation_date = record_data.get(configuration.creation_date, None)
+        self.editor = record_data.get(configuration.editor_code, None)
+        self.edit_date = record_data.get(configuration.edit_date, None)
+
+        # Set modifier values
+        if new is True:
+            self.modifiers = []
+        else:
+            for modifier in modifiers:
+                modifier_name = modifier.name
+
+                try:
+                    value = record_data[modifier_name]
+                except KeyError:
+                    print('Warning: record {ID}: input data is missing a value for modifier {COL}'
+                          .format(ID=self.record_id, COL=modifier_name))
+                else:
+                    modifier.value = modifier.format_value({modifier_name: value})
+
+        # Set data element values
+        for param in parameters:
+            param_name = param.name
+            param_type = param.etype
+
+            if param_type == 'table':  # parameter is a data table
+                param_cols = list(param.columns)
+                table_data = pd.Series(index=param_cols)
+                for param_col in param_cols:
+                    try:
+                        table_data[param_col] = record_data[param_col]
+                    except KeyError:
+                        continue
+
+                param.df = param.df.append(table_data, ignore_index=True)
+            else:  # parameter is a data element
+                try:
+                    value = record_data[param_name]
+                except KeyError:
+                    print('Warning: record {ID}: input data is missing a value for data element {PARAM}'
+                          .format(ID=self.record_id, PARAM=param_name))
+                else:
+                    if not pd.isna(value):
+                        print('Info: record {ID}: setting element {PARAM} value to {VAL}'
+                              .format(ID=self.record_id, PARAM=param_name, VAL=value))
+                        param.value = param.format_value(value)
+                    else:
+                        print('Info: record {ID}: no value set for parameter {PARAM}'
+                              .format(ID=self.record_id, PARAM=param_name))
+
         # Import components and references for existing records
-        if new_record is False and self.record_id is not None and record_entry is not None:
-            ref_rows = record_entry.import_references(self.record_id)
-            for index, row in ref_rows.iterrows():
+        if new is False and self.record_id is not None and record_entry is not None:
+            import_df = record_entry.import_references(self.record_id)
+            for index, row in import_df.iterrows():
                 doctype = row['DocType']
                 reftype = row['RefType']
 
                 # Store imported references as references box objects
-                if doctype in ref_elements:
+                if doctype in ref_types:
                     ref_id = row['DocNo']
                     print('Info: record {ID}: adding reference record {NAME} with record type {TYPE}'
                           .format(ID=self.record_id, NAME=ref_id, TYPE=doctype))
@@ -287,19 +350,34 @@ class DatabaseRecord:
                     # Append record to the components table
                     comp_table.df = comp_table.import_row(ref_id)
 
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i.split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            raise KeyError('component {COMP} not found in list of record {NAME} components'
-                           .format(COMP=component, NAME=self.name))
+            self.import_df = self.import_df.append(import_df, ignore_index=True)
 
-        return key
+    def reset(self, window):
+        """
+        Reset record attributes.
+        """
+        self.record_id = None
+        self.record_date = None
+        self.creator = None
+        self.creation_date = None
+        self.editor = None
+        self.edit_date = None
+        self.new = False
+
+        # Reset modifier values
+        for modifier in self.modifiers:
+            modifier.reset(window)
+
+        # Reset data element values
+        for param in self.parameters:
+            param.reset(window)
+
+        # Reset components
+        for comp_table in self.components:
+            comp_table.reset(window)
+
+        # Reset references
+        self.references = []
 
     def run_event(self, window, event, values, user):
         """
@@ -373,7 +451,7 @@ class DatabaseRecord:
         Fetch a GUI data element by name or event key.
         """
         if by_key is True:
-            element_type = element.split('_')[-1]
+            element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.parameters]
         else:
             element_names = [i.name for i in self.parameters]
@@ -392,7 +470,7 @@ class DatabaseRecord:
         Fetch a GUI data element by name or event key.
         """
         if by_key is True:
-            element_type = element.split('_')[-1]
+            element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.modifiers]
         else:
             element_names = [i.name for i in self.modifiers]
@@ -411,7 +489,7 @@ class DatabaseRecord:
         Display a reference record in a new window.
         """
         if by_key is True:
-            element_type = reference.split('_')[-1]
+            element_type = reference[1:-1].split('_')[-1]
             references = [i.key_lookup(element_type) for i in self.references]
         elif by_id is True:
             references = [i.record_id for i in self.references]
@@ -432,7 +510,7 @@ class DatabaseRecord:
         Fetch a component table by name.
         """
         if by_key is True:
-            element_type = component.split('_')[-1]
+            element_type = component[1:-1].split('_')[-1]
             components = [i.key_lookup(element_type) for i in self.components]
         elif by_type is True:
             components = [i.record_type for i in self.components]
@@ -730,22 +808,14 @@ class DepositRecord(DatabaseRecord):
     Class to manage the layout and display of an REM Deposit Record.
     """
 
-    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False, level: int = 0):
+    def __init__(self, name, entry, level: int = 0):
         """
         deposit (float): amount deposited into the bank account.
         """
-        super().__init__(name, entry, record_data, new_record, referenced, level)
-        self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM='Deposit'))
+        super().__init__(name, entry, level)
+        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Deposit'))
 
-        try:
-            deposit = float(record_data['DepositAmount'])
-        except (KeyError, TypeError):
-            self.deposit = 0
-        else:
-            if np.isnan(deposit):
-                self.deposit = 0.00
-            else:
-                self.deposit = deposit
+        self.deposit = 0
 
     def header_layout(self):
         """
@@ -1000,23 +1070,15 @@ class TAuditRecord(DatabaseRecord):
     Class to manage the layout of an audit record.
     """
 
-    def __init__(self, name, entry, record_data, new_record: bool = False, referenced: bool = False, level: int = 0):
+    def __init__(self, name, entry, level: int = 0):
         """
         remainder (float): remaining total after subtracting component record totals.
         """
-        super().__init__(name, entry, record_data, new_record, referenced, level)
+        super().__init__(name, entry, level)
         for element in ['Remainder']:
-            self.elements.append('{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=element))
+            self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=element))
 
-        try:
-            remainder = float(record_data['Remainder'])
-        except (KeyError, TypeError):
-            self.remainder = 0.00
-        else:
-            if np.isnan(remainder):
-                self.remainder = 0.00
-            else:
-                self.remainder = remainder
+        self.remainder = 0.00
 
     def header_layout(self):
         """
@@ -1214,17 +1276,24 @@ class TAuditRecord(DatabaseRecord):
 
         # Update the record's header
         id_key = self.key_lookup('RecordID')
-        date_key = self.key_lookup('RecordDate')
         record_id = self.record_id
-        record_date = settings.format_display_date(self.record_date)
-        window[id_key].set_size(size=(len(record_id) + 1, None))
-        window[date_key].set_size(size=(len(record_date) + 1, None))
-
-        window[id_key].update(value=record_id)
-        window[date_key].update(value=record_date)
-
         id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
-        window[id_key].set_tooltip(id_tooltip)
+        window.refresh()
+        window_element = window.find_element(id_key, silent_on_error=False)
+        print(type(window_element))
+        if window_element is None:
+            raise ValueError('unable to locate element ID with key {KEY}'.format(KEY=id_key))
+        window_element.set_size(size=(len(record_id) + 1, None))
+        window_element.update(value=record_id)
+        window_element.set_tooltip(id_tooltip)
+
+        window.refresh()
+        date_key = self.key_lookup('RecordDate')
+        record_date = settings.format_display_date(self.record_date)
+        window_element = window.find_element(date_key, silent_on_error=False)
+        window_element.set_size(size=(len(record_date) + 1, None))
+        window_element.update(value=record_date)
+        window.refresh()
 
         # Update the remainder
         totals_table = self.fetch_element('Totals')
@@ -1239,7 +1308,6 @@ class TAuditRecord(DatabaseRecord):
             account_total = account_table.calculate_total()
 
         remainder = totals_sum - account_total
-        print(remainder)
 
         if remainder > 0:
             print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
@@ -1252,7 +1320,10 @@ class TAuditRecord(DatabaseRecord):
         else:
             bg_color = default_col
 
-        window[self.key_lookup('Remainder')].update(value='{:,.2f}'.format(remainder), background_color=bg_color)
+        window.refresh()
+        window_element = window.find_element(self.key_lookup('Remainder'), silent_on_error=False)
+        window_element.update(value='{:,.2f}'.format(remainder), background_color=bg_color)
+
         self.remainder = remainder
 
 
@@ -1275,8 +1346,8 @@ def load_record(record_entry, record_id, level: int = 1):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry.name, record_entry.record_layout, import_df, new_record=False, referenced=True,
-                          level=level)
+    record = record_class(record_entry.name, record_entry.record_layout, level=level)
+    record.initialize(import_df)
 
     return record
 
@@ -1296,8 +1367,8 @@ def create_record(record_entry, record_data, level: int = 1):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry.name, record_entry.record_layout, record_data, new_record=True, referenced=False,
-                          level=level)
+    record = record_class(record_entry.name, record_entry.record_layout, level=level)
+    record.initialize(record_data)
 
     return record
 
