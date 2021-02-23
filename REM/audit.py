@@ -124,8 +124,8 @@ class AuditRule:
 
         self.name = name
         self.id = randint(0, 1000000000)
-        self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
                           'PanelHeight', 'FrameHeight', 'FrameWidth']]
 
@@ -212,7 +212,7 @@ class AuditRule:
         """
         Lookup a component's GUI element key using the component's name.
         """
-        element_names = [i.split('_')[-1] for i in self.elements]
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
@@ -229,7 +229,7 @@ class AuditRule:
         tabs = self.tabs
 
         if by_key is True:
-            element_type = fetch_key.split('_')[-1]
+            element_type = fetch_key[1:-1].split('_')[-1]
             names = [i.key_lookup(element_type) for i in tabs]
         else:
             names = [i.name for i in tabs]
@@ -250,7 +250,7 @@ class AuditRule:
         Fetch a GUI parameter element by name or event key.
         """
         if by_key is True:
-            element_type = element.split('_')[-1]
+            element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.parameters]
         else:
             element_names = [i.name for i in self.parameters]
@@ -321,8 +321,6 @@ class AuditRule:
                     # Update the audit record's display
                     tab.update_display(window)
 
-                    window.refresh()
-
                 # Disable / enable action buttons
                 window[self.key_lookup('Next')].update(disabled=True)
                 window[self.key_lookup('Back')].update(disabled=False)
@@ -335,8 +333,6 @@ class AuditRule:
             # Reset current panel attribute
             self.current_panel = next_subpanel
 
-            window.refresh()
-
         # Back button pressed
         elif event == back_key:
             current_panel = self.current_panel
@@ -348,12 +344,10 @@ class AuditRule:
                     mod_records.remove_unsaved_keys(tab.record)
 
                     # Reset audit records
-                    tab.reset()
+                    tab.reset(window)
 
                     # Update the audit record's display
                     tab.update_display(window)
-
-                    window.refresh()
 
             # Return to previous display
             prev_subpanel = current_panel - 1
@@ -375,8 +369,6 @@ class AuditRule:
                 window[self.key_lookup('Next')].update(disabled=False)
                 window[self.key_lookup('Back')].update(disabled=True)
                 window[self.key_lookup('Save')].update(disabled=True)
-
-            window.refresh()
 
         # Start button pressed
         elif event == start_key:
@@ -415,7 +407,6 @@ class AuditRule:
                     tab.parameters = self.parameters
 
                     # Import tab data from the database
-                    window.refresh()
                     initialized.append(tab.load_data(user))
 
                 if all(initialized):  # data successfully imported from all configured audit rule transaction tabs
@@ -501,6 +492,7 @@ class AuditRule:
 
                     # Enable the finalize button when an audit has been run on all tabs.
                     if next_index == final_index:
+                        print(current_index)
                         print('Info: AuditRule {NAME}: all audits have been performed - enabling summary panel'
                               .format(NAME=self.name))
                         window[self.key_lookup('Next')].update(disabled=False)
@@ -755,6 +747,7 @@ class AuditRule:
         # Switch to first tab in panel
         tg_key = self.key_lookup('TG')
         window[tg_key].Widget.select(0)
+        self.current_tab = 0
 
         # Switch to first tab in summary panel
         tg_key = self.summary.key_lookup('TG')
@@ -765,7 +758,7 @@ class AuditRule:
         self.toggle_parameters(window, 'enable')
 
         # Reset summary panel
-        self.summary.reset()
+        self.summary.reset(window)
 
         # Reset tab attributes
         for i, tab in enumerate(self.tabs):
@@ -788,7 +781,7 @@ class AuditRule:
         Reset audit rule parameter values to default.
         """
         for param in self.parameters:
-            param.reset_parameter(window)
+            param.reset(window)
 
     def toggle_parameters(self, window, value='enable'):
         """
@@ -826,7 +819,7 @@ class AuditTransactionTab:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['Tab', 'Audit', 'Width', 'Height']]
 
         try:
@@ -880,7 +873,7 @@ class AuditTransactionTab:
         """
         Lookup a component's GUI element key using the component's name.
         """
-        element_names = [i.split('_')[-1] for i in self.elements]
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
@@ -896,7 +889,7 @@ class AuditTransactionTab:
         Fetch a GUI parameter element by name or event key.
         """
         if by_key is True:
-            element_type = element.split('_')[-1]
+            element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.parameters]
         elif by_type is True:
             element_names = [i.etype for i in self.parameters]
@@ -959,7 +952,7 @@ class AuditTransactionTab:
 
         # Layout
         audit_key = self.key_lookup('Audit')
-        main_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0), disabled=True)],
+        main_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))],
                        [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, disabled=True,
                                            button_color=(bttn_text_col, bttn_bg_col),
                                            disabled_button_color=(disabled_text_col, disabled_bg_col),
@@ -1366,7 +1359,7 @@ class AuditSummary:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['TG', 'Title']]
 
         try:
@@ -1419,7 +1412,7 @@ class AuditSummary:
         """
         Lookup a component's GUI element key using the component's name.
         """
-        element_names = [i.split('_')[-1] for i in self.elements]
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
@@ -1457,14 +1450,14 @@ class AuditSummary:
 
         return tab_item
 
-    def reset(self):
+    def reset(self, window):
         """
-        Reset summary item attributes.
+        Reset summary records.
         """
         self.title = None
 
         for tab in self.tabs:
-            tab.reset()
+            tab.reset(window)
 
     def run_event(self, window, event, values, user):
         """
@@ -1612,8 +1605,18 @@ class AuditSummary:
         tabs = []
         for tab_name in report_def:
             reference_tab = self.fetch_tab(tab_name)
-            notes = reference_tab.notes
-            tab_dict = {'title': reference_tab.title, 'notes': (notes['Title'], notes['Value'])}
+            try:
+                notes = reference_tab.record.fetch_element('Notes')
+            except KeyError:
+                notes_title = notes_value = ""
+            else:
+                notes_title = notes.description
+                notes_value = notes.value
+
+            tab_dict = {'title': reference_tab.record.title, 'notes': (notes_title, notes_value)}
+
+            # Fetch component accounts table from
+            comp_table = reference_tab.record.fetch_component('account', by_type=True)
 
             section_def = report_def[tab_name]
             sections = []
@@ -1621,44 +1624,34 @@ class AuditSummary:
                 section = section_def[section_name]
                 title = section['Title']
 
-                # create a copy of the reference tab reports dataframe
+                # Subset table rows based on configured subset rules
                 try:
-                    reference_df = reference_tab.df.copy()
-                except AttributeError:
-                    print('Error: rule {RULE}, Summary Report: no such summary item "{SUMM}" found in list of summary '
-                          'panel items'.format(RULE=self.rule_name, SUMM=section['ReferenceTable']))
-                    continue
-                else:
-                    if reference_df.empty:
-                        print('Warning: rule {RULE}, Summary Report, tab {NAME}: no records found'
-                              .format(RULE=self.rule_name, NAME=tab_name))
-                        continue
-
-                # Subset rows based on subset rules in configuration
-                try:
-                    subset_df = mod_dm.subset_dataframe(reference_df, section['Subset'])
+                    sub_rule = section['Subset']
                 except KeyError:
-                    subset_df = reference_df
-                except (NameError, SyntaxError) as e:
-                    print('Error: rule {RULE}, Summary Report: error in report item {NAME} with subset rule {SUB} - '
-                          '{ERR}'.format(RULE=self.rule_name, NAME=section_name, SUB=section['Subset'], ERR=e))
-                    continue
+                    subset_df = comp_table.df
                 else:
-                    if subset_df.empty:
-                        print('Warning: rule {RULE}, Summary Report, tab {NAME}: subsetting rule for section {SECTION} '
-                              'removed all records'.format(RULE=self.rule_name, NAME=tab_name, SECTION=section_name))
+                    try:
+                        subset_df = comp_table.subset(sub_rule)
+                    except (NameError, SyntaxError) as e:
+                        print('Error: AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
+                              '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
                         continue
+                    else:
+                        if subset_df.empty:
+                            print('Warning: AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule {SUB}'
+                                  'removed all records'.format(NAME=self.name, SEC=tab_name, SUB=sub_rule))
+                            continue
 
-                # Select columns from list in configuration
+                # Select columns configured
                 try:
                     subset_df = subset_df[section['Columns']]
                 except KeyError as e:
-                    print('Error: rule {RULE}, Summary Report: unknown column provided in report item {NAME} - {ERR}'
-                          .format(RULE=self.rule_name, NAME=section_name, ERR=e))
+                    print('Error: AuditRuleSummary {NAME}, Report {SEC}: unknown column provided - {ERR}'
+                          .format(NAME=self.name, SEC=section_name, ERR=e))
                     continue
 
-                # Format as display table
-                display_df = reference_tab.format_display_table(subset_df)
+                # Format table for display
+                display_df = comp_table.format_display_table(subset_df)
 
                 # Index rows using grouping list in configuration
                 try:
@@ -1672,14 +1665,13 @@ class AuditSummary:
                                               sparsify=True, na_rep='')
 
                 # Highlight errors in html string
-                error_col = mod_const.TBL_ERROR_COL
-                errors = reference_tab.search_for_errors(dataframe=grouped_df)
+                annotations = comp_table.annotate_display(grouped_df)
+                colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
                 try:
-                    html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">'.format(error_col),
-                                           errors)
+                    html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
                 except Exception as e:
-                    print('Warning: rule {RULE}, summary {NAME}: unable to apply error rule results to output - {ERR}'
-                          .format(RULE=self.rule_name, NAME=reference_tab.name, ERR=e))
+                    print('Warning: AuditRuleSummary {NAME}, Report {SEC}: failed to annotate output - {ERR}'
+                          .format(NAME=self.name, SEC=section_name, ERR=e))
                     html_out = html_str
 
                 sections.append((title, html_out))
@@ -1699,8 +1691,8 @@ class AuditSummary:
             pdfkit.from_string(html_out, filename, configuration=config, css=css_url,
                                options={'enable-local-file-access': None})
         except Exception as e:
-            print('Error: rule {RULE}, Summary Report: writing to PDF failed - {ERR}'
-                  .format(RULE=self.rule_name, ERR=e))
+            print('Error: AuditRuleSummary {NAME}: writing to PDF failed - {ERR}'
+                  .format(NAME=self.name, ERR=e))
             status = False
         else:
             status = True
@@ -1731,11 +1723,12 @@ class AuditRecordTab:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['Tab']]
 
         record_entry = configuration.records.fetch_rule(name)
-        self.record = mod_records.TAuditRecord(name, record_entry.record_layout, {}, new_record=False)
+        self.record = mod_records.TAuditRecord(name, record_entry.record_layout, level=0)
+        self.record.modifiers = []  # can't use modifiers in audit
         self.elements += self.record.elements
 
         try:
@@ -1788,7 +1781,7 @@ class AuditRecordTab:
         """
         Lookup a component's GUI element key using the component's name.
         """
-        element_names = [i.split('_')[-1] for i in self.elements]
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
@@ -1799,15 +1792,11 @@ class AuditRecordTab:
 
         return key
 
-    def reset(self):
+    def reset(self, window):
         """
         Reset Summary tab record.
         """
-        record_type = self.name
-        record_entry = configuration.records.fetch_rule(record_type)
-        record = mod_records.TAuditRecord(record_type, record_entry.record_layout, {}, new_record=False)
-
-        self.record = record
+        self.record.reset(window)
 
     def run_event(self, window, event, values, user):
         """
@@ -1927,8 +1916,8 @@ class AuditRecordTab:
             record_id = record_entry.create_id(record_date)
             record_data['RecordID'] = record_id
 
-            record = mod_records.DepositRecord(record_type, record_entry.record_layout, record_data,
-                                               new_record=True)
+            record = mod_records.DepositRecord(record_type, record_entry.record_layout)
+            record.initialize(record_data, new=True)
 
             # Save the deposit record to the database
             success.append(record_entry.export_record(user, record))
@@ -2160,9 +2149,14 @@ def replace_nth(s, sub, new, ns):
         if count not in ns:
             continue
 
+        if isinstance(ns, dict):
+            new_fmt = new.format(ns[count])
+        else:
+            new_fmt = new
+
         before = new_s[:start_index]
         after = new_s[start_index:]
-        after = after.replace(sub, new, 1)
+        after = after.replace(sub, new_fmt, 1)  # only replace first instance of substring
         new_s = before + after
 
     return new_s
