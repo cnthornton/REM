@@ -1243,12 +1243,6 @@ configuration.load_configuration()
 # Connect to database as program user
 program_account = ProgramAccount(_prog_cnfg)
 
-# Obtain lists of used entry IDs for the program tables
-current_tbl_pkeys = {}
-for _db_table in configuration.ids['PrimaryKeys']:
-    _tbl_id_column = configuration.ids['PrimaryKeys'][_db_table]
-    current_tbl_pkeys[_db_table] = program_account.query_ids(_db_table, _tbl_id_column)
-
 # Load user-defined configuration settings
 _user_cnfg_name = 'settings.yaml'
 _user_cnfg_file = os.path.join(_dirname, _user_cnfg_name)
