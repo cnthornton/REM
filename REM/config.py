@@ -153,8 +153,8 @@ class RecordEntry:
                 import_rule = import_rules[import_table]
 
                 if 'Columns' not in import_rule:
-                    popup_error('Configuration Error: RecordsEntry {NAME}: missing required "ImportRules" {TBL} parameter '
-                                '"Columns"'.format(NAME=name, TBL=import_table))
+                    popup_error('Configuration Error: RecordsEntry {NAME}: missing required "ImportRules" {TBL} '
+                                'parameter "Columns"'.format(NAME=name, TBL=import_table))
                     sys.exit(1)
                 if 'Filters' not in import_rule:
                     import_rule['Filters'] = None
@@ -365,6 +365,24 @@ class RecordEntry:
 
         return id_col
 
+    def get_import_column(self, column):
+        """
+        Format a table column for querying.
+        """
+        import_rules = self.import_rules
+        query_column = None
+
+        for import_table in import_rules:
+            import_rule = import_rules[import_table]
+
+            import_columns = import_rule['Columns']
+            for import_column in import_columns:
+                column_alias = import_columns[import_column]
+                if column_alias == column:
+                    query_column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+
+            return query_column
+
     def import_records(self, user):
         """
         Import all records from the database.
@@ -390,10 +408,11 @@ class RecordEntry:
 
         # Query existing database entries
         primary_table = self.get_primary_table()
-        id_col = self.get_primary_id_column()
+        id_col = self.get_import_column('RecordID')
 
-        filters = '{TBL}.{COL} = ?'.format(TBL=primary_table, COL=id_col)
-        query_str = 'SELECT {COL} FROM {TBL} WHERE {FILT}'.format(COL=', '.join(columns), TBL=table_statement, FILT=filters)
+        filters = '{COL} = ?'.format(TBL=primary_table, COL=id_col)
+        query_str = 'SELECT {COL} FROM {TBL} WHERE {FILT}'.format(COL=', '.join(columns), TBL=table_statement,
+                                                                  FILT=filters)
 
         import_df = program_account.query(query_str, params=(record_id, ))
         nrow = import_df.shape[0]
@@ -421,6 +440,12 @@ class RecordEntry:
         record_id = record.record_id
 
         id_exists = not self.remove_unsaved_id(record_id)
+        try:
+            del_param = record.fetch_modifier['Deleted']
+        except KeyError:
+            deleted = False
+        else:
+            deleted = del_param.value
 
         # Iterate over export tables
         saved = []
@@ -433,36 +458,56 @@ class RecordEntry:
             # Prepare column value updates
             record_data = record.table_values()
             export_columns = [references[i] for i in record_data.index.tolist()]
-            export_values = record_data.replace(np.nan, None).values.tolist()
+            export_values = record_data[export_columns].replace(np.nan, None).tolist()
 
+            # Save the record data
             if id_exists is True:  # record already exists in the database
                 # Edit an existing record in the database
                 export_columns += [configuration.editor_code, configuration.edit_date]
                 export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
 
-                filters = ('{} = ?'.format(id_col), (record_id,))
+                filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
                 saved.append(user.update(table, export_columns, export_values, filters))
 
-                # Add / remove associations
+            else:  # record does not exist yet, must be inserted
+                # Create new entry for the record in the database
+                export_columns += [configuration.creator_code, configuration.creation_date]
+                export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
 
-                # References
-                deleted_refs = [i.ref_id for i in record.references if i.linked is False]
-                for deleted_ref in deleted_refs:
-                    ref_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_ref)]
-                    saved.append(user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
-                                             [user.name, datetime.datetime.now(), 1], ref_filters))
+                saved.append(user.insert(table, export_columns, export_values))
 
-                added_refs = [i.ref_id for i in record.references if i.linked is True]
-                for added_ref in added_refs:
-                    ref_record = record.fetch_reference(added_ref, by_id=True)
-                    ref_type = ref_record.ref_type
-                    ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
-                                   configuration.creation_date]
-                    ref_values = [record_id, self.group, added_ref, ref_type, datetime.datetime.now(), user.name,
-                                  datetime.datetime.now()]
-                    saved.append(user.insert(ref_table, ref_columns, ref_values))
+            # Associated records
+            import_df = record.import_df
 
-                # Components
+            if deleted is True:  # record was marked as deleted
+                # Remove all associations of the record
+                ref_filters = [('DocNo = ?', record_id), ('RefNo = ?', record_id)]
+                saved.append(user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
+                                         [user.uid, datetime.datetime.now(), 1], ref_filters))
+            else:
+                # Handle added and removed references
+                for reference in record.references:
+                    ref_id = reference.ref_id
+                    if reference.linked is False:  # reference entry should be removed
+                        ref_filters = ['(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)',
+                                       (ref_id, record_id, record_id, ref_id)]
+                        saved.append(
+                            user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
+                                        [user.uid, datetime.datetime.now(), 1], ref_filters))
+                    else:  # do not remove reference
+                        # Determine if reference entry already exists in the database
+                        nrow = import_df[(import_df['DocNo'] == record_id & import_df['RefNo'] == ref_id) |
+                                         (import_df['DocNo'] == ref_id & import_df['RefNo'] == record_id)].shape[0]
+                        if nrow > 0:  # reference already exists in the database, should do nothing
+                            continue
+
+                        # Add reference entry to the references table
+                        ref_data = reference.as_table()
+                        comp_columns = ref_data.index.tolist() + [configuration.creator_code, configuration.creation_date]
+                        comp_values = ref_data.tolist() + [user.uid, datetime.datetime.now()]
+                        saved.append(user.insert(ref_table, comp_columns, comp_values))
+
+                # Handle added and removed record components
                 comp_tables = record.components
                 for comp_table in comp_tables:
                     try:
@@ -478,38 +523,35 @@ class RecordEntry:
                               .format(NAME=self.name, TBL=comp_table))
                         continue
 
-                    current_comps = comp_table.df[comp_table.id_column]
+                    comp_entry = configuration.records.fetch_entry(comp_type)
 
+                    current_comps = comp_table.df[comp_table.id_column]
                     deleted_comps = set(orig_comps).difference(set(current_comps))
-                    for deleted_comp in deleted_comps:
-                        comp_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_comp)]
+                    for deleted_id in deleted_comps:
+                        # Delete existing parent-child relationship
+                        comp_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_id)]
                         saved.append(user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
                                                  [user.name, datetime.datetime.now(), 1], comp_filters))
 
-                    added_comps = set(current_comps).difference(set(orig_comps))
-                    for added_comp in added_comps:
+                        # Delete removed records if component records can be created (not just imported)
+                        if comp_table.actions['add'] is True:  # delete record from DB
+                            comp_entry.delete_record(deleted_id)
+
+                    for row_index, comp_id in current_comps.iteritems():
+                        if comp_id in orig_comps:  # don't create database entries for existing records
+                            continue
+
+                        # Update reference table with new parent-child relationship
                         comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
                                         configuration.creation_date]
-                        comp_values = [record_id, self.group, added_comp, comp_type, datetime.datetime.now(), user.name,
+                        comp_values = [record_id, self.group, comp_id, comp_type, datetime.datetime.now(), user.name,
                                        datetime.datetime.now()]
                         saved.append(user.insert(ref_table, comp_columns, comp_values))
 
-            else:  # record does not exist yet, must be inserted
-                # Create new entry for the record in the database
-                export_columns += [configuration.creator_code, configuration.creation_date]
-                export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
-
-                saved.append(user.insert(table, export_columns, export_values))
-
-                # Add any associations to the reference lookup database
-                for reference_record in record.references:
-                    ref_id = reference_record.ref_id
-                    ref_type = reference_record.ref_type
-                    ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
-                                   configuration.creation_date]
-                    ref_values = [record_id, self.group, ref_id, ref_type, datetime.datetime.now(), user.name,
-                                  datetime.datetime.now()]
-                    saved.append(user.insert(ref_table, ref_columns, ref_values))
+                        # Save component record to the database if records can be created (not imported)
+                        if comp_table.actions['add'] is True:  # add record to DB
+                            comp_record = comp_table.translate_row(comp_table.iloc[row_index], level=0, new_record=True)
+                            saved.append(comp_entry.export_record(comp_record))
 
         return all(saved)
 
@@ -520,7 +562,7 @@ class RecordEntry:
         ref_table = configuration.reference_lookup
         delete_code = configuration.delete_code
 
-        export_rules = self.export_rules
+        import_rules = self.import_rules
         record_id = record.record_id
 
         # Check if the record can be found in the list of unsaved ids
@@ -529,15 +571,15 @@ class RecordEntry:
         if id_exists is True:  # record is already saved in the database, must be deleted
             # Delete the record from the database
             updated = []
-            for export_table in export_rules:
-                table_entry = export_rules[export_table]
+            for table in import_rules:
+                table_entry = import_rules[table]
 
-                references = table_entry['Columns']
+                references = {j: i for i, j in table_entry['Columns'].items()}
                 id_column = references['RecordID']
 
                 # Remove record from the export table
                 filters = ('{} = ?'.format(id_column), record_id)
-                updated.append(user.update(export_table, [delete_code], [1], filters))
+                updated.append(user.update(table, [delete_code], [1], filters))
 
             # Remove all record associations
             ref_filters = [('DocNo = ?', record_id), ('RefNo = ?', record_id)]
