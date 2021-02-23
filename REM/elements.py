@@ -1090,8 +1090,6 @@ class TableElement:
             filter_key = self.key_lookup('Filter')
             window[filter_key].update(disabled=False)
 
-            # Enable parameter input
-
         # Enable table modification buttons
         window[add_key].update(disabled=False)
         window[delete_key].update(disabled=False)
@@ -2225,8 +2223,15 @@ class DataElement:
             print('Info: DataElement {ELEM}: expanding / collapsing filter frame'.format(ELEM=self.name))
             self.collapse_expand(window)
         elif event == elem_key:
-            display_value = self.enforce_formatting(window, values)
-            window[elem_key].update(value=display_value)
+            try:
+                display_value = self.enforce_formatting(window, values)
+            except Exception as e:
+                print('Error: DataElement {NAME}: failed to update the display - {ERR}'.format(NAME=self.name, ERR=e))
+
+                return False
+            else:
+                print(display_value)
+                window[elem_key].update(value=display_value)
 
         return True
 
@@ -2378,15 +2383,15 @@ class DataElement:
         try:
             param_value = window_values[elem_key]
         except (KeyError, TypeError):
-            display_value = self.format_display()
+            print('Warning: DataElement {NAME}: unable to locate values for element key {KEY}'
+                  .format(NAME=self.name, KEY=elem_key))
+            if self.value:
+                window[elem_key].update(value=self.format_display())
         else:
             self.value = self.format_value(param_value)
             display_value = self.format_display()
 
-        element = window.FindElement(elem_key, silent_on_error=True)
-        if element is None:
-            raise ReferenceError('unable to find element associated with element key {KEY}'.format(KEY=elem_key))
-        element.update(value=display_value)
+            window[elem_key].update(value=display_value)
 
     def enforce_formatting(self, window, values):
         """
@@ -2401,9 +2406,14 @@ class DataElement:
         elem_key = self.key_lookup('Element')
         try:
             value = values[elem_key]
-        except (KeyError, TypeError):
-            print('Info: DataElement {NAME}: no values provided to update the display'.format(NAME=self.name))
-            value = None
+        except KeyError:
+            window.refresh()
+            try:
+                value = values[elem_key]
+            except KeyError:
+                msg = 'no values provided to update the display'
+                print('Info: DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                raise KeyError(msg)
 
         if pd.isna(value) is True:
             return ''
@@ -2486,7 +2496,6 @@ class DataElement:
                         new_char = character
                         new_index = index
                         break
-
 
                 # Validate added character
                 if new_char.isnumeric():  # can add integers

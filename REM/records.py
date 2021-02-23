@@ -1285,25 +1285,29 @@ class TAuditRecord(DatabaseRecord):
             component.update_display(window, window_values=window_values)
 
         # Update the record's header
-        id_key = self.key_lookup('RecordID')
         record_id = self.record_id
         id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
-        window.refresh()
+        id_key = self.key_lookup('RecordID')
         window_element = window.find_element(id_key, silent_on_error=False)
-        print(type(window_element))
-        if window_element is None:
-            raise ValueError('unable to locate element ID with key {KEY}'.format(KEY=id_key))
-        window_element.set_size(size=(len(record_id) + 1, None))
+        try:
+            window_element.set_size(size=(len(record_id) + 1, None))
+        except TypeError:
+            window_element.set_size(size=(14, None))
+
         window_element.update(value=record_id)
         window_element.set_tooltip(id_tooltip)
 
-        window.refresh()
         date_key = self.key_lookup('RecordDate')
-        record_date = settings.format_display_date(self.record_date)
+        try:
+            record_date = settings.format_display_date(self.record_date)
+        except AttributeError:
+            record_date = None
         window_element = window.find_element(date_key, silent_on_error=False)
-        window_element.set_size(size=(len(record_date) + 1, None))
+        try:
+            window_element.set_size(size=(len(record_date) + 1, None))
+        except TypeError:
+            window_element.set_size(size=(14, None))
         window_element.update(value=record_date)
-        window.refresh()
 
         # Update the remainder
         totals_table = self.fetch_element('Totals')
@@ -1330,7 +1334,6 @@ class TAuditRecord(DatabaseRecord):
         else:
             bg_color = default_col
 
-        window.refresh()
         window_element = window.find_element(self.key_lookup('Remainder'), silent_on_error=False)
         window_element.update(value='{:,.2f}'.format(remainder), background_color=bg_color)
 

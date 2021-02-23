@@ -12,6 +12,7 @@ import PySimpleGUI as sg
 import pdfkit
 from random import randint
 
+import REM.authentication as mod_auth
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.data_manipulation as mod_dm
@@ -312,6 +313,7 @@ class AuditRule:
             if next_subpanel == self.last_panel:
                 # Update audit records
                 for tab in self.summary.tabs:
+
                     # Update audit record totals
                     tab.map_summary(self.tabs)
 
@@ -521,6 +523,7 @@ class AuditRule:
                 except Exception as e:
                     msg = 'Database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
+                    raise
                 else:
                     if save_status is False:
                         msg = 'Database save failed'
@@ -530,9 +533,9 @@ class AuditRule:
                         try:
                             self.summary.save_report(outfile)
                         except Exception as e:
-                            print(e)
                             msg = 'Save to file {FILE} failed - {ERR}'.format(FILE=outfile, ERR=e)
                             mod_win2.popup_error(msg)
+                            raise
 
                         # Reset rule elements
                         current_rule = self.reset_rule(window, current=True)
@@ -632,7 +635,7 @@ class AuditRule:
                              visible=True, expand_y=True, expand_x=True)
 
         # Panels
-        summary_layout = self.summary.layout(win_size)
+        summary_layout = self.summary.layout(win_size, ugroup=self.permissions)
 
         panels = [main_layout, summary_layout]
 
@@ -1474,7 +1477,7 @@ class AuditSummary:
             else:
                 tab.run_event(window, event, values, user)
 
-    def layout(self, win_size: tuple = None):
+    def layout(self, win_size: tuple = None, ugroup: str = 'admin'):
         """
         Generate a GUI layout for the Audit Rule Summary.
         """
@@ -1518,7 +1521,7 @@ class AuditSummary:
         for tab in self.tabs:
             tab_key = tab.key_lookup('Tab')
             tab_title = tab.title
-            tab_layout = tab.record.layout(win_size=(tab_width, tab_height))
+            tab_layout = tab.record.layout(win_size=(tab_width, tab_height), ugroup=mod_auth.access_permissions(ugroup))
             record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col))
 
         tg_key = self.key_lookup('TG')

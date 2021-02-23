@@ -11,6 +11,7 @@ import pyodbc
 import PySimpleGUI as sg
 import textwrap
 
+import REM.authentication as mod_auth
 from REM.config import configuration, settings
 import REM.constants as mod_const
 import REM.database as mod_db
@@ -246,7 +247,7 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
     font_h = mod_const.HEADER_FONT
 
     # User permissions
-    user_priv = user.privileges()
+    user_priv = mod_auth.access_permissions(user.group)
     deletable = True if record.permissions['delete'] in user_priv and record.level < 1 \
                         and view_only is False else False
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
@@ -339,7 +340,6 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
             except Exception as e:
                 print('Warning: Record {NAME}: failed to run record event {EVENT} - {ERR}'
                       .format(NAME=record.name, EVENT=event, ERR=e))
-                raise
                 continue
 
     window.close()
