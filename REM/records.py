@@ -424,7 +424,7 @@ class DatabaseRecord:
         elif event in component_elems:  # component table event
             # Update data elements
             for param in self.parameters:
-                param.value = param.update_display(window, window_values=values)
+                param.update_display(window, window_values=values)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -546,8 +546,10 @@ class DatabaseRecord:
             param_type = param.etype
             if param_type == 'table':  # parameter is a data table object
                 col_summs = param.summarize_table()
-                columns += col_summs.index.values.tolist()
-                values += col_summs.values.tolist()
+                for summ_rule, summ_value in col_summs:
+                    summ_col = param.summary_rules[summ_rule]['Column']
+                    columns += summ_col
+                    values += summ_value
             else:  # parameter is a data element object
                 columns.append(param.name)
                 values.append(param.value)
@@ -908,8 +910,10 @@ class DepositRecord(DatabaseRecord):
             param_type = param.etype
             if param_type == 'table':
                 col_summs = param.summarize_table()
-                columns += col_summs.index.values.tolist()
-                values += col_summs.values.tolist()
+                for summ_rule, summ_value in col_summs:
+                    summ_col = param.summary_rules[summ_rule]['Column']
+                    columns += summ_col
+                    values += summ_value
             else:
                 columns.append(param.name)
                 values.append(param.value)
@@ -960,7 +964,7 @@ class DepositRecord(DatabaseRecord):
         elif event in component_elems:  # component table event
             # Update data elements
             for param in self.parameters:
-                param.value = param.update_display(window, window_values=values)
+                param.update_display(window, window_values=values)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -981,7 +985,9 @@ class DepositRecord(DatabaseRecord):
                         component_table.df = component_table.import_rows(user, comp_entry.import_rules,
                                                                          filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records
-                        component_table.add_row(user, record_date=self.record_date)
+                        default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
+                        component_table.df = component_table.add_row(user, record_date=self.record_date,
+                                                                     defaults=default_values)
                     else:
                         component_table.run_event(window, event, values, user)
                 else:
@@ -1169,8 +1175,10 @@ class TAuditRecord(DatabaseRecord):
             param_type = param.etype
             if param_type == 'table':
                 col_summs = param.summarize_table()
-                columns += col_summs.index.values.tolist()
-                values += col_summs.values.tolist()
+                for summ_rule, summ_value in col_summs:
+                    summ_col = param.summary_rules[summ_rule]['Column']
+                    columns += summ_col
+                    values += summ_value
             else:
                 columns.append(param.name)
                 values.append(param.value)
@@ -1218,7 +1226,7 @@ class TAuditRecord(DatabaseRecord):
         elif event in component_elems:  # component table event
             # Update data elements
             for param in self.parameters:
-                param.value = param.update_display(window, window_values=values)
+                param.update_display(window, window_values=values)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -1239,7 +1247,9 @@ class TAuditRecord(DatabaseRecord):
                         component_table.df = component_table.import_rows(user, comp_entry.import_rules,
                                                                          filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records
-                        component_table.add_row(user, record_date=self.record_date)
+                        default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
+                        component_table.df = component_table.add_row(user, record_date=self.record_date,
+                                                                     defaults=default_values)
                     else:
                         component_table.run_event(window, event, values, user)
                 else:
@@ -1368,7 +1378,7 @@ def create_record(record_entry, record_data, level: int = 1):
         return None
 
     record = record_class(record_entry.name, record_entry.record_layout, level=level)
-    record.initialize(record_data)
+    record.initialize(record_data, new=True)
 
     return record
 

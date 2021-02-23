@@ -179,7 +179,8 @@ class TableElement:
                 try:
                     param_obj = param_class(param, param_entry)
                 except Exception as e:
-                    print('Warning: unable to add parameter to table - {}'.format(e))
+                    print('Configuration Warning: DataTable {NAME}: unable to add parameter to table - {ERR}'
+                          .format(NAME=name, ERR=e))
                     continue
                 else:
                     if param_obj.name in self.columns:
@@ -188,7 +189,6 @@ class TableElement:
                     else:
                         print('Configuration Warning: DataTable {NAME}: filter parameters {PARAM} must be listed in '
                               'the table columns'.format(NAME=name, PARAM=param))
-                        print(self.display_columns)
 
         try:
             edit_columns = entry['EditColumns']
@@ -375,7 +375,7 @@ class TableElement:
             try:
                 select_row_index = values[event][0]
             except IndexError:  # user double-clicked too quickly
-                print('Warning: table {TBL}: no row selected'.format(TBL=self.name))
+                print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
             else:
                 if self.actions['open'] is True:
                     self.df = self.export_row(select_row_index, user)
@@ -383,19 +383,19 @@ class TableElement:
                     self.df = self.edit_row(select_row_index)
 
         elif event == self.key_lookup('CollapseButton'):
-            print('Info: table {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
+            print('Info: DataTable {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
             self.collapse_expand(window)
 
         elif event == self.key_lookup('FilterButton'):
-            print('Info: table {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
+            print('Info: DataTable {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='filter')
 
         elif event == self.key_lookup('SummaryButton'):
-            print('Info: table {TBL}: expanding / collapsing summary frame'.format(TBL=self.name))
+            print('Info: DataTable {TBL}: expanding / collapsing summary frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='summary')
 
         elif event == self.key_lookup('Filter'):
-            print('Info: table {TBL}: filtering display table using user-supplied values'.format(TBL=self.name))
+            print('Info: DataTable {TBL}: filtering display table using user-supplied values'.format(TBL=self.name))
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
@@ -404,7 +404,7 @@ class TableElement:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
-                print('Error: table {TBL}: unable to find parameter associated with event key {KEY}'
+                print('Error: DataTable {TBL}: unable to find parameter associated with event key {KEY}'
                       .format(TBL=self.name, KEY=event))
             else:
                 param.run_event(window, event, values, user)
@@ -415,17 +415,16 @@ class TableElement:
         elif event == self.key_lookup('Delete'):
             # Find rows selected by user for deletion
             select_row_indices = values[self.key_lookup('Element')]
-            print('Info: table {NAME}: rows {IND} have been selected for removal'
+            print('Info: DataTable {NAME}: rows {IND} have been selected for removal'
                   .format(NAME=self.name, IND=select_row_indices))
 
             self.df = self.delete_rows(select_row_indices)
 
         elif event == self.key_lookup('Export'):
             export_df = self.update_display(window, values)
-            print('Info: exporting the display table to a spreadsheet')
+            print('Info: DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
             print(export_df)
             self.export_table(export_df)
-        #        elif event == self.key_lookup('Import'):
 
         result = self.update_display(window, values)
 
@@ -439,7 +438,7 @@ class TableElement:
 
         search_field = self.search_field
         # Modify records tables for displaying
-        print('Info: table {TBL}: formatting table for displaying'.format(TBL=self.name))
+        print('Info: DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
 
         # Filter the table rows, if applicable
         if search_field is not None and window_values is not None:
@@ -447,7 +446,8 @@ class TableElement:
             try:
                 search_value = window_values[search_key]
             except KeyError:
-                print('Warning: search field key {KEY} not found in list of window GUI elements'.format(KEY=search_key))
+                print('Warning: DataTable {NAME}: search field key {KEY} not found in list of window GUI elements'
+                      .format(NAME=self.name, KEY=search_key))
                 search_value = None
         else:
             search_value = None
@@ -459,7 +459,8 @@ class TableElement:
             try:
                 df = df[df[search_field] == search_value]
             except KeyError:
-                print('Warning: search field {COL} not found in list of table columns'.format(COL=search_field))
+                print('Warning: DataTable {NAME}: search field {COL} not found in list of table columns'
+                      .format(NAME=self.name, COL=search_field))
 
         # Highlight table rows using configured annotation rules
         annotations = self.annotate_display(df)
@@ -468,14 +469,11 @@ class TableElement:
         display_df = self.format_display_table(df)
 
         # Update the GUI with table values and annotations
-        tbl_key = self.key_lookup('Element')
         data = display_df.values.tolist()
         row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
 
-        window.refresh()
-        window_element = window.find_element(tbl_key, silent_on_error=False)
-        window_element.update(values=data, row_colors=row_colors)
-        window.refresh()
+        tbl_key = self.key_lookup('Element')
+        window[tbl_key].update(values=data, row_colors=row_colors)
 
         # Update table totals
         if self.tally_rule is not None:
@@ -483,27 +481,20 @@ class TableElement:
                 tbl_total = '{:,.2f}'.format(self.calculate_total())
             except Exception as e:
                 print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
-                print(self.calculate_total())
                 tbl_total = 0
 
-            window.refresh()
             total_key = self.key_lookup('Total')
-            window_element = window.find_element(total_key, silent_on_error=False)
-            window_element.update(value=tbl_total)
-            window.refresh()
+            window[total_key].update(value=tbl_total)
 
         # Update the table summary
         summary = self.summarize_table()
         for summary_item in summary:
             summ_rule, summ_value = summary_item
-            summ_key = self.key_lookup(summ_rule)
-            window_element = window.find_element(summ_key, silent_on_error=False)
-
             if isinstance(summ_value, float):
                 summ_value = '{:,.2f}'.format(summ_value)
-            window.refresh()
-            window_element.update(value=summ_value)
-            window.refresh()
+
+            summ_key = self.key_lookup(summ_rule)
+            window[summ_key].update(value=summ_value)
 
         return display_df
 
@@ -538,7 +529,6 @@ class TableElement:
             try:
                 col_to_add = mod_dm.generate_column_from_rule(df, col_rule)
             except Exception as e:
-                print(df)
                 print('Error: DataTable {TBL}: unable to generate column from display rule {RULE} - {ERR}'
                       .format(TBL=self.name, RULE=col_rule, ERR=e))
                 col_to_add = None
@@ -897,7 +887,8 @@ class TableElement:
                 elif use_center is False and index_mod == 0:
                     right_cols.append([param_layout])
                 else:
-                    print('Warning: cannot assign layout for filter parameter {PARAM}'.format(PARAM=parameter.name))
+                    print('Warning: DataTable {NAME}: cannot assign layout for table filter parameter {PARAM}'
+                          .format(NAME=self.name, PARAM=parameter.name))
 
         if len(right_cols) < 1:
             right_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
@@ -1413,13 +1404,15 @@ class TableElement:
 
         return pd.Series(values, index=columns)
 
-    def add_row(self, user, record_date=None):
+    def add_row(self, user, record_date: datetime.datetime = None, defaults: dict = None):
         """
         Add a new row to the records table.
         """
         df = self.df.copy()
+        header = list(self.columns)
 
         creation_date = record_date if isinstance(record_date, datetime.datetime) else datetime.datetime.now()
+        defaults = defaults if defaults is not None else {}
 
         if self.record_type is None:
             print('Warning: DataTable {NAME}: attempting to add a new row to the table failed - missing required '
@@ -1431,11 +1424,19 @@ class TableElement:
 
         record_id = record_entry.create_id(creation_date)
 
-        record_data = pd.Series(index=list(self.columns))
+        record_data = pd.Series(index=header)
+
+        # Set default values for the new record
+        for default_col in defaults:
+            if default_col not in header:
+                continue
+
+            default_value = defaults[default_col]
+            record_data[default_col] = default_value
+
         record_data[self.id_column] = record_id
         record_data[self.date_column] = creation_date
 
-        # Set default values for the new record
         record_data = self.set_defaults(record_data)
 
         try:
@@ -1454,7 +1455,6 @@ class TableElement:
         else:
             print('Info: DataTable {TBL}: appending values {VALS} to the table'
                   .format(TBL=self.name, VALS=record_values))
-            print(df)
             df = self.append(record_values)
 
         return df
@@ -1483,7 +1483,8 @@ class TableElement:
                 try:
                     df = user.query(table_statement, columns=import_columns, filter_rules=import_filters, prog_db=True)
                 except Exception as e:
-                    print('Warning: failed to import data from the database - {ERR}'.format(ERR=e))
+                    print('Warning: DataTable {NAME}: failed to import data from the database - {ERR}'
+                          .format(NAME=self.name, ERR=e))
                 else:
                     # Filter out import records that are already referenced
                     record_entry = configuration.records.fetch_rule(self.record_type)
@@ -1643,7 +1644,6 @@ class TableElement:
         except AttributeError:  # user selected to cancel editing the record
             return df
         else:
-            print(record_values)
             for col_name, col_value in record_values.iteritems():
                 try:
                     df.at[index, col_name] = col_value
@@ -1654,8 +1654,6 @@ class TableElement:
                           .format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
                     print(df[col_name])
                     raise
-
-            print(df.iloc[index])
 
         return df
 
@@ -1739,9 +1737,6 @@ class TableElement:
                 print('Warning: DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
                       'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
 
-        pd.set_option('display.max_columns', None)
-        print(row)
-
         return row
 
     def initialize_defaults(self):
@@ -1799,9 +1794,6 @@ class TableElement:
             else:
                 print('Warning: DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
                       'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
-
-        pd.set_option('display.max_columns', None)
-        print(df.head)
 
         return df
 
@@ -2103,8 +2095,6 @@ class DataElement:
 
             entry (dict): configuration entry for the data element.
         """
-        print(entry)
-
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
@@ -2161,6 +2151,7 @@ class DataElement:
         except KeyError:
             self.default = None
 
+        self.value = None
         try:
             self.value = self.format_value(self.default)
         except (KeyError, TypeError):
@@ -2610,7 +2601,7 @@ class DataElement:
         options = self.options
 
         if input_value is None or pd.isna(input_value):
-            return None
+            return self.value
 
         try:
             aliases = {j: i for i, j in options['Aliases'].items()}
@@ -2642,13 +2633,13 @@ class DataElement:
                 except (ValueError, TypeError):
                     print('Warning: DataElement {PARAM}: unable to parse date {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
-                    return None
+                    return self.value
             elif isinstance(input_value, datetime.datetime):
                 value_fmt = input_value
             else:
                 print('Warning: DataElement {PARAM}: unknown object type for {VAL}'
                       .format(PARAM=self.name, VAL=input_value))
-                return None
+                return self.value
         elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
             try:
                 value_fmt = float(input_value)
@@ -2668,7 +2659,7 @@ class DataElement:
                 except (ValueError, TypeError):
                     print('Warning: DataElement {PARAM}: unknown object type for parameter value {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
-                    return None
+                    return self.value
         elif dtype in ('bool', 'boolean'):
             if isinstance(input_value, bool):
                 value_fmt = input_value
