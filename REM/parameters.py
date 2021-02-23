@@ -139,7 +139,7 @@ class DataParameter:
         dtype = self.dtype
 
         value = values[elem_key]
-        print('Info: parameter {PARAM}: enforcing correct formatting of input value {VAL}'
+        print('Info: DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
               .format(PARAM=self.name, VAL=value))
 
         if value == '' or value is None or pd.isna(value):
@@ -159,7 +159,7 @@ class DataParameter:
                 except ValueError:  # date is incorrectly formatted
                     msg = '{} is not a valid date format'.format(''.join(new_value))
                     mod_win2.popup_notice(msg)
-                    print('Warning: {}'.format(msg))
+                    print('Warning: DataParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     display_value = self.format_date(''.join(current_value))
                 else:
@@ -205,23 +205,17 @@ class DataParameter:
 
         elif dtype == 'money':
             current_value = list(window[elem_key].metadata['value'])
-            print(current_value)
 
             # Remove currency and grouping separator
-            #            new_value = value[len(currency_sym):].replace(group_sep, '')
             new_value = list(value.replace(group_sep, ''))
-            print(new_value)
 
             if len(current_value) > len(new_value):  # user removed a character
-                print('removing a character')
                 # Remove the decimal separator if last character is decimal
                 if new_value[-1] == dec_sep:
-                    print('removing decimal')
                     current_value = new_value[0:-1]
                 else:
                     current_value = new_value
             elif len(current_value) < len(new_value):  # user added new character
-                print('adding a character')
                 # Find the character and location of the user input
                 new_char = new_value[-1]  # defaults to the last character
                 new_index = len(new_value)  # defaults to the end of the string
@@ -232,18 +226,13 @@ class DataParameter:
                         new_index = index
                         break
 
-                print(new_char, new_index)
-
                 # Validate added character
                 if new_char.isnumeric():  # can add integers
-                    print('inserting new character {} at index {}'.format(new_char, new_index))
                     current_value.insert(new_index, new_char)
                 elif new_char == dec_sep:  # and also decimal character
                     if dec_sep not in current_value:  # can only add one decimal character
-                        print('inserting new character {} at index {}'.format(new_char, new_index))
                         current_value.insert(new_index, new_char)
             else:  # user replaced a character
-                print('replacing a character')
                 # Find the character and location of the user input
                 new_char = None
                 new_index = None
@@ -375,9 +364,9 @@ class DataParameterInput(DataParameter):
 
         # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
-              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
-                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+        print('Info: DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+              '{DEF}, and formatted value {VAL}'
+              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -438,11 +427,11 @@ class DataParameterInput(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
                   .format(NAME=self.name, ORIG=self.value, NEW=input_value))
             if input_value is None:
                 return None
@@ -454,7 +443,7 @@ class DataParameterInput(DataParameter):
                 try:
                     value_fmt = float(input_value.replace(group_sep, ''))
                 except (ValueError, TypeError, AttributeError):
-                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('int', 'integer', 'bit'):
@@ -464,7 +453,7 @@ class DataParameterInput(DataParameter):
                 try:
                     value_fmt = input_value.replace(',', '')
                 except (ValueError, TypeError):
-                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('bool', 'boolean'):
@@ -489,8 +478,8 @@ class DataParameterInput(DataParameter):
 
         dtype = self.dtype
         value = self.value
-        print('Info: formatting parameter {PARAM} value {VAL} for display'
-              .format(PARAM=self.name, VAL=value))
+        print('Info: DataParameter {NAME}: formatting parameter value {VAL} for display'
+              .format(NAME=self.name, VAL=value))
 
         if value == '' or value is None:
             return ''
@@ -554,9 +543,9 @@ class DataParameterCombo(DataParameter):
             self.aliases = aliases
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
-              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
-                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+        print('Info: DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+              '{DEF}, and formatted value {VAL}'
+              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -626,11 +615,11 @@ class DataParameterCombo(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+            print('Info: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
                   .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         aliases = {j: i for i, j in self.aliases.items()}
@@ -660,9 +649,9 @@ class DataParameterDate(DataParameter):
         self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
-              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
-                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+        print('Info: DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+              '{DEF}, and formatted value {VAL}'
+              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -728,11 +717,11 @@ class DataParameterDate(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
                   .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         if not input_value:
@@ -742,14 +731,14 @@ class DataParameterDate(DataParameter):
             try:
                 value_fmt = strptime(input_value, '%Y-%m-%d')
             except (ValueError, TypeError):
-                print('Warning: parameter {PARAM}: unable to parse date {VAL}'
-                      .format(PARAM=self.name, VAL=input_value))
+                print('Warning: DataParameter {NAME}: unable to parse date {VAL}'
+                      .format(NAME=self.name, VAL=input_value))
                 value_fmt = None
         elif isinstance(input_value, datetime.datetime):
             value_fmt = input_value
         else:
-            print('Warning: parameter {PARAM}: unknown object type for {VAL}'
-                  .format(PARAM=self.name, VAL=input_value))
+            print('Warning: DataParameter {NAME}: unknown object type for {VAL}'
+                  .format(NAME=self.name, VAL=input_value))
             value_fmt = None
 
         return value_fmt
@@ -767,8 +756,8 @@ class DataParameterDate(DataParameter):
         elif isinstance(value, datetime.datetime):
             value_fmt = value.strftime('%Y-%m-%d')
         else:
-            print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
-                  .format(PARAM=self.name, VAL=value))
+            print('Warning: DataParameter {NAME}: unknown object type for parameter value {VAL}'
+                  .format(NAME=self.name, VAL=value))
             value_fmt = None
 
         return value_fmt
@@ -806,9 +795,9 @@ class DataParameterDateRange(DataParameter):
         except (IndexError, TypeError):
             self.value = self.format_value({self.key_lookup('Element'): self.default,
                                             self.key_lookup('Element2'): self.default})
-        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
-              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
-                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+        print('Info: DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+              '{DEF}, and formatted value {VAL}'
+              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -900,11 +889,11 @@ class DataParameterDateRange(DataParameter):
         try:
             input_values = (values[self.key_lookup('Element')], values[self.key_lookup('Element2')])
         except KeyError:
-            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
                   .format(NAME=self.name, ORIG=self.value, NEW=input_values))
 
         formatted_values = []
@@ -917,13 +906,13 @@ class DataParameterDateRange(DataParameter):
                 try:
                     value_fmt = strptime(input_value, '%Y-%m-%d')
                 except (ValueError, TypeError):
-                    print('Warning: parameter {PARAM}: unable to parse date {VAL}'
+                    print('Warning: DataParameter {PARAM}: unable to parse date {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     value_fmt = None
             elif isinstance(input_value, datetime.datetime):
                 value_fmt = input_value
             else:
-                print('Warning: parameter {PARAM}: unknown object type for {VAL}'
+                print('Warning: DataParameter {PARAM}: unknown object type for {VAL}'
                       .format(PARAM=self.name, VAL=input_value))
                 value_fmt = None
 
@@ -950,7 +939,7 @@ class DataParameterDateRange(DataParameter):
             elif isinstance(value, datetime.datetime):
                 value_fmt = value.strftime('%Y-%m-%d')
             else:
-                print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
                       .format(PARAM=self.name, VAL=value))
                 value_fmt = ''
 
@@ -1021,9 +1010,9 @@ class DataParameterCheckbox(DataParameter):
             self.default = False
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
-              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
-                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+        print('Info: DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+              '{DEF}, formatted value {VAL}'
+              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -1074,11 +1063,11 @@ class DataParameterCheckbox(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
                   .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         try:
@@ -1107,9 +1096,9 @@ class DataParameterButton(DataParameter):
 
         # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value {DEF}, formatted '
-              'value {VAL}, and display value {DIS}'.format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype,
-                                                            DEF=self.default, VAL=self.value, DIS=self.format_display()))
+        print('Info: DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+              '{DEF}, and formatted value {VAL}'
+              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -1168,11 +1157,11 @@ class DataParameterButton(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Info: Parameter {NAME}: unable to find window values for parameter to update'
+            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: Parameter {NAME}: updating parameter value {ORIG} to {NEW}'
+            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
                   .format(NAME=self.name, ORIG=self.value, NEW=input_value))
             if input_value is None:
                 return None
@@ -1184,7 +1173,7 @@ class DataParameterButton(DataParameter):
                 try:
                     value_fmt = float(input_value.replace(group_sep, ''))
                 except (ValueError, TypeError, AttributeError):
-                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('int', 'integer', 'bit'):
@@ -1194,7 +1183,7 @@ class DataParameterButton(DataParameter):
                 try:
                     value_fmt = input_value.replace(',', '')
                 except (ValueError, TypeError):
-                    print('Warning: parameter {PARAM}: unknown object type for parameter value {VAL}'
+                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
                           .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('bool', 'boolean'):
@@ -1219,8 +1208,8 @@ class DataParameterButton(DataParameter):
 
         dtype = self.dtype
         value = self.value
-        print('Info: formatting parameter {PARAM} value {VAL} for display'
-              .format(PARAM=self.name, VAL=value))
+        print('Info: DataParameter {NAME}: formatting parameter value {VAL} for display'
+              .format(NAME=self.name, VAL=value))
 
         if value == '' or value is None:
             return ''
