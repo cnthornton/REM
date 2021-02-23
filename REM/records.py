@@ -530,6 +530,11 @@ class DatabaseRecord:
         """
         Format parameter values as a table row.
         """
+        is_numeric_dtype = pd.api.types.is_numeric_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
         parameters = self.parameters
         modifiers = self.modifiers
 
@@ -545,11 +550,18 @@ class DatabaseRecord:
         for param in parameters:
             param_type = param.etype
             if param_type == 'table':  # parameter is a data table object
-                col_summs = param.summarize_table()
-                for summ_rule, summ_value in col_summs:
-                    summ_col = param.summary_rules[summ_rule]['Column']
-                    columns += summ_col
-                    values += summ_value
+                df = param.df
+                for column in df.columns.tolist():  # component is header column
+                    dtype = df[column].dtype
+                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
+                        col_summary = df[column].sum()
+                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+                        col_summary = df[column].nunique()
+                    else:  # possibly empty dataframe
+                        col_summary = 0
+
+                    columns.append(column)
+                    values.append(col_summary)
             else:  # parameter is a data element object
                 columns.append(param.name)
                 values.append(param.value)
@@ -894,6 +906,11 @@ class DepositRecord(DatabaseRecord):
         """
         Format parameter values as a table row.
         """
+        is_numeric_dtype = pd.api.types.is_numeric_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
         parameters = self.parameters
         modifiers = self.modifiers
 
@@ -909,11 +926,18 @@ class DepositRecord(DatabaseRecord):
         for param in parameters:
             param_type = param.etype
             if param_type == 'table':
-                col_summs = param.summarize_table()
-                for summ_rule, summ_value in col_summs:
-                    summ_col = param.summary_rules[summ_rule]['Column']
-                    columns += summ_col
-                    values += summ_value
+                df = param.df
+                for column in df.columns.tolist():  # component is header column
+                    dtype = df[column].dtype
+                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
+                        col_summary = df[column].sum()
+                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+                        col_summary = df[column].nunique()
+                    else:  # possibly empty dataframe
+                        col_summary = 0
+
+                    columns.append(column)
+                    values.append(col_summary)
             else:
                 columns.append(param.name)
                 values.append(param.value)
@@ -1159,6 +1183,11 @@ class TAuditRecord(DatabaseRecord):
         """
         Format parameter values as a table row.
         """
+        is_numeric_dtype = pd.api.types.is_numeric_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
         parameters = self.parameters
         modifiers = self.modifiers
 
@@ -1174,11 +1203,18 @@ class TAuditRecord(DatabaseRecord):
         for param in parameters:
             param_type = param.etype
             if param_type == 'table':
-                col_summs = param.summarize_table()
-                for summ_rule, summ_value in col_summs:
-                    summ_col = param.summary_rules[summ_rule]['Column']
-                    columns += summ_col
-                    values += summ_value
+                df = param.df
+                for column in df.columns.tolist():  # component is header column
+                    dtype = df[column].dtype
+                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
+                        col_summary = df[column].sum()
+                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+                        col_summary = df[column].nunique()
+                    else:  # possibly empty dataframe
+                        col_summary = 0
+
+                    columns.append(column)
+                    values.append(col_summary)
             else:
                 columns.append(param.name)
                 values.append(param.value)
