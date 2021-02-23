@@ -34,7 +34,7 @@ class ToolBar:
         Initialize toolbar parameters.
         """
         self.name = 'toolbar'
-        self.elements = ['amenu', 'rmenu', 'umenu', 'mmenu']
+        self.elements = ['-{ELEM}-'.format(ELEM=i) for i in ['amenu', 'rmenu', 'umenu', 'mmenu']]
 
         record_map = {'account': '&Account Records', 'bank_deposit': 'Bank &Deposit Records',
                       'bank_statement': '&Bank Statement Records', 'audit': 'Audi&t Records',
@@ -88,9 +88,10 @@ class ToolBar:
         """
         Lookup key for element in schema.
         """
-        elements = self.elements
+        elements = [i[1:-1] for i in self.elements]
+
         if element in elements:
-            key = mod_lo.as_key('{}'.format(element))
+            key = '-{ELEM}-'.format(ELEM=element.upper())
         else:
             key = None
 
@@ -631,7 +632,6 @@ def main():
             try:
                 record = mod_win2.record_import_window(user, record_entry.record_layout, import_table, enable_new=False)
             except Exception as e:
-                raise
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {}'.format(msg))
@@ -652,7 +652,7 @@ def main():
             # Obtain the selected rule object
             current_rule = audit_rules.fetch_rule(selected_action)
 
-            # Reset rule
+            # Clear the panel
             current_rule.reset_rule(window, current=True)
 
             # Update panel-in-display
@@ -712,6 +712,9 @@ def main():
         elif values['-AMENU-'] in bank_names:
             # Obtain the selected rule object
             current_rule = bank_rules.fetch_rule(selected_action)
+
+            # Clear the panel
+            current_rule.reset_rule(window, current=True)
 
             # Update panel-in-display
             window[current_panel].update(visible=False)
