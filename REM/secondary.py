@@ -228,6 +228,7 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
     """
     Display the record window.
     """
+    # Initial window size
     if win_size:
         width, height = win_size
     else:
@@ -244,9 +245,8 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
 
     font_h = mod_const.HEADER_FONT
 
-    user_priv = user.privileges()
-
     # User permissions
+    user_priv = user.privileges()
     deletable = True if record.permissions['delete'] in user_priv and record.level < 1 \
                         and view_only is False else False
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
@@ -282,12 +282,13 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
 
     # Window layout
     layout = [[sg.Col(title_layout, background_color=header_col, expand_x=True)],
+              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
               [sg.Col(record.layout(win_size=(600, height), view_only=view_only, ugroup=user_priv),
                       pad=(0, 0), background_color=bg_col, expand_x=True)],
               [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
               [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]]
 
-    window = sg.Window('Database Record', layout, modal=True, keep_on_top=False, return_keyboard_events=True)
+    window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True)
     window.finalize()
 
     # Resize window
@@ -306,21 +307,21 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
     while True:
         event, values = window.read()
 
-        if event == sg.WIN_CLOSED:  # selected close-window without accepting changes
+        if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
             mod_records.remove_unsaved_keys(record)
             record = None
 
             break
 
-        if event == '-OK-':
+        if event == '-OK-':  # selected to accept record changes
             # Update data element values
             for param_elem in record.parameters:
                 param_elem.update_display(window, window_values=values)
 
             break
 
-        if event == '-SAVE-':
+        if event == '-SAVE-':  # selected to save the record (changes) to the database
             # Update data element values
             for param_elem in record.parameters:
                 param_elem.update_display(window, window_values=values)
@@ -332,7 +333,7 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
             break
 
         # Update the record parameters with user-input
-        if event in record_elements:
+        if event in record_elements:  # selected a record event element
             try:
                 record.run_event(window, event, values, user)
             except Exception as e:
@@ -1347,6 +1348,22 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
     # Set table datatypes
     table.df = table.set_datatypes(table.df)
 
+    # Prepare record
+    record_entry = configuration.records.fetch_rule(table.record_type)
+
+    record_type = record_entry.group
+    if record_type in ('account', 'bank_statement', 'cash_expense'):
+        record_class = mod_records.DatabaseRecord
+    elif record_type == 'bank_deposit':
+        record_class = mod_records.DepositRecord
+    elif record_type == 'audit':
+        record_class = mod_records.TAuditRecord
+    else:
+        print('Warning: unknown record layout type provided {}'.format(record_type))
+        return None
+
+    record = record_class(record_entry.name, record_layout, level=0)
+
     # Update display with default filter values
     tbl_key = table.key_lookup('Element')
     table_elements = [i for i in table.elements if i != tbl_key]
@@ -1371,8 +1388,6 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
                 break
 
             # Create a new record object
-            record_entry = configuration.records.fetch_rule(table.record_type)
-
             record_date = datetime.datetime.now()
             record_id = record_entry.create_id(record_date)
             print('Info: RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
@@ -1381,20 +1396,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
             record_data['RecordID'] = record_id
             record_data['RecordDate'] = record_date
 
-            record_type = record_entry.group
-            if record_type in ('account', 'bank_statement', 'cash_expense'):
-                record_class = mod_records.DatabaseRecord
-            elif record_type == 'bank_deposit':
-                record_class = mod_records.DepositRecord
-            elif record_type == 'audit':
-                record_class = mod_records.TAuditRecord
-            else:
-                print('Warning: unknown record layout type provided {}'.format(record_type))
-                record = None
-
-                break
-
-            record = record_class(record_entry.name, record_layout, record_data, level=0)
+            record.initialize(record_data, new=True)
 
             break
 
@@ -1426,25 +1428,11 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
                     else:
                         record_data = trans_df.iloc[0]
 
-                # Set the record object based on the record type
-                record_type = table.record_type
-                record_group = configuration.records.fetch_rule(record_type).group
-                if record_group in ('account', 'bank_statement', 'cash_expense'):
-                    record_class = mod_records.DatabaseRecord
-                elif record_group == 'bank_deposit':
-                    record_class = mod_records.DepositRecord
-                elif record_group == 'audit':
-                    record_class = mod_records.TAuditRecord
-                else:
-                    print('Warning: unknown record layout type provided {}'.format(record_type))
-                    record_class = None
-
-                try:
-                    record = record_class(record_type, record_layout, record_data, new_record=False)
-                except Exception as e:
-                    raise
-                    print(e)
-                    record = None
+                    try:
+                        record.initialize(record_data)
+                    except Exception as e:
+                        print('Error: unable to initialize record {ID} - {ERR}'.format(ID=record_id, ERR=e))
+                        return None
 
                 break
 
@@ -1692,6 +1680,9 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
               .format(TYPE=type(edit_columns)))
         return row
 
+    if edit_columns is None:
+        edit_columns = {}
+
     if win_size:
         width, height = win_size
     else:
@@ -1717,7 +1708,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                 print('Warning: editable column {COL} not found in the display header'.format(COL=column))
                 continue
 
-            element_key = mod_lo.as_key(column)
+            element_key = '-{COL}-'.format(COL=column)
             edit_keys[column] = element_key
 
     # Window and element size parameters
@@ -1732,12 +1723,12 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     in_col = mod_const.INPUT_COL
 
     # GUI layout
-    ## Buttons
-    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                    mod_lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip=_('Save changes'))]]
+    # Buttons
+    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel edit'),
+                    mod_lo.B2('Save', key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip='Save changes')]]
 
-    ## Table
+    # Table
     lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
 
     tbl_layout = []
@@ -1758,7 +1749,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
             except KeyError:
                 column_type = 'string'
         else:
-            element_key = mod_lo.as_key(display_column)
+            element_key = '-{COL}-'.format(COL=display_column)
             readonly = True
             column_type = 'string'
 
@@ -1933,7 +1924,7 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
 
     edit_keys = {}
     for column in edit_cols:
-        element_key = mod_lo.as_key(column)
+        element_key = '-{COL}-'.format(COL=column)
         edit_keys[column] = element_key
 
     # Window and element size parameters
@@ -1975,7 +1966,7 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
             except KeyError:
                 column_type = 'string'
         else:
-            element_key = mod_lo.as_key(display_column)
+            element_key = '-{COL}-'.format(COL=display_column)
             readonly = True
             column_type = 'string'
 
@@ -2109,19 +2100,24 @@ def center_window(window):
     """
     screen_w, screen_h = window.get_screen_dimensions()
 
-    print('real window size is {}'.format(window.size))
+    print('Info: centering window')
+    window.refresh()
+
+    print('Info: current window size: {}'.format(window.size))
     win_w, win_h = window.size
     win_x = int(screen_w / 2 - win_w / 2)
     win_y = int(screen_h / 2 - win_h / 2)
-    print('window new location is ({}, {})'.format(win_x, win_y))
+    print('Info: window current location: ({}, {})'.format(*window.current_location()))
+    print('Info: window new location: ({}, {})'.format(win_x, win_y))
     if win_x + win_w > screen_w:
         win_x = screen_w - win_w
     if win_y + win_h > screen_h:
         win_y = screen_h - win_h
 
+    window.refresh()
     window.move(win_x, win_y)
     window.refresh()
-    print('window real location is {}'.format(window.current_location()))
+    print('Info: window real location: {}'.format(window.current_location()))
 
     return window
 
