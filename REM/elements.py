@@ -531,7 +531,7 @@ class TableElement:
             except Exception as e:
                 print('Error: DataTable {TBL}: unable to generate column from display rule {RULE} - {ERR}'
                       .format(TBL=self.name, RULE=col_rule, ERR=e))
-                col_to_add = None
+                continue
 
             dtype = col_to_add.dtype
             if is_float_dtype(dtype):
@@ -1286,7 +1286,7 @@ class TableElement:
         """
         Subset the table based on a set of rules.
         """
-        operators = {'>', '>=', '<', '<=', '==', '!=', 'IN', 'In', 'in'}
+        operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'IN', 'In', 'in'}
         chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
 
         df = self.df.copy()
@@ -1304,13 +1304,21 @@ class TableElement:
                 cond_items = []
                 for item in conditional:
                     if item in operators:  # item is operator
-                        cond_items.append(item)
+                        if item == '=':
+                            cond_items.append('==')
+                        else:
+                            cond_items.append(item)
                     elif item in header:  # item is in header
                         cond_items.append('df["{}"]'.format(item))
                     elif item.lower() in header:  # item is header converted by ODBC implementation
                         cond_items.append('df["{}"]'.format(item.lower()))
                     else:  # item is string or int
-                        cond_items.append(item)
+                        try:
+                            float(item)
+                        except (ValueError, TypeError):  # format as a string
+                            cond_items.append('"{}"'.format(item))
+                        else:
+                            cond_items.append(item)
 
                 conditionals.append('({})'.format(' '.join(cond_items)))
 
@@ -1321,6 +1329,7 @@ class TableElement:
         except SyntaxError:
             raise SyntaxError('invalid syntax for subset rule {NAME}'.format(NAME=subset_rule))
         except NameError:
+            print(cond_str)
             raise NameError('unknown column specified in subset rule {NAME}'.format(NAME=subset_rule))
 
         return subset_df

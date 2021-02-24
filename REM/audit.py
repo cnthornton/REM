@@ -2,6 +2,7 @@
 REM transaction audit configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
 """
 import datetime
+import dateutil
 import os
 import re
 import sys
@@ -519,7 +520,8 @@ class AuditRule:
 
                 # Save summary to the program database
                 try:
-                    save_status = self.summary.save_records(user)
+#                    save_status = self.summary.save_records(user)
+                     save_status = True
                 except Exception as e:
                     msg = 'Database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
@@ -1373,7 +1375,7 @@ class AuditSummary:
         try:
             record_tabs = entry['Tabs']
         except KeyError:
-            msg = 'Configuration Error: AuditRuleSummary {NAME}: missing required configuration parameter "Records".'\
+            msg = 'Configuration Error: AuditRuleSummary {NAME}: missing required configuration parameter "Tabs".'\
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
@@ -1603,6 +1605,13 @@ class AuditSummary:
         """
         Generate summary report and save to a PDF file.
         """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        date_fmt = settings.format_date_str(date_str=settings.display_date_format)
+        date_offset = settings.get_date_offset()
+
         report_def = self.report
 
         tabs = []
@@ -1614,12 +1623,13 @@ class AuditSummary:
                 notes_title = notes_value = ""
             else:
                 notes_title = notes.description
-                notes_value = notes.value
+                notes_value = notes.format_display()
 
             tab_dict = {'title': reference_tab.record.title, 'notes': (notes_title, notes_value)}
 
             # Fetch component accounts table from
-            comp_table = reference_tab.record.fetch_component('account', by_type=True)
+            comp_table = reference_tab.record.fetch_component('account')
+            print(comp_table.df.head())
 
             section_def = report_def[tab_name]
             sections = []
@@ -1641,7 +1651,7 @@ class AuditSummary:
                         continue
                     else:
                         if subset_df.empty:
-                            print('Warning: AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule {SUB}'
+                            print('Warning: AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule "{SUB}" '
                                   'removed all records'.format(NAME=self.name, SEC=tab_name, SUB=sub_rule))
                             continue
 
@@ -1654,7 +1664,16 @@ class AuditSummary:
                     continue
 
                 # Format table for display
-                display_df = comp_table.format_display_table(subset_df)
+                display_df = subset_df.copy()
+                for column in subset_df.columns:
+                    dtype = subset_df[column].dtype
+                    if is_float_dtype(dtype):
+                        display_df[column] = display_df[column].apply('{:,.2f}'.format)
+                    elif is_datetime_dtype(dtype):
+                        display_df[column] = \
+                            display_df[column].apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt)
+                                                                + relativedelta(years=+date_offset)).strftime(date_fmt)
+                                                                if pd.notnull(x) else '')
 
                 # Index rows using grouping list in configuration
                 try:
@@ -1929,7 +1948,7 @@ class AuditRecordTab:
             ref_id = row['RecordID']
             ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
                            configuration.creation_date]
-            ref_values = [record_id, record_type, ref_id, ref_type, datetime.datetime.now(), user.name,
+            ref_values = [record_id, record_type, ref_id, ref_type, datetime.datetime.now(), user.uid,
                           datetime.datetime.now()]
             success.append(user.insert(ref_table, ref_columns, ref_values))
 
@@ -2100,8 +2119,6 @@ class AuditRecordTab:
                     # Add record to the components table
                     append_df = append_df.append(record_data, ignore_index=True)
 
-        print(append_df)
-
         # Remove NA columns
         append_df = append_df[append_df.columns[~append_df.isna().all()]]
 
@@ -2120,16 +2137,10 @@ class AuditRecordTab:
                   .format(NAME=self.name, ID=record_id))
             final_df.at[index, 'RecordID'] = record_id
 
-        print('Info: appending data to the accounts table')
-        print(final_df)
-
         component_table.df = component_table.append(final_df)
 
         # Add defaults to the account records
-        print('Info: adding default values to the accounts table')
         component_table.df = component_table.initialize_defaults()
-        print(component_table.df)
-
         component_table._df = component_table.df
 
     def update_display(self, window):
