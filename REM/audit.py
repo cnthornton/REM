@@ -1950,7 +1950,12 @@ class AuditRecordTab:
                            configuration.creation_date]
             ref_values = [record_id, record_type, ref_id, ref_type, datetime.datetime.now(), user.uid,
                           datetime.datetime.now()]
-            success.append(user.insert(ref_table, ref_columns, ref_values))
+            entry_saved = user.insert(ref_table, ref_columns, ref_values)
+            if entry_saved is False:
+                msg = 'failed to save record {ID} reference to {REF} to database table {TBL}' \
+                    .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                mod_win2.popup_error(msg)
+            success.append(entry_saved)
 
         return all(success)
 

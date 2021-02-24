@@ -441,7 +441,7 @@ class RecordEntry:
 
         id_exists = not self.remove_unsaved_id(record_id)
         try:
-            del_param = record.fetch_modifier['Deleted']
+            del_param = record.fetch_modifier('Deleted')
         except KeyError:
             deleted = False
         else:
@@ -457,8 +457,15 @@ class RecordEntry:
 
             # Prepare column value updates
             record_data = record.table_values()
-            export_columns = [references[i] for i in record_data.index.tolist()]
-            export_values = record_data[export_columns].replace(np.nan, None).tolist()
+            include_columns = [i for i in record_data.index.tolist() if i in references]
+            try:
+                export_data = record_data[include_columns].dropna()
+            except Exception as e:
+                print(e)
+                raise
+            else:
+                export_columns = [references[i] for i in export_data.index.tolist()]
+                export_values = export_data.tolist()
 
             # Save the record data
             if id_exists is True:  # record already exists in the database
@@ -467,23 +474,42 @@ class RecordEntry:
                 export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
 
                 filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
-                saved.append(user.update(table, export_columns, export_values, filters))
+                print('Info: RecordType {NAME}, Record {ID}: saving new record to the database'
+                      .format(NAME=self.name, ID=record_id))
+                entry_saved = user.update(table, export_columns, export_values, filters)
+                if entry_saved is False:
+                    msg = 'failed to save record {ID} to database table {TBL}'.format(ID=record_id, TBL=table)
+                    popup_error(msg)
+                saved.append(entry_saved)
 
             else:  # record does not exist yet, must be inserted
                 # Create new entry for the record in the database
                 export_columns += [configuration.creator_code, configuration.creation_date]
                 export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
 
-                saved.append(user.insert(table, export_columns, export_values))
+                print('Info: RecordType {NAME}, Record {ID}: updating existing record in the database'
+                      .format(NAME=self.name, ID=record_id))
+                entry_saved = user.insert(table, export_columns, export_values)
+                if entry_saved is False:
+                    msg = 'failed to update record {ID} in database table {TBL}'.format(ID=record_id, TBL=table)
+                    popup_error(msg)
+                saved.append(entry_saved)
 
             # Associated records
             import_df = record.import_df
 
             if deleted is True:  # record was marked as deleted
                 # Remove all associations of the record
+                print('Info: RecordType {NAME}, Record {ID}: removing all references to deleted record'
+                      .format(NAME=self.name, ID=record_id))
                 ref_filters = [('DocNo = ?', record_id), ('RefNo = ?', record_id)]
-                saved.append(user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
-                                         [user.uid, datetime.datetime.now(), 1], ref_filters))
+                entry_saved = user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
+                                         [user.uid, datetime.datetime.now(), 1], ref_filters)
+                if entry_saved is False:
+                    msg = 'failed to delete record {ID} references in database table {TBL}'\
+                        .format(ID=record_id, TBL=ref_table)
+                    popup_error(msg)
+                saved.append(entry_saved)
             else:
                 # Handle added and removed references
                 for reference in record.references:
@@ -491,9 +517,17 @@ class RecordEntry:
                     if reference.linked is False:  # reference entry should be removed
                         ref_filters = ['(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)',
                                        (ref_id, record_id, record_id, ref_id)]
-                        saved.append(
-                            user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
-                                        [user.uid, datetime.datetime.now(), 1], ref_filters))
+
+                        print('Info: RecordType {NAME}, Record {ID}: removing all references to {REF}'
+                              .format(NAME=self.name, ID=record_id, REF=ref_id))
+                        entry_saved = user.update(ref_table, [configuration.editor_code, configuration.edit_date,
+                                                              delete_code],
+                                                  [user.uid, datetime.datetime.now(), 1], ref_filters)
+                        if entry_saved is False:
+                            msg = 'failed to delete record {ID} references to {REF} in database table {TBL}' \
+                                .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                            popup_error(msg)
+                        saved.append(entry_saved)
                     else:  # do not remove reference
                         # Determine if reference entry already exists in the database
                         nrow = import_df[(import_df['DocNo'] == record_id & import_df['RefNo'] == ref_id) |
@@ -505,7 +539,14 @@ class RecordEntry:
                         ref_data = reference.as_table()
                         comp_columns = ref_data.index.tolist() + [configuration.creator_code, configuration.creation_date]
                         comp_values = ref_data.tolist() + [user.uid, datetime.datetime.now()]
-                        saved.append(user.insert(ref_table, comp_columns, comp_values))
+                        print('Info: RecordType {NAME}, Record {ID}: saving reference to {REF}'
+                              .format(NAME=self.name, ID=record_id, REF=ref_id))
+                        entry_saved = user.insert(ref_table, comp_columns, comp_values)
+                        if entry_saved is False:
+                            msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                                .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                            popup_error(msg)
+                        saved.append(entry_saved)
 
                 # Handle added and removed record components
                 comp_tables = record.components
@@ -523,18 +564,28 @@ class RecordEntry:
                               .format(NAME=self.name, TBL=comp_table))
                         continue
 
-                    comp_entry = configuration.records.fetch_entry(comp_type)
+                    comp_entry = configuration.records.fetch_rule(comp_type)
 
                     current_comps = comp_table.df[comp_table.id_column]
                     deleted_comps = set(orig_comps).difference(set(current_comps))
                     for deleted_id in deleted_comps:
                         # Delete existing parent-child relationship
                         comp_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_id)]
-                        saved.append(user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
-                                                 [user.name, datetime.datetime.now(), 1], comp_filters))
+                        print('Info: RecordType {NAME}, Record {ID}: removing reference to component {REF}'
+                              .format(NAME=self.name, ID=record_id, REF=deleted_id))
+                        entry_saved = user.update(ref_table, [configuration.editor_code, configuration.edit_date,
+                                                              delete_code],
+                                                  [user.name, datetime.datetime.now(), 1], comp_filters)
+                        if entry_saved is False:
+                            msg = 'failed to remove record {ID} references to component {REF} in database table {TBL}' \
+                                .format(ID=record_id, REF=deleted_id, TBL=ref_table)
+                            popup_error(msg)
+                        saved.append(entry_saved)
 
                         # Delete removed records if component records can be created (not just imported)
                         if comp_table.actions['add'] is True:  # delete record from DB
+                            print('Info: RecordType {NAME}, Record {ID}: deleting component record {REF} from the '
+                                  'database'.format(NAME=self.name, ID=record_id, REF=deleted_id))
                             comp_entry.delete_record(deleted_id)
 
                     for row_index, comp_id in current_comps.iteritems():
@@ -544,14 +595,28 @@ class RecordEntry:
                         # Update reference table with new parent-child relationship
                         comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
                                         configuration.creation_date]
-                        comp_values = [record_id, self.group, comp_id, comp_type, datetime.datetime.now(), user.name,
+                        comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
                                        datetime.datetime.now()]
-                        saved.append(user.insert(ref_table, comp_columns, comp_values))
+                        print('Info: RecordType {NAME}, Record {ID}: adding reference for component {REF}'
+                              .format(NAME=self.name, ID=record_id, REF=comp_id))
+                        entry_saved = user.insert(ref_table, comp_columns, comp_values)
+                        if entry_saved is False:
+                            msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
+                                .format(ID=record_id, REF=comp_id, TBL=ref_table)
+                            popup_error(msg)
+                        saved.append(entry_saved)
 
                         # Save component record to the database if records can be created (not imported)
                         if comp_table.actions['add'] is True:  # add record to DB
-                            comp_record = comp_table.translate_row(comp_table.iloc[row_index], level=0, new_record=True)
-                            saved.append(comp_entry.export_record(comp_record))
+                            comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], level=0, new_record=True)
+                            print('Info: RecordType {NAME}, Record {ID}: adding component record {REF} to the '
+                                  'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
+                            entry_saved = comp_entry.export_record(user, comp_record)
+                            if entry_saved is False:
+                                msg = 'failed to save record {ID} to database table {TBL}' \
+                                    .format(ID=record_id, TBL=ref_table)
+                                popup_error(msg)
+                            saved.append(entry_saved)
 
         return all(saved)
 
