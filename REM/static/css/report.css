@@ -90,7 +90,7 @@ dd          { margin-left: 1.5em;}
 
 table       { margin-bottom: 2em; width: 100%; border-collapse: collapse; }
 th          { vertical-align: top; text-align: left; font-weight: normal; font-size: 1.2em; }
-td          { font-size: 1.2em; }
+td          { font-size: 1em; }
 thead th    { background: #c3d9ff; }
 th,td,caption { padding: 4px 10px 4px 5px; }
 table,th,td   { border: 1px solid #f2f2f2; }

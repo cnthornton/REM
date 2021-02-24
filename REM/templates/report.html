@@ -19,11 +19,12 @@
 <div class="container">
     {% for tab in report_tabs %}
        <h2>{{tab['title']}}</h2>
+       <p><b>{{tab['notes'][0]}}</b>: {{tab['notes'][1]}}<br></p>
        {% for section in tab['sections'] %}
            <h3>{{section[0]}}</h3>
            {{section[1]}}
        {% endfor %}
-    <p><b>{{tab['notes'][0]}}</b>: {{tab['notes'][1]}}<br></p>
+<!--    <p><b>{{tab['notes'][0]}}</b>: {{tab['notes'][1]}}<br></p> -->
     {% endfor %}
 </div>
 </body>
