@@ -2,12 +2,13 @@
 REM authentication and user classes.
 """
 import concurrent.futures
+import datetime
 import hashlib
 import pandas as pd
 from pandas.io import sql
 import pyodbc
 import PySimpleGUI as sg
-from REM.config import settings
+from REM.config import settings, configuration
 import REM.constants as const
 import REM.secondary as win2
 import time
@@ -49,15 +50,6 @@ class UserAccount:
         self.group = None
         self.logged_in = False
         self.admin = False
-
-    def privileges(self):
-        """
-        Get user privilege escalation.
-        """
-        if self.admin:
-            return ['admin', 'user']
-        else:
-            return ['user']
 
     def login(self, uid, pwd):
         """
@@ -353,6 +345,7 @@ class UserAccount:
         """
         Insert data into the daily summary table.
         """
+        values = convert_datatypes(values)
 
         # Format parameters
         if isinstance(values, list):
@@ -405,6 +398,7 @@ class UserAccount:
         """
         Insert data into the daily summary table.
         """
+        values = convert_datatypes(values)
 
         # Format parameters
         if isinstance(values, list):
@@ -449,6 +443,7 @@ class UserAccount:
         """
         Delete data from a summary table.
         """
+        values = convert_datatypes(values)
 
         # Format parameters
         if isinstance(values, list):
@@ -556,3 +551,42 @@ def construct_where_clause(filter_rules):
         raise SQLStatementError(msg)
 
     return (where, params)
+
+
+def access_permissions(ugroup):
+    """
+    Return escalated privileges for a given user group.
+    """
+    if ugroup == 'admin':
+        return ['admin', 'user']
+    else:
+        return ['user']
+
+
+def convert_datatypes(values):
+    """
+    Convert values with numpy data-types to native data-types.
+    """
+    strptime = datetime.datetime.strptime
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_integer_dtype = pd.api.types.is_integer_dtype
+    is_bool_dtype = pd.api.types.is_bool_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    date_fmt = configuration.date_format
+
+    converted_values = []
+    for value in values:
+        if is_float_dtype(type(value)) is True or isinstance(value, float):
+            converted_value = float(value)
+        elif is_integer_dtype(type(value)) is True or isinstance(value, int):
+            converted_value = int(value)
+        elif is_bool_dtype(type(value)) is True or isinstance(value, bool):
+            converted_value = bool(value)
+        elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):
+            converted_value = strptime(value.strftime(date_fmt), date_fmt)
+        else:
+            converted_value = str(value)
+
+        converted_values.append(converted_value)
+
+    return converted_values
