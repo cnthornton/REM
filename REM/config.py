@@ -3,6 +3,7 @@ REM settings initializer.
 """
 
 import datetime
+import dateutil
 import os
 import pandas as pd
 from pymongo import MongoClient, errors
@@ -411,7 +412,7 @@ class RecordEntry:
         query_str = 'SELECT {COL} FROM {TBL} WHERE {FILT}'.format(COL=', '.join(columns), TBL=table_statement,
                                                                   FILT=filters)
 
-        import_df = program_account.query(query_str, params=(record_id, ))
+        import_df = program_account.query(query_str, params=(record_id,))
         nrow = import_df.shape[0]
 
         if nrow < 1:
@@ -471,11 +472,11 @@ class RecordEntry:
                 export_values += [user.uid, datetime.datetime.now().strftime(configuration.date_format)]
 
                 filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
-                print('Info: RecordType {NAME}, Record {ID}: saving new record to the database'
+                print('Info: RecordType {NAME}, Record {ID}: updating existing record in the database'
                       .format(NAME=self.name, ID=record_id))
                 entry_saved = user.update(table, export_columns, export_values, filters)
                 if entry_saved is False:
-                    msg = 'failed to save record {ID} to database table {TBL}'.format(ID=record_id, TBL=table)
+                    msg = 'failed to update record {ID} in database table {TBL}'.format(ID=record_id, TBL=table)
                     popup_error(msg)
                     return False
                 else:
@@ -486,11 +487,11 @@ class RecordEntry:
                 export_columns += [configuration.creator_code, configuration.creation_date]
                 export_values += [user.uid, datetime.datetime.now().strftime(configuration.date_format)]
 
-                print('Info: RecordType {NAME}, Record {ID}: updating existing record in the database'
+                print('Info: RecordType {NAME}, Record {ID}: saving new record to the database'
                       .format(NAME=self.name, ID=record_id))
                 entry_saved = user.insert(table, export_columns, export_values)
                 if entry_saved is False:
-                    msg = 'failed to update record {ID} in database table {TBL}'.format(ID=record_id, TBL=table)
+                    msg = 'failed to save record {ID} to database table {TBL}'.format(ID=record_id, TBL=table)
                     popup_error(msg)
                     return False
                 else:
@@ -505,41 +506,41 @@ class RecordEntry:
                       .format(NAME=self.name, ID=record_id))
                 ref_filters = [('DocNo = ?', record_id), ('RefNo = ?', record_id)]
                 entry_saved = user.update(ref_table, [configuration.editor_code, configuration.edit_date, delete_code],
-                                         [user.uid, datetime.datetime.now(), 1], ref_filters)
+                                          [user.uid, datetime.datetime.now(), 1], ref_filters)
                 if entry_saved is False:
-                    msg = 'failed to delete record {ID} references in database table {TBL}'\
+                    msg = 'failed to delete record {ID} references in database table {TBL}' \
                         .format(ID=record_id, TBL=ref_table)
                     popup_error(msg)
                 saved.append(entry_saved)
             else:
                 # Handle added and removed references
                 for reference in record.references:
-                    ref_id = reference.ref_id
-                    if reference.linked is False:  # reference entry should be removed
-                        ref_filters = ['(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)',
-                                       (ref_id, record_id, record_id, ref_id)]
+                    ref_id = reference.record_id  # reference record ID
+                    ref_data = reference.as_table()
 
-                        print('Info: RecordType {NAME}, Record {ID}: removing all references to {REF}'
+                    # Determine if reference entry already exists in the database
+                    nrow = import_df[import_df['DocNo'] == ref_id].shape[0]
+                    if nrow > 0:  # reference already exists in the database
+                        # Update existing reference entry in the references table
+                        # If mutually referenced, deleting one entry will also delete its partner
+                        comp_columns = ['IsDeleted', configuration.editor_code, configuration.edit_date]
+                        comp_values = [ref_data['IsDeleted']] + [user.uid, datetime.datetime.now()]
+                        update_filters = ('(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)',
+                                          (ref_id, record_id, record_id, ref_id))
+
+                        print('Info: RecordType {NAME}, Record {ID}: updating reference {REF}'
                               .format(NAME=self.name, ID=record_id, REF=ref_id))
-                        entry_saved = user.update(ref_table, [configuration.editor_code, configuration.edit_date,
-                                                              delete_code],
-                                                  [user.uid, datetime.datetime.now(), 1], ref_filters)
+                        entry_saved = user.update(ref_table, comp_columns, comp_values, update_filters)
                         if entry_saved is False:
-                            msg = 'failed to delete record {ID} references to {REF} in database table {TBL}' \
+                            msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
                                 .format(ID=record_id, REF=ref_id, TBL=ref_table)
                             popup_error(msg)
                         saved.append(entry_saved)
-                    else:  # do not remove reference
-                        # Determine if reference entry already exists in the database
-                        nrow = import_df[(import_df['DocNo'] == record_id & import_df['RefNo'] == ref_id) |
-                                         (import_df['DocNo'] == ref_id & import_df['RefNo'] == record_id)].shape[0]
-                        if nrow > 0:  # reference already exists in the database, should do nothing
-                            continue
-
+                    else:
                         # Add reference entry to the references table
-                        ref_data = reference.as_table()
                         comp_columns = ref_data.index.tolist() + [configuration.creator_code, configuration.creation_date]
                         comp_values = ref_data.tolist() + [user.uid, datetime.datetime.now()]
+
                         print('Info: RecordType {NAME}, Record {ID}: saving reference to {REF}'
                               .format(NAME=self.name, ID=record_id, REF=ref_id))
                         entry_saved = user.insert(ref_table, comp_columns, comp_values)
@@ -681,10 +682,10 @@ class RecordEntry:
         Import record references.
         """
         ref_table = configuration.reference_lookup
-        columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType']
+        columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted']
 
         # Define query statement
-        query_str = 'SELECT {COLS} FROM {TABLE} WHERE {COL1} = ? OR {COL2} = ?;'\
+        query_str = 'SELECT {COLS} FROM {TABLE} WHERE {COL1} = ? OR {COL2} = ?;' \
             .format(COLS=','.join(columns), COL1='DocNo', COL2='RefNo', TABLE=ref_table)
         import_df = program_account.query(query_str, params=(record_id, record_id))
 
@@ -703,12 +704,13 @@ class RecordEntry:
             # Search for database records with date within the same month
             try:
                 first_day = record_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                last_day = datetime.datetime(record_date.year + record_date.month // 12, record_date.month % 12 + 1, 1) - datetime.timedelta(1)
+                last_day = datetime.datetime(record_date.year + record_date.month // 12, record_date.month % 12 + 1,
+                                             1) - datetime.timedelta(1)
             except AttributeError:
-                query_str = 'SELECT {COL} FROM {TABLE} ORDER BY {COL};'\
+                query_str = 'SELECT {COL} FROM {TABLE} ORDER BY {COL};' \
                     .format(COL=id_column, TABLE=primary_table)
             else:
-                query_str = 'SELECT {COL} FROM {TABLE} WHERE {DATE} BETWEEN ? AND ? ORDER BY {COL};'\
+                query_str = 'SELECT {COL} FROM {TABLE} WHERE {DATE} BETWEEN ? AND ? ORDER BY {COL};' \
                     .format(COL=id_column, TABLE=primary_table, DATE=configuration.date_field)
                 params = (first_day, last_day)
         else:
@@ -724,15 +726,22 @@ class RecordEntry:
 
         return id_list
 
-    def create_id(self, record_date):
+    def create_id(self, record_date, offset: int = 0):
         """
         Create a new record ID.
         """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+
         id_code = self.id_code
         unsaved_ids = self.ids
 
         # Format the date component of the new ID
-        id_date = record_date.strftime(format_date_str(date_str='YYMM'))
+        try:
+            id_date = (record_date + relativedelta(years=+offset)).strftime(format_date_str(date_str='YYMM'))
+        except Exception as e:
+            id_date = (strptime(record_date.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S')
+                       + relativedelta(years=+offset)).strftime(format_date_str(date_str='YYMM'))
 
         print('Info: RecordEntry {NAME}: new ID has date component {COMP}'.format(NAME=self.name, COMP=id_date))
 
@@ -1311,4 +1320,3 @@ configuration.load_configuration()
 
 # Connect to database as program user
 program_account = ProgramAccount(_prog_cnfg)
-

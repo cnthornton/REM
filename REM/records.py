@@ -194,7 +194,7 @@ class DatabaseRecord:
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
 
-        self.import_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType'])
+        self.import_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
 
     def key_lookup(self, component):
         """
@@ -283,7 +283,9 @@ class DatabaseRecord:
                     print('Warning: record {ID}: input data is missing a value for modifier {COL}'
                           .format(ID=self.record_id, COL=modifier_name))
                 else:
-                    modifier.value = modifier.format_value({modifier_name: value})
+                    print('Info: record {ID}: initializing modifier {PARAM} with value {VAL}'
+                          .format(ID=self.record_id, PARAM=modifier_name, VAL=value))
+                    modifier.value = modifier.format_value({modifier.key_lookup('Element'): value})
 
         # Set data element values
         for param in parameters:
@@ -308,7 +310,7 @@ class DatabaseRecord:
                           .format(ID=self.record_id, PARAM=param_name))
                 else:
                     if not pd.isna(value):
-                        print('Info: record {ID}: setting element {PARAM} value to {VAL}'
+                        print('Info: record {ID}: initializing data element {PARAM} with value {VAL}'
                               .format(ID=self.record_id, PARAM=param_name, VAL=value))
                         param.value = param.format_value(value)
                     else:
@@ -321,6 +323,13 @@ class DatabaseRecord:
             for index, row in import_df.iterrows():
                 doctype = row['DocType']
                 reftype = row['RefType']
+                try:
+                    deleted = bool(int(row['IsDeleted']))
+                except (KeyError, ValueError):
+                    deleted = False
+
+                if deleted is True:
+                    continue
 
                 # Store imported references as references box objects
                 if doctype in ref_types:

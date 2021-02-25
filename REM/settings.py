@@ -971,6 +971,7 @@ def construct_where_clause(filter_rules):
             try:
                 statement, params = rule
             except ValueError:
+                print(rule)
                 msg = 'incorrect data type for filter rule {}'.format(rule)
                 raise SQLStatementError(msg)
 

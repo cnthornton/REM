@@ -319,12 +319,20 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             for param_elem in record.parameters:
                 param_elem.update_display(window, window_values=values)
 
+            # Update modifier values
+            for modifier in record.modifiers:
+                modifier.value = modifier.format_value(values)
+
             break
 
         if event == '-SAVE-':  # selected to save the record (changes) to the database
             # Update data element values
             for param_elem in record.parameters:
                 param_elem.update_display(window, window_values=values)
+
+            # Update modifier values
+            for modifier in record.modifiers:
+                modifier.value = modifier.format_value(values)
 
             # Save the record to the database table
             record_entry = configuration.records.fetch_rule(record.name)

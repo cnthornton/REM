@@ -1928,7 +1928,10 @@ class ReferenceElement:
         else:
             self.title = name
 
-        self.linked = True
+        try:
+            self.linked = not bool(int(entry['IsDeleted']))
+        except (ValueError, KeyError):
+            self.linked = True
 
     def key_lookup(self, component):
         """
@@ -1967,6 +1970,7 @@ class ReferenceElement:
         """
         is_disabled = not editable
         width, height = size
+        linked = self.linked
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -2008,7 +2012,7 @@ class ReferenceElement:
 
         width_key = self.key_lookup('Width')
         layout = sg.Frame('', [[sg.Canvas(key=width_key, size=(width, 0))], row1, row2],
-                          key=elem_key, pad=padding, background_color=bg_col, relief='raised',
+                          key=elem_key, pad=padding, background_color=bg_col, relief='raised', visible=linked,
                           metadata={'deleted': False})
 
         return layout
@@ -2074,8 +2078,9 @@ class ReferenceElement:
         """
         Format reference as a table entry.
         """
-        reference = pd.Series([self.record_id, self.reference_id, self.ref_date, self.record_type, self.reference_type],
-                              index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType'])
+        reference = pd.Series([self.record_id, self.reference_id, self.ref_date, self.record_type, self.reference_type,
+                               not self.linked],
+                              index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
         return reference
 
 
