@@ -217,3 +217,4 @@ def get_primary_id_column(import_rules):
             break
 
     return id_col
+

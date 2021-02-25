@@ -13,6 +13,7 @@ import REM.elements as mod_elem
 import REM.layouts as mod_layout
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
+from REM.settings import user
 
 
 class BankRules:
@@ -38,7 +39,7 @@ class BankRules:
             try:
                 bank_name = bank_param['name']
             except KeyError:
-                mod_win2.popup_error('Error: bank_rules: the parameter "name" is a required field')
+                mod_win2.popup_error('Error: BankRules: the parameter "name" is a required field')
                 sys.exit(1)
             else:
                 self.name = bank_name
@@ -51,7 +52,7 @@ class BankRules:
             try:
                 bank_rules = bank_param['rules']
             except KeyError:
-                mod_win2.popup_error('Error: bank_rules: the parameter "rules" is a required field')
+                mod_win2.popup_error('Error: BankRules: the parameter "rules" is a required field')
                 sys.exit(1)
 
             for rule_name in bank_rules:
@@ -74,8 +75,8 @@ class BankRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('Rule {NAME} not in list of configured bank reconciliation rules. Available rules are {ALL}'
-                  .format(NAME=name, ALL=', '.join(self.print_rules())))
+            print('BankRules {NAME}, Rule {RULE} not in list of configured bank reconciliation rules. Available rules '
+                  'are {ALL}'.format(NAME=self.name, RULE=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
             rule = self.rules[index]
@@ -113,8 +114,8 @@ class BankRule:
 
         self.name = name
         self.id = randint(0, 1000000000)
-        self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['Main', 'Summary', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'Reconcile', 'FrameWidth',
                           'FrameHeight', 'PanelWidth', 'PanelHeight', 'MoneyOutTabHeight', 'MoneyInTabHeight',
                           'MoneyOutTab', 'MoneyInTab', 'TG', 'SinkTG', 'SourceTG']]
@@ -219,7 +220,7 @@ class BankRule:
         """
         Lookup a component's GUI element key using the component's name.
         """
-        element_names = [i.split('_')[-1] for i in self.elements]
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
@@ -235,7 +236,7 @@ class BankRule:
         Fetch a GUI parameter element by name or event key.
         """
         if by_key is True:
-            element_type = element.split('_')[-1]
+            element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.parameters]
         else:
             element_names = [i.name for i in self.parameters]
@@ -254,7 +255,7 @@ class BankRule:
         Fetch an association rule by name or event key.
         """
         if by_key is True:
-            element_type = fetch_key.split('_')[-1]
+            element_type = fetch_key[1:-1].split('_')[-1]
             associations = [i.key_lookup(element_type) for i in self.associations]
         else:
             associations = [i.name for i in self.associations]
@@ -441,7 +442,7 @@ class BankRule:
                                element_justification='r', vertical_alignment='t')]
 
         # Table layout
-        tbl_layout = [self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0), disabled=True)]
+        tbl_layout = [self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))]
 
         # Main Panel layout
         main_key = self.key_lookup('Main')
@@ -552,7 +553,7 @@ class BankRule:
         for assoc in self.associations:
             assoc.table.resize(window, size=(tab_width, tab_height), row_rate=80)
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run a bank reconciliation event.
         """
@@ -649,7 +650,7 @@ class BankRule:
 
             # Load data from the database
             if all(inputs):  # all rule parameters have input
-                initialized = self.load_data(user)
+                initialized = self.load_data()
 
                 # Show that a bank reconciliation is in progress
                 if initialized is True:
@@ -691,7 +692,7 @@ class BankRule:
 
         # Run component table events
         elif event in self.table.elements:
-            self.table.run_event(window, event, values, user)
+            self.table.run_event(window, event, values)
 
         # Run association table events
         elif event in association_elements:
@@ -702,7 +703,7 @@ class BankRule:
                 print('Error: BankRule {NAME}: unable to find association table associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                association_table.run_event(window, event, values, user)
+                association_table.run_event(window, event, values)
 
         # Run component parameter events
         elif event in param_elements:
@@ -712,7 +713,7 @@ class BankRule:
                 print('Error: BankRule {NAME}: unable to find parameter associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         return current_rule
 
@@ -777,7 +778,7 @@ class BankRule:
         Reset rule item parameter values.
         """
         for param in self.parameters:
-            param.reset_parameter(window)
+            param.reset(window)
 
     def toggle_parameters(self, window, value='enable'):
         """
@@ -786,7 +787,7 @@ class BankRule:
         for parameter in self.parameters:
             parameter.toggle_parameter(window, value=value)
 
-    def load_data(self, user):
+    def load_data(self):
         """
         Load data from the database.
         """
@@ -825,7 +826,7 @@ class BankRule:
             association.parameters = self.parameters
 
             # Load data
-            data_loaded.append(association.load_data(user))
+            data_loaded.append(association.load_data())
 
         return all(data_loaded)
 
@@ -922,7 +923,7 @@ class AssociationRule:
 
         return key
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run an association table event.
         """
@@ -931,7 +932,7 @@ class AssociationRule:
 
         # Table event
         if event in tbl_elements:
-            self.table.run_event(window, event, values, user)
+            self.table.run_event(window, event, values)
 
         return True
 
@@ -974,7 +975,7 @@ class AssociationRule:
 
 #        window[self.element_key].update(visible=visible)
 
-    def load_data(self, user):
+    def load_data(self):
         """
         Load association data from the database.
         """
@@ -1002,4 +1003,109 @@ class AssociationRule:
             data_loaded = True
 
         return data_loaded
+
+
+class BankSummary:
+    """
+    BankRule summary panel object.
+    """
+
+    def __init__(self, name, entry, parent=None):
+
+        self.name = name
+        self.parent = parent
+        self.id = randint(0, 1000000000)
+        self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ['TG', 'Title']]
+
+        try:
+            self._title = entry['Title']
+        except KeyError:
+            self._title = '{} Summary'.format(name)
+
+        try:
+            record_tabs = entry['Tabs']
+        except KeyError:
+            msg = 'Configuration Error: BankRuleSummary {NAME}: missing required configuration parameter "Tabs".' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.tabs = []
+            for record_type in record_tabs:
+                tab = AssociationRule(record_type, record_tabs[record_type])
+
+                self.tabs.append(tab)
+                self.elements += tab.elements
+
+        # Dynamic attributes
+        self.parameters = None
+        self.title = None
+
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            print('Warning: BankRuleSummary {NAME}: component {COMP} not found in list of components'
+                  .format(NAME=self.name, COMP=component))
+            key = None
+
+        return key
+
+    def fetch_tab(self, fetch_key, by_key: bool = False):
+        """
+        Fetch a bank reconciliation summary tab object from the list of tabs.
+        """
+        tabs = self.tabs
+
+        if by_key is True:
+            tab_item = None
+            for tab in self.tabs:
+                if fetch_key in tab.elements:
+                    tab_item = tab
+                    break
+
+            if tab_item is None:
+                raise KeyError('{TAB} not in list of bank rule summary tab elements'.format(TAB=fetch_key))
+        else:
+            names = [i.name for i in tabs]
+
+            try:
+                index = names.index(fetch_key)
+            except ValueError:
+                raise KeyError('{TAB} not in list of bank rule summary tabs'.format(TAB=fetch_key))
+            else:
+                tab_item = tabs[index]
+
+        return tab_item
+
+    def reset(self, window):
+        """
+        Reset summary tabs.
+        """
+        self.title = None
+
+        for tab in self.tabs:
+            tab.reset(window)
+
+    def run_event(self, window, event, values):
+        """
+        Run a bank reconciliation summary event.
+        """
+        # Run a summary tab event
+        tab_keys = [i for j in self.tabs for i in j.elements]
+        if event in tab_keys:
+            try:
+                tab = self.fetch_tab(event, by_key=True)
+            except Exception as e:
+                print('Error: BankRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
+                      .format(NAME=self.name, EVENT=event, ERR=e))
+            else:
+                tab.run_event(window, event, values)
 

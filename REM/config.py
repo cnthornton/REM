@@ -3,17 +3,14 @@ REM settings initializer.
 """
 
 import datetime
-import PySimpleGUI as sg
-import numpy as np
 import os
 import pandas as pd
 from pymongo import MongoClient, errors
 import pyodbc
-import REM.constants as const
-import REM.settings as prog_sets
 import sys
 import textwrap
 import yaml
+import PySimpleGUI as sg
 
 
 class RecordsConfiguration:
@@ -26,7 +23,7 @@ class RecordsConfiguration:
 
         title (str): descriptive name of the configuration document.
 
-        entries (list): List of record entries.
+        rules (list): List of record entries.
     """
 
     def __init__(self, records_doc):
@@ -842,9 +839,7 @@ class Config:
         # Program paths
         self.dirname = _dirname
 
-        self.icons_dir = os.path.join(self.dirname, 'docs', 'images', 'icons')
-
-        # Database parameters
+        # Configuration database parameters
         try:
             self.mongod_port = cnfg['configuration']['mongod_port']
         except KeyError:
@@ -874,7 +869,7 @@ class Config:
         except KeyError:
             self.mongod_authdb = 'REM'
 
-        # Database parameters
+        # Structured database parameters
         try:
             self.driver = cnfg['database']['odbc_driver']
         except KeyError:
@@ -888,7 +883,7 @@ class Config:
         except KeyError:
             self.port = '1433'
         try:
-            self.dbname = cnfg['database']['default_database']
+            self.dbname = cnfg['database']['odbc_database']
         except KeyError:
             self.dbname = 'REM'
         try:
@@ -1047,18 +1042,6 @@ class Config:
             self.startup_msgs = collection.find_one({'name': 'startup_messages'})
             self.records = RecordsConfiguration(collection.find_one({'name': 'records'}))
             self.ids = collection.find_one({'name': 'ids'})
-
-    def get_icon_path(self, icon):
-        """
-        Return the path of an icon, if exists.
-        """
-        icon = "{}.png".format(icon)
-        icon_path = os.path.join(self.icons_dir, icon)
-        if not os.path.exists(icon_path):
-            print('Error: unable to open icon PNG {ICON}'.format(ICON=icon))
-            icon_path = None
-
-        return icon_path
 
 
 class ProgramAccount:
@@ -1240,8 +1223,7 @@ def popup_error(msg):
     """
     Display popup notifying user that there is a fatal program error.
     """
-    font = const.MID_FONT
-    return sg.popup_error(textwrap.fill(msg, width=40), font=font, title='')
+    return sg.popup_error(textwrap.fill(msg, width=40), title='')
 
 
 def format_date_str(date_str):
@@ -1331,19 +1313,3 @@ configuration.load_configuration()
 # Connect to database as program user
 program_account = ProgramAccount(_prog_cnfg)
 
-# Load user-defined configuration settings
-_user_cnfg_name = 'settings.yaml'
-_user_cnfg_file = os.path.join(_dirname, _user_cnfg_name)
-
-try:
-    _user_fh = open(_user_cnfg_file, 'r', encoding='utf-8')
-except FileNotFoundError:
-    msg = 'Unable to load configuration file at {}'.format(_user_cnfg_file)
-    popup_error(msg)
-    sys.exit(1)
-else:
-    _user_cnfg = yaml.safe_load(_user_fh)
-    _user_fh.close()
-    del _user_fh
-
-settings = prog_sets.UserSettings(_user_cnfg, _dirname)

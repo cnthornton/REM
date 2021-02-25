@@ -10,7 +10,7 @@ from random import randint
 
 import REM.constants as mod_const
 import REM.secondary as mod_win2
-from REM.config import configuration, settings
+from REM.settings import settings, user
 
 
 class DataParameter:
@@ -120,7 +120,7 @@ class DataParameter:
 
         return key
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run a window event associated with the parameter.
         """
@@ -341,7 +341,7 @@ class DataParameter:
 
         value = self.value
         if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-            query_value = self.value.strftime(configuration.date_format)
+            query_value = self.value.strftime(user.date_format)
         elif dtype in ('bool', 'boolean'):
             query_value = int(value)
         else:
@@ -389,7 +389,7 @@ class DataParameterInput(DataParameter):
         if icon is None:
             icon_layout = []
         else:
-            icon_path = configuration.get_icon_path(icon)
+            icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
                 icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
             else:
@@ -576,7 +576,7 @@ class DataParameterCombo(DataParameter):
         if icon is None:
             icon_layout = []
         else:
-            icon_path = configuration.get_icon_path(icon)
+            icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
                 icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
             else:
@@ -675,7 +675,7 @@ class DataParameterDate(DataParameter):
         if icon is None:
             icon_layout = []
         else:
-            icon_path = configuration.get_icon_path(icon)
+            icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
                 icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
             else:
@@ -825,7 +825,7 @@ class DataParameterDateRange(DataParameter):
         if icon is None:
             icon_layout = []
         else:
-            icon_path = configuration.get_icon_path(icon)
+            icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
                 icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
             else:
@@ -1038,7 +1038,7 @@ class DataParameterCheckbox(DataParameter):
         if icon is None:
             icon_layout = []
         else:
-            icon_path = configuration.get_icon_path(icon)
+            icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
                 icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
             else:
@@ -1124,7 +1124,7 @@ class DataParameterButton(DataParameter):
         if icon is None:
             icon_layout = []
         else:
-            icon_path = configuration.get_icon_path(icon)
+            icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
                 icon_layout = [sg.Button('', key=bttn_key, target=elem_key, image_filename=icon_path, font=font,
                                          button_color=(text_col, bg_col), border_width=0, tooltip=desc,

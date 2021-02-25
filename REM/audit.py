@@ -13,7 +13,7 @@ import PySimpleGUI as sg
 import pdfkit
 from random import randint
 
-import REM.authentication as mod_auth
+from REM.config import configuration
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.data_manipulation as mod_dm
@@ -22,7 +22,7 @@ import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
-from REM.config import configuration, settings
+from REM.settings import settings, user
 
 
 class AuditRules:
@@ -266,7 +266,7 @@ class AuditRule:
 
         return parameter
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run a transaction audit event.
         """
@@ -392,7 +392,7 @@ class AuditRule:
             # Load data from the database
             if all(inputs):  # all rule parameters have input
                 # Verify that the audit has not already been performed with these parameters
-                audit_exists = self.summary.load_records(user, self.parameters)
+                audit_exists = self.summary.load_records(self.parameters)
                 if audit_exists is True:
                     msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
                           'audit records through the records menu'
@@ -410,7 +410,7 @@ class AuditRule:
                     tab.parameters = self.parameters
 
                     # Import tab data from the database
-                    initialized.append(tab.load_data(user))
+                    initialized.append(tab.load_data())
 
                 if all(initialized):  # data successfully imported from all configured audit rule transaction tabs
                     self.in_progress = True
@@ -464,7 +464,7 @@ class AuditRule:
                 print('Error: AuditRule {NAME}: unable to find parameter associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         # Run transaction tab events
         elif event in tab_keys:
@@ -475,7 +475,7 @@ class AuditRule:
                 print('Error: AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                success = tab.run_event(window, event, values, user)
+                success = tab.run_event(window, event, values)
                 if event == tab.key_lookup('Audit') and success is True:
                     print('Info: AuditRule {NAME}: auditing of transaction {TITLE} was successful'
                           .format(NAME=self.name, TITLE=tab.title))
@@ -502,7 +502,7 @@ class AuditRule:
 
         # Run transaction summary events
         elif event in summary_keys:
-            self.summary.run_event(window, event, values, user)
+            self.summary.run_event(window, event, values)
 
         # Save results of the audit
         elif event == save_key:
@@ -520,8 +520,7 @@ class AuditRule:
 
                 # Save summary to the program database
                 try:
-#                    save_status = self.summary.save_records(user)
-                     save_status = True
+                    save_status = self.summary.save_records(user)
                 except Exception as e:
                     msg = 'Database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
@@ -992,7 +991,7 @@ class AuditTransactionTab:
         tbl_height = int(height * 0.6)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run an audit rule transaction event.
         """
@@ -1015,22 +1014,22 @@ class AuditTransactionTab:
                         print('Warning: AuditTransactionTab {NAME}: no row selected for exporting'
                               .format(NAME=self.name))
                     else:
-                        table.export_row(row_index, user, layout=self.record_layout)
+                        table.export_row(row_index, layout=self.record_layout)
                 else:
                     print('Warning: AuditTransactionTab {NAME}: no layout specified for the transaction type'
                           .format(NAME=self.name))
 
             elif event == import_key:
-                table.df = table.import_rows(user, self.import_rules, id_only=True)
+                table.df = table.import_rows(self.import_rules, id_only=True)
                 table.update_display(window, window_values=values)
 
             else:
-                table.run_event(window, event, values, user)
+                table.run_event(window, event, values)
 
         # Run a transaction audit
         elif event == audit_key:
             try:
-                self.table.df = self.table.append(self.audit_transactions(user))
+                self.table.df = self.table.append(self.audit_transactions())
             except Exception as e:
                 msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
                 mod_win2.popup_error(msg)
@@ -1044,7 +1043,7 @@ class AuditTransactionTab:
 
         return success
 
-    def load_data(self, user):
+    def load_data(self):
         """
         Load association data from the database.
         """
@@ -1073,7 +1072,7 @@ class AuditTransactionTab:
 
         return data_loaded
 
-    def audit_transactions(self, user):
+    def audit_transactions(self):
         """
         Search for missing transactions using scan.
         """
@@ -1250,7 +1249,7 @@ class AuditTransactionTab:
                             'RecordType': table.record_type, 'Title': table.title}
             import_table = mod_elem.TableElement(table.name, table_layout)
             import_table.df = import_table.append(missing_df)
-            import_df = mod_win2.import_window(user, import_table, self.import_rules)
+            import_df = mod_win2.import_window(import_table, self.import_rules)
         else:
             import_df = pd.DataFrame(columns=df.columns)
 
@@ -1464,7 +1463,7 @@ class AuditSummary:
         for tab in self.tabs:
             tab.reset(window)
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run a transaction audit summary event.
         """
@@ -1477,7 +1476,7 @@ class AuditSummary:
                 print('Error: AuditRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
                       .format(NAME=self.name, EVENT=event, ERR=e))
             else:
-                tab.run_event(window, event, values, user)
+                tab.run_event(window, event, values)
 
     def layout(self, win_size: tuple = None, ugroup: str = 'admin'):
         """
@@ -1523,7 +1522,7 @@ class AuditSummary:
         for tab in self.tabs:
             tab_key = tab.key_lookup('Tab')
             tab_title = tab.title
-            tab_layout = tab.record.layout(win_size=(tab_width, tab_height), ugroup=mod_auth.access_permissions(ugroup))
+            tab_layout = tab.record.layout(win_size=(tab_width, tab_height), ugroup=user.access_permissions())
             record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col))
 
         tg_key = self.key_lookup('TG')
@@ -1589,7 +1588,7 @@ class AuditSummary:
 
         self.title = summ_title
 
-    def load_records(self, user, params):
+    def load_records(self, params):
         """
         Load existing audit records or create new records.
         """
@@ -1597,7 +1596,7 @@ class AuditSummary:
 
         exists = []
         for tab in tabs:
-            exists.append(tab.load_record(user, params))
+            exists.append(tab.load_record(params))
 
         return any(exists)
 
@@ -1721,7 +1720,7 @@ class AuditSummary:
 
         return status
 
-    def save_records(self, user):
+    def save_records(self):
         """
         Save results of an audit to the program database defined in the configuration file.
         """
@@ -1730,7 +1729,7 @@ class AuditSummary:
         success = []
         for tab in tabs:
             # Save audit tab record
-            success.append(tab.save_record(user))
+            success.append(tab.save_record())
 
         return all(success)
 
@@ -1820,7 +1819,7 @@ class AuditRecordTab:
         """
         self.record.reset(window)
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run an audit summary record event.
         """
@@ -1828,9 +1827,9 @@ class AuditRecordTab:
         record_keys = record.elements
 
         if event in record_keys:
-            self.record.run_event(window, event, values, user)
+            self.record.run_event(window, event, values)
 
-    def load_record(self, user, params):
+    def load_record(self, params):
         """
         Load previous audit (if exists) and IDs from the program database.
         """
@@ -1890,7 +1889,7 @@ class AuditRecordTab:
 
                 return False
 
-    def save_record(self, user):
+    def save_record(self):
         """
         Save audit record to the program database defined in the configuration file.
         """

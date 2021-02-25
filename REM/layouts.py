@@ -5,8 +5,9 @@ import math
 import PySimpleGUI as sg
 
 import REM.data_manipulation as mod_dm
-from REM.config import configuration, program_account, settings
+from REM.config import configuration
 import REM.constants as mod_const
+from REM.settings import settings, user
 
 
 # Schema Layout Classes
@@ -203,7 +204,7 @@ def importer_layout(win_size: tuple = None):
 
     # Element selection options
     try:
-        db_tables = [i.table_name for i in program_account.database_tables()]
+        db_tables = [i.table_name for i in user.database_tables(user.dbname)]
     except ValueError:
         db_tables = []
 

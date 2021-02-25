@@ -3,24 +3,22 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '1.2.1'
+__version__ = '2.0.0'
 
-import datetime
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
-import REM.audit as audit
-import REM.authentication as mod_auth
-import REM.bank as bank
-import REM.cash as cash
-import REM.data_manipulation as mod_dm
-from REM.config import configuration, settings
-import REM.elements as mod_elem
-import REM.layouts as mod_lo
-import REM.records as mod_records
-import REM.secondary as mod_win2
-import REM.constants as mod_const
 import sys
 import tkinter as tk
+
+import REM.audit as audit
+import REM.bank as bank
+import REM.cash as cash
+from REM.config import configuration
+import REM.constants as mod_const
+import REM.elements as mod_elem
+import REM.layouts as mod_lo
+import REM.secondary as mod_win2
+from REM.settings import user, settings
 
 
 # Classes
@@ -169,10 +167,12 @@ class ToolBar:
                 menu_group = menu_groups[rule_group.name]
                 self.toggle_menu(window, menu_group, rule.menu_title, value='disable')
 
-    def enable(self, window, rules, admin=False):
+    def enable(self, window, rules):
         """
         Enable toolbar buttons
         """
+        admin = user.admin
+
         menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
 
         # Enable admin-only privileges
@@ -189,7 +189,7 @@ class ToolBar:
         # Enable menu items based on configured permissions
         for rule_group in rules:
             for rule in rule_group.rules:
-                if admin is True or rule.permissions == 'user':
+                if admin is True or rule.permissions in user.access_permissions():
                     menu_group = menu_groups[rule_group.name]
                     self.toggle_menu(window, menu_group, rule.menu_title, value='enable')
 
@@ -435,8 +435,6 @@ def main():
     layout = [toolbar.layout(win_size=(current_w, current_h)),
               get_panels(acct_methods, win_size=(current_w, current_h))]
 
-    user = mod_auth.UserAccount()
-
     # Element keys and names
     audit_names = audit_rules.print_rules()
     cash_names = cash_rules.print_rules()
@@ -506,9 +504,9 @@ def main():
         # User login
         if values['-UMENU-'] == 'Sign In':  # user logs on
             print('Info: displaying user login screen')
-            user = mod_win2.login_window(user)
+            mod_win2.login_window()
 
-            if user.logged_in:  # logged on successfully
+            if user.logged_in is True:  # logged on successfully
                 # Disable sign-in and enable sign-off
                 toolbar.toggle_menu(window, 'umenu', 'sign in', value='disable')
                 toolbar.toggle_menu(window, 'umenu', 'sign out', value='enable')
@@ -517,7 +515,7 @@ def main():
                 window['-UMENU-'].Widget.configure(image=userin_image)
 
                 # Enable permission specific actions and menus
-                toolbar.enable(window, all_rules, admin=user.admin)
+                toolbar.enable(window, all_rules)
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
@@ -592,7 +590,7 @@ def main():
 
         # Display the database update window
         if event == '-DBMENU-':
-            mod_win2.database_importer_window(user, win_size=window.get_screen_size())
+            mod_win2.database_importer_window(win_size=window.get_screen_size())
             continue
 
         # Display debugger window
@@ -630,7 +628,7 @@ def main():
             import_table.df = import_table.append(import_df)
 
             try:
-                record = mod_win2.record_import_window(user, record_entry.record_layout, import_table, enable_new=False)
+                record = mod_win2.record_import_window(record_entry.record_layout, import_table, enable_new=False)
             except Exception as e:
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
@@ -642,7 +640,7 @@ def main():
                     continue
 
             # Open the record display window
-            mod_win2.record_window(record, user)
+            mod_win2.record_window(record)
 
             continue
 
@@ -691,7 +689,7 @@ def main():
 
             record_layout = current_rule.record_layout_entry
             try:
-                record = mod_win2.record_import_window(user, record_layout, import_table, enable_new=True)
+                record = mod_win2.record_import_window(record_layout, import_table, enable_new=True)
             except Exception as e:
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
@@ -705,7 +703,7 @@ def main():
                     continue
 
             # Open the record in a new window
-            mod_win2.record_window(record, user)
+            mod_win2.record_window(record)
 
             continue
 
@@ -733,7 +731,7 @@ def main():
         if current_rule and event in current_rule.elements:
             print('Info: running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
             try:
-                current_rule_name = current_rule.run_event(window, event, values, user)
+                current_rule_name = current_rule.run_event(window, event, values)
             except Exception as e:
                 msg = 'failed to run window event {EVENT} of rule {RULE} - {ERR}'\
                     .format(EVENT=event, RULE=current_rule.name, ERR=e)
@@ -743,7 +741,7 @@ def main():
 
             if current_rule_name is None:
                 # Enable toolbar
-                toolbar.enable(window, all_rules, admin=user.admin)
+                toolbar.enable(window, all_rules)
 
                 # Reset current_rule
                 current_rule = None

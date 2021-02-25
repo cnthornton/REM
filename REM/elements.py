@@ -11,7 +11,7 @@ from random import randint
 import re
 import sys
 
-from REM.config import configuration, settings
+from REM.config import configuration
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.data_manipulation as mod_dm
@@ -19,6 +19,7 @@ import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
+from REM.settings import settings, user
 
 
 class TableElement:
@@ -364,7 +365,7 @@ class TableElement:
 
         return parameter
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Perform a table action.
         """
@@ -378,7 +379,7 @@ class TableElement:
                 print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
             else:
                 if self.actions['open'] is True:
-                    self.df = self.export_row(select_row_index, user)
+                    self.df = self.export_row(select_row_index)
                 elif self.actions['open'] is False and self.actions['edit'] is True:
                     self.df = self.edit_row(select_row_index)
 
@@ -407,10 +408,10 @@ class TableElement:
                 print('Error: DataTable {TBL}: unable to find parameter associated with event key {KEY}'
                       .format(TBL=self.name, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         elif event == self.key_lookup('Add'):
-            self.df = self.add_row(user)
+            self.df = self.add_row()
 
         elif event == self.key_lookup('Delete'):
             # Find rows selected by user for deletion
@@ -1411,7 +1412,7 @@ class TableElement:
 
         return pd.Series(values, index=columns)
 
-    def add_row(self, user, record_date: datetime.datetime = None, defaults: dict = None):
+    def add_row(self, record_date: datetime.datetime = None, defaults: dict = None):
         """
         Add a new row to the records table.
         """
@@ -1454,7 +1455,7 @@ class TableElement:
             return df
 
         # Display the record window
-        record = mod_win2.record_window(record, user)
+        record = mod_win2.record_window(record)
         try:
             record_values = record.table_values()
         except AttributeError:  # record creation was cancelled
@@ -1466,7 +1467,7 @@ class TableElement:
 
         return df
 
-    def import_rows(self, user, filter_rules: list = None, id_only: bool = False,
+    def import_rows(self, filter_rules: list = None, id_only: bool = False,
                     program_database: bool = False):
         """
         Import one or more records from a table of records.
@@ -1516,7 +1517,7 @@ class TableElement:
         print(import_table.df.head)
 
         import_table.sort()
-        select_df = mod_win2.import_window(user, import_table, import_rules, program_database=program_database)
+        select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database)
 
         # Verify that selected records are not already in table
         current_ids = self.df[self.id_column].tolist()
@@ -1613,7 +1614,7 @@ class TableElement:
 
         return record
 
-    def export_row(self, index, user, layout: dict = None, view_only: bool = False, new_record: bool = False,
+    def export_row(self, index, layout: dict = None, view_only: bool = False, new_record: bool = False,
                    level: int = 1):
         """
         Open selected record in new record window.
@@ -1649,7 +1650,7 @@ class TableElement:
             print('Info: DataTable {NAME}: opening record at row {IND}'.format(NAME=self.name, IND=index))
 
         # Display the record window
-        record = mod_win2.record_window(record, user, view_only=view_only)
+        record = mod_win2.record_window(record, view_only=view_only)
 
         # Update record table values
         try:
@@ -2008,7 +2009,7 @@ class ReferenceElement:
 
         return layout
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Run a record reference event.
         """
@@ -2041,7 +2042,7 @@ class ReferenceElement:
                 print('Warning: ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Display the record window
-                mod_win2.record_window(record, user, view_only=True)
+                mod_win2.record_window(record, view_only=True)
 
         return result
 
@@ -2228,7 +2229,7 @@ class DataElement:
         window[elem_key].set_size(size=(width, height))
         window[elem_key].expand(expand_x=True)
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Perform an action.
         """

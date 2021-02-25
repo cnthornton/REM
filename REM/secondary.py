@@ -2,6 +2,7 @@
 REM secondary window functions, including popups, a window for importing 
 missing data, the debugger, and the login window.
 """
+
 import dateutil
 import datetime
 import gc
@@ -11,14 +12,14 @@ import pyodbc
 import PySimpleGUI as sg
 import textwrap
 
-import REM.authentication as mod_auth
-from REM.config import configuration, settings
+from REM.config import configuration
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.data_manipulation as mod_dm
 import REM.layouts as mod_lo
 from REM.main import __version__
 import REM.records as mod_records
+from REM.settings import settings, user
 
 
 # Popups
@@ -99,7 +100,7 @@ def debugger():
     return window
 
 
-def login_window(account):
+def login_window():
     """
     Display the login window.
     """
@@ -207,7 +208,7 @@ def login_window(account):
                 window['-SUCCESS-'].update(value=msg)
             else:
                 try:
-                    login_success = account.login(uname, pwd)
+                    login_success = user.login(uname, pwd)
                 except pyodbc.Error as e:
                     sqlstat = e.args[1]
                     window['-SUCCESS-'].update(value=sqlstat)
@@ -222,10 +223,8 @@ def login_window(account):
     window = None
     gc.collect()
 
-    return account
 
-
-def record_window(record, user, win_size: tuple = None, view_only: bool = False):
+def record_window(record, win_size: tuple = None, view_only: bool = False):
     """
     Display the record window.
     """
@@ -247,7 +246,7 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
     font_h = mod_const.HEADER_FONT
 
     # User permissions
-    user_priv = mod_auth.access_permissions(user.group)
+    user_priv = user.access_permissions()
     deletable = True if record.permissions['delete'] in user_priv and record.level < 1 \
                         and view_only is False else False
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
@@ -338,7 +337,7 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
         # Update the record parameters with user-input
         if event in record_elements:  # selected a record event element
             try:
-                record.run_event(window, event, values, user)
+                record.run_event(window, event, values)
             except Exception as e:
                 print('Warning: Record {NAME}: failed to run record event {EVENT} - {ERR}'
                       .format(NAME=record.name, EVENT=event, ERR=e))
@@ -352,7 +351,7 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
     return record
 
 
-def database_importer_window(user, win_size: tuple = None):
+def database_importer_window(win_size: tuple = None):
     """
     Display the database importer window.
     """
@@ -1283,7 +1282,7 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     return select_rows
 
 
-def record_import_window(user, record_layout, table, win_size: tuple = None, enable_new: bool = False):
+def record_import_window(record_layout, table, win_size: tuple = None, enable_new: bool = False):
     """
     Display the import from database window.
     """
@@ -1441,7 +1440,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
 
         # Run table events
         if event in table_elements:
-            display_df = table.run_event(window, event, values, user)
+            display_df = table.run_event(window, event, values)
             continue
 
     window.close()
@@ -1452,7 +1451,7 @@ def record_import_window(user, record_layout, table, win_size: tuple = None, ena
     return record
 
 
-def import_window(user, table, import_rules, win_size: tuple = None, program_database: bool = False):
+def import_window(table, import_rules, win_size: tuple = None, program_database: bool = False):
     """
     Display the importer window.
     """

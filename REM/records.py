@@ -4,7 +4,6 @@ REM records classes and functions. Includes audit records and account records.
 import datetime
 from random import randint
 
-import numpy as np
 import pandas as pd
 import PySimpleGUI as sg
 
@@ -12,7 +11,8 @@ import REM.constants as mod_const
 import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
-from REM.config import configuration, settings
+from REM.config import configuration
+from REM.settings import settings
 
 
 class DatabaseRecord:
@@ -379,7 +379,7 @@ class DatabaseRecord:
         # Reset references
         self.references = []
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Perform a record action.
         """
@@ -408,7 +408,7 @@ class DatabaseRecord:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         # Run a component element event
         elif event in param_elems:  # parameter event
@@ -418,7 +418,7 @@ class DatabaseRecord:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         # Run a component table event
         elif event in component_elems:  # component table event
@@ -432,7 +432,7 @@ class DatabaseRecord:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                component_table.run_event(window, event, values, user)
+                component_table.run_event(window, event, values)
 
         # Run a reference-box event
         elif event in reference_elems:
@@ -442,7 +442,7 @@ class DatabaseRecord:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                refbox.run_event(window, event, values, user)
+                refbox.run_event(window, event, values)
 
         return True
 
@@ -944,7 +944,7 @@ class DepositRecord(DatabaseRecord):
 
         return pd.Series(values, index=columns)
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Perform a record action.
         """
@@ -973,7 +973,7 @@ class DepositRecord(DatabaseRecord):
                 print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         # Run a data element event
         elif event in param_elems:  # parameter event
@@ -983,7 +983,7 @@ class DepositRecord(DatabaseRecord):
                 print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
                       .format(ID=self.record_id, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         elif event in component_elems:  # component table event
             # Update data elements
@@ -1013,16 +1013,15 @@ class DepositRecord(DatabaseRecord):
                         payment_col = mod_db.get_import_column(comp_entry.import_rules, 'PaymentType')
                         filters += [('{COL} = ?'.format(COL=payment_col), (self.fetch_element('PaymentType').value,))]
 
-                        component_table.df = component_table.import_rows(user, filter_rules=filters,
-                                                                         program_database=True)
+                        component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records
                         default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                        component_table.df = component_table.add_row(user, record_date=self.record_date,
+                        component_table.df = component_table.add_row(record_date=self.record_date,
                                                                      defaults=default_values)
                     else:
-                        component_table.run_event(window, event, values, user)
+                        component_table.run_event(window, event, values)
                 else:
-                    component_table.run_event(window, event, values, user)
+                    component_table.run_event(window, event, values)
 
                 self.update_display(window, window_values=values)
 
@@ -1033,7 +1032,7 @@ class DepositRecord(DatabaseRecord):
                 print('Error: record {ID}: unable to find reference associated with event key {KEY}'
                       .format(ID=self.record_id, KEY=event))
             else:
-                refbox.run_event(window, event, values, user)
+                refbox.run_event(window, event, values)
 
         return True
 
@@ -1228,7 +1227,7 @@ class TAuditRecord(DatabaseRecord):
 
         return pd.Series(values, index=columns)
 
-    def run_event(self, window, event, values, user):
+    def run_event(self, window, event, values):
         """
         Perform a record action.
         """
@@ -1253,7 +1252,7 @@ class TAuditRecord(DatabaseRecord):
                 print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
                       .format(NAME=self.name, ID=self.record_id, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
 
         # Run a data element event
         elif event in param_elems:
@@ -1263,7 +1262,7 @@ class TAuditRecord(DatabaseRecord):
                 print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
                       .format(ID=self.record_id, KEY=event))
             else:
-                param.run_event(window, event, values, user)
+                param.run_event(window, event, values)
                 self.update_display(window, window_values=values)
 
         elif event in component_elems:  # component table event
@@ -1294,16 +1293,15 @@ class TAuditRecord(DatabaseRecord):
                         date_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordDate')
                         filters += [('{COL} = ?'.format(COL=date_col), (self.record_date,))]
 
-                        component_table.df = component_table.import_rows(user, filter_rules=filters,
-                                                                         program_database=True)
+                        component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records
                         default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                        component_table.df = component_table.add_row(user, record_date=self.record_date,
+                        component_table.df = component_table.add_row(record_date=self.record_date,
                                                                      defaults=default_values)
                     else:
-                        component_table.run_event(window, event, values, user)
+                        component_table.run_event(window, event, values)
                 else:
-                    component_table.run_event(window, event, values, user)
+                    component_table.run_event(window, event, values)
 
                 self.update_display(window, window_values=values)
 
@@ -1314,7 +1312,7 @@ class TAuditRecord(DatabaseRecord):
                 print('Error: record {ID}: unable to find reference associated with event key {KEY}'
                       .format(ID=self.record_id, KEY=event))
             else:
-                refbox.run_event(window, event, values, user)
+                refbox.run_event(window, event, values)
 
         return True
 
