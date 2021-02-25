@@ -480,7 +480,9 @@ class RecordEntry:
                 if entry_saved is False:
                     msg = 'failed to save record {ID} to database table {TBL}'.format(ID=record_id, TBL=table)
                     popup_error(msg)
-                saved.append(entry_saved)
+                    return False
+                else:
+                    saved.append(entry_saved)
 
             else:  # record does not exist yet, must be inserted
                 # Create new entry for the record in the database
@@ -493,7 +495,9 @@ class RecordEntry:
                 if entry_saved is False:
                     msg = 'failed to update record {ID} in database table {TBL}'.format(ID=record_id, TBL=table)
                     popup_error(msg)
-                saved.append(entry_saved)
+                    return False
+                else:
+                    saved.append(entry_saved)
 
             # Associated records
             import_df = record.import_df
@@ -565,9 +569,10 @@ class RecordEntry:
                         continue
 
                     comp_entry = configuration.records.fetch_rule(comp_type)
-
                     current_comps = comp_table.df[comp_table.id_column]
                     deleted_comps = set(orig_comps).difference(set(current_comps))
+
+                    # Handle deleted component tables
                     for deleted_id in deleted_comps:
                         # Delete existing parent-child relationship
                         comp_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_id)]
@@ -586,11 +591,41 @@ class RecordEntry:
                         if comp_table.actions['add'] is True:  # delete record from DB
                             print('Info: RecordType {NAME}, Record {ID}: deleting component record {REF} from the '
                                   'database'.format(NAME=self.name, ID=record_id, REF=deleted_id))
-                            comp_entry.delete_record(deleted_id)
+                            entry_saved = comp_entry.delete_record(deleted_id)
+                            if entry_saved is False:
+                                msg = 'failed to delete record {ID} component {REF}' \
+                                    .format(ID=record_id, REF=deleted_id)
+                                popup_error(msg)
+                            saved.append(entry_saved)
 
+                    # Handle added component records
                     for row_index, comp_id in current_comps.iteritems():
-                        if comp_id in orig_comps:  # don't create database entries for existing records
+                        if comp_id in orig_comps:  # update entries for existing records
+                            comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], new_record=False)
+                            print('Info: RecordType {NAME}, Record {ID}: updating component record {REF} in the '
+                                  'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
+                            entry_saved = comp_entry.export_record(user, comp_record)
+                            if entry_saved is False:
+                                msg = 'failed to save record {ID} to database table {TBL}' \
+                                    .format(ID=record_id, TBL=ref_table)
+                                popup_error(msg)
+                            saved.append(entry_saved)
                             continue
+
+                        # Save component record to the database if records can be created (not imported)
+                        if comp_table.actions['add'] is True:  # add record to DB
+                            comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], new_record=True)
+                            print('Info: RecordType {NAME}, Record {ID}: adding component record {REF} to the '
+                                  'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
+                            entry_saved = comp_entry.export_record(user, comp_record)
+                            if entry_saved is False:  # don't save reference in references table
+                                msg = 'failed to save record {ID} to database table {TBL}' \
+                                    .format(ID=record_id, TBL=ref_table)
+                                popup_error(msg)
+                                saved.append(entry_saved)
+                                continue
+                            else:
+                                saved.append(entry_saved)
 
                         # Update reference table with new parent-child relationship
                         comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
@@ -605,18 +640,6 @@ class RecordEntry:
                                 .format(ID=record_id, REF=comp_id, TBL=ref_table)
                             popup_error(msg)
                         saved.append(entry_saved)
-
-                        # Save component record to the database if records can be created (not imported)
-                        if comp_table.actions['add'] is True:  # add record to DB
-                            comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], level=0, new_record=True)
-                            print('Info: RecordType {NAME}, Record {ID}: adding component record {REF} to the '
-                                  'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
-                            entry_saved = comp_entry.export_record(user, comp_record)
-                            if entry_saved is False:
-                                msg = 'failed to save record {ID} to database table {TBL}' \
-                                    .format(ID=record_id, TBL=ref_table)
-                                popup_error(msg)
-                            saved.append(entry_saved)
 
         return all(saved)
 

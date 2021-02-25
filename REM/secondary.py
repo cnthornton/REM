@@ -329,9 +329,11 @@ def record_window(record, user, win_size: tuple = None, view_only: bool = False)
 
             # Save the record to the database table
             record_entry = configuration.records.fetch_rule(record.name)
-            record_entry.export_record(user, record)
-
-            break
+            saved = record_entry.export_record(user, record)
+            if saved is False:
+                continue
+            else:
+                break
 
         # Update the record parameters with user-input
         if event in record_elements:  # selected a record event element
