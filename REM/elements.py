@@ -1466,13 +1466,12 @@ class TableElement:
 
         return df
 
-    def import_rows(self, user, import_rules, filter_rules: list = [], id_only: bool = False,
+    def import_rows(self, user, filter_rules: list = None, id_only: bool = False,
                     program_database: bool = False):
         """
         Import one or more records from a table of records.
         """
         import_df = self.import_df.copy()
-        ref_table = configuration.reference_lookup
 
         # Initialize the import table
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
@@ -1481,7 +1480,9 @@ class TableElement:
         import_table = TableElement(self.name, table_layout)
 
         # Import data from the database
-        import_filters = mod_db.format_import_filters(import_rules) + filter_rules
+        record_entry = configuration.records.fetch_rule(self.record_type)
+        import_rules = record_entry.import_rules
+        import_filters = mod_db.format_import_filters(import_rules) if filter_rules is None else filter_rules
         table_statement = mod_db.format_tables(import_rules)
         import_columns = mod_db.format_import_columns(import_rules)
 
@@ -1493,9 +1494,6 @@ class TableElement:
                     print('Warning: DataTable {NAME}: failed to import data from the database - {ERR}'
                           .format(NAME=self.name, ERR=e))
                 else:
-                    # Filter out import records that are already referenced
-                    record_entry = configuration.records.fetch_rule(self.record_type)
-
                     # Find records already associated with the given record type
                     associated_records = []
                     for index, row in df.iterrows():
@@ -1519,6 +1517,14 @@ class TableElement:
 
         import_table.sort()
         select_df = mod_win2.import_window(user, import_table, import_rules, program_database=program_database)
+
+        # Verify that selected records are not already in table
+        current_ids = self.df[self.id_column].tolist()
+        remove_indices = []
+        for index, record_id in select_df[self.id_column].items():
+            if record_id in current_ids:
+                remove_indices.append(index)
+        select_df.drop(remove_indices, inplace=True, axis=0, errors='ignore')
 
         # Append selected rows to the table
         df = self.append(select_df)
