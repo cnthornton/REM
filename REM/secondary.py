@@ -1386,7 +1386,6 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
         event, values = window.read(timeout=500)
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
-            record = None
             break
 
         if event == '-NEW-':  # selected to create a new record
@@ -1394,9 +1393,8 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
                 msg = 'Failed to create a new record - missing required configuration parameter "RecordType"'
                 popup_error(msg)
                 print('Warning: {}'.format(msg))
-                record = None
 
-                break
+                continue
 
             # Create a new record object
             record_date = datetime.datetime.now()
@@ -1407,9 +1405,17 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
             record_data['RecordID'] = record_id
             record_data['RecordDate'] = record_date
 
-            record.initialize(record_data, new=True)
+            record = record_class(record_entry.name, record_layout, level=0)
+            try:
+                record.initialize(record_data, new=True)
+            except Exception as e:
+                msg = 'Failed to initialize new record {ID}'.format(ID=record_id)
+                print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
+                popup_error(msg)
+            else:
+                record_window(record)
 
-            break
+            continue
 
         # Enable the OK button if a record is selected
         if values[tbl_key]:
@@ -1430,22 +1436,30 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
                 try:
                     trans_df = table.df[table.df['RecordID'] == record_id]
                 except KeyError:
-                    print('warning: missing required column "RecordID"')
-                    return None
+                    msg = 'Missing required column "RecordID"'
+                    popup_error(msg)
+                    print('Error: Record importing failed - {ERR}'.format(ERR=msg))
+                    continue
                 else:
                     if trans_df.empty:
-                        print('Warning: could not find record {ID} in data table'.format(ID=record_id))
-                        return None
+                        msg = 'Could not find record {ID} in data table'.format(ID=record_id)
+                        print('Error: Record importing failed - {ERR}'.format(ERR=msg))
+                        popup_error(msg)
+                        continue
                     else:
                         record_data = trans_df.iloc[0]
 
+                    record = record_class(record_entry.name, record_layout, level=0)
                     try:
                         record.initialize(record_data)
                     except Exception as e:
-                        print('Error: unable to initialize record {ID} - {ERR}'.format(ID=record_id, ERR=e))
-                        return None
+                        msg = 'Failed to initialize record {ID}'.format(ID=record_id)
+                        print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
+                        popup_error(msg)
+                    else:
+                        record_window(record)
 
-                break
+                continue
 
         # Run table events
         if event in table_elements:
@@ -1456,8 +1470,6 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
     layout = None
     window = None
     gc.collect()
-
-    return record
 
 
 def import_window(table, import_rules, win_size: tuple = None, program_database: bool = False):

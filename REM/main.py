@@ -628,19 +628,11 @@ def main():
             import_table.df = import_table.append(import_df)
 
             try:
-                record = mod_win2.record_import_window(record_entry.record_layout, import_table, enable_new=False)
+                mod_win2.record_import_window(record_entry.record_layout, import_table, enable_new=False)
             except Exception as e:
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
-                print('Error: {}'.format(msg))
-                continue
-            else:
-                if record is None:
-                    print('Info: no record selected for importing')
-                    continue
-
-            # Open the record display window
-            mod_win2.record_window(record)
+                print('Error: {MSG}'.format(MSG=msg))
 
             continue
 
@@ -689,21 +681,11 @@ def main():
 
             record_layout = current_rule.record_layout_entry
             try:
-                record = mod_win2.record_import_window(record_layout, import_table, enable_new=True)
+                mod_win2.record_import_window(record_layout, import_table, enable_new=True)
             except Exception as e:
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {}'.format(msg))
-
-                raise
-                continue
-            else:
-                if record is None:
-                    print('Info: no record selected for importing')
-                    continue
-
-            # Open the record in a new window
-            mod_win2.record_window(record)
 
             continue
 
