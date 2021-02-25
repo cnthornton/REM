@@ -688,7 +688,7 @@ def database_importer_window(win_size: tuple = None):
                         else:
                             record_date = date_list[index]
 
-                        record_id = record_entry.create_id(settings.apply_date_offset(record_date))
+                        record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
                         if record_id is None:
                             msg = 'Failed to create a record ID for row {}'.format(row)
                             popup_notice(msg)
@@ -1391,7 +1391,7 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
 
             # Create a new record object
             record_date = datetime.datetime.now()
-            record_id = record_entry.create_id(settings.apply_date_offset(record_date))
+            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
             print('Info: RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
 
             record_data = pd.Series(index=list(table.columns))

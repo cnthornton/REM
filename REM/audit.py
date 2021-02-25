@@ -520,7 +520,7 @@ class AuditRule:
 
                 # Save summary to the program database
                 try:
-                    save_status = self.summary.save_records(user)
+                    save_status = self.summary.save_records()
                 except Exception as e:
                     msg = 'Database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
@@ -530,6 +530,8 @@ class AuditRule:
                         msg = 'Database save failed'
                         mod_win2.popup_error(msg)
                     else:
+                        msg = 'Audit records were successfully saved to the database'
+                        mod_win2.popup_notice(msg)
                         # Save summary to excel or csv file
                         try:
                             self.summary.save_report(outfile)
@@ -1873,7 +1875,7 @@ class AuditRecordTab:
 
                 # Create new record
                 record_date = params[date_index].value
-                record.record_id = record_entry.create_id(settings.apply_date_offset(record_date))
+                record.record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
                 record.record_date = record_date
                 record.creator = user.uid
                 record.creation_date = datetime.datetime.now()
@@ -1936,7 +1938,7 @@ class AuditRecordTab:
 
             # Create a new record ID for the deposit record
             record_date = row['RecordDate']
-            record_id = record_entry.create_id(settings.apply_date_offset(record_date))
+            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
             record_data['RecordID'] = record_id
 
             record = mod_records.DepositRecord(record_type, record_entry.record_layout)
@@ -2138,7 +2140,7 @@ class AuditRecordTab:
         final_df = component_table.set_datatypes(final_df)
 
         for index, row in final_df.iterrows():
-            record_id = record_entry.create_id(settings.apply_date_offset(record_date))
+            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
             print('Info: AuditRecordTab {NAME}: adding transaction record {ID} to the audit record accounts table'
                   .format(NAME=self.name, ID=record_id))
             final_df.at[index, 'RecordID'] = record_id

@@ -58,6 +58,8 @@ class TableElement:
 
         summary_rules (dict): rules used to summarize the data table.
 
+        import_rules (dict): rules used to import records from the database.
+
         df (DataFrame): pandas dataframe containing table data.
 
         icon (str): name of the icon file containing the image to represent the table.
@@ -270,6 +272,11 @@ class TableElement:
                                                     'Condition': summary_rule.get('Condition', None)}
 
                 self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
+
+        try:
+            self.import_rules = entry['ImportRules']
+        except KeyError:
+            self.import_rules = None
 
         try:
             self.id_column = entry['IDColumn']
@@ -1430,7 +1437,7 @@ class TableElement:
         # Create a new record object
         record_entry = configuration.records.fetch_rule(self.record_type)
 
-        record_id = record_entry.create_id(settings.apply_date_offset(creation_date))
+        record_id = record_entry.create_id(creation_date, offset=settings.get_date_offset())
 
         record_data = pd.Series(index=header)
 
@@ -1473,6 +1480,14 @@ class TableElement:
         Import one or more records from a table of records.
         """
         import_df = self.import_df.copy()
+        import_rules = self.import_rules
+        record_entry = configuration.records.fetch_rule(self.record_type)
+
+        if import_rules is None and record_entry is None:
+            msg = 'unable to display the record import window - no record type or import rules were configured'
+            mod_win2.popup_error(msg)
+            print('Error: DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            return self.df
 
         # Initialize the import table
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
@@ -1482,7 +1497,7 @@ class TableElement:
 
         # Import data from the database
         record_entry = configuration.records.fetch_rule(self.record_type)
-        import_rules = record_entry.import_rules
+        import_rules = import_rules if import_rules is not None else record_entry.import_rules
         import_filters = mod_db.format_import_filters(import_rules) if filter_rules is None else filter_rules
         table_statement = mod_db.format_tables(import_rules)
         import_columns = mod_db.format_import_columns(import_rules)
@@ -1495,18 +1510,6 @@ class TableElement:
                     print('Warning: DataTable {NAME}: failed to import data from the database - {ERR}'
                           .format(NAME=self.name, ERR=e))
                 else:
-                    # Find records already associated with the given record type
-                    associated_records = []
-                    for index, row in df.iterrows():
-                        record_id = row['RecordID']
-                        ref_rows = record_entry.import_references(record_id)
-                        nref = ref_rows[(ref_rows['RefNo'] == record_id) & (ref_rows['RefType'] == self.record_type)].shape[0]
-                        if nref < 1:
-                            associated_records.append(record_id)
-
-                    # Remove associated records from the list of import records
-                    df = df[~df['RecordID'].isin(associated_records)]
-
                     # Add import dataframe to data table object
                     import_table.df = import_table.append(df)
                     import_df = import_df.append(df, ignore_index=True)
@@ -1525,6 +1528,7 @@ class TableElement:
         for index, record_id in select_df[self.id_column].items():
             if record_id in current_ids:
                 remove_indices.append(index)
+        print('Info: DataTable {NAME}: removing selected records already stored in the table'.format(NAME=self.name))
         select_df.drop(remove_indices, inplace=True, axis=0, errors='ignore')
 
         # Append selected rows to the table
