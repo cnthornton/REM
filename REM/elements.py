@@ -1041,7 +1041,7 @@ class TableElement:
             # First row
             icon = self.icon
             if icon is not None:
-                icon_path = configuration.get_icon_path(icon)
+                icon_path = settings.get_icon_path(icon)
                 if icon_path is not None:
                     icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
                 else:
@@ -1430,7 +1430,7 @@ class TableElement:
         # Create a new record object
         record_entry = configuration.records.fetch_rule(self.record_type)
 
-        record_id = record_entry.create_id(creation_date)
+        record_id = record_entry.create_id(settings.apply_date_offset(creation_date))
 
         record_data = pd.Series(index=header)
 
@@ -1831,7 +1831,7 @@ class TableElement:
 
             try:
                 if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                    df[column] = pd.to_datetime(df[column], errors='coerce', format=configuration.date_format)
+                    df[column] = pd.to_datetime(df[column], errors='coerce', format=user.date_format)
                 elif dtype in ('int', 'integer', 'bit'):
                     df[column] = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
                 elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
@@ -2283,7 +2283,7 @@ class DataElement:
         # Element Icon, if provided
         icon = element_options.get('Icon', None)
         if icon is not None:
-            icon_path = configuration.get_icon_path(icon)
+            icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
                 icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
             else:

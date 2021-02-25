@@ -1624,7 +1624,9 @@ class AuditSummary:
                 notes_title = notes.description
                 notes_value = notes.format_display()
 
-            tab_dict = {'title': reference_tab.record.title, 'notes': (notes_title, notes_value)}
+            tab_dict = {'title': '{TITLE}: {ID}'.format(TITLE=reference_tab.record.title,
+                                                        ID=reference_tab.record.record_id),
+                        'notes': (notes_title, notes_value)}
 
             # Fetch component accounts table from
             comp_table = reference_tab.record.fetch_component('account')
@@ -1871,7 +1873,7 @@ class AuditRecordTab:
 
                 # Create new record
                 record_date = params[date_index].value
-                record.record_id = record_entry.create_id(record_date)
+                record.record_id = record_entry.create_id(settings.apply_date_offset(record_date))
                 record.record_date = record_date
                 record.creator = user.uid
                 record.creation_date = datetime.datetime.now()
@@ -1934,7 +1936,7 @@ class AuditRecordTab:
 
             # Create a new record ID for the deposit record
             record_date = row['RecordDate']
-            record_id = record_entry.create_id(record_date)
+            record_id = record_entry.create_id(settings.apply_date_offset(record_date))
             record_data['RecordID'] = record_id
 
             record = mod_records.DepositRecord(record_type, record_entry.record_layout)
@@ -2136,7 +2138,7 @@ class AuditRecordTab:
         final_df = component_table.set_datatypes(final_df)
 
         for index, row in final_df.iterrows():
-            record_id = record_entry.create_id(record_date)
+            record_id = record_entry.create_id(settings.apply_date_offset(record_date))
             print('Info: AuditRecordTab {NAME}: adding transaction record {ID} to the audit record accounts table'
                   .format(NAME=self.name, ID=record_id))
             final_df.at[index, 'RecordID'] = record_id

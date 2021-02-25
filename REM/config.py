@@ -468,7 +468,7 @@ class RecordEntry:
             if id_exists is True:  # record already exists in the database
                 # Edit an existing record in the database
                 export_columns += [configuration.editor_code, configuration.edit_date]
-                export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
+                export_values += [user.uid, datetime.datetime.now().strftime(configuration.date_format)]
 
                 filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
                 print('Info: RecordType {NAME}, Record {ID}: saving new record to the database'
@@ -484,7 +484,7 @@ class RecordEntry:
             else:  # record does not exist yet, must be inserted
                 # Create new entry for the record in the database
                 export_columns += [configuration.creator_code, configuration.creation_date]
-                export_values += [user.uid, datetime.datetime.now().strftime(settings.format_date_str())]
+                export_values += [user.uid, datetime.datetime.now().strftime(configuration.date_format)]
 
                 print('Info: RecordType {NAME}, Record {ID}: updating existing record in the database'
                       .format(NAME=self.name, ID=record_id))
@@ -732,8 +732,7 @@ class RecordEntry:
         unsaved_ids = self.ids
 
         # Format the date component of the new ID
-        formatted_date = settings.apply_date_offset(record_date)
-        id_date = formatted_date.strftime(settings.format_date_str(date_str='YYMM'))
+        id_date = record_date.strftime(format_date_str(date_str='YYMM'))
 
         print('Info: RecordEntry {NAME}: new ID has date component {COMP}'.format(NAME=self.name, COMP=id_date))
 
