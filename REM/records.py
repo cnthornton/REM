@@ -12,7 +12,7 @@ import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
 from REM.config import configuration
-from REM.settings import settings
+from REM.settings import settings, user
 
 
 class DatabaseRecord:
@@ -1012,15 +1012,16 @@ class DepositRecord(DatabaseRecord):
                         comp_entry = configuration.records.fetch_rule(comp_record_type)
 
                         # Filter out import records that are already referenced
-                        referenced_ids = self.import_df['RefType' == comp_record_type]['RefNo'].tolist()
-                        id_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordID')
-                        filters = [('{COL} NOT IN ({IDS})'
-                                    .format(COL=id_col, IDS=','.join(['?' for _ in referenced_ids])),
-                                   referenced_ids)]
-
-                        # Filter component records with payment type different from parent payment type
-                        payment_col = mod_db.get_import_column(comp_entry.import_rules, 'PaymentType')
-                        filters += [('{COL} = ?'.format(COL=payment_col), (self.fetch_element('PaymentType').value,))]
+                        ref_table = configuration.reference_lookup
+                        ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (comp_record_type, self.name, 0))
+                        references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
+                        referenced_ids = references['RefNo'].tolist()
+                        filters = []
+                        if len(referenced_ids) > 0:
+                            id_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordID')
+                            filters += [('{COL} NOT IN ({IDS})'
+                                        .format(COL=id_col, IDS=','.join(['?' for _ in referenced_ids])),
+                                         referenced_ids)]
 
                         component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records
@@ -1291,16 +1292,20 @@ class TAuditRecord(DatabaseRecord):
                     if event == component_table.key_lookup('Import'):  # import account records
                         comp_entry = configuration.records.fetch_rule(comp_record_type)
 
-                        # Filter out import records that are already referenced
-                        referenced_ids = self.import_df['RefType' == comp_record_type]['RefNo'].tolist()
-                        id_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordID')
-                        filters = [('{COL} NOT IN ({IDS})'
-                                    .format(COL=id_col, IDS=','.join(['?' for _ in referenced_ids])),
-                                    referenced_ids)]
-
                         # Filter component records with the same record date
                         date_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordDate')
-                        filters += [('{COL} = ?'.format(COL=date_col), (self.record_date,))]
+                        filters = [('{COL} = ?'.format(COL=date_col), (self.record_date,))]
+
+                        # Filter out import records that are already referenced
+                        ref_table = configuration.reference_lookup
+                        ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (comp_record_type, self.name, 0))
+                        references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
+                        referenced_ids = references['RefNo'].tolist()
+                        if len(referenced_ids) > 0:
+                            id_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordID')
+                            filters += [('{COL} NOT IN ({IDS})'
+                                        .format(COL=id_col, IDS=','.join(['?' for _ in referenced_ids])),
+                                        referenced_ids)]
 
                         component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records

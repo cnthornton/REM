@@ -1498,6 +1498,7 @@ class TableElement:
         # Import data from the database
         record_entry = configuration.records.fetch_rule(self.record_type)
         import_rules = import_rules if import_rules is not None else record_entry.import_rules
+        print(import_rules)
         import_filters = mod_db.format_import_filters(import_rules) if filter_rules is None else filter_rules
         table_statement = mod_db.format_tables(import_rules)
         import_columns = mod_db.format_import_columns(import_rules)

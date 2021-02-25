@@ -349,6 +349,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             except Exception as e:
                 print('Warning: Record {NAME}: failed to run record event {EVENT} - {ERR}'
                       .format(NAME=record.name, EVENT=event, ERR=e))
+                raise
                 continue
 
     window.close()
