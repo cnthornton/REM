@@ -99,6 +99,11 @@ class DataParameter:
             self.icon = None
 
         try:
+            self.justification = entry['Justification']
+        except KeyError:
+            self.justification = 'left'
+
+        try:
             self.default = entry['DefaultValue']
         except KeyError:
             self.default = None
@@ -232,7 +237,9 @@ class DataParameter:
                 elif new_char == dec_sep:  # and also decimal character
                     if dec_sep not in current_value:  # can only add one decimal character
                         current_value.insert(new_index, new_char)
-            else:  # user replaced a character
+                elif new_char in ('+', '-') and new_index == 0:  # can add value sign at beginning
+                    current_value.insert(new_index, new_char)
+            else:  # user replaced a character, so lengths of old and new values are equal
                 # Find the character and location of the user input
                 new_char = None
                 new_index = None
@@ -246,17 +253,28 @@ class DataParameter:
                     current_value[new_index] = new_char
                 elif new_char == dec_sep and dec_sep not in current_value:  # or one decimal character
                     current_value[new_index] = new_char
+                elif new_char in ('+', '-') and new_index == 0:  # can add value sign at beginning
+                    current_value.insert(new_index, new_char)
 
             current_value = ''.join(current_value)
+            if current_value[0] in ('-', '+'):  # sign of the number
+                numeric_sign = current_value[0]
+                current_value = current_value[1:]
+            else:
+                numeric_sign = ''
             if dec_sep in current_value:
                 integers, decimals = current_value.split(dec_sep)
                 decimals = decimals[0:2]
-                current_value = integers + dec_sep + decimals[0:2]
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
+                current_value = numeric_sign + integers + dec_sep + decimals[0:2]
+                display_value = '{SIGN}{VAL}{SEP}{DEC}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(integers[::-1])][::-1]).lstrip(','),
+                            SEP=dec_sep, DEC=decimals)
             else:
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(current_value[::-1])][::-1]).lstrip(',')
+                display_value = '{SIGN}{VAL}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(current_value[::-1])][::-1]).lstrip(','))
+                current_value = numeric_sign + current_value
 
             window[elem_key].metadata['value'] = current_value
 
@@ -483,16 +501,26 @@ class DataParameterInput(DataParameter):
 
         if value == '' or value is None:
             return ''
+        else:
+            value = str(value)
 
         if dtype == 'money':
+            if value[0] in ('-', '+'):  # sign of the number
+                numeric_sign = value[0]
+                value = value[1:]
+            else:
+                numeric_sign = ''
             if dec_sep in value:
                 integers, decimals = value.split(dec_sep)
                 decimals = decimals[0:2]
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
+                display_value = '{SIGN}{VAL}{SEP}{DEC}'\
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(integers[::-1])][::-1]).lstrip(','),
+                            SEP=dec_sep, DEC=decimals)
             else:
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(value[::-1])][::-1]).lstrip(',')
+                display_value = '{SIGN}{VAL}'\
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(value[::-1])][::-1]).lstrip(','))
 
         elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric'):
             try:
@@ -752,12 +780,14 @@ class DataParameterDate(DataParameter):
             return ''
 
         if isinstance(value, str):
+            print('Warning: DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
+                  .format(NAME=self.name, TYPE=type(value), VAL=value))
             value_fmt = value
         elif isinstance(value, datetime.datetime):
-            value_fmt = value.strftime('%Y-%m-%d')
+            value_fmt = settings.format_display_date(value)
         else:
-            print('Warning: DataParameter {NAME}: unknown object type for parameter value {VAL}'
-                  .format(NAME=self.name, VAL=value))
+            print('Warning: DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
+                  .format(NAME=self.name, TYPE=type(value), VAL=value))
             value_fmt = None
 
         return value_fmt

@@ -1595,15 +1595,15 @@ class TableElement:
         """
         # Create a record object from the row data
         if layout is not None:
-            record_layout = layout
-            record_class = mod_records.DatabaseRecord
-            record_type = 'Custom'
+            record_class = mod_records.StandardRecord
+            record_entry = mod_records.CustomRecordEntry({'RecordLayout': layout})
+            new_record = True
         else:
             record_entry = configuration.records.fetch_rule(self.record_type)
             record_group = record_entry.group
 
             if record_group in ('account', 'bank_statement', 'cash_expense'):
-                record_class = mod_records.DatabaseRecord
+                record_class = mod_records.StandardRecord
             elif record_group == 'bank_deposit':
                 record_class = mod_records.DepositRecord
             elif record_group == 'audit':
@@ -1611,10 +1611,7 @@ class TableElement:
             else:
                 raise AttributeError('unknown record group provided {GROUP}'.format(NAME=self.name, GROUP=record_group))
 
-            record_layout = record_entry.record_layout
-            record_type = self.record_type
-
-        record = record_class(record_type, record_layout, level=level)
+        record = record_class(record_entry, level=level)
         record.initialize(row, new=new_record)
 
         return record
@@ -1649,6 +1646,7 @@ class TableElement:
                 .format(TBL=self.name, IND=index + 1, ERR=e)
             mod_win2.popup_error(msg)
             print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            raise
 
             return df
         else:
@@ -2061,8 +2059,8 @@ class ReferenceElement:
         """
         record_entry = configuration.records.fetch_rule(self.record_type)
         record_group = record_entry.group
-        if record_group in ('account', 'transaction', 'bank_statement', 'cash_expense'):
-            record_class = mod_records.DatabaseRecord
+        if record_group in ('account', 'bank_statement', 'cash_expense'):
+            record_class = mod_records.StandardRecord
         elif record_group == 'bank_deposit':
             record_class = mod_records.DepositRecord
         elif record_group == 'audit':
@@ -2070,7 +2068,7 @@ class ReferenceElement:
         else:
             raise TypeError('unknown record group provided {}'.format(record_group))
 
-        record = record_class(self.name, record_entry.record_layout, level=level)
+        record = record_class(record_entry, level=level)
         record.initialize(self.record_data, new=False)
 
         return record
@@ -2484,6 +2482,8 @@ class DataElement:
 
                 else:  # user replaced a character
                     # Find the character and location of the user input
+                    new_char = None
+                    new_index = None
                     for new_index, new_char in enumerate(new_value):  # defaults to the last character
                         old_char = current_value[new_index]
                         if old_char != new_char:
@@ -2529,8 +2529,12 @@ class DataElement:
                 elif new_char == dec_sep:  # and also decimal character
                     if dec_sep not in current_value:  # can only add one decimal character
                         current_value.insert(new_index, new_char)
+                elif new_char in ('+', '-') and new_index == 0:  # can add value sign at beginning
+                    current_value.insert(new_index, new_char)
             else:  # user replaced a character
                 # Find the character and location of the user input
+                new_char = None
+                new_index = None
                 for new_index, new_char in enumerate(new_value):  # defaults to the last character
                     old_char = current_value[new_index]
                     if old_char != new_char:
@@ -2541,17 +2545,28 @@ class DataElement:
                     current_value[new_index] = new_char
                 elif new_char == dec_sep and dec_sep not in current_value:  # or one decimal character
                     current_value[new_index] = new_char
+                elif new_char in ('+', '-') and new_index == 0:  # can add value sign at beginning
+                    current_value.insert(new_index, new_char)
 
             current_value = ''.join(current_value)
+            if current_value[0] in ('-', '+'):  # sign of the number
+                numeric_sign = current_value[0]
+                current_value = current_value[1:]
+            else:
+                numeric_sign = ''
             if dec_sep in current_value:
                 integers, decimals = current_value.split(dec_sep)
                 decimals = decimals[0:2]
-                current_value = integers + dec_sep + decimals[0:2]
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
+                current_value = numeric_sign + integers + dec_sep + decimals[0:2]
+                display_value = '{SIGN}{VAL}{SEP}{DEC}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(integers[::-1])][::-1]).lstrip(','),
+                            SEP=dec_sep, DEC=decimals)
             else:
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(current_value[::-1])][::-1]).lstrip(',')
+                display_value = '{SIGN}{VAL}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(current_value[::-1])][::-1]).lstrip(','))
+                current_value = numeric_sign + current_value
 
             window[elem_key].metadata['value'] = current_value
 
@@ -2600,14 +2615,22 @@ class DataElement:
 
         if (isinstance(value, float) or isinstance(value, int) or isinstance(value, str)) and dtype == 'money':
             value = str(value)
+            if value[0] in ('-', '+'):  # sign of the number
+                numeric_sign = value[0]
+                value = value[1:]
+            else:
+                numeric_sign = ''
             if dec_sep in value:
                 integers, decimals = value.split(dec_sep)
                 decimals = decimals[0:2]
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
+                display_value = '{SIGN}{VAL}{SEP}{DEC}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(integers[::-1])][::-1]).lstrip(','),
+                            SEP=dec_sep, DEC=decimals)
             else:
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(value[::-1])][::-1]).lstrip(',')
+                display_value = '{SIGN}{VAL}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(value[::-1])][::-1]).lstrip(','))
 
         elif isinstance(value, float) and dtype != 'money':
             display_value = str(value)
