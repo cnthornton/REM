@@ -628,11 +628,12 @@ def main():
             import_table.df = import_table.append(import_df)
 
             try:
-                mod_win2.record_import_window(record_entry.record_layout, import_table, enable_new=False)
+                mod_win2.record_import_window(import_table, enable_new=False)
             except Exception as e:
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
+                raise
 
             continue
 
@@ -679,13 +680,13 @@ def main():
             import_table = mod_elem.TableElement(current_rule.name, table_entry)
             import_table.df = import_table.append(import_df)
 
-            record_layout = current_rule.record_layout_entry
             try:
-                mod_win2.record_import_window(record_layout, import_table, enable_new=True)
+                mod_win2.record_import_window(import_table, enable_new=True)
             except Exception as e:
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {}'.format(msg))
+                raise
 
             continue
 

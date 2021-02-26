@@ -64,6 +64,8 @@ class RecordsConfiguration:
             record_entry = record_entries[record_group]
             self.rules.append(RecordEntry(record_group, record_entry))
 
+        self.approved_groups = ['account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
+
     def print_rules(self, by_title: bool = False):
         """
         Print rules of a the rule set by its name or title.
@@ -105,6 +107,12 @@ class RecordsConfiguration:
             rule = self.rules[index]
 
         return rule
+
+    def get_approved_groups(self):
+        """
+        Return a list of approved record-type groups
+        """
+        return self.approved_groups
 
 
 class RecordEntry:
@@ -435,7 +443,7 @@ class RecordEntry:
         import_rules = self.import_rules
 
         # Check if the record is already in the database and remove from list of unsaved IDs, if applicable
-        record_id = record.record_id
+        record_id = record.record_id()
 
         id_exists = not self.remove_unsaved_id(record_id)
         try:
@@ -649,7 +657,7 @@ class RecordEntry:
         delete_code = configuration.delete_code
 
         import_rules = self.import_rules
-        record_id = record.record_id
+        record_id = record.record_id()
 
         # Check if the record can be found in the list of unsaved ids
         id_exists = not self.remove_unsaved_id(record_id)

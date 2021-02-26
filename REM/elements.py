@@ -1653,6 +1653,7 @@ class TableElement:
             print('Info: DataTable {NAME}: opening record at row {IND}'.format(NAME=self.name, IND=index))
 
         # Display the record window
+        print(record.table_values())
         record = mod_win2.record_window(record, view_only=view_only)
 
         # Update record table values

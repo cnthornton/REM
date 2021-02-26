@@ -1627,7 +1627,7 @@ class AuditSummary:
                 notes_value = notes.format_display()
 
             tab_dict = {'title': '{TITLE}: {ID}'.format(TITLE=reference_tab.record.title,
-                                                        ID=reference_tab.record.record_id),
+                                                        ID=reference_tab.record.record_id()),
                         'notes': (notes_title, notes_value)}
 
             # Fetch component accounts table from
@@ -1752,8 +1752,8 @@ class AuditRecordTab:
                          ['Tab']]
 
         record_entry = configuration.records.fetch_rule(name)
-        self.record = mod_records.TAuditRecord(name, record_entry.record_layout, level=0)
-        self.record.modifiers = []  # can't use modifiers in audit
+        self.record = mod_records.TAuditRecord(record_entry, level=0)
+        self.record.modifiers = []
         self.elements += self.record.elements
 
         try:
@@ -1875,10 +1875,9 @@ class AuditRecordTab:
 
                 # Create new record
                 record_date = params[date_index].value
-                record.record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
-                record.record_date = record_date
-                record.creator = user.uid
-                record.creation_date = datetime.datetime.now()
+                record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
+
+                record_data = {'RecordID': record_id, 'RecordDate': record_date}
 
                 for element in record.parameters:
                     element_name = element.name
@@ -1886,10 +1885,12 @@ class AuditRecordTab:
                         param = params[param_names.index(element_name)]
                         print('Info: AuditRuleTab {NAME}: adding value {VAL} from parameter {PARAM} to data element '
                               '{ELEM}'.format(NAME=self.name, VAL=param.value, PARAM=param.name, ELEM=element_name))
-                        element.value = param.value
+                        record_data[param.name] = param.value
                     else:
                         print('Info: AuditRuleTab {NAME}: no parameters for data element {ELEM}'
                               .format(NAME=self.name, ELEM=element_name))
+
+                record.initialize(record_data, new=False)
 
                 return False
 

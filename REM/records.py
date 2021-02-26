@@ -1,18 +1,57 @@
 """
 REM records classes and functions. Includes audit records and account records.
 """
-import datetime
-from random import randint
 
 import pandas as pd
 import PySimpleGUI as sg
+from random import randint
 
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
 from REM.config import configuration
-from REM.settings import settings, user
+from REM.settings import user
+
+
+class CustomRecordEntry:
+    """
+    Custom record entry object.
+    """
+
+    def __init__(self, entry):
+        """
+        Arguments:
+
+            entry (dict): dictionary of parameters for the custom record entry.
+        """
+        self.name = 'CustomRecord'
+        self.group = 'custom'
+
+        # Record layout configuration
+        try:
+            self.record_layout = entry['RecordLayout']
+        except KeyError:
+            raise AttributeError('missing required parameter "RecordLayout"')
+
+        self.ids = []
+
+    def remove_unsaved_id(self, record_id):
+        """
+        Remove record ID from the list of unsaved IDs
+        """
+        try:
+            self.ids.remove(record_id)
+        except ValueError:
+            print('Warning: RecordEntry {NAME}: record {ID} was not found in the list of unsaved {TYPE} record IDs'
+                  .format(NAME=self.name, ID=record_id, TYPE=self.name))
+            success = False
+        else:
+            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID} from the list of unsaved records'
+                  .format(NAME=self.name, ID=record_id))
+            success = True
+
+        return success
 
 
 class DatabaseRecord:
@@ -37,32 +76,27 @@ class DatabaseRecord:
         components (list): list of record components.
     """
 
-    def __init__(self, name, entry, level: int = 0):
+    def __init__(self, record_entry, level: int = 0):
         """
         Arguments:
-            name (str): configured record type.
-
-            entry (class): configuration entry for the record.
+            record_entry (class): configuration entry for the record.
 
             level (int): depth at which record was opened [Default: 0].
         """
-        record_entry = configuration.records.fetch_rule(name)
+        approved_record_types = configuration.records.get_approved_groups()
 
-        approved_record_types = ['transaction', 'account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
-        self.name = name
-        try:
-            self.record_group = record_entry.group
-        except AttributeError:
-            self.record_group = None
+        self.record_entry = record_entry
+        self.new = False
+        self.level = level
+
+        self.name = record_entry.name
 
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['RecordID', 'RecordDate', 'ReferencesButton', 'ReferencesFrame', 'ComponentsButton',
-                          'ComponentsFrame', 'Height', 'Width']]
+                         ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame',
+                          'Height', 'Width']]
 
-        self.record_layout = entry
-        self.new = False
-        self.level = level
+        entry = record_entry.record_layout
 
         # User permissions when accessing record
         try:
@@ -81,14 +115,52 @@ class DatabaseRecord:
         try:
             self.title = entry['Title']
         except KeyError:
-            self.title = name
+            self.title = self.name
 
-        self.record_id = None
-        self.record_date = None
-        self.creator = None
-        self.creation_date = None
-        self.editor = None
-        self.edit_date = None
+#        self.record_id = None
+#        self.record_date = None
+#        self.creator = None
+#        self.creation_date = None
+#        self.editor = None
+#        self.edit_date = None
+
+        # Record header
+        self.headers = []
+        try:
+            headers = entry['Header']
+        except KeyError:
+            raise AttributeError('missing required configuration parameter "Header"')
+        else:
+            for param_name in headers:
+                param_entry = headers[param_name]
+                param_entry['IsEditable'] = False
+                param_layout = param_entry['ElementType']
+                if param_layout == 'dropdown':
+                    param_class = mod_param.DataParameterCombo
+                elif param_layout == 'input':
+                    param_class = mod_param.DataParameterInput
+                elif param_layout == 'date':
+                    param_class = mod_param.DataParameterDate
+                elif param_layout == 'date_range':
+                    param_class = mod_param.DataParameterDateRange
+                elif param_layout == 'checkbox':
+                    param_class = mod_param.DataParameterCheckbox
+                elif param_layout == 'button':
+                    param_class = mod_param.DataParameterButton
+                else:
+                    raise AttributeError('unknown type {TYPE} provided to record header {PARAM}'
+                                         .format(TYPE=param_layout, PARAM=param_name))
+
+                param = param_class(param_name, param_entry)
+
+                self.headers.append(param)
+                self.elements += param.elements
+
+        header_names = [i.name for i in self.headers]
+        if 'RecordID' not in header_names:
+            raise AttributeError('missing required header "RecordID"')
+        if 'RecordDate' not in header_names:
+            raise AttributeError('missing required header "RecordDate"')
 
         # Record modifiers
         self.modifiers = []
@@ -111,12 +183,12 @@ class DatabaseRecord:
         try:
             details = entry['Details']
         except KeyError:
-            raise AttributeError('missing required parameter "Details"'.format(NAME=self.name))
+            raise AttributeError('missing required configuration parameter "Details"')
         else:
             try:
                 parameters = details['Elements']
             except KeyError:
-                raise AttributeError('missing required Details parameter "Elements"'.format(NAME=self.name))
+                raise AttributeError('missing required Details parameter "Elements"')
 
             for param in parameters:
                 param_entry = parameters[param]
@@ -210,6 +282,20 @@ class DatabaseRecord:
 
         return key
 
+    def record_id(self):
+        """
+        Convenience method for returning the record ID of the record object.
+        """
+        param = self.fetch_header('RecordID')
+        return param.value
+
+    def record_date(self):
+        """
+        Convenience method for returning the record date of the record object.
+        """
+        param = self.fetch_header('RecordDate')
+        return param.value
+
     def initialize(self, data, new: bool = False):
         """
         Initialize record attributes.
@@ -219,16 +305,16 @@ class DatabaseRecord:
 
             new (bool): record is newly created [default: False].
         """
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+#        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
+        headers = self.headers
         parameters = self.parameters
         modifiers = self.modifiers
         comp_types = self.component_types
         ref_types = self.reference_types
 
         self.new = new
-
-        record_entry = configuration.records.fetch_rule(self.name)
+        record_entry = self.record_entry
 
         if isinstance(data, pd.Series):
             record_data = data.to_dict()
@@ -244,31 +330,52 @@ class DatabaseRecord:
         else:
             raise AttributeError('unknown object type provided to record class {TYPE}'.format(TYPE=self.name))
 
-        # Set attributes from required columns
-        try:
-            self.record_id = record_data['RecordID']
-        except KeyError:
+        if 'RecordID' not in record_data:
             raise AttributeError('input data is missing required column "RecordID"')
-
-        try:
-            record_date = record_data['RecordDate']
-        except KeyError:
+        if 'RecordDate' not in record_data:
             raise AttributeError('input data is missing required column "RecordDate"')
-        else:
-            if is_datetime_dtype(record_date) or isinstance(record_date, datetime.datetime):
-                self.record_date = record_date
-            elif isinstance(record_date, str):
-                try:
-                    self.record_date = datetime.datetime.strptime(record_date, '%Y-%m-%d')
-                except ValueError:
-                    raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
-            else:
-                raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
 
-        self.creator = record_data.get(configuration.creator_code, None)
-        self.creation_date = record_data.get(configuration.creation_date, None)
-        self.editor = record_data.get(configuration.editor_code, None)
-        self.edit_date = record_data.get(configuration.edit_date, None)
+        print('Info RecordType {NAME}: initializing record data'.format(NAME=self.name))
+        print(record_data)
+
+        # Set header values from required columns
+        for header in headers:
+            header_name = header.name
+
+            try:
+                value = record_data[header_name]
+            except KeyError:
+                print('Warning: RecordType {NAME}: input data is missing a value for header {COL}'
+                      .format(NAME=self.name, COL=header_name))
+            else:
+                print('Info: RecordType {NAME}: initializing header {PARAM} with value {VAL}'
+                      .format(NAME=self.name, PARAM=header_name, VAL=value))
+                header.value = header.format_value({header.key_lookup('Element'): value})
+
+#        try:
+#            self.record_id = record_data['RecordID']
+#        except KeyError:
+#            raise AttributeError('input data is missing required column "RecordID"')
+#
+#        try:
+#            record_date = record_data['RecordDate']
+#        except KeyError:
+#            raise AttributeError('input data is missing required column "RecordDate"')
+#        else:
+#            if is_datetime_dtype(record_date) or isinstance(record_date, datetime.datetime):
+#                self.record_date = record_date
+#            elif isinstance(record_date, str):
+#                try:
+#                    self.record_date = datetime.datetime.strptime(record_date, '%Y-%m-%d')
+#                except ValueError:
+#                    raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
+#            else:
+#                raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
+#
+#        self.creator = record_data.get(configuration.creator_code, None)
+#        self.creation_date = record_data.get(configuration.creation_date, None)
+#        self.editor = record_data.get(configuration.editor_code, None)
+#        self.edit_date = record_data.get(configuration.edit_date, None)
 
         # Set modifier values
         if new is True:
@@ -280,11 +387,11 @@ class DatabaseRecord:
                 try:
                     value = record_data[modifier_name]
                 except KeyError:
-                    print('Warning: record {ID}: input data is missing a value for modifier {COL}'
-                          .format(ID=self.record_id, COL=modifier_name))
+                    print('Warning: RecordType {NAME}: input data is missing a value for modifier {COL}'
+                          .format(NAME=self.name, COL=modifier_name))
                 else:
-                    print('Info: record {ID}: initializing modifier {PARAM} with value {VAL}'
-                          .format(ID=self.record_id, PARAM=modifier_name, VAL=value))
+                    print('Info: RecordType {NAME}: initializing modifier {PARAM} with value {VAL}'
+                          .format(NAME=self.name, PARAM=modifier_name, VAL=value))
                     modifier.value = modifier.format_value({modifier.key_lookup('Element'): value})
 
         # Set data element values
@@ -306,20 +413,20 @@ class DatabaseRecord:
                 try:
                     value = record_data[param_name]
                 except KeyError:
-                    print('Warning: record {ID}: input data is missing a value for data element {PARAM}'
-                          .format(ID=self.record_id, PARAM=param_name))
+                    print('Warning: RecordType {NAME}: input data is missing a value for data element {PARAM}'
+                          .format(NAME=self.name, PARAM=param_name))
                 else:
                     if not pd.isna(value):
-                        print('Info: record {ID}: initializing data element {PARAM} with value {VAL}'
-                              .format(ID=self.record_id, PARAM=param_name, VAL=value))
+                        print('Info: RecordType {NAME}: initializing data element {PARAM} with value {VAL}'
+                              .format(NAME=self.name, PARAM=param_name, VAL=value))
                         param.value = param.format_value(value)
                     else:
-                        print('Info: record {ID}: no value set for parameter {PARAM}'
-                              .format(ID=self.record_id, PARAM=param_name))
+                        print('Info: RecordType {NAME}: no value set for parameter {PARAM}'
+                              .format(NAME=self.name, PARAM=param_name))
 
         # Import components and references for existing records
-        if new is False and self.record_id is not None and record_entry is not None:
-            import_df = record_entry.import_references(self.record_id)
+        if new is False and self.record_id() is not None:
+            import_df = record_entry.import_references(self.record_id())
             for index, row in import_df.iterrows():
                 doctype = row['DocType']
                 reftype = row['RefType']
@@ -334,14 +441,14 @@ class DatabaseRecord:
                 # Store imported references as references box objects
                 if doctype in ref_types:
                     ref_id = row['DocNo']
-                    print('Info: record {ID}: adding reference record {NAME} with record type {TYPE}'
-                          .format(ID=self.record_id, NAME=ref_id, TYPE=doctype))
+                    print('Info: RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
+                          .format(NAME=self.name, ID=ref_id, TYPE=doctype))
 
                     try:
                         ref_box = mod_elem.ReferenceElement(doctype, row, parent=self.name)
                     except Exception as e:
-                        print('Warning: record {ID}: failed to add reference {NAME} to list of references - {ERR}'
-                              .format(ID=self.record_id, NAME=ref_id, ERR=e))
+                        print('Warning: RecordType {NAME}: failed to add reference {ID} to list of references - {ERR}'
+                              .format(NAME=self.name, ID=ref_id, ERR=e))
                         continue
                     else:
                         self.references.append(ref_box)
@@ -350,8 +457,8 @@ class DatabaseRecord:
                 # Store imported components as table rows
                 if reftype in comp_types:
                     ref_id = row['RefNo']
-                    print('Info: record {ID}: adding component record {NAME} with record type {TYPE}'
-                          .format(ID=self.record_id, NAME=ref_id, TYPE=reftype))
+                    print('Info: RecordType {NAME}: adding component record {ID} with record type {TYPE}'
+                          .format(NAME=self.name, ID=ref_id, TYPE=reftype))
 
                     # Fetch the relevant components table
                     comp_table = self.fetch_component(reftype, by_type=True)
@@ -365,13 +472,11 @@ class DatabaseRecord:
         """
         Reset record attributes.
         """
-        self.record_id = None
-        self.record_date = None
-        self.creator = None
-        self.creation_date = None
-        self.editor = None
-        self.edit_date = None
         self.new = False
+
+        # Reset header values
+        for header in self.headers:
+            header.reset(window)
 
         # Reset modifier values
         for modifier in self.modifiers:
@@ -388,76 +493,28 @@ class DatabaseRecord:
         # Reset references
         self.references = []
 
-    def run_event(self, window, event, values):
+    def fetch_header(self, element, by_key: bool = False):
         """
-        Perform a record action.
+        Fetch a record header element by name or event key.
         """
-        param_elems = [i for param in self.parameters for i in param.elements]
-        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
-        component_elems = [i for component in self.components for i in component.elements]
-        reference_elems = [i for reference in self.references for i in reference.elements]
+        if by_key is True:
+            element_type = element[1:-1].split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.headers]
+        else:
+            element_names = [i.name for i in self.headers]
 
-        # Expand or collapse the references frame
-        if event == self.key_lookup('ReferencesButton'):
-            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing References frame'
-                  .format(NAME=self.name, ID=self.record_id))
-            self.collapse_expand(window, frame='references')
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.headers[index]
+        else:
+            raise KeyError('element {ELEM} not found in list of record {NAME} headers'
+                           .format(ELEM=element, NAME=self.name))
 
-        # Expand or collapse the component tables frame
-        elif event == self.key_lookup('ComponentsButton'):
-            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing Components frame'
-                  .format(NAME=self.name, ID=self.record_id))
-            self.collapse_expand(window, frame='components')
-
-        # Run a modifier event
-        elif event in modifier_elems:
-            try:
-                param = self.fetch_modifier(event, by_key=True)
-            except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id, KEY=event))
-            else:
-                param.run_event(window, event, values)
-
-        # Run a component element event
-        elif event in param_elems:  # parameter event
-            try:
-                param = self.fetch_element(event, by_key=True)
-            except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id, KEY=event))
-            else:
-                param.run_event(window, event, values)
-
-        # Run a component table event
-        elif event in component_elems:  # component table event
-            # Update data elements
-            for param in self.parameters:
-                param.update_display(window, window_values=values)
-
-            try:
-                component_table = self.fetch_component(event, by_key=True)
-            except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id, KEY=event))
-            else:
-                component_table.run_event(window, event, values)
-
-        # Run a reference-box event
-        elif event in reference_elems:
-            try:
-                refbox = self.fetch_reference(event, by_key=True)
-            except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id, KEY=event))
-            else:
-                refbox.run_event(window, event, values)
-
-        return True
+        return parameter
 
     def fetch_element(self, element, by_key: bool = False):
         """
-        Fetch a GUI data element by name or event key.
+        Fetch a record data element by name or event key.
         """
         if by_key is True:
             element_type = element[1:-1].split('_')[-1]
@@ -476,7 +533,7 @@ class DatabaseRecord:
 
     def fetch_modifier(self, element, by_key: bool = False):
         """
-        Fetch a GUI data element by name or event key.
+        Fetch a record modifier by name or event key.
         """
         if by_key is True:
             element_type = element[1:-1].split('_')[-1]
@@ -488,7 +545,7 @@ class DatabaseRecord:
             index = element_names.index(element)
             parameter = self.modifiers[index]
         else:
-            raise KeyError('element {ELEM} not found in list of record {NAME} elements'
+            raise KeyError('element {ELEM} not found in list of record {NAME} modifiers'
                            .format(ELEM=element, NAME=self.name))
 
         return parameter
@@ -501,7 +558,7 @@ class DatabaseRecord:
             element_type = reference[1:-1].split('_')[-1]
             references = [i.key_lookup(element_type) for i in self.references]
         elif by_id is True:
-            references = [i.record_id for i in self.references]
+            references = [i.record_id() for i in self.references]
         else:
             references = [i.name for i in self.references]
 
@@ -544,14 +601,22 @@ class DatabaseRecord:
         is_bool_dtype = pd.api.types.is_bool_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
+        headers = self.headers
         parameters = self.parameters
         modifiers = self.modifiers
 
-        columns = ['RecordID', 'RecordDate']
-        values = [self.record_id, self.record_date]
+        columns = []
+        values = []
+
+        # Add header values
+        for header in headers:
+            print(header.name, header.value)
+            columns.append(header.name)
+            values.append(header.value)
 
         # Add modifier values
         for modifier in modifiers:
+            print(modifier.name, modifier.value)
             columns.append(modifier.name)
             values.append(modifier.value)
 
@@ -572,59 +637,11 @@ class DatabaseRecord:
                     columns.append(column)
                     values.append(col_summary)
             else:  # parameter is a data element object
+                print(param.name, param.value)
                 columns.append(param.name)
                 values.append(param.value)
 
         return pd.Series(values, index=columns)
-
-    def header_layout(self):
-        """
-        Generate the layout for the header section of the record layout.
-        """
-        record_layout = self.record_layout
-
-        header_elements = record_layout['Header']
-
-        # Element parameters
-        bg_col = mod_const.ACTION_COL
-
-        main_font = mod_const.MAIN_FONT
-        bold_font = mod_const.BOLD_LARGE_FONT
-
-        pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
-
-        # Header components
-        try:
-            id_title = header_elements.get('RecordID', 'Record ID')
-        except KeyError:
-            print('Warning: the parameter "RecordID" was not included in the list of configured data elements')
-            id_title = 'ID'
-        try:
-            date_title = header_elements.get('RecordDate', 'Record Date')
-        except KeyError:
-            print('Warning: the parameter "RecordDate" was not included in the list of configured data elements')
-            date_title = 'Date'
-
-        if isinstance(self.record_date, datetime.datetime):
-            record_date = settings.format_display_date(self.record_date)
-        else:
-            record_date = self.record_date
-
-        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
-        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
-                              font=main_font, background_color=bg_col, tooltip=id_tooltip,
-                              metadata={'visible': True, 'disabled': False, 'value': self.record_id}),
-                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(record_date, key=self.key_lookup('RecordDate'), font=main_font,
-                              background_color=bg_col, size=(14, 1),
-                              metadata={'visible': True, 'disabled': False, 'value': self.record_date})]]
-
-        # Header layout
-        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True)]]
-
-        return layout
 
     def layout(self, win_size: tuple = None, view_only: bool = False, ugroup: list = None):
         """
@@ -635,7 +652,7 @@ class DatabaseRecord:
         else:
             width, height = (mod_const.WIN_WIDTH * 0.8, mod_const.WIN_HEIGHT * 0.8)
 
-        record_layout = self.record_layout
+        record_layout = self.record_entry.record_layout
 
         # GUI data elements
         editable = True if view_only is False or self.new is True else False
@@ -649,9 +666,8 @@ class DatabaseRecord:
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
+        pad_h = mod_const.HORZ_PAD
         pad_frame = mod_const.FRAME_PAD
-
-        # Element sizes
 
         # Layout elements
         try:
@@ -671,12 +687,22 @@ class DatabaseRecord:
             has_components = True
 
         # Record header
-        header_layout = self.header_layout()
+        left_layout = []
+        right_layout = []
+        for param in self.headers:
+            if param.justification == 'right':
+                right_layout += param.layout(padding=((0, pad_h), 0))
+            else:
+                left_layout += param.layout(padding=((0, pad_h), 0))
+
+        header_layout = [[sg.Col([left_layout], pad=(0, 0), background_color=bg_col, justification='l',
+                                 element_justification='l', expand_x=True),
+                          sg.Col([right_layout], background_color=bg_col, justification='r',
+                                 element_justification='r')]]
 
         # Create layout for record details
         details_layout = []
         for data_elem in self.parameters:
-            print(data_elem.name, data_elem.key_lookup('Element'))
             details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, editable=editable,
                                                     overwrite_edit=self.new)])
 
@@ -731,7 +757,6 @@ class DatabaseRecord:
         width_key = self.key_lookup('Width')
         width_layout = [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)]]
         layout = [[sg.Col(width_layout, pad=(0, 0), background_color=bg_col)],
-#                  [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                   [sg.Col(header_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, expand_x=True)],
                   [sg.HorizontalSeparator(pad=(pad_frame, (pad_v, pad_frame)), color=mod_const.INACTIVE_COL)],
                   [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)]]
@@ -747,7 +772,7 @@ class DatabaseRecord:
         else:
             width, height = window.size
 
-        print('Info: record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id, W=width, H=height))
+        print('Info: Record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id(), W=width, H=height))
 
         # Expand the frame width and height
         width_key = self.key_lookup('Width')
@@ -779,30 +804,6 @@ class DatabaseRecord:
         for comp_table in self.components:
             comp_table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
 
-    def update_display(self, window, window_values: dict = None):
-        """
-        Update the display of the record's elements and components.
-        """
-        for param in self.parameters:
-            param.update_display(window, window_values=window_values)
-
-        # Update the components display table
-        for component in self.components:
-            component.update_display(window, window_values=window_values)
-
-        # Update records header
-        id_key = self.key_lookup('RecordID')
-        date_key = self.key_lookup('RecordDate')
-        record_id = self.record_id
-        record_date = settings.format_display_date(self.record_date)
-        window[id_key].set_size(size=(len(record_id) + 1, None))
-        window[id_key].update(value=record_id)
-        window[date_key].set_size(size=(len(record_date) + 1, None))
-        window[date_key].update(value=record_date)
-
-        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
-        window[id_key].set_tooltip(id_tooltip)
-
     def collapse_expand(self, window, frame: str = 'references'):
         """
         Hide/unhide record frames.
@@ -826,132 +827,105 @@ class DatabaseRecord:
             window[frame_key].metadata['visible'] = True
 
 
+class StandardRecord(DatabaseRecord):
+
+    def run_event(self, window, event, values):
+        """
+        Perform a record action.
+        """
+        param_elems = [i for param in self.parameters for i in param.elements]
+        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
+        component_elems = [i for component in self.components for i in component.elements]
+        reference_elems = [i for reference in self.references for i in reference.elements]
+
+        # Expand or collapse the references frame
+        if event == self.key_lookup('ReferencesButton'):
+            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing References frame'
+                  .format(NAME=self.name, ID=self.record_id()))
+            self.collapse_expand(window, frame='references')
+
+        # Expand or collapse the component tables frame
+        elif event == self.key_lookup('ComponentsButton'):
+            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing Components frame'
+                  .format(NAME=self.name, ID=self.record_id()))
+            self.collapse_expand(window, frame='components')
+
+        # Run a modifier event
+        elif event in modifier_elems:
+            try:
+                param = self.fetch_modifier(event, by_key=True)
+            except KeyError:
+                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+            else:
+                param.run_event(window, event, values)
+
+        # Run a component element event
+        elif event in param_elems:  # parameter event
+            try:
+                param = self.fetch_element(event, by_key=True)
+            except KeyError:
+                print('Error: RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+            else:
+                param.run_event(window, event, values)
+
+        # Run a component table event
+        elif event in component_elems:  # component table event
+            # Update data elements
+            for param in self.parameters:
+                param.update_display(window, window_values=values)
+
+            try:
+                component_table = self.fetch_component(event, by_key=True)
+            except KeyError:
+                print('Error: RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+            else:
+                component_table.run_event(window, event, values)
+
+        # Run a reference-box event
+        elif event in reference_elems:
+            try:
+                refbox = self.fetch_reference(event, by_key=True)
+            except KeyError:
+                print('Error: RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
+                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+            else:
+                refbox.run_event(window, event, values)
+
+        return True
+
+    def update_display(self, window, window_values: dict = None):
+        """
+        Update the display of the record's elements and components.
+        """
+        # Update data elements
+        for param in self.parameters:
+            param.update_display(window, window_values=window_values)
+
+        # Update the components display table
+        for component in self.components:
+            component.update_display(window, window_values=window_values)
+
+        # Update records header
+        for header in self.headers:
+            elem_key = header.key_lookup('Element')
+            display_value = header.format_display()
+            window[elem_key].update(value=display_value)
+
+
 class DepositRecord(DatabaseRecord):
     """
     Class to manage the layout and display of an REM Deposit Record.
     """
 
-    def __init__(self, name, entry, level: int = 0):
-        """
-        deposit (float): amount deposited into the bank account.
-        """
-        super().__init__(name, entry, level)
-        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Deposit'))
+    def __init__(self, record_entry, level: int = 0):
+        super().__init__(record_entry, level)
 
-        self.deposit = 0
-
-    def header_layout(self):
-        """
-        Generate the layout for the header section of the record layout.
-        """
-        greater_col = mod_const.PASS_COL
-        lesser_col = mod_const.FAIL_COL
-
-        record_layout = self.record_layout
-
-        header_elements = record_layout['Header']
-
-        # Element parameters
-        bg_col = mod_const.ACTION_COL
-
-        main_font = mod_const.MAIN_FONT
-        bold_font = mod_const.BOLD_LARGE_FONT
-
-        pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
-
-        # Header components
-        try:
-            id_title = header_elements.get('RecordID', 'Record ID')
-        except KeyError:
-            print('Warning: the parameter "RecordID" was not included in the list of configured data elements')
-            id_title = 'ID'
-        try:
-            date_title = header_elements.get('RecordDate', 'Record Date')
-        except KeyError:
-            print('Warning: the parameter "RecordDate" was not included in the list of configured data elements')
-            date_title = 'Date'
-
-        if isinstance(self.record_date, datetime.datetime):
-            record_date = settings.format_display_date(self.record_date)
-        else:
-            record_date = self.record_date
-
-        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
-        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
-                              font=main_font, background_color=bg_col, tooltip=id_tooltip),
-                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(record_date, key=self.key_lookup('RecordDate'), size=(14, 1), font=main_font,
-                              background_color=bg_col)]]
-        try:
-            deposit_title = header_elements.get('DepositAmount', 'Deposit Total')
-        except KeyError:
-            print('Warning: the parameter "DepositAmount" was not included in the list of configured data elements')
-            deposit_title = 'Deposit Total'
-
-        deposit_total = self.deposit
-        if deposit_total > 0:
-            bg_color = greater_col
-        elif deposit_total < 0:
-            bg_color = lesser_col
-        else:
-            bg_color = bg_col
-        deposit_layout = [[sg.Text('{}:'.format(deposit_title), pad=((0, pad_el), 0), background_color=bg_col,
-                                   font=bold_font),
-                           sg.Text('{:,.2f}'.format(deposit_total), key=self.key_lookup('Deposit'),
-                                   size=(14, 1), font=main_font, background_color=bg_color, border_width=1,
-                                   relief="sunken", tooltip='Import amount: {}'.format('{:,.2f}'.format(deposit_total)))]]
-
-        # Header layout
-        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
-                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-                          background_color=bg_col, justification='c', expand_x=True),
-                   sg.Col(deposit_layout, background_color=bg_col, justification='r')]]
-
-        return layout
-
-    def table_values(self):
-        """
-        Format parameter values as a table row.
-        """
-        is_numeric_dtype = pd.api.types.is_numeric_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        parameters = self.parameters
-        modifiers = self.modifiers
-
-        columns = ['RecordID', 'RecordDate', 'DepositAmount']
-        values = [self.record_id, self.record_date, self.deposit]
-
-        # Add modifier values
-        for modifier in modifiers:
-            columns.append(modifier.name)
-            values.append(modifier.value)
-
-        # Add parameter values
-        for param in parameters:
-            param_type = param.etype
-            if param_type == 'table':
-                df = param.df
-                for column in df.columns.tolist():  # component is header column
-                    dtype = df[column].dtype
-                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
-                        col_summary = df[column].sum()
-                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                        col_summary = df[column].nunique()
-                    else:  # possibly empty dataframe
-                        col_summary = 0
-
-                    columns.append(column)
-                    values.append(col_summary)
-            else:
-                columns.append(param.name)
-                values.append(param.value)
-
-        return pd.Series(values, index=columns)
+        header_names = [i.name for i in self.headers]
+        if 'DepositAmount' not in header_names:
+            raise AttributeError('missing required header "DepositAmount"')
 
     def run_event(self, window, event, values):
         """
@@ -965,13 +939,13 @@ class DepositRecord(DatabaseRecord):
         # Collapse or expand the references frame
         if event == self.key_lookup('ReferencesButton'):
             print('Info: {NAME}, Record {ID}: expanding / collapsing References frame'
-                  .format(NAME=self.name, ID=self.record_id))
+                  .format(NAME=self.name, ID=self.record_id()))
             self.collapse_expand(window, frame='references')
 
         # Collapse or expand the component tables frame
         elif event == self.key_lookup('ComponentsButton'):
             print('Info: {NAME}, Record {ID}: expanding / collapsing Components frame'
-                  .format(NAME=self.name, ID=self.record_id))
+                  .format(NAME=self.name, ID=self.record_id()))
             self.collapse_expand(window, frame='components')
 
         # Run a modifier event
@@ -980,7 +954,7 @@ class DepositRecord(DatabaseRecord):
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id, KEY=event))
+                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -990,7 +964,7 @@ class DepositRecord(DatabaseRecord):
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
                 print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                      .format(ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -1003,7 +977,7 @@ class DepositRecord(DatabaseRecord):
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
                 print('Error: record {ID}: unable to find component associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                      .format(ID=self.record_id(), KEY=event))
             else:
                 # Check if component table is an account table
                 comp_record_type = component_table.record_type
@@ -1026,7 +1000,7 @@ class DepositRecord(DatabaseRecord):
                         component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records
                         default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                        component_table.df = component_table.add_row(record_date=self.record_date,
+                        component_table.df = component_table.add_row(record_date=self.record_date(),
                                                                      defaults=default_values)
                     else:
                         component_table.run_event(window, event, values)
@@ -1040,7 +1014,7 @@ class DepositRecord(DatabaseRecord):
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
                 print('Error: record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                      .format(ID=self.record_id(), KEY=event))
             else:
                 refbox.run_event(window, event, values)
 
@@ -1062,19 +1036,6 @@ class DepositRecord(DatabaseRecord):
         for component in self.components:
             component.update_display(window, window_values=window_values)
 
-        # Update records header
-        id_key = self.key_lookup('RecordID')
-        date_key = self.key_lookup('RecordDate')
-        record_id = self.record_id
-        record_date = settings.format_display_date(self.record_date)
-        window[id_key].set_size(size=(len(record_id) + 1, None))
-        window[id_key].update(value=record_id)
-        window[date_key].set_size(size=(len(record_date) + 1, None))
-        window[date_key].update(value=record_date)
-
-        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
-        window[id_key].set_tooltip(id_tooltip)
-
         # Update the deposit total
         try:
             account_table = self.fetch_component('account')
@@ -1085,7 +1046,7 @@ class DepositRecord(DatabaseRecord):
         else:
             account_total = account_table.calculate_total()
             print('Info: record {ID}: total income was calculated from the accounts table is {VAL}'
-                  .format(ID=self.record_id, VAL=account_total))
+                  .format(ID=self.record_id(), VAL=account_total))
 
         try:
             expense_table = self.fetch_component('cash_expense')
@@ -1096,7 +1057,7 @@ class DepositRecord(DatabaseRecord):
         else:
             expense_total = expense_table.calculate_total()
             print('Info: record {ID}: total expenditures was calculated from the expense table to be {VAL}'
-                  .format(ID=self.record_id, VAL=expense_total))
+                  .format(ID=self.record_id(), VAL=expense_total))
 
         deposit_total = account_total - expense_total
 
@@ -1107,8 +1068,16 @@ class DepositRecord(DatabaseRecord):
         else:
             bg_color = default_col
 
-        window[self.key_lookup('Deposit')].update(value='{:,.2f}'.format(deposit_total), background_color=bg_color)
-        self.deposit = deposit_total
+        deposit_param = self.fetch_header('DepositAmount')
+        deposit_key = deposit_param.key_lookup('Element')
+        deposit_param.value = deposit_param.format_value({deposit_key: deposit_total})
+        window[deposit_key].update(background_color=bg_color)
+
+        # Update records header
+        for header in self.headers:
+            elem_key = header.key_lookup('Element')
+            display_value = header.format_display()
+            window[elem_key].update(value=display_value)
 
 
 class TAuditRecord(DatabaseRecord):
@@ -1116,126 +1085,11 @@ class TAuditRecord(DatabaseRecord):
     Class to manage the layout of an audit record.
     """
 
-    def __init__(self, name, entry, level: int = 0):
-        """
-        remainder (float): remaining total after subtracting component record totals.
-        """
-        super().__init__(name, entry, level)
-        for element in ['Remainder']:
-            self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=element))
-
-        self.remainder = 0.00
-
-    def header_layout(self):
-        """
-        Generate the layout for the header section of the record layout.
-        """
-        greater_col = mod_const.PASS_COL
-        lesser_col = mod_const.FAIL_COL
-
-        record_layout = self.record_layout
-
-        header_elements = record_layout['Header']
-
-        # Element parameters
-        bg_col = mod_const.ACTION_COL
-        text_col = mod_const.TEXT_COL
-
-        main_font = mod_const.MAIN_FONT
-        bold_font = mod_const.BOLD_LARGE_FONT
-
-        pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
-
-        # Header components
-        id_title = header_elements.get('RecordID', 'Record ID')
-        date_title = header_elements.get('RecordDate', 'Record Date')
-
-        if isinstance(self.record_date, datetime.datetime):
-            record_date = settings.format_display_date(self.record_date)
-        else:
-            record_date = self.record_date
-
-        id_tooltip = 'Created {TIME} by {NAME}'.format(NAME=self.creator, TIME=self.creation_date)
-        id_layout = [[sg.Text('{}:'.format(id_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(self.record_id, key=self.key_lookup('RecordID'), pad=((0, pad_h), 0), size=(14, 1),
-                              font=main_font, background_color=bg_col, tooltip=id_tooltip),
-                      sg.Text('{}:'.format(date_title), pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                      sg.Text(record_date, key=self.key_lookup('RecordDate'), pad=((0, pad_h), 0),
-                              size=(14, 1), font=main_font, background_color=bg_col)]]
-        try:
-            remainder_title = header_elements.get('Remainder', 'Remainder')
-        except KeyError:
-            print('Warning: the parameter "Remainder" was not included in the list of configured data elements')
-            remainder_title = 'Remainder'
-
-        remainder = self.remainder
-        if remainder > 0:
-            print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
-                  .format(NAME=self.name, ID=self.record_id, AMOUNT=remainder))
-            bg_color = greater_col
-        elif remainder < 0:
-            print('Info: {NAME}, record {ID}: account records are over-allocated by {AMOUNT}'
-                  .format(NAME=self.name, ID=self.record_id, AMOUNT=abs(remainder)))
-            bg_color = lesser_col
-        else:
-            bg_color = bg_col
-        remainder_layout = [[sg.Text('{}:'.format(remainder_title), pad=((0, pad_el), 0), background_color=bg_col,
-                                     font=bold_font),
-                             sg.Text('{:,.2f}'.format(remainder), key=self.key_lookup('Remainder'),
-                                     size=(14, 1), font=main_font, background_color=bg_color, border_width=1,
-                                     relief="sunken",
-                                     tooltip='Import amount: {}'.format('{:,.2f}'.format(remainder)))]]
-
-        # Header layout
-        layout = [[sg.Col(id_layout, pad=(0, 0), background_color=bg_col, justification='l', expand_x=True),
-                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-                          background_color=bg_col, justification='c', expand_x=True),
-                   sg.Col(remainder_layout, background_color=bg_col, justification='r')]]
-
-        return layout
-
-    def table_values(self):
-        """
-        Format parameter values as a table row.
-        """
-        is_numeric_dtype = pd.api.types.is_numeric_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        parameters = self.parameters
-        modifiers = self.modifiers
-
-        columns = ['RecordID', 'RecordDate', 'Remainder']
-        values = [self.record_id, self.record_date, self.remainder]
-
-        # Add modifier values
-        for modifier in modifiers:
-            columns.append(modifier.name)
-            values.append(modifier.value)
-
-        # Add parameter values
-        for param in parameters:
-            param_type = param.etype
-            if param_type == 'table':
-                df = param.df
-                for column in df.columns.tolist():  # component is header column
-                    dtype = df[column].dtype
-                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
-                        col_summary = df[column].sum()
-                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                        col_summary = df[column].nunique()
-                    else:  # possibly empty dataframe
-                        col_summary = 0
-
-                    columns.append(column)
-                    values.append(col_summary)
-            else:
-                columns.append(param.name)
-                values.append(param.value)
-
-        return pd.Series(values, index=columns)
+    def __init__(self, record_entry, level: int = 0):
+        super().__init__(record_entry, level)
+        header_names = [i.name for i in self.headers]
+        if 'Remainder' not in header_names:
+            raise AttributeError('missing required header "Remainder"')
 
     def run_event(self, window, event, values):
         """
@@ -1260,7 +1114,7 @@ class TAuditRecord(DatabaseRecord):
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
                 print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id, KEY=event))
+                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -1270,7 +1124,7 @@ class TAuditRecord(DatabaseRecord):
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
                 print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                      .format(ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
                 self.update_display(window, window_values=values)
@@ -1284,7 +1138,7 @@ class TAuditRecord(DatabaseRecord):
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
                 print('Error: record {ID}: unable to find component associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                      .format(ID=self.record_id(), KEY=event))
             else:
                 # Check if component table is an account table
                 comp_record_type = component_table.record_type
@@ -1294,7 +1148,7 @@ class TAuditRecord(DatabaseRecord):
 
                         # Filter component records with the same record date
                         date_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordDate')
-                        filters = [('{COL} = ?'.format(COL=date_col), (self.record_date,))]
+                        filters = [('{COL} = ?'.format(COL=date_col), (self.record_date(),))]
 
                         # Filter out import records that are already referenced
                         ref_table = configuration.reference_lookup
@@ -1310,7 +1164,7 @@ class TAuditRecord(DatabaseRecord):
                         component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
                     elif event == component_table.key_lookup('Add'):  # add account records
                         default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                        component_table.df = component_table.add_row(record_date=self.record_date,
+                        component_table.df = component_table.add_row(record_date=self.record_date(),
                                                                      defaults=default_values)
                     else:
                         component_table.run_event(window, event, values)
@@ -1324,7 +1178,7 @@ class TAuditRecord(DatabaseRecord):
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
                 print('Error: record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(ID=self.record_id, KEY=event))
+                      .format(ID=self.record_id(), KEY=event))
             else:
                 refbox.run_event(window, event, values)
 
@@ -1346,31 +1200,6 @@ class TAuditRecord(DatabaseRecord):
         for component in self.components:
             component.update_display(window, window_values=window_values)
 
-        # Update the record's header
-        record_id = self.record_id
-        id_tooltip = '{ID} created {TIME} by {NAME}'.format(ID=record_id, NAME=self.creator, TIME=self.creation_date)
-        id_key = self.key_lookup('RecordID')
-        window_element = window.find_element(id_key, silent_on_error=False)
-        try:
-            window_element.set_size(size=(len(record_id) + 1, None))
-        except TypeError:
-            window_element.set_size(size=(14, None))
-
-        window_element.update(value=record_id)
-        window_element.set_tooltip(id_tooltip)
-
-        date_key = self.key_lookup('RecordDate')
-        try:
-            record_date = settings.format_display_date(self.record_date)
-        except AttributeError:
-            record_date = None
-        window_element = window.find_element(date_key, silent_on_error=False)
-        try:
-            window_element.set_size(size=(len(record_date) + 1, None))
-        except TypeError:
-            window_element.set_size(size=(14, None))
-        window_element.update(value=record_date)
-
         # Update the remainder
         totals_table = self.fetch_element('Totals')
         totals_sum = totals_table.calculate_total()
@@ -1387,19 +1216,25 @@ class TAuditRecord(DatabaseRecord):
 
         if remainder > 0:
             print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
-                  .format(NAME=self.name, ID=self.record_id, AMOUNT=remainder))
+                  .format(NAME=self.name, ID=self.record_id(), AMOUNT=remainder))
             bg_color = greater_col
         elif remainder < 0:
             print('Info: {NAME}, record {ID}: account records are over-allocated by {AMOUNT}'
-                  .format(NAME=self.name, ID=self.record_id, AMOUNT=abs(remainder)))
+                  .format(NAME=self.name, ID=self.record_id(), AMOUNT=abs(remainder)))
             bg_color = lesser_col
         else:
             bg_color = default_col
 
-        window_element = window.find_element(self.key_lookup('Remainder'), silent_on_error=False)
-        window_element.update(value='{:,.2f}'.format(remainder), background_color=bg_color)
+        remainder_param = self.fetch_header('Remainder')
+        remainder_key = remainder_param.key_lookup('Element')
+        remainder_param.value = remainder_param.format_value({remainder_key: remainder})
+        window[remainder_key].update(background_color=bg_color)
 
-        self.remainder = remainder
+        # Update records header
+        for header in self.headers:
+            elem_key = header.key_lookup('Element')
+            display_value = header.format_display()
+            window[elem_key].update(value=display_value)
 
 
 def load_record(record_entry, record_id, level: int = 1):
@@ -1412,7 +1247,7 @@ def load_record(record_entry, record_id, level: int = 1):
     # Set the record object based on the record type
     record_type = record_entry.group
     if record_type in ('account', 'bank_statement', 'cash_expense'):
-        record_class = DatabaseRecord
+        record_class = StandardRecord
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':
@@ -1421,7 +1256,7 @@ def load_record(record_entry, record_id, level: int = 1):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry.name, record_entry.record_layout, level=level)
+    record = record_class(record_entry, level=level)
     record.initialize(import_df)
 
     return record
@@ -1433,7 +1268,7 @@ def create_record(record_entry, record_data, level: int = 1):
     """
     record_type = record_entry.group
     if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
-        record_class = DatabaseRecord
+        record_class = StandardRecord
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':
@@ -1442,7 +1277,7 @@ def create_record(record_entry, record_data, level: int = 1):
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
 
-    record = record_class(record_entry.name, record_entry.record_layout, level=level)
+    record = record_class(record_entry, level=level)
     record.initialize(record_data, new=True)
 
     return record
@@ -1454,7 +1289,7 @@ def remove_unsaved_keys(record):
     """
     # Remove unsaved ID if record is new
     if record.new is True:
-        record_entry = configuration.records.fetch_rule(record.name)
+        record_entry = record.record_entry
         record_entry.remove_unsaved_id(record.record_id)
 
     # Remove unsaved components

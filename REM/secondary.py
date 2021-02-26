@@ -1291,7 +1291,7 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     return select_rows
 
 
-def record_import_window(record_layout, table, win_size: tuple = None, enable_new: bool = False):
+def record_import_window(table, win_size: tuple = None, enable_new: bool = False):
     """
     Display the import from database window.
     """
@@ -1364,7 +1364,7 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
 
     record_type = record_entry.group
     if record_type in ('account', 'bank_statement', 'cash_expense'):
-        record_class = mod_records.DatabaseRecord
+        record_class = mod_records.StandardRecord
     elif record_type == 'bank_deposit':
         record_class = mod_records.DepositRecord
     elif record_type == 'audit':
@@ -1372,8 +1372,6 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
     else:
         print('Warning: unknown record layout type provided {}'.format(record_type))
         return None
-
-    record = record_class(record_entry.name, record_layout, level=0)
 
     # Update display with default filter values
     tbl_key = table.key_lookup('Element')
@@ -1405,7 +1403,7 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
             record_data['RecordID'] = record_id
             record_data['RecordDate'] = record_date
 
-            record = record_class(record_entry.name, record_layout, level=0)
+            record = record_class(record_entry, level=0)
             try:
                 record.initialize(record_data, new=True)
             except Exception as e:
@@ -1449,13 +1447,14 @@ def record_import_window(record_layout, table, win_size: tuple = None, enable_ne
                     else:
                         record_data = trans_df.iloc[0]
 
-                    record = record_class(record_entry.name, record_layout, level=0)
+                    record = record_class(record_entry, level=0)
                     try:
                         record.initialize(record_data)
                     except Exception as e:
                         msg = 'Failed to initialize record {ID}'.format(ID=record_id)
                         print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
                         popup_error(msg)
+                        raise
                     else:
                         record_window(record)
 
