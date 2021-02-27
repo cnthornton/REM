@@ -119,7 +119,7 @@ class DataParameter:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: DataParameter {NAME}: component {COMP} not found in list of data element components'
+            print('Warning: DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements'
                   .format(COMP=component, NAME=self.name))
             key = None
 
@@ -449,8 +449,6 @@ class DataParameterInput(DataParameter):
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
-                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
             if input_value is None:
                 return None
 
@@ -646,9 +644,6 @@ class DataParameterCombo(DataParameter):
             print('Info: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
-        else:
-            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
-                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         aliases = {j: i for i, j in self.aliases.items()}
         value_fmt = aliases.get(input_value, input_value)
@@ -748,9 +743,6 @@ class DataParameterDate(DataParameter):
             print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
-        else:
-            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
-                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         if not input_value:
             return None
@@ -922,9 +914,6 @@ class DataParameterDateRange(DataParameter):
             print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
-        else:
-            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
-                  .format(NAME=self.name, ORIG=self.value, NEW=input_values))
 
         formatted_values = []
         for input_value in input_values:
@@ -1096,9 +1085,6 @@ class DataParameterCheckbox(DataParameter):
             print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
-        else:
-            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
-                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
 
         try:
             value_fmt = bool(int(input_value))
@@ -1191,8 +1177,6 @@ class DataParameterButton(DataParameter):
                   .format(NAME=self.name))
             return self.value
         else:
-            print('Info: DataParameter {NAME}: updating parameter value {ORIG} to {NEW}'
-                  .format(NAME=self.name, ORIG=self.value, NEW=input_value))
             if input_value is None:
                 return None
 
