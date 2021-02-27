@@ -403,7 +403,6 @@ class TableElement:
             self.collapse_expand(window, frame='summary')
 
         elif event == self.key_lookup('Filter'):
-            print('Info: DataTable {TBL}: filtering display table using user-supplied values'.format(TBL=self.name))
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
@@ -711,7 +710,7 @@ class TableElement:
                         continue
                     if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
                         try:
-                            df = df[(df[param.name] > from_value) & (df[param.name] < to_value)]
+                            df = df[(df[param.name] >= from_value) & (df[param.name] <= to_value)]
                         except KeyError:
                             print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
                                   .format(TBL=self.name, PARAM=param.name))
@@ -732,7 +731,7 @@ class TableElement:
                                   '{VAL},'.format(TBL=self.name, PARAM=param.name, VAL=from_value))
                     elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
                         try:
-                            df = df[df[param.name] == from_value]
+                            df = df[df[param.name] == to_value]
                         except KeyError:
                             print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
                                   .format(TBL=self.name, PARAM=param.name))
@@ -1653,7 +1652,6 @@ class TableElement:
             print('Info: DataTable {NAME}: opening record at row {IND}'.format(NAME=self.name, IND=index))
 
         # Display the record window
-        print(record.table_values())
         record = mod_win2.record_window(record, view_only=view_only)
 
         # Update record table values
@@ -1841,7 +1839,7 @@ class TableElement:
                 elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
                     df[column] = pd.to_numeric(df[column], errors='coerce')
                 elif dtype in ('bool', 'boolean'):
-                    df[column] = df[column].astype(np.bool, errors='raise')
+                    df[column] = df[column].fillna(False).astype(np.bool, errors='raise')
                 elif dtype in ('char', 'varchar', 'binary', 'text'):
                     df[column] = df[column].astype(np.object, errors='raise')
                 else:
