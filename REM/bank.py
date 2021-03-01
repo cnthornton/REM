@@ -116,9 +116,9 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Main', 'Summary', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'Reconcile', 'FrameWidth',
+                         ['Main', 'Summary', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
                           'FrameHeight', 'PanelWidth', 'PanelHeight', 'MoneyOutTabHeight', 'MoneyInTabHeight',
-                          'MoneyOutTab', 'MoneyInTab', 'TG', 'SinkTG', 'SourceTG']]
+                          'MoneyOutTab', 'MoneyInTab', 'MainTG', 'SummaryTG', 'SinkTG', 'SourceTG']]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -173,29 +173,39 @@ class BankRule:
             sys.exit(1)
 
         try:
-            self.table = mod_elem.TableElement(name, main_entry['DisplayTable'])
+            self.title = main_entry['Title']
         except KeyError:
-            msg = 'Configuration Error: BankRule {NAME}: missing required "Main" parameter "Table"'.format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
-        except AttributeError as e:
-            msg = 'Configuration Error: BankRule {NAME}: unable to initialize DisplayTable - {ERR}' \
-                .format(NAME=name, ERR=e)
+            self.title = self.name
+
+        self.tabs = []
+        try:
+            tab_entries = main_entry['Tabs']
+        except KeyError:
+            msg = 'Configuration Error: BankRule {NAME}: missing required "Main" parameter "Tabs"'.format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
         else:
-            self.elements += self.table.elements
+            for tab_name in tab_entries:
+                tab_rule = BankRecordTab(tab_name, tab_entries[tab_name], parent=self.name)
+
+                self.tabs.append(tab_rule)
+                self.elements += tab_rule.elements
 
         try:
-            self.import_rules = main_entry['ImportRules']
+            summary_entry = entry["Summary"]
         except KeyError:
-            msg = 'Configuration Error: BankRule {NAME}: missing required "Main" parameter "ImportRules"' \
+            msg = 'Configuration Error: BankRule {NAME}: missing required "Summary"' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
 
         try:
-            assoc_entries = entry['Associations']
+            self.summary_title = summary_entry["Title"]
+        except KeyError:
+            self.summary_title = self.name
+
+        try:
+            assoc_entries = summary_entry['Tabs']
         except KeyError:
             msg = 'Configuration Error: BankRule {NAME}: missing required parameter "Associations"'.format(NAME=name)
             mod_win2.popup_error(msg)
@@ -204,7 +214,7 @@ class BankRule:
         self.associations = []
         for assoc_name in assoc_entries:
             assoc_entry = assoc_entries[assoc_name]
-            assoc = AssociationRule(assoc_name, assoc_entry)
+            assoc = BankAssociationTab(assoc_name, assoc_entry)
 
             self.associations.append(assoc)
             self.elements += assoc.elements
@@ -249,6 +259,28 @@ class BankRule:
                            .format(ELEM=element, NAME=self.name))
 
         return parameter
+
+    def fetch_tab(self, fetch_key, by_key: bool = False):
+        """
+        """
+        tabs = self.tabs
+
+        if by_key is True:
+            element_type = fetch_key[1:-1].split('_')[-1]
+            names = [i.key_lookup(element_type) for i in tabs]
+        else:
+            names = [i.name for i in tabs]
+
+        try:
+            index = names.index(fetch_key)
+        except ValueError:
+            print('Error: AuditRule {RULE}: {TAB} not in list of audit rule transactions'
+                  .format(RULE=self.name, TAB=fetch_key))
+            tab_item = None
+        else:
+            tab_item = tabs[index]
+
+        return tab_item
 
     def fetch_association(self, fetch_key, by_key: bool = False):
         """
@@ -350,7 +382,8 @@ class BankRule:
         sink_layout = [[sg.Canvas(key=sink_height_key, size=(0, tab_height), background_color=bg_col),
                         sg.Col([[sg.Text('{} Expense Destinations'.format(self.menu_title), background_color=bg_col,
                                          font=font_h)],
-                                [sg.TabGroup([sink_tabs], key=sink_tg_key, pad=(0, 0), tab_background_color=inactive_col,
+                                [sg.TabGroup([sink_tabs], key=sink_tg_key, pad=(0, 0),
+                                             tab_background_color=inactive_col,
                                              selected_title_color=select_col, title_color=text_col,
                                              selected_background_color=bg_col, background_color=bg_col)]],
                                pad=(pad_frame, (0, pad_frame)), background_color=bg_col, element_justification='c',
@@ -366,7 +399,7 @@ class BankRule:
                            disabled=sink_disabled)]
 
         # TabGroup layout
-        tg_key = self.key_lookup('TG')
+        tg_key = self.key_lookup('SummaryTG')
         panel_layout = [[sg.TabGroup([source_tab, sink_tab], key=tg_key, pad=(0, 0),
                                      tab_background_color=inactive_col, selected_title_color=select_col,
                                      title_color=text_col,
@@ -394,6 +427,9 @@ class BankRule:
         disabled_bg_col = mod_const.DISABLED_BUTTON_COL
         bg_col = mod_const.ACTION_COL
         header_col = mod_const.HEADER_COL
+        inactive_col = mod_const.INACTIVE_COL
+        text_col = mod_const.TEXT_COL
+        select_col = mod_const.SELECT_TEXT_COL
 
         font_h = mod_const.HEADER_FONT
 
@@ -409,7 +445,7 @@ class BankRule:
         layout_height = height * 0.8
         frame_height = layout_height * 0.70
         panel_height = frame_height - 80
-        tbl_height = panel_height * 0.6
+        tab_height = panel_height * 0.6
 
         layout_pad = 120
         win_diff = width - mod_const.WIN_WIDTH
@@ -417,11 +453,11 @@ class BankRule:
 
         frame_width = width - layout_pad if layout_pad > 0 else width
         panel_width = frame_width - 30
-        tbl_width = panel_width - 30
+        tab_width = panel_width - 30
 
         # Layout elements
         # Title
-        panel_title = 'Bank Reconciliation : {}'.format(self.menu_title)
+        panel_title = 'Bank Reconciliation : {}'.format(self.title)
         title_layout = [[sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
         # Rule parameter elements
@@ -441,22 +477,21 @@ class BankRule:
                         sg.Col(start_layout, pad=(0, 0), background_color=bg_col, justification='r',
                                element_justification='r', vertical_alignment='t')]
 
-        # Table layout
-        tbl_layout = [self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))]
+        # Tab layout
+        tg_key = self.key_lookup('MainTG')
+        tab_layouts = []
+        for i, tab in enumerate(self.tabs):
+            tab_layouts.append(tab.layout((tab_width, tab_height)))
 
-        # Main Panel layout
+        tg_layout = [sg.TabGroup([tab_layouts], key=tg_key, pad=(0, 0), enable_events=True,
+                                 tab_background_color=inactive_col, selected_title_color=select_col,
+                                 title_color=text_col, selected_background_color=bg_col, background_color=bg_col)]
+
+        # Main panel layout
         main_key = self.key_lookup('Main')
-        reconcile_key = self.key_lookup('Reconcile')
         main_layout = sg.Col([param_layout,
                               [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-                              tbl_layout,
-                              [sg.Col([
-                                  [mod_layout.B1('Find Associations', key=reconcile_key, disabled=True,
-                                                 button_color=(bttn_text_col, bttn_bg_col),
-                                                 disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                                 tooltip='Reconcile the selected bank records', use_ttk_buttons=True)]],
-                                  pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
-                                  expand_x=True)]],
+                              tg_layout],
                              key=main_key, pad=(0, 0), background_color=bg_col, vertical_alignment='t',
                              visible=True, expand_y=True, expand_x=True)
 
@@ -490,7 +525,6 @@ class BankRule:
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')
-
         frame_layout = [sg.Frame('', [
             [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
             [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
@@ -536,12 +570,15 @@ class BankRule:
         ph_key = self.key_lookup('PanelHeight')
         window[ph_key].set_size((None, panel_height))
 
-        # Resize table
-        tbl_width = panel_width - 30  # includes padding on both sides and scroll bar
-        tbl_height = int(panel_height * 0.5)
-        self.table.resize(window, size=(tbl_width, tbl_height), row_rate=100)
+        # Resize tab elements
+        tab_height = panel_height - 320  # minus size of the tabs and the panel title
+        tab_width = panel_width - mod_const.FRAME_PAD * 2  # minus left and right padding
 
-        # Resize summary tabs and elements
+        tabs = self.tabs
+        for tab in tabs:
+            tab.resize_elements(window, size=(tab_width, tab_height))
+
+        # Resize summary tab elements
         tab_height = panel_height - 30  # minus size of the tabs
         source_height_key = self.key_lookup('MoneyInTabHeight')
         window[source_height_key].set_size((None, tab_height))
@@ -565,11 +602,13 @@ class BankRule:
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         start_key = self.key_lookup('Start')
-        tg_key = self.key_lookup('TG')
+        main_tg_key = self.key_lookup('MainTG')
+        summary_tg_key = self.key_lookup('SummaryTG')
 
         # Component element events
-        param_elements = [i for j in self.parameters for i in j.elements]
-        association_elements = [i for j in self.associations for i in j.elements]
+        tab_keys = [i for j in self.tabs for i in j.elements]
+        param_keys = [i for j in self.parameters for i in j.elements]
+        association_keys = [i for j in self.associations for i in j.elements]
 
         # Cancel button pressed
         if event == cancel_key:
@@ -620,7 +659,7 @@ class BankRule:
             window[self.key_lookup('Back')].update(disabled=True)
 
             # Switch to first tab
-            tg_key = self.key_lookup('TG')
+            tg_key = self.key_lookup('MainTG')
             window[tg_key].Widget.select(0)
 
             # Reset current panel attribute
@@ -645,15 +684,27 @@ class BankRule:
                     msg = 'Parameter {} requires correctly formatted input'.format(param_desc)
                     mod_win2.popup_notice(msg)
                     inputs.append(False)
+                elif (isinstance(param.value, list) or isinstance(param.value, tuple)) and any(param.value) is False:
+                    param_desc = param.description
+                    msg = 'Parameters {} and {} requires correctly formatted input in both fields'.format(*param_desc)
+                    mod_win2.popup_notice(msg)
+                    inputs.append(False)
                 else:
                     inputs.append(True)
 
             # Load data from the database
             if all(inputs):  # all rule parameters have input
-                initialized = self.load_data()
+                initialized = []
+                # Import tab data from the database
+                for tab in self.tabs:
+                    initialized.append(tab.load_data(self.parameters))
+
+                # Import association data from the database
+                for association in self.associations:
+                    initialized.append(association.load_data(self.parameters))
 
                 # Show that a bank reconciliation is in progress
-                if initialized is True:
+                if all(initialized) is True:
                     self.in_progress = True
                     print('Info: BankRule {NAME}: bank reconciliation in progress with parameters {PARAMS}'
                           .format(NAME=self.name, PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
@@ -663,39 +714,87 @@ class BankRule:
                     window[reconcile_key].update(disabled=False)
 
                     # Update the tab table display
-                    self.table.update_display(window)
+                    for tab in self.tabs:
+                        # Enable table element events
+                        tab.table.enable(window)
+
+                        # Update the tab table display
+                        tab.table.update_display(window)
+
+                        # Enable the tab reconciliation button
+                        window[tab.key_lookup('Reconcile')].update(disabled=False)
 
                     # Update the associate table events
                     for assoc in self.associations:
+                        # Enable table element events
+                        assoc.table.enable(window)
 
                         # Update the association display table
                         assoc.table.update_display(window)
 
-                    # Enable table element events
-                    self.table.enable(window)
-
                     self.toggle_parameters(window, 'disable')
 
         # Switch between tabs
-        elif event == tg_key:
-            tab_key = window[tg_key].Get()
-            tab = self.fetch_association(tab_key, by_key=True)
-            print('Info: BankRule {NAME}: moving to bank association {ASSOC}'.format(NAME=self.name, ASSOC=tab.name))
+        elif event == main_tg_key:
+            tab_key = window[main_tg_key].Get()
+            tab = self.fetch_tab(tab_key, by_key=True)
+            print('Info: BankRule {NAME}: moving to bank record tab {TAB}'.format(NAME=self.name, TAB=tab.name))
+
+            # Collapse the filter frame of current tab
             filter_key = tab.table.key_lookup('FilterFrame')
             if window[filter_key].metadata['visible'] is True:
                 tab.table.collapse_expand(window, frame='filter')
 
-        # Run the bank reconciliation algorithm
-        elif event == reconcile_key:
-            # Enable movement to the summary panels
-            window[next_key].update(disabled=False)
+            # Un-collapse the filter frame of all other tabs
+            for unselected_tab in self.tabs:
+                if tab.name == unselected_tab.name:
+                    continue
+                else:
+                    filter_key = unselected_tab.table.key_lookup('FilterFrame')
+                    if window[filter_key].metadata['visible'] is False:
+                        unselected_tab.table.collapse_expand(window, frame='filter')
 
-        # Run component table events
-        elif event in self.table.elements:
-            self.table.run_event(window, event, values)
+        # Switch between summary tabs
+        elif event == summary_tg_key:
+            tab_key = window[summary_tg_key].Get()
+            tab = self.fetch_association(tab_key, by_key=True)
+            print('Info: BankRule {NAME}: moving to bank association tab {TAB}'.format(NAME=self.name, TAB=tab.name))
 
-        # Run association table events
-        elif event in association_elements:
+            # Collapse the filter frame of current tab
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
+
+            # Un-collapse the filter frame of all other tabs
+            for unselected_tab in self.associations:
+                if tab.name == unselected_tab.name:
+                    continue
+                else:
+                    filter_key = unselected_tab.table.key_lookup('FilterFrame')
+                    if window[filter_key].metadata['visible'] is False:
+                        unselected_tab.table.collapse_expand(window, frame='filter')
+
+        # Run a tab event
+        elif event in tab_keys:
+            # Fetch the transaction tab
+            try:
+                tab = self.fetch_tab(event, by_key=True)
+            except KeyError:
+                print('Error: AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
+                      .format(NAME=self.name, KEY=event))
+            else:
+                tab.run_event(window, event, values)
+
+            # Enable movement to summary panel if reconciliation has been performed for all tabs
+            is_performed = []
+            for tab in self.tabs:
+                is_performed.append(tab.reconciled)
+
+            if all(is_performed) is True:
+                window[next_key].update(disabled=False)
+
+        # Run an association event
+        elif event in association_keys:
             # Fetch the association element
             try:
                 association_table = self.fetch_association(event, by_key=True)
@@ -705,8 +804,8 @@ class BankRule:
             else:
                 association_table.run_event(window, event, values)
 
-        # Run component parameter events
-        elif event in param_elements:
+        # Run parameter events
+        elif event in param_keys:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
@@ -721,6 +820,8 @@ class BankRule:
         """
         Reset rule to default.
         """
+        self.in_progress = False
+
         panel_key = self.element_key
         current_key = self.panel_keys[self.current_panel]
 
@@ -746,21 +847,18 @@ class BankRule:
         window[reconcile_key].update(disabled=True)
 
         # Switch to first tab in panel
-        tg_key = self.key_lookup('TG')
+        tg_key = self.key_lookup('MainTG')
         window[tg_key].Widget.select(0)
 
         # Reset the parameter elements.
         self.reset_parameters(window)
         self.toggle_parameters(window, 'enable')
 
-        # Reset the table elements
-        self.table.df = pd.DataFrame(columns=list(self.table.columns))
-        self.table._df = pd.DataFrame(columns=list(self.table.columns))
-        self.table.update_display(window)
+        # Reset tab attributes
+        for i, tab in enumerate(self.tabs):
+            tab.reset(window)
 
-        # Disable table element events
-        self.table.disable(window)
-
+        # Reset association attributes
         for association in self.associations:
             association.reset(window)
 
@@ -787,51 +885,219 @@ class BankRule:
         for parameter in self.parameters:
             parameter.toggle_parameter(window, value=value)
 
-    def load_data(self):
+
+class BankRecordTab:
+    """
+    Bank record tab.
+
+        name (str): rule name.
+
+        id (int): rule element number.
+
+        title (str): rule title.
+
+        element_key (str): rule element key.
+
+        elements (list): list of rule GUI element keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Arguments:
+
+            name (str): configuration entry name for the bank record tab.
+
+            entry (dict): dictionary of optional and required entry arguments.
+
+            parent (str): name of the object's parent element.
+        """
+        self.name = name
+        self.parent = parent
+        self.id = randint(0, 1000000000)
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ['Tab', 'Reconcile', 'Width', 'Height']]
+
+        try:
+            self.title = entry['Title']
+        except KeyError:
+            self.title = name
+
+        try:
+            import_rules = entry['ImportRules']
+        except KeyError:
+            msg = 'Configuration Error: BankRecordTab {NAME}: missing required field "ImportRules".' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.import_rules = import_rules
+
+        try:
+            self.table = mod_elem.TableElement(name, entry['DisplayTable'])
+        except KeyError:
+            msg = 'Configuration Error: BankRecordTab {NAME}: missing required parameter "DisplayTable"' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        except AttributeError as e:
+            msg = 'Configuration Error: BankRecordTab {NAME}: unable to initialize DisplayTable - {ERR}' \
+                .format(NAME=name, ERR=e)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            self.elements += self.table.elements
+
+        self.reconciled = False
+
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            print('Warning: BankRecordTab {NAME}: component {COMP} not found in list of elements'
+                  .format(NAME=self.name, COMP=component))
+            key = None
+
+        return key
+
+    def reset(self, window):
+        """
+        Reset the elements and attributes of the bank record tab.
+        """
+
+        # Reset the data table
+        self.table.df = pd.DataFrame(columns=list(self.table.columns))
+        self.table._df = pd.DataFrame(columns=list(self.table.columns))
+        self.table.update_display(window)
+
+        # Disable table element events
+        self.table.disable(window)
+
+        # Un-collapse the tab filter frame
+        filter_key = self.table.key_lookup('FilterFrame')
+        if window[filter_key].metadata['visible'] is False:
+            self.table.collapse_expand(window, frame='filter')
+
+        # Disable the associate button
+        window[self.key_lookup('Reconcile')].update(disabled=True)
+
+    def layout(self, size):
+        """
+        GUI layout for the bank record tab.
+        """
+        width, height = size
+
+        # Element parameters
+        bg_col = mod_const.ACTION_COL
+        bttn_text_col = mod_const.WHITE_TEXT_COL
+        bttn_bg_col = mod_const.BUTTON_COL
+        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        disabled_bg_col = mod_const.DISABLED_BUTTON_COL
+
+        pad_frame = mod_const.FRAME_PAD
+
+        # Element sizes
+        tbl_width = width - 40
+        tbl_height = height * 0.8
+
+        # Layout
+        reconcile_key = self.key_lookup('Reconcile')
+        main_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))],
+                       [sg.Col([[mod_layout.B1('Find Associations', key=reconcile_key, disabled=True,
+                                               button_color=(bttn_text_col, bttn_bg_col),
+                                               disabled_button_color=(disabled_text_col, disabled_bg_col),
+                                               tooltip='Reconcile the selected bank records', use_ttk_buttons=True)]],
+                               pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
+                               expand_x=True)]]
+
+        height_key = self.key_lookup('Height')
+        width_key = self.key_lookup('Width')
+        layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
+                  [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
+                   sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
+                          background_color=bg_col, expand_x=True)]]
+
+        return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col)
+
+    def resize_elements(self, window, size):
+        """
+        Resize the bank record tab.
+        """
+        width, height = size
+
+        # Reset tab element size
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(width, None))
+
+        height_key = self.key_lookup('Height')
+        window[height_key].set_size(size=(None, height))
+
+        # Reset table size
+        tbl_width = width - 30  # includes padding on both sides and scroll bar
+        tbl_height = int(height * 0.90)
+        self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
+
+    def run_event(self, window, event, values):
+        """
+        Run a bank record tab event.
+        """
+        reconcile_key = self.key_lookup('Reconcile')
+        table_keys = self.table.elements
+
+        success = True
+        # Run component table events
+        if event in table_keys:
+            table = self.table
+
+            import_key = self.table.key_lookup('Import')
+            if event == import_key:
+                table.df = table.import_rows(self.import_rules, id_only=True)
+                table.update_display(window, window_values=values)
+
+            else:
+                table.run_event(window, event, values)
+
+        # Run the bank reconciliation algorithm
+        elif event == reconcile_key:
+            self.reconciled = True
+
+        return success
+
+    def load_data(self, parameters):
         """
         Load data from the database.
         """
-        data_loaded = []
-
         # Prepare the database query statement
         import_rules = self.import_rules
 
-        filters = mod_db.format_import_filters(import_rules)
+        param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in parameters]
+        filters = param_filters + mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
         columns = mod_db.format_import_columns(import_rules)
-
-        # Add parameter values to the filter statement
-        rule_params = self.parameters  # to filter data tables
-        param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in rule_params]
-        filters += param_filters
 
         # Import primary bank data from database
         try:
             df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
         except Exception as e:
-            mod_win2.popup_error('Error: BankRule {NAME}: failed to import data from the database - {ERR}'
+            mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))
-            data_loaded.append(False)
+            data_loaded = False
         else:
-            if df.empty:
-                print('Warning: BankRule {NAME}: no data to display'.format(NAME=self.name))
-            else:
-                self.table.df = self.table.append(df)
-                self.table._df = self.table.df
-            data_loaded.append(True)
+            print('Info: BankRecordTab {NAME}: loaded data for bank reconciliation {RULE}'
+                  .format(NAME=self.name, RULE=self.parent))
+            self.table.df = self.table.append(df)
+            self.table.initialize_defaults()
+            self.table._df = self.table.df
+            data_loaded = True
 
-        # Import association data from database
-        for association in self.associations:
-            # Set parameter attribute for the association
-            association.parameters = self.parameters
-
-            # Load data
-            data_loaded.append(association.load_data())
-
-        return all(data_loaded)
+        return data_loaded
 
 
-class AssociationRule:
+class BankAssociationTab:
     """
     Bank Reconciliation income source / expense destination.
 
@@ -862,13 +1128,13 @@ class AssociationRule:
         try:
             transaction_type = entry['Type']
         except KeyError:
-            msg = 'Configuration Error: BankRuleAssociation {NAME}: missing required parameter "Type"' \
+            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "Type"' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
         else:
             if transaction_type not in ('Deposit', 'Withdrawal'):
-                msg = 'Configuration Error: BankRuleAssociation {NAME}: unsupported value {VAL} provided to parameter ' \
+                msg = 'Configuration Error: BankAssociationTab {NAME}: unsupported value {VAL} provided to parameter ' \
                       '"Type". Type must be one of "Deposit" or "Withdrawal"'.format(NAME=name, VAL=transaction_type)
                 mod_win2.popup_error(msg)
                 sys.exit(1)
@@ -878,12 +1144,12 @@ class AssociationRule:
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
         except KeyError:
-            msg = 'Configuration Error: BankRuleAssociation {NAME}: missing required parameter "DisplayTable"' \
+            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "DisplayTable"' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
         except AttributeError as e:
-            msg = 'Configuration Error: BankRuleAssociation {NAME}: unable to initialize DisplayTable - {ERR}' \
+            msg = 'Configuration Error: BankAssociationTab {NAME}: unable to initialize DisplayTable - {ERR}' \
                 .format(NAME=name, ERR=e)
             mod_win2.popup_error(msg)
             sys.exit(1)
@@ -893,7 +1159,7 @@ class AssociationRule:
         try:
             self.import_rules = entry['ImportRules']
         except KeyError:
-            msg = 'Configuration Error: BankRuleAssociation {NAME}: missing required parameter "ImportRules"' \
+            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "ImportRules"' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
@@ -901,23 +1167,21 @@ class AssociationRule:
         try:
             self.association_rules = entry['AssociationRules']
         except KeyError:
-            msg = 'Configuration Error: BankRuleAssociation {NAME}: missing required parameter "AssociationRules"' \
+            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "AssociationRules"' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
-
-        self.parameters = None
 
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
         """
-        element_names = [i.split('_')[-1] for i in self.elements]
+        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: BankAssociation {NAME}: component {COMP} not found in list of association components'
+            print('Warning: BankAssociationTab {NAME}: component {COMP} not found in list of rule components'
                   .format(NAME=self.name, COMP=component))
             key = None
 
@@ -928,10 +1192,12 @@ class AssociationRule:
         Run an association table event.
         """
         # Component element events
-        tbl_elements = self.table.elements
+        table_keys = self.table.elements
 
         # Table event
-        if event in tbl_elements:
+        print(self.elements)
+        print(self.table.elements)
+        if event in table_keys:
             self.table.run_event(window, event, values)
 
         return True
@@ -958,24 +1224,13 @@ class AssociationRule:
 
         # Reset the data table
         self.table.df = pd.DataFrame(columns=list(self.table.columns))
+        self.table._df = pd.DataFrame(columns=list(self.table.columns))
         self.table.update_display(window)
 
         # Disable table element events
         self.table.disable(window)
 
-        # Reset the parameter values
-        self.parameters = None
-
-        # Disable the reconcile button
-#        window[self.key_lookup('Reconcile')].update(disabled=True)
-
-        # Reset visible tabs
-#        print('Info: BankRuleAssociation {NAME}: re-setting visibility of rule tab to {STATUS}'
-#              .format(NAME=self.name, STATUS=visible))
-
-#        window[self.element_key].update(visible=visible)
-
-    def load_data(self):
+    def load_data(self, parameters):
         """
         Load association data from the database.
         """
@@ -987,7 +1242,7 @@ class AssociationRule:
         columns = mod_db.format_import_columns(import_rules)
 
         # Add parameter values to the filter statement
-        rule_params = self.parameters  # to filter data tables
+        rule_params = parameters  # to filter data tables
         filters += [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in rule_params]
 
         # Import primary bank data from database
@@ -999,113 +1254,8 @@ class AssociationRule:
             data_loaded = False
         else:
             self.table.df = self.table.append(df)
+            self.table.initialize_defaults()
             self.table._df = self.table.df
             data_loaded = True
 
         return data_loaded
-
-
-class BankSummary:
-    """
-    BankRule summary panel object.
-    """
-
-    def __init__(self, name, entry, parent=None):
-
-        self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
-        self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['TG', 'Title']]
-
-        try:
-            self._title = entry['Title']
-        except KeyError:
-            self._title = '{} Summary'.format(name)
-
-        try:
-            record_tabs = entry['Tabs']
-        except KeyError:
-            msg = 'Configuration Error: BankRuleSummary {NAME}: missing required configuration parameter "Tabs".' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
-        else:
-            self.tabs = []
-            for record_type in record_tabs:
-                tab = AssociationRule(record_type, record_tabs[record_type])
-
-                self.tabs.append(tab)
-                self.elements += tab.elements
-
-        # Dynamic attributes
-        self.parameters = None
-        self.title = None
-
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            print('Warning: BankRuleSummary {NAME}: component {COMP} not found in list of components'
-                  .format(NAME=self.name, COMP=component))
-            key = None
-
-        return key
-
-    def fetch_tab(self, fetch_key, by_key: bool = False):
-        """
-        Fetch a bank reconciliation summary tab object from the list of tabs.
-        """
-        tabs = self.tabs
-
-        if by_key is True:
-            tab_item = None
-            for tab in self.tabs:
-                if fetch_key in tab.elements:
-                    tab_item = tab
-                    break
-
-            if tab_item is None:
-                raise KeyError('{TAB} not in list of bank rule summary tab elements'.format(TAB=fetch_key))
-        else:
-            names = [i.name for i in tabs]
-
-            try:
-                index = names.index(fetch_key)
-            except ValueError:
-                raise KeyError('{TAB} not in list of bank rule summary tabs'.format(TAB=fetch_key))
-            else:
-                tab_item = tabs[index]
-
-        return tab_item
-
-    def reset(self, window):
-        """
-        Reset summary tabs.
-        """
-        self.title = None
-
-        for tab in self.tabs:
-            tab.reset(window)
-
-    def run_event(self, window, event, values):
-        """
-        Run a bank reconciliation summary event.
-        """
-        # Run a summary tab event
-        tab_keys = [i for j in self.tabs for i in j.elements]
-        if event in tab_keys:
-            try:
-                tab = self.fetch_tab(event, by_key=True)
-            except Exception as e:
-                print('Error: BankRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
-                      .format(NAME=self.name, EVENT=event, ERR=e))
-            else:
-                tab.run_event(window, event, values)
-

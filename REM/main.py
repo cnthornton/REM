@@ -704,6 +704,16 @@ def main():
             window[current_panel].update(visible=True)
             window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
 
+            # Collapse the filter frame of the first tab
+            tg_key = current_rule.key_lookup('MainTG')
+            print('collapsing the filter frame of the first tab with key {}'.format(tg_key))
+            tab_key = window[tg_key].Get()
+            tab = current_rule.fetch_tab(tab_key, by_key=True)
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
+
+
             # Disable toolbar
             toolbar.disable(window, all_rules)
 

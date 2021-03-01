@@ -468,7 +468,7 @@ class AuditRule:
 
         # Run transaction tab events
         elif event in tab_keys:
-            # Fetch the association element
+            # Fetch the transaction tab
             try:
                 tab = self.fetch_tab(event, by_key=True)
             except KeyError:
@@ -562,7 +562,6 @@ class AuditRule:
         bg_col = mod_const.ACTION_COL
         header_col = mod_const.HEADER_COL
         inactive_col = mod_const.INACTIVE_COL
-#        default_col = mod_const.DEFAULT_COL
         text_col = mod_const.TEXT_COL
         select_col = mod_const.SELECT_TEXT_COL
 
@@ -592,7 +591,7 @@ class AuditRule:
 
         # Layout elements
         # Title
-        panel_title = self.menu_title
+        panel_title = 'Transaction Audit: {}'.format(self.menu_title)
         title_layout = [[sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
         # Rule parameter elements
@@ -605,7 +604,7 @@ class AuditRule:
         start_layout = [[mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False,
                                    button_color=(bttn_text_col, bttn_bg_col),
                                    disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                   tooltip='Start bank reconciliation', use_ttk_buttons=True)]]
+                                   tooltip='Start transaction audit', use_ttk_buttons=True)]]
 
         param_layout = [sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
                                vertical_alignment='t', expand_x=True),
@@ -626,8 +625,6 @@ class AuditRule:
         tg_layout = [sg.TabGroup([audit_tabs], key=tg_key, pad=(0, 0), enable_events=True,
                                  tab_background_color=inactive_col, selected_title_color=select_col,
                                  title_color=text_col, selected_background_color=bg_col, background_color=bg_col)]
-
-#        audit_layout.append([sg.Col(tg_layout, pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True)])
 
         # Main panel layout
         main_key = self.key_lookup('Panel')
@@ -712,7 +709,7 @@ class AuditRule:
         window[ph_key].set_size((None, panel_height))
 
         # Resize tab elements
-        tab_height = panel_height * 0.7  # minus size of the tabs and the panel title
+        tab_height = panel_height - 120  # minus size of the tabs and the panel title
         tab_width = panel_width - mod_const.FRAME_PAD * 2  # minus left and right padding
 
         tabs = self.tabs
@@ -816,9 +813,9 @@ class AuditTransactionTab:
         """
         Arguments:
 
-            name (str): bank reconciliation rule name.
+            name (str): configuration entry name for the transaction tab.
 
-            entry (dict): dictionary of optional and required bank rule arguments.
+            entry (dict): dictionary of optional and required entry arguments.
 
             parent (str): name of the object's parent element.
         """
@@ -884,7 +881,7 @@ class AuditTransactionTab:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: AuditRule {NAME}: component {COMP} not found in list of audit rule elements'
+            print('Warning: AuditTransactionTab {NAME}: component {COMP} not found in list of audit rule elements'
                   .format(NAME=self.name, COMP=component))
             key = None
 
@@ -1047,7 +1044,7 @@ class AuditTransactionTab:
 
     def load_data(self):
         """
-        Load association data from the database.
+        Load data from the database.
         """
         # Prepare the database query statement
         import_rules = self.import_rules
