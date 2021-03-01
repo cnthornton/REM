@@ -316,6 +316,8 @@ class TableElement:
                 print('Configuration Error: DataTable {TBL}: row color {COL} is not a valid hexadecimal code'
                       .format(TBL=self.name, COL=row_color))
                 self.row_color = mod_const.TBL_BG_COL
+            else:
+                self.row_color = row_color
 
         try:
             self.tooltip = entry['Tooltip']
