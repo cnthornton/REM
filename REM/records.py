@@ -312,7 +312,6 @@ class DatabaseRecord:
         modifiers = self.modifiers
         comp_types = self.component_types
         ref_types = self.reference_types
-        record_id = self.record_id()
 
         self.new = new
         record_entry = self.record_entry
@@ -426,8 +425,11 @@ class DatabaseRecord:
                               .format(NAME=self.name, PARAM=param_name))
 
         # Import components and references for existing records
+        record_id = self.record_id()
+        print('Info: RecordType {NAME}: record ID is {ID}'.format(NAME=self.name, ID=record_id))
         if record_id is not None:
             ref_df = references if references is not None else record_entry.import_references(record_id)
+            print('Info: RecordType {NAME}: importing references and components'.format(NAME=self.name))
             for index, row in ref_df.iterrows():
                 if row['DocNo'] != record_id and row['RefNo'] != record_id:
                     continue
