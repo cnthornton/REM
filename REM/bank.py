@@ -118,7 +118,7 @@ class BankRule:
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['Main', 'Summary', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
                           'FrameHeight', 'PanelWidth', 'PanelHeight', 'MoneyOutTabHeight', 'MoneyInTabHeight',
-                          'MoneyOutTab', 'MoneyInTab', 'MainTG', 'SummaryTG', 'SinkTG', 'SourceTG']]
+                          'Withdrawal', 'Deposit', 'MainTG', 'SummaryTG', 'SinkTG', 'SourceTG']]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -265,30 +265,33 @@ class BankRule:
         """
         tabs = self.tabs
 
+        tab_item = None
         if by_key is True:
-            element_type = fetch_key[1:-1].split('_')[-1]
-            names = [i.key_lookup(element_type) for i in tabs]
+            for tab in tabs:
+                if fetch_key in tab.elements:
+                    tab_item = tab
+                    break
         else:
             names = [i.name for i in tabs]
-
-        try:
-            index = names.index(fetch_key)
-        except ValueError:
-            print('Error: AuditRule {RULE}: {TAB} not in list of audit rule transactions'
-                  .format(RULE=self.name, TAB=fetch_key))
-            tab_item = None
-        else:
-            tab_item = tabs[index]
+            try:
+                index = names.index(fetch_key)
+            except ValueError:
+                print('Error: BankRule {RULE}: {TAB} not found in list of bank record tabs'
+                      .format(RULE=self.name, TAB=fetch_key))
+            else:
+                tab_item = tabs[index]
 
         return tab_item
 
-    def fetch_association(self, fetch_key, by_key: bool = False):
+    def fetch_association(self, fetch_key, by_key: bool = False, by_title: bool = False):
         """
         Fetch an association rule by name or event key.
         """
         if by_key is True:
             element_type = fetch_key[1:-1].split('_')[-1]
             associations = [i.key_lookup(element_type) for i in self.associations]
+        elif by_title is True:
+            associations = [i.title for i in self.associations]
         else:
             associations = [i.name for i in self.associations]
 
@@ -323,6 +326,7 @@ class BankRule:
 
         # Association tables
         associations = self.associations
+        titles = {i.name: i.title for i in self.tabs}
 
         # Element sizes
         layout_height = height * 0.8
@@ -359,21 +363,22 @@ class BankRule:
         source_layout = [[sg.Canvas(key=source_height_key, size=(0, tab_height), background_color=bg_col),
                           sg.Col([[sg.Text('{} Income Sources'.format(self.menu_title), background_color=bg_col,
                                            font=font_h)],
-                                  [sg.TabGroup([source_tabs], key=source_tg_key, pad=(0, 0),
-                                               tab_background_color=inactive_col,
-                                               selected_title_color=select_col,
+                                  [sg.TabGroup([source_tabs], key=source_tg_key, pad=(0, 0), enable_events=True,
+                                               tab_background_color=inactive_col, selected_title_color=select_col,
                                                title_color=text_col, selected_background_color=bg_col,
                                                background_color=bg_col)]],
                                  pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
                                  vertical_alignment='t', expand_x=True, expand_y=True)]]
 
-        source_key = self.key_lookup('MoneyInTab')
+        source_key = self.key_lookup('Deposit')
         source_disabled = True if len(source_tabs) < 1 else False
         if source_disabled is True:
             title_col = disabled_col
         else:
             title_col = text_col
-        source_tab = [sg.Tab('Money In', source_layout, key=source_key, title_color=title_col, background_color=bg_col,
+
+        deposit_title = titles.get('Deposit', 'Money In')
+        source_tab = [sg.Tab(deposit_title, source_layout, key=source_key, title_color=title_col, background_color=bg_col,
                              disabled=source_disabled)]
 
         # Money Out layout
@@ -382,25 +387,27 @@ class BankRule:
         sink_layout = [[sg.Canvas(key=sink_height_key, size=(0, tab_height), background_color=bg_col),
                         sg.Col([[sg.Text('{} Expense Destinations'.format(self.menu_title), background_color=bg_col,
                                          font=font_h)],
-                                [sg.TabGroup([sink_tabs], key=sink_tg_key, pad=(0, 0),
-                                             tab_background_color=inactive_col,
-                                             selected_title_color=select_col, title_color=text_col,
-                                             selected_background_color=bg_col, background_color=bg_col)]],
-                               pad=(pad_frame, (0, pad_frame)), background_color=bg_col, element_justification='c',
+                                [sg.TabGroup([sink_tabs], key=sink_tg_key, pad=(0, 0), enable_events=True,
+                                             tab_background_color=inactive_col, selected_title_color=select_col,
+                                             title_color=text_col, selected_background_color=bg_col,
+                                             background_color=bg_col)]],
+                               pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
                                vertical_alignment='t', expand_x=True, expand_y=True)]]
 
-        sink_key = self.key_lookup('MoneyOutTab')
+        sink_key = self.key_lookup('Withdrawal')
         sink_disabled = True if len(sink_tabs) < 1 else False
         if sink_disabled is True:
             title_col = disabled_col
         else:
             title_col = text_col
-        sink_tab = [sg.Tab('Money Out', sink_layout, key=sink_key, title_color=title_col, background_color=bg_col,
+
+        withdrawal_title = titles.get('Withdrawal', 'Money Out')
+        sink_tab = [sg.Tab(withdrawal_title, sink_layout, key=sink_key, title_color=title_col, background_color=bg_col,
                            disabled=sink_disabled)]
 
         # TabGroup layout
         tg_key = self.key_lookup('SummaryTG')
-        panel_layout = [[sg.TabGroup([source_tab, sink_tab], key=tg_key, pad=(0, 0),
+        panel_layout = [[sg.TabGroup([source_tab, sink_tab], key=tg_key, pad=(0, 0), enable_events=True,
                                      tab_background_color=inactive_col, selected_title_color=select_col,
                                      title_color=text_col,
                                      selected_background_color=bg_col, background_color=bg_col)]]
@@ -604,6 +611,8 @@ class BankRule:
         start_key = self.key_lookup('Start')
         main_tg_key = self.key_lookup('MainTG')
         summary_tg_key = self.key_lookup('SummaryTG')
+        sink_tg_key = self.key_lookup('SinkTG')
+        source_tg_key = self.key_lookup('SourceTG')
 
         # Component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
@@ -638,6 +647,20 @@ class BankRule:
             window[self.panel_keys[self.current_panel]].update(visible=False)
             window[self.panel_keys[next_subpanel]].update(visible=True)
 
+            # Collapse the filter frame of the first summary tab
+            summary_tab = window[summary_tg_key].Get()
+            trans_type = summary_tab[1:-1].split('_')[-1]
+            if trans_type.lower() == 'deposit':
+                tg_key = self.key_lookup('SourceTG')
+            else:
+                tg_key = self.key_lookup('SinkTG')
+
+            tab_key = window[tg_key].Get()
+            tab = self.fetch_association(tab_key, by_key=True)
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
+
             # Reset current panel attribute
             self.current_panel = next_subpanel
 
@@ -657,6 +680,12 @@ class BankRule:
 
             window[self.key_lookup('Next')].update(disabled=False)
             window[self.key_lookup('Back')].update(disabled=True)
+
+            # Un-collapse the filter frame of all summary tabs
+            for tab in self.associations:
+                filter_key = tab.table.key_lookup('FilterFrame')
+                if window[filter_key].metadata['visible'] is False:
+                    tab.table.collapse_expand(window, frame='filter')
 
             # Switch to first tab
             tg_key = self.key_lookup('MainTG')
@@ -756,7 +785,55 @@ class BankRule:
 
         # Switch between summary tabs
         elif event == summary_tg_key:
-            tab_key = window[summary_tg_key].Get()
+            summary_tab = window[summary_tg_key].Get()
+            print('Info: BankRule {NAME}: moving to summary tab {TAB}'.format(NAME=self.name, TAB=summary_tab))
+
+            trans_type = summary_tab[1:-1].split('_')[-1]
+            if trans_type.lower() == 'deposit':
+                tg_key = self.key_lookup('SourceTG')
+            else:
+                tg_key = self.key_lookup('SinkTG')
+
+            tab_key = window[tg_key].Get()
+            tab = self.fetch_association(tab_key, by_key=True)
+
+            # Collapse the filter frame of current tab
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
+
+            # Un-collapse the filter frame of all other tabs
+            for unselected_tab in self.associations:
+                if tab.name == unselected_tab.name:
+                    continue
+                else:
+                    filter_key = unselected_tab.table.key_lookup('FilterFrame')
+                    if window[filter_key].metadata['visible'] is False:
+                        unselected_tab.table.collapse_expand(window, frame='filter')
+
+        # Switch between summary sink tabs
+        elif event == sink_tg_key:
+            tab_key = window[sink_tg_key].Get()
+            tab = self.fetch_association(tab_key, by_key=True)
+            print('Info: BankRule {NAME}: moving to bank association tab {TAB}'.format(NAME=self.name, TAB=tab.name))
+
+            # Collapse the filter frame of current tab
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
+
+            # Un-collapse the filter frame of all other tabs
+            for unselected_tab in self.associations:
+                if tab.name == unselected_tab.name:
+                    continue
+                else:
+                    filter_key = unselected_tab.table.key_lookup('FilterFrame')
+                    if window[filter_key].metadata['visible'] is False:
+                        unselected_tab.table.collapse_expand(window, frame='filter')
+
+        # Switch between summary source tabs
+        elif event == source_tg_key:
+            tab_key = window[source_tg_key].Get()
             tab = self.fetch_association(tab_key, by_key=True)
             print('Info: BankRule {NAME}: moving to bank association tab {TAB}'.format(NAME=self.name, TAB=tab.name))
 
@@ -1118,7 +1195,7 @@ class BankAssociationTab:
         """
         self.name = name
         self.id = randint(0, 1000000000)
-        self.elements = ['{NAME}_{ID}_{ELEM}'.format(NAME=self.name, ID=self.id, ELEM=i) for i in ['Tab']]
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in ['Tab']]
 
         try:
             self.title = entry['Title']
@@ -1164,14 +1241,6 @@ class BankAssociationTab:
             mod_win2.popup_error(msg)
             sys.exit(1)
 
-        try:
-            self.association_rules = entry['AssociationRules']
-        except KeyError:
-            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "AssociationRules"' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
-
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -1181,7 +1250,7 @@ class BankAssociationTab:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: BankAssociationTab {NAME}: component {COMP} not found in list of rule components'
+            print('Warning: BankAssociationTab {NAME}: component {COMP} not found in list of class components'
                   .format(NAME=self.name, COMP=component))
             key = None
 
@@ -1195,8 +1264,6 @@ class BankAssociationTab:
         table_keys = self.table.elements
 
         # Table event
-        print(self.elements)
-        print(self.table.elements)
         if event in table_keys:
             self.table.run_event(window, event, values)
 
@@ -1229,6 +1296,11 @@ class BankAssociationTab:
 
         # Disable table element events
         self.table.disable(window)
+
+        # Un-collapse the table filter frame
+        filter_key = self.table.key_lookup('FilterFrame')
+        if window[filter_key].metadata['visible'] is False:
+            self.table.collapse_expand(window, frame='filter')
 
     def load_data(self, parameters):
         """

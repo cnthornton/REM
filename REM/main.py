@@ -713,7 +713,6 @@ def main():
             if window[filter_key].metadata['visible'] is True:
                 tab.table.collapse_expand(window, frame='filter')
 
-
             # Disable toolbar
             toolbar.disable(window, all_rules)
 
