@@ -266,7 +266,7 @@ class DatabaseRecord:
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
 
-        self.import_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
+        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
 
     def key_lookup(self, component):
         """
@@ -296,7 +296,7 @@ class DatabaseRecord:
         param = self.fetch_header('RecordDate')
         return param.value
 
-    def initialize(self, data, new: bool = False):
+    def initialize(self, data, new: bool = False, references: pd.DataFrame = None):
         """
         Initialize record attributes.
 
@@ -304,14 +304,15 @@ class DatabaseRecord:
             data (dict): dictionary or pandas series containing record data.
 
             new (bool): record is newly created [default: False].
-        """
-#        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
+            references (DataFrame): dataframe of references and components [default: load from database].
+        """
         headers = self.headers
         parameters = self.parameters
         modifiers = self.modifiers
         comp_types = self.component_types
         ref_types = self.reference_types
+        record_id = self.record_id()
 
         self.new = new
         record_entry = self.record_entry
@@ -425,11 +426,12 @@ class DatabaseRecord:
                               .format(NAME=self.name, PARAM=param_name))
 
         # Import components and references for existing records
-        if new is False and self.record_id() is not None:
-            import_df = record_entry.import_references(self.record_id())
-            for index, row in import_df.iterrows():
-                doctype = row['DocType']
-                reftype = row['RefType']
+        if record_id is not None:
+            ref_df = references if references is not None else record_entry.import_references(record_id)
+            for index, row in ref_df.iterrows():
+                if row['DocNo'] != record_id and row['RefNo'] != record_id:
+                    continue
+
                 try:
                     deleted = bool(int(row['IsDeleted']))
                 except (KeyError, ValueError):
@@ -437,6 +439,9 @@ class DatabaseRecord:
 
                 if deleted is True:
                     continue
+
+                doctype = row['DocType']
+                reftype = row['RefType']
 
                 # Store imported references as references box objects
                 if doctype in ref_types:
@@ -466,7 +471,7 @@ class DatabaseRecord:
                     # Append record to the components table
                     comp_table.df = comp_table.import_row(ref_id)
 
-            self.import_df = self.import_df.append(import_df, ignore_index=True)
+            self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
 
     def reset(self, window):
         """
@@ -492,6 +497,8 @@ class DatabaseRecord:
 
         # Reset references
         self.references = []
+
+        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
 
     def fetch_header(self, element, by_key: bool = False):
         """

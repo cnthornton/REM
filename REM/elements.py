@@ -1590,7 +1590,8 @@ class TableElement:
 
         return df
 
-    def translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False):
+    def translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False,
+                      references: pd.DataFrame = None):
         """
         Translate row data into a record object.
         """
@@ -1613,12 +1614,12 @@ class TableElement:
                 raise AttributeError('unknown record group provided {GROUP}'.format(NAME=self.name, GROUP=record_group))
 
         record = record_class(record_entry, level=level)
-        record.initialize(row, new=new_record)
+        record.initialize(row, new=new_record, references=references)
 
         return record
 
     def export_row(self, index, layout: dict = None, view_only: bool = False, new_record: bool = False,
-                   level: int = 1):
+                   level: int = 1, references: pd.DataFrame = None):
         """
         Open selected record in new record window.
         """
@@ -1641,7 +1642,7 @@ class TableElement:
             row['Warnings'] = self.annotation_rules[annot_code]['Description']
 
         try:
-            record = self.translate_row(row, layout, level=level, new_record=new_record)
+            record = self.translate_row(row, layout, level=level, new_record=new_record, references=references)
         except Exception as e:
             msg = 'failed to open record at row {IND} - {ERR}' \
                 .format(TBL=self.name, IND=index + 1, ERR=e)
