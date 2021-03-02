@@ -450,7 +450,13 @@ def database_importer_window(win_size: tuple = None):
             for index, row in subset_df.iterrows():
                 # Prepare update parameters
                 row_values = row.replace({np.nan: None}).values.tolist()
-                records_saved.append(user.insert(table, tbl_columns, row_values))
+                entry_saved = user.insert(table, tbl_columns, row_values)
+                if entry_saved is False:
+                    msg = 'Failed to save row {ROW} to database table {TBL}' \
+                        .format(ROW=index + 1, TBL=table)
+                    popup_error(msg)
+                    print('Warning: {}'.format(msg))
+                records_saved.append(entry_saved)
 
             msg = 'Successfully saved {SUCCESS} rows to the database. Failed to save {FAIL} rows' \
                 .format(SUCCESS=len([i for i in records_saved if i is True]),
