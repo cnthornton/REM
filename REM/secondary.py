@@ -1411,7 +1411,18 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
                 popup_error(msg)
             else:
-                record_window(record)
+                record = record_window(record)
+
+                # Add record to the import table
+                try:
+                    record_data = record.table_values()
+                except AttributeError:
+                    continue
+                else:
+                    print('Info: adding values for record {ID} to the import table'.format(ID=record_id))
+                    table.df = table.append(record_data)
+
+                    display_df = table.update_display(window)
 
             continue
 
@@ -1456,7 +1467,20 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                         popup_error(msg)
                         raise
                     else:
-                        record_window(record)
+                        record = record_window(record)
+
+                        # Update record values in the import table
+                        try:
+                            record_data = record.table_values()
+                        except AttributeError:
+                            continue
+                        else:
+                            print('Info: updating values for record {ID} in the import table at row {ROW}'
+                                  .format(ID=record_id, ROW=row))
+                            for column, value in record_data.iteritems():
+                                table.df.loc[table.df['RecordID'] == record_id, [column]] = value
+
+                            display_df = table.update_display(window)
 
                 continue
 
