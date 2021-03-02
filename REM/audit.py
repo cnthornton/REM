@@ -230,20 +230,21 @@ class AuditRule:
         """
         tabs = self.tabs
 
+        tab_item = None
         if by_key is True:
-            element_type = fetch_key[1:-1].split('_')[-1]
-            names = [i.key_lookup(element_type) for i in tabs]
+            for tab in tabs:
+                if fetch_key in tab.elements:
+                    tab_item = tab
+                    break
         else:
             names = [i.name for i in tabs]
-
-        try:
-            index = names.index(fetch_key)
-        except ValueError:
-            print('Error: AuditRule {RULE}: {TAB} not in list of audit rule transactions'
-                  .format(RULE=self.name, TAB=fetch_key))
-            tab_item = None
-        else:
-            tab_item = tabs[index]
+            try:
+                index = names.index(fetch_key)
+            except ValueError:
+                print('Error: AuditRule {RULE}: {TAB} not found in list of audit rule transaction tabs'
+                      .format(RULE=self.name, TAB=fetch_key))
+            else:
+                tab_item = tabs[index]
 
         return tab_item
 
