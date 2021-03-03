@@ -751,11 +751,7 @@ class DatabaseRecord:
 
         modify_component = True if editable is True and self.level < 1 and self.permissions['components'] in ugroup \
             else False
-        print('editable is: {}'.format(editable))
-        print('current level is: {}'.format(self.level))
-        print('current user group is: {}'.format(ugroup))
-        print('required permissions for editing components is: {}'.format(self.permissions['components']))
-        print('conclusion: can modify: {}'.format(modify_component))
+
         comp_tables = []
         for comp_table in self.components:
             comp_table.df = comp_table.set_datatypes(comp_table.df)

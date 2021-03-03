@@ -989,10 +989,6 @@ class TableElement:
         # Control buttons and totals row
         row5 = []
 
-        print('adding table buttons:')
-        print('can import: {}'.format(self.actions['import']))
-        print('can add: {}'.format(self.actions['add']))
-        print('can delete: {}'.format(self.actions['delete']))
         mod_row = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['import'],
                              tooltip='Add existing record to the table'),
@@ -2229,6 +2225,7 @@ class DataElement:
             # Remove width of the combobox from element width, if needed
             if self.etype == 'dropdown':  # remove width of combobox from element width
                 width_offset = 10
+                height = 10
             else:
                 width_offset = 0
 
@@ -2340,6 +2337,7 @@ class DataElement:
                         display_values.append(aliases[option])
                     else:
                         display_values.append(option)
+
             element_layout = [sg.Combo(display_values, default_value=display_value, key=elem_key, size=size, font=font,
                                        text_color=text_col, background_color=input_col,
                                        enable_events=True, disabled=is_disabled,
