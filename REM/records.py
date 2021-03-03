@@ -53,6 +53,12 @@ class CustomRecordEntry:
 
         return success
 
+    def import_references(self, *args):
+        """
+        Dummy method.
+        """
+        return pd.DataFrame()
+
 
 class DatabaseRecord:
     """
@@ -76,7 +82,7 @@ class DatabaseRecord:
         components (list): list of record components.
     """
 
-    def __init__(self, record_entry, level: int = 0):
+    def __init__(self, record_entry, level: int = 0, record_layout: dict = None):
         """
         Arguments:
             record_entry (class): configuration entry for the record.
@@ -96,7 +102,7 @@ class DatabaseRecord:
                          ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame',
                           'Height', 'Width']]
 
-        entry = record_entry.record_layout
+        entry = record_entry.record_layout if record_layout is None else record_layout
 
         # User permissions when accessing record
         try:
@@ -202,7 +208,7 @@ class DatabaseRecord:
                 if param_type == 'table':
                     element_class = mod_elem.TableElement
 
-                    # Format entry for table initialization
+                    # Format entry for table
                     description = param_entry.get('Description', param)
                     try:
                         param_entry = param_entry['Options']
@@ -427,7 +433,7 @@ class DatabaseRecord:
         # Import components and references for existing records
         record_id = self.record_id()
         print('Info: RecordType {NAME}: record ID is {ID}'.format(NAME=self.name, ID=record_id))
-        if record_id is not None:
+        if record_id is not None and (references is not None or record_entry is not None):
             ref_df = references if references is not None else record_entry.import_references(record_id)
             print('Info: RecordType {NAME}: importing references and components'.format(NAME=self.name))
             for index, row in ref_df.iterrows():
@@ -745,6 +751,11 @@ class DatabaseRecord:
 
         modify_component = True if editable is True and self.level < 1 and self.permissions['components'] in ugroup \
             else False
+        print('editable is: {}'.format(editable))
+        print('current level is: {}'.format(self.level))
+        print('current user group is: {}'.format(ugroup))
+        print('required permissions for editing components is: {}'.format(self.permissions['components']))
+        print('conclusion: can modify: {}'.format(modify_component))
         comp_tables = []
         for comp_table in self.components:
             comp_table.df = comp_table.set_datatypes(comp_table.df)
@@ -929,8 +940,8 @@ class DepositRecord(DatabaseRecord):
     Class to manage the layout and display of an REM Deposit Record.
     """
 
-    def __init__(self, record_entry, level: int = 0):
-        super().__init__(record_entry, level)
+    def __init__(self, record_entry, level: int = 0, record_layout: dict = None):
+        super().__init__(record_entry, level, record_layout)
 
         header_names = [i.name for i in self.headers]
         if 'DepositAmount' not in header_names:
@@ -1094,8 +1105,8 @@ class TAuditRecord(DatabaseRecord):
     Class to manage the layout of an audit record.
     """
 
-    def __init__(self, record_entry, level: int = 0):
-        super().__init__(record_entry, level)
+    def __init__(self, record_entry, level: int = 0, record_layout: dict = None):
+        super().__init__(record_entry, level, record_layout)
         header_names = [i.name for i in self.headers]
         if 'Remainder' not in header_names:
             raise AttributeError('missing required header "Remainder"')
@@ -1299,7 +1310,7 @@ def remove_unsaved_keys(record):
     # Remove unsaved ID if record is new
     if record.new is True:
         record_entry = record.record_entry
-        record_entry.remove_unsaved_id(record.record_id)
+        record_entry.remove_unsaved_id(record.record_id())
 
     # Remove unsaved components
     for comp_table in record.components:

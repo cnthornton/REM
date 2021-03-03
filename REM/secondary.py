@@ -224,7 +224,7 @@ def login_window():
     gc.collect()
 
 
-def record_window(record, win_size: tuple = None, view_only: bool = False):
+def record_window(record, win_size: tuple = None, view_only: bool = False, record_modifiers: bool = True):
     """
     Display the record window.
     """
@@ -257,7 +257,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     # Window Title
     modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': deletable}
-    if record.new is False:
+    if record_modifiers is True:
         annotation_layout = []
         for modifier in record.modifiers:
             modifier_name = modifier.name
@@ -1297,7 +1297,7 @@ def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str 
     return select_rows
 
 
-def record_import_window(table, win_size: tuple = None, enable_new: bool = False):
+def record_import_window(table, win_size: tuple = None, enable_new: bool = False, record_layout: dict = None):
     """
     Display the import from database window.
     """
@@ -1409,7 +1409,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             record_data['RecordID'] = record_id
             record_data['RecordDate'] = record_date
 
-            record = record_class(record_entry, level=0)
+            record = record_class(record_entry, level=0, record_layout=record_layout)
             try:
                 record.initialize(record_data, new=True)
             except Exception as e:
@@ -1417,7 +1417,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
                 popup_error(msg)
             else:
-                record = record_window(record)
+                record = record_window(record, record_modifiers=False)
 
                 # Add record to the import table
                 try:
@@ -1464,7 +1464,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                     else:
                         record_data = trans_df.iloc[0]
 
-                    record = record_class(record_entry, level=0)
+                    record = record_class(record_entry, level=0, record_layout=record_layout)
                     try:
                         record.initialize(record_data)
                     except Exception as e:

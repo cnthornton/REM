@@ -310,7 +310,7 @@ class TableElement:
         try:
             row_color = entry['RowColor']
         except KeyError:
-            self.row_color = mod_const.TBL_BG_COL
+            self.row_color = mod_const.TBL_ALT_COL
         else:
             if not row_color.startswith('#') or not len(row_color) == 7:
                 print('Configuration Error: DataTable {TBL}: row color {COL} is not a valid hexadecimal code'
@@ -823,7 +823,7 @@ class TableElement:
         select_bg_col = mod_const.TBL_SELECT_COL
         disabled_text_col = mod_const.DISABLED_TEXT_COL  # disabled button text
         disabled_bg_col = mod_const.INACTIVE_COL  # disabled button background
-        alt_col = mod_const.TBL_ALT_COL  # alternate row color
+        alt_col = self.row_color  # alternate row color
         bg_col = mod_const.TBL_BG_COL  # primary table color is white
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
         filter_bg_col = mod_const.DEFAULT_COL  # color of the filter parameter background
@@ -989,6 +989,10 @@ class TableElement:
         # Control buttons and totals row
         row5 = []
 
+        print('adding table buttons:')
+        print('can import: {}'.format(self.actions['import']))
+        print('can add: {}'.format(self.actions['add']))
+        print('can delete: {}'.format(self.actions['delete']))
         mod_row = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['import'],
                              tooltip='Add existing record to the table'),
@@ -1499,7 +1503,6 @@ class TableElement:
         # Import data from the database
         record_entry = configuration.records.fetch_rule(self.record_type)
         import_rules = import_rules if import_rules is not None else record_entry.import_rules
-        print(import_rules)
         import_filters = mod_db.format_import_filters(import_rules) if filter_rules is None else filter_rules
         table_statement = mod_db.format_tables(import_rules)
         import_columns = mod_db.format_import_columns(import_rules)
@@ -1599,7 +1602,6 @@ class TableElement:
         if layout is not None:
             record_class = mod_records.StandardRecord
             record_entry = mod_records.CustomRecordEntry({'RecordLayout': layout})
-            new_record = True
         else:
             record_entry = configuration.records.fetch_rule(self.record_type)
             record_group = record_entry.group
