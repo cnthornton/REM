@@ -490,7 +490,7 @@ class TableElement:
         # Update table totals
         if self.tally_rule is not None:
             try:
-                tbl_total = '{:,.2f}'.format(self.calculate_total())
+                tbl_total = self.calculate_total()
             except Exception as e:
                 print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
                 tbl_total = 0
@@ -1009,7 +1009,7 @@ class TableElement:
             init_totals = self.calculate_total()
             row5.append(sg.Col([[sg.Text('Total:', pad=((0, pad_el), 0), font=bold_font,
                                          background_color=header_col),
-                                 sg.Text('{:,.2f}'.format(init_totals), key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
+                                 sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
                                          font=font, background_color=bg_col, justification='r', relief='sunken')]],
                                pad=(pad_el, int(pad_el / 2)), vertical_alignment='b', justification='r',
                                background_color=header_col))
@@ -1370,15 +1370,32 @@ class TableElement:
         """
         Calculate the record total using the configured tally rule.
         """
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_integer_dtype = pd.api.types.is_integer_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
         tally_rule = self.tally_rule
 
         total = 0
         if tally_rule is not None:
             try:
-                total = mod_dm.evaluate_rule(self.df, tally_rule, as_list=False).sum()
+                result = mod_dm.evaluate_rule(self.df, tally_rule, as_list=False)
             except Exception as e:
                 print('Warning: DataTable {NAME}: unable to calculate table total - {ERR}'
                       .format(NAME=self.name, ERR=e))
+            else:
+                dtype = result.dtype
+                if is_float_dtype(dtype):
+                    total = '{:,.2f}'.format(result.sum())
+                elif is_integer_dtype(dtype) or is_bool_dtype(dtype):
+                    total = str(result.sum())
+                elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+                    total = str(result.nunique())
+                else:  # possibly empty dataframe
+                    total = str(0)
+                print('Info: DataTable {NAME}: table totals calculated as {TOTAL}'.format(NAME=self.name, TOTAL=total))
 
         return total
 
