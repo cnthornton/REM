@@ -2021,7 +2021,7 @@ class ReferenceElement:
         width_key = self.key_lookup('Width')
         layout = sg.Frame('', [[sg.Canvas(key=width_key, size=(width, 0))], row1, row2],
                           key=elem_key, pad=padding, background_color=bg_col, relief='raised', visible=linked,
-                          metadata={'deleted': False})
+                          metadata={'deleted': False}, tooltip=warnings)
 
         return layout
 
