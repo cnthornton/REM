@@ -20,7 +20,7 @@ HEADER_COL2 = '#F2F7F2'  # light green
 HEADER_COL3 = '#FEE3E2'  # light red
 BORDER_COL = '#767676'  # dark grey
 PASS_COL = '#ACFBAF'  # light-medium green
-FAIL_COL = '#F4B3B3'  # light-medium red
+FAIL_COL = WARNING_COL = '#F4B3B3'  # light-medium red
 #BOX_COL = '#F6F7FB'  # light-pastel purple
 BOX_COL = '#FFFAFA'  # light green
 

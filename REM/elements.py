@@ -237,9 +237,12 @@ class TableElement:
                 annot_rule = annot_rules[annot_code]
 
                 if 'Condition' not in annot_rule:
+                    mod_win2.popup_notice('No condition set for configured annotation rule {RULE}'
+                                          .format(RULE=annot_code))
                     continue
 
-                self.annotation_rules[annot_code] = {'BackgroundColor': annot_rule.get('BackgroundColor', mod_const.FAIL_COL),
+                self.annotation_rules[annot_code] = {'BackgroundColor': annot_rule.get('BackgroundColor',
+                                                                                       mod_const.FAIL_COL),
                                                      'Description': annot_rule.get('Description', annot_code),
                                                      'Condition': annot_rule['Condition']}
 
@@ -473,13 +476,13 @@ class TableElement:
 
         # Highlight table rows using configured annotation rules
         annotations = self.annotate_display(df)
+        row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
 
         # Format the table
         display_df = self.format_display_table(df)
 
         # Update the GUI with table values and annotations
         data = display_df.values.tolist()
-        row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
 
         tbl_key = self.key_lookup('Element')
         window[tbl_key].update(values=data, row_colors=row_colors)
@@ -1919,6 +1922,11 @@ class ReferenceElement:
         except KeyError:
             raise AttributeError('missing required Reference parameter "RefType"')
 
+        try:
+            self.warnings = entry['Warnings']
+        except KeyError:
+            self.warnings = None
+
         record_entry = configuration.records.fetch_rule(self.record_type)
         self.record_data = record_entry.load_record_data(self.record_id)
 
@@ -1970,6 +1978,7 @@ class ReferenceElement:
         is_disabled = not editable
         width, height = size
         linked = self.linked
+        warnings = self.warnings if self.warnings is not None else ''
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -1979,7 +1988,7 @@ class ReferenceElement:
         font = mod_const.MID_FONT
         bold_font = mod_const.BOLD_FONT
 
-        bg_col = mod_const.ACTION_COL
+        bg_col = mod_const.ACTION_COL if not warnings else mod_const.WARNING_COL
         text_col = mod_const.TEXT_COL
         if editable is True:
             select_text_col = mod_const.SELECT_TEXT_COL
@@ -2183,6 +2192,8 @@ class DataElement:
               'and formatted value {VAL}'
               .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
+        self.disabled = False
+
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -2268,6 +2279,7 @@ class DataElement:
         etype = self.etype
         dtype = self.dtype
         is_disabled = False if overwrite_edit is True or (editable is True and self.editable is True) else True
+        self.disabled = is_disabled
 
         element_options = self.options
         aliases = element_options.get('Aliases', {})
@@ -2406,18 +2418,31 @@ class DataElement:
         Format element for display.
         """
         elem_key = self.key_lookup('Element')
+        options = self.options
+
+        # Update element display value
         try:
             param_value = window_values[elem_key]
         except (KeyError, TypeError):
             print('Warning: DataElement {NAME}: unable to locate values for element key {KEY}'
                   .format(NAME=self.name, KEY=elem_key))
             if self.value:
-                window[elem_key].update(value=self.format_display())
+                display_value = self.format_display()
+                window[elem_key].update(value=display_value)
+            else:
+                display_value = None
         else:
             self.value = self.format_value(param_value)
             display_value = self.format_display()
-
             window[elem_key].update(value=display_value)
+
+        # Update element background color
+        bg_col = options.get('BackgroundColor', None)
+        default_bg_col = mod_const.DISABLED_BG_COL if self.disabled is True else mod_const.INPUT_COL
+        if display_value and self.etype in ('input', 'multiline'):
+            window[elem_key].update(background_color=bg_col)
+        elif not display_value and self.etype in ('input', 'multiline'):
+            window[elem_key].update(background_color=default_bg_col)
 
     def enforce_formatting(self, window, values):
         """
