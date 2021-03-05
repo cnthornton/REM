@@ -355,16 +355,13 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
     """
     Check whether rows in a dataframe pass a set of conditions. Returns a list or pandas Series of failed indexes.
     """
-    if not as_list:
-        chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
-    else:
-        chain_map = {'or': 'or', 'OR': 'or', 'Or': 'or', 'and': 'and', 'AND': 'and', 'And': 'and'}
+    chain_operators = ['and', 'or', 'OR', 'AND', 'And', 'Or']
 
-    eval_values = []  # stores list of lists or pandas Series of bools to pass into formatter
-    rule_eval_list = []
+    eval_results = []  # stores list of lists or pandas Series of bools to pass into formatter
+    operators = []
     for i, rule_name in enumerate(conditions):
         if i != 0:
-            rule_eval_list.append(chain_map['and'])
+            operators.append('and')
 
         if rule_key:
             rule_str = conditions[rule_name][rule_key]
@@ -372,34 +369,113 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
             rule_str = conditions[rule_name]  # db column name is dictionary key
 
         rule_list = [i.strip() for i in
-                     re.split('({})'.format('|'.join([' {} '.format(i) for i in chain_map])), rule_str)]
+                     re.split('({})'.format('|'.join([' {} '.format(i) for i in chain_operators])), rule_str)]
 
         for component in rule_list:
-            if component not in chain_map:
-                rule_eval_list.append('{}')
-
+            if component.lower() in chain_operators:  # item is chain operators and / or
+                operators.append(component.lower())
+            else:
                 try:
-                    failed_condition = evaluate_rule(df, component, as_list=as_list)
+                    cond_results = evaluate_condition(df, component, as_list=False).fillna(False).astype(np.bool,
+                                                                                                        errors='raise')
                 except Exception as e:
-                    print('Warning: evaluation failed - {}. Setting values to default "True"'.format(e))
+                    print('Warning: evaluation failed - {}. Setting values to default "False"'.format(e))
                     if isinstance(df, pd.DataFrame):
                         nrow = df.shape[0]
                     elif isinstance(df, pd.Series):
                         nrow = 1
-                    eval_values.append([True for _ in range(nrow)])
-                else:
-                    eval_values.append(failed_condition)
-            else:  # item is chain operators and / or
-                rule_eval_list.append(chain_map[component])
 
-    rule_eval_str = ' '.join(rule_eval_list)
-    if as_list:
-        results = []
-        for row, results_tup in enumerate(zip(*eval_values)):
-            result = eval(rule_eval_str.format(*results_tup))  # returns either True or False
-            results.append(result)
+                    cond_results = pd.Series([False for _ in range(nrow)])
+
+                eval_results.append(cond_results)
+                print('current condition is: {}'.format(component))
+                print(cond_results)
+
+    results = eval_results[0]
+    for index, cond_results in enumerate(eval_results[1:]):
+        try:
+            operator = operators[index]
+        except IndexError:
+            print('Warning: evaluation failed - not enough operators provided for the number of conditions set')
+            break
+
+        if operator == 'and':
+            results = results & cond_results
+        else:
+            results = results | cond_results
+
+    if as_list is True:
+        return list(results)
     else:
-        results = eval(rule_eval_str.format(*eval_values))
+        return results
+
+
+def evaluate_condition(data, condition, as_list: bool = True):
+    """
+    Check whether rows in dataframe pass a given condition rule.
+    """
+    operators = {'>', '>=', '<', '<=', '==', '!=', 'in', 'not in'}
+    special_operators = {'in', 'not in'}
+
+    if isinstance(data, pd.Series):
+        header = data.index.tolist()
+        nrow = data.size
+    elif isinstance(data, pd.DataFrame):
+        header = data.columns.values.tolist()
+        nrow = 1
+    else:
+        raise ValueError('data must be either a pandas DataFrame or Series')
+
+    rule = [i.strip() for i in re.split('({})'.format('|'.join([' {} '.format(i) for i in operators])), condition)]
+    if len(rule) == 3:
+        left, oper, right = rule
+        if oper not in operators:
+            raise SyntaxError('unable to parse rule condition {} - operator must separate the operands'
+                              .format(condition))
+
+        if oper.lower() == 'in':
+            for column in header:
+                left = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), left)
+            eval_str = '{}.isin(right)'.format(left)
+            right = right.replace(' ', '').split(',')
+        elif oper.lower() == 'not in':
+            for column in header:
+                left = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), left)
+            eval_str = '~{}.isin(right)'.format(left)
+            right = right.replace(' ', '').split(',')
+        else:
+            for column in header:
+                left = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), left)
+                right = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), right)
+            eval_str = "{} {} {}".format(left, oper, right)
+
+        print(eval_str)
+        try:
+            results = eval(eval_str)
+        except SyntaxError:
+            raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
+        except NameError:  # dataframe does not have column
+            raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
+
+    elif len(rule) == 1:
+        eval_str = rule[0]
+        if eval_str[0] == '!':
+            colname = eval_str.replace(' ', '')[1:]
+            if colname in header:
+                results = data[colname].isna()
+            else:
+                results = [False for _ in range(nrow)]
+        else:
+            colname = eval_str
+            if colname in header:
+                results = ~ data[colname].isna()
+            else:
+                results = [False for _ in range(nrow)]
+    else:
+        raise SyntaxError('unable to parse rule condition {} - unknown format of the condition rule'.format(condition))
+
+    if as_list is True:
+        results = list(results)
 
     return results
 
@@ -408,7 +484,7 @@ def evaluate_rule(data, condition, as_list: bool = True):
     """
     Check whether rows in dataframe pass a given condition rule.
     """
-    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in', 'not in'}
+    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in', 'not in', '!', 'not'}
 
     if isinstance(data, pd.Series):
         header = data.index.tolist()
@@ -426,8 +502,11 @@ def evaluate_rule(data, condition, as_list: bool = True):
 
     rule_value = []
     for i, component in enumerate(conditional):
-        if component in operators:  # component is an operator
-            rule_value.append(component)
+        if component.lower() in operators:  # component is an operator
+            if component.lower() in ('!', 'not'):
+                rule_value.append('~')
+            else:
+                rule_value.append(component)
         elif component in header:
             rule_value.append('data["{}"]'.format(component))
         elif component.lower() in header:
@@ -439,8 +518,66 @@ def evaluate_rule(data, condition, as_list: bool = True):
                 rule_value.append(component)
 
     eval_str = ' '.join(rule_value)
+    print(eval_str)
     try:
-#        print('Info: evaluating rule string {}'.format(eval_str))
+        row_status = eval(eval_str)
+    except SyntaxError:
+        raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
+    except NameError:  # dataframe does not have column
+        raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
+
+    if as_list is True:
+        if isinstance(row_status, pd.Series):
+            row_status = row_status.tolist()
+        else:
+            row_status = [row_status]
+    else:
+        if not isinstance(row_status, pd.Series):
+            row_status = pd.Series(row_status)
+
+    return row_status
+
+
+def evaluate_rule(data, condition, as_list: bool = True):
+    """
+    Check whether rows in dataframe pass a given condition rule.
+    """
+    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in', 'not in', '!', 'not'}
+
+    if isinstance(data, pd.Series):
+        header = data.index.tolist()
+    elif isinstance(data, pd.DataFrame):
+        header = data.columns.values.tolist()
+    else:
+        raise ValueError('data must be either a pandas DataFrame or Series')
+
+    if isinstance(condition, str):
+        conditional = parse_operation_string(condition)
+    elif isinstance(condition, list):
+        conditional = condition
+    else:
+        raise ValueError('condition argument {} must be either a string or list'.format(condition))
+
+    rule_value = []
+    for i, component in enumerate(conditional):
+        if component.lower() in operators:  # component is an operator
+            if component.lower() in ('!', 'not'):
+                rule_value.append('~')
+            else:
+                rule_value.append(component)
+        elif component in header:
+            rule_value.append('data["{}"]'.format(component))
+        elif component.lower() in header:
+            rule_value.append('data["{}"]'.format(component.lower()))
+        else:  # component is a string or integer
+            if component.isalpha() and '"' not in component:
+                rule_value.append('"{}"'.format(component))
+            else:
+                rule_value.append(component)
+
+    eval_str = ' '.join(rule_value)
+    print(eval_str)
+    try:
         row_status = eval(eval_str)
     except SyntaxError:
         raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
@@ -471,7 +608,9 @@ def parse_operation_string(condition, equivalent: bool = True):
     prev_char = None
     for char in condition:
         if char.isspace():  # skip whitespace
-            continue
+            parsed_condition.append(''.join(buff))
+            buff = []
+#            continue
         elif char in operators:  # character is an operator
             if prev_char not in operators:  # flush buffer for non-operator
                 parsed_condition.append(''.join(buff))

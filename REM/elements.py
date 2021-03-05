@@ -495,6 +495,11 @@ class TableElement:
                 print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
                 tbl_total = 0
 
+            if isinstance(tbl_total, float):
+                tbl_total = '{:,.2f}'.format(tbl_total)
+            else:
+                tbl_total = str(tbl_total)
+
             total_key = self.key_lookup('Total')
             window[total_key].update(value=tbl_total)
 
@@ -777,16 +782,18 @@ class TableElement:
                   .format(NAME=self.name, CODE=annot_code))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
+            print(annot_condition)
             try:
-                results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=True)
+                results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=False)
             except Exception as e:
                 print('Error: DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
                       .format(NAME=self.name, CODE=annot_code, ERR=e))
+                raise
                 continue
 
-            print('Info: DataTable {NAME}: annotation results are {RES}'.format(NAME=self.name, RES=results))
-            for row_index, result in enumerate(results):
-                if result is True:
+            print('Info: DataTable {NAME}: annotation results are {RES}'.format(NAME=self.name, RES=list(results)))
+            for row_index, result in results.iteritems():
+                if result:
                     print('Info: DataTable {NAME}: table row {ROW} annotated with annotation code {CODE}'
                           .format(NAME=self.name, ROW=row_index, CODE=annot_code))
                     if row_index in rows_annotated:
@@ -1007,6 +1014,10 @@ class TableElement:
 
         if self.tally_rule is not None:
             init_totals = self.calculate_total()
+            if isinstance(init_totals, float):
+                init_totals = '{:,.2f}'.format(init_totals)
+            else:
+                init_totals = str(init_totals)
             row5.append(sg.Col([[sg.Text('Total:', pad=((0, pad_el), 0), font=bold_font,
                                          background_color=header_col),
                                  sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
@@ -1387,14 +1398,12 @@ class TableElement:
                       .format(NAME=self.name, ERR=e))
             else:
                 dtype = result.dtype
-                if is_float_dtype(dtype):
-                    total = '{:,.2f}'.format(result.sum())
-                elif is_integer_dtype(dtype) or is_bool_dtype(dtype):
-                    total = str(result.sum())
+                if is_float_dtype(dtype) or is_integer_dtype(dtype) or is_bool_dtype(dtype):
+                    total = result.sum()
                 elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                    total = str(result.nunique())
+                    total = result.nunique()
                 else:  # possibly empty dataframe
-                    total = str(0)
+                    total = 0
                 print('Info: DataTable {NAME}: table totals calculated as {TOTAL}'.format(NAME=self.name, TOTAL=total))
 
         return total
@@ -2104,8 +2113,8 @@ class ReferenceElement:
         Format reference as a table entry.
         """
         reference = pd.Series([self.record_id, self.reference_id, self.ref_date, self.record_type, self.reference_type,
-                               not self.linked],
-                              index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
+                               not self.linked, self.warnings],
+                              index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings'])
         return reference
 
 
