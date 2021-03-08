@@ -433,10 +433,10 @@ class TableElement:
             self.df = self.delete_rows(select_row_indices)
 
         elif event == self.key_lookup('Export'):
-            export_df = self.update_display(window, values)
+            export_df = self.format_display_table(self.df)
             print('Info: DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
             print(export_df)
-            annotations = self.annotate_display(df)
+            annotations = self.annotate_display(self.df)
             annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
             self.export_table(export_df, annotation_map)
 
@@ -1358,7 +1358,7 @@ class TableElement:
 
         return subset_df
 
-    def export_table(self, df):
+    def export_table(self, df, annotation_map):
         """
         Export table to spreadsheet.
         """
@@ -1373,8 +1373,6 @@ class TableElement:
             if out_fmt == 'csv':
                 df.to_csv(outfile, sep=',', header=True, index=False)
             else:
-                annotations = self.annotate_display(df)
-                annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
                 df.style.apply(lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white')) for _ in x],
                                axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
 
@@ -1620,12 +1618,14 @@ class TableElement:
         return df
 
     def translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False,
-                      references: pd.DataFrame = None):
+                      references: pd.DataFrame = None, custom: bool = False):
         """
         Translate row data into a record object.
         """
         # Create a record object from the row data
-        if layout is not None:
+        if custom is True:
+            if layout is None:
+                raise AttributeError('a layout must be provided when custom is set to True')
             record_entry = mod_records.CustomRecordEntry({'RecordLayout': layout})
             record_group = 'custom'
         else:
@@ -1641,13 +1641,13 @@ class TableElement:
         else:
             raise AttributeError('unknown record group provided {GROUP}'.format(NAME=self.name, GROUP=record_group))
 
-        record = record_class(record_entry, level=level)
+        record = record_class(record_entry, level=level, record_layout=layout)
         record.initialize(row, new=new_record, references=references)
 
         return record
 
     def export_row(self, index, layout: dict = None, view_only: bool = False, new_record: bool = False,
-                   level: int = 1, references: pd.DataFrame = None):
+                   level: int = 1, references: pd.DataFrame = None, custom: bool = False):
         """
         Open selected record in new record window.
         """
@@ -1670,13 +1670,13 @@ class TableElement:
             row['Warnings'] = self.annotation_rules[annot_code]['Description']
 
         try:
-            record = self.translate_row(row, layout, level=level, new_record=new_record, references=references)
+            record = self.translate_row(row, layout, level=level, new_record=new_record, references=references,
+                                        custom=custom)
         except Exception as e:
             msg = 'failed to open record at row {IND} - {ERR}' \
                 .format(TBL=self.name, IND=index + 1, ERR=e)
             mod_win2.popup_error(msg)
             print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
-            raise
 
             return df
         else:
