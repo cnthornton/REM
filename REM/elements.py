@@ -1894,17 +1894,16 @@ class ReferenceElement:
         id (int): reference box element number.
 
         elements (list): list of reference box element GUI keys.
-
     """
 
-    def __init__(self, name, entry, parent=None):
+    def __init__(self, name, entry, parent=None, inverted: bool = False):
         """
         GUI data element.
 
         Arguments:
             name (str): reference box element configuration name.
 
-            entry (dict): configuration entry for the element.
+            entry (pd.Series): configuration entry for the element.
         """
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
@@ -1914,13 +1913,20 @@ class ReferenceElement:
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ['Element', 'Reference', 'Unlink', 'Width', 'Height']]
 
+        if inverted is True:
+            colmap = {'DocNo': 'RecordID', 'RefNo': 'ReferenceID', 'DocType': 'RecordType', 'RefType': 'ReferenceType'}
+        else:
+            colmap = {'DocNo': 'ReferenceID', 'RefNo': 'RecordID', 'DocType': 'ReferenceType', 'RefType': 'RecordType'}
+
+        entry = entry.rename(index=colmap)
+
         try:
-            self.record_id = entry['DocNo']
+            self.record_id = entry['RecordID']
         except KeyError:
             raise AttributeError('missing required Reference parameter "DocNo"')
 
         try:
-            self.reference_id = entry['RefNo']
+            self.reference_id = entry['ReferenceID']
         except KeyError:
             raise AttributeError('missing required Reference parameter "RefNo"')
 
@@ -1940,12 +1946,12 @@ class ReferenceElement:
                 raise AttributeError('unknown format for "RefDate" value {}'.format(ref_date))
 
         try:
-            self.record_type = entry['DocType']
+            self.record_type = entry['RecordType']
         except KeyError:
             raise AttributeError('missing required Reference parameter "RefType"')
 
         try:
-            self.reference_type = entry['RefType']
+            self.reference_type = entry['ReferenceType']
         except KeyError:
             raise AttributeError('missing required Reference parameter "RefType"')
 
@@ -2113,9 +2119,15 @@ class ReferenceElement:
         """
         Format reference as a table entry.
         """
-        reference = pd.Series([self.record_id, self.reference_id, self.ref_date, self.record_type, self.reference_type,
-                               not self.linked, self.warnings],
-                              index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings'])
+        if self.inverted is True:
+            reference = pd.Series([self.record_id, self.reference_id, self.ref_date, self.record_type,
+                                   self.reference_type, not self.linked, self.warnings],
+                                  index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings'])
+        else:
+            reference = pd.Series([self.reference_id, self.record_id, self.ref_date, self.reference_type,
+                                   self.record_type, not self.linked, self.warnings],
+                                  index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings'])
+
         return reference
 
 

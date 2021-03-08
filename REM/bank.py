@@ -549,6 +549,19 @@ class BankRule:
         elif event == next_key:  # display summary panel
             next_subpanel = self.current_panel + 1
 
+            # Add any found references to the associations tables
+            for tab in self.tabs:
+                df = tab.table.df[[tab.table.id_column, 'ReferenceID', 'ReferenceWarnings']].copy()
+                for association in tab.associations:
+                    assoc_df = association.table.df
+                    ref_df = df.rename(columns={tab.table.id_column: 'ReferenceID',
+                                                'ReferenceID': association.table.id_column})
+
+                    assoc_df = assoc_df.drop(['ReferenceID', 'ReferenceWarnings'], axis=1)
+                    association.table.df = pd.merge(assoc_df, ref_df, on=association.table.id_column, how='left')
+
+                    association.table.update_display(window, window_values=values)
+
             # Hide current panel and un-hide the following panel
             window[self.panel_keys[self.current_panel]].update(visible=False)
             window[self.panel_keys[next_subpanel]].update(visible=True)
@@ -1050,7 +1063,7 @@ class BankRecordTab:
 
         # Resize association tables
         for assoc in self.associations:
-            assoc.table.resize(window, size=(width, height), row_rate=80)
+            assoc.table.resize(window, size=(width - 10, height), row_rate=80)
 
     def run_event(self, window, event, values):
         """
@@ -1082,9 +1095,10 @@ class BankRecordTab:
                     # Check if reference was removed
                     record_id = table.df.at[select_row_index, table.id_column]
                     reference = self.load_reference(record_id)
-#                    if reference is None:
+                    if reference is None:
                         # Remove reference from the references table
-#                        self.ref_df.drop(self.ref_df[self.ref_df['RecordID'] == record_id].index, inplace=True)
+                        table.df.at[select_row_index, 'ReferenceID'] = None
+                        table.df.at[select_row_index, 'Warning'] = None
 
             else:
                 table.run_event(window, event, values)
@@ -1219,11 +1233,8 @@ class BankRecordTab:
         rule_tables = self.association_tables
         associations = self.associations
         table = self.table
-        df = table.df.copy()
+        df = table.df
         ref_table = configuration.reference_lookup
-
-        # Filter out rows that are already associated with another record
-        df.drop(df[~df['ReferenceID'].isna()].index, inplace=True)
 
         # Define the fields that will be included in the merged association table
         core_cols = []
@@ -1287,6 +1298,9 @@ class BankRecordTab:
         for index, row in df.iterrows():
             record_id = row[table.id_column]
 
+            if row['ReferenceID'] is not None:  # skip rows that already have an association
+                continue
+
             # Attempt to find exact matches using all columns, both core and expanded
             matches = merged_df[merged_df[core_cols + expanded_cols].eq(row[core_cols + expanded_cols]).all(axis=1)]
             nmatch = matches.shape[0]
@@ -1294,88 +1308,54 @@ class BankRecordTab:
                 # Attempt to find matches using only the core columns
                 matches = merged_df[merged_df[core_cols].eq(row[core_cols]).all(axis=1)]
                 nmatch = matches.shape[0]
+
                 if nmatch == 0:  # no matches found given the parameters supplied
                     continue
 
                 elif nmatch == 1:  # found one exact match using the column subset
                     results = matches.iloc[0]
-
-                    # Get the relevant association table
-                    assoc_name = results['Association']
-                    association = self.fetch_association(assoc_name)
+                    ref_id = results['RecordID']
 
                     # Determine appropriate warning for the expanded search
                     warning = "expanded search"
 
-                    # Create an entry in the association reference table for the match
-                    ref_id = results['RecordID']
+                    # Create an entry in the reference table for the match
                     ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings',
                                          configuration.creator_code, configuration.creation_date]
-
-                    ref_entry = [record_id, ref_id, datetime.datetime.now(), table.record_type, results['RecordType'],
-                                 warning, user.uid, datetime.datetime.now()]
-                    entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
-                    if entry_saved is False:
-                        msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
-                            .format(ID=ref_id, REF=record_id, TBL=ref_table)
-                        mod_win2.popup_error(msg)
-
-                    reference = pd.Series([ref_id, record_id, warning],
-                                          index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
-                    association.ref_df = association.ref_df.append(reference, ignore_index=True)
-
-                    # Create an entry in the reference table for the match
                     ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
                                  warning, user.uid, datetime.datetime.now()]
+
                     entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
                     if entry_saved is False:
                         msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
                             .format(ID=record_id, REF=ref_id, TBL=ref_table)
                         mod_win2.popup_error(msg)
 
-                    reference = pd.Series([record_id, ref_id, warning],
-                                          index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
-                    ref_df = ref_df.append(reference, ignore_index=True)
+                    # Update table with reference information
+                    df.at[index, 'ReferenceID'] = ref_id
+                    df.at[index, 'Warning'] = warning
 
                 elif nmatch > 1:  # too many matches
                     print('too many matches for record: {}'.format(row["RecordID"]))
 
             elif nmatch == 1:  # found one exact match
                 results = matches.iloc[0]
-
-                # Get the relevant association table
-                assoc_name = results['Association']
-                association = self.fetch_association(assoc_name)
-
-                # Create an entry in the association reference table for the match
                 ref_id = results['RecordID']
-                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
-                                     configuration.creator_code, configuration.creation_date]
-
-                ref_entry = [record_id, ref_id, datetime.datetime.now(),
-                             table.record_type, results['RecordType'], user.uid, datetime.datetime.now()]
-                entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
-                if entry_saved is False:
-                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
-                        .format(ID=ref_id, REF=record_id, TBL=ref_table)
-                    mod_win2.popup_error(msg)
-
-                reference = pd.Series([ref_id, record_id, None],
-                                      index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
-                association.ref_df = association.ref_df.append(reference, ignore_index=True)
 
                 # Create an entry in the reference table for the match
+                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
+                                     configuration.creator_code, configuration.creation_date]
                 ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
                              user.uid, datetime.datetime.now()]
+
                 entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
                 if entry_saved is False:
                     msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
                         .format(ID=record_id, REF=ref_id, TBL=ref_table)
                     mod_win2.popup_error(msg)
 
-                reference = pd.Series([record_id, ref_id, None],
-                                      index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
-                ref_df = ref_df.append(reference, ignore_index=True)
+                # Update table with reference information
+                df.at[index, 'ReferenceID'] = ref_id
 
             elif nmatch > 1:  # too many matches
                 print('too many matches for record: {}'.format(row["RecordID"]))

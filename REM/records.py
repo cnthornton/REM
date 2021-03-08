@@ -427,11 +427,9 @@ class DatabaseRecord:
         record_id = self.record_id()
         print('Info: RecordType {NAME}: record ID is {ID}'.format(NAME=self.name, ID=record_id))
         if record_id is not None and (references is not None or record_entry is not None):
-            print(references, record_id)
             ref_df = references if references is not None else record_entry.import_references(record_id)
-            print(record_entry.import_references(record_id))
             print('Info: RecordType {NAME}: importing references and components'.format(NAME=self.name))
-            print(ref_df)
+
             for index, row in ref_df.iterrows():
                 if row['DocNo'] != record_id and row['RefNo'] != record_id:
                     continue
@@ -441,14 +439,14 @@ class DatabaseRecord:
                 except (KeyError, ValueError):
                     deleted = False
 
-                if deleted is True:
+                if deleted is True:  # don't include deleted record associations
                     continue
 
                 doctype = row['DocType']
                 reftype = row['RefType']
 
                 # Store imported references as references box objects
-                if doctype in ref_types:
+                if doctype in ref_types and reftype == self.name:
                     ref_id = row['DocNo']
                     if ref_id == record_id:
                         continue
@@ -456,7 +454,24 @@ class DatabaseRecord:
                           .format(NAME=self.name, ID=ref_id, TYPE=doctype))
 
                     try:
-                        ref_box = mod_elem.ReferenceElement(doctype, row, parent=self.name)
+                        ref_box = mod_elem.ReferenceElement(doctype, row, parent=self.name, inverted=True)
+                    except Exception as e:
+                        print('Warning: RecordType {NAME}: failed to add reference {ID} to list of references - {ERR}'
+                              .format(NAME=self.name, ID=ref_id, ERR=e))
+                        continue
+                    else:
+                        self.references.append(ref_box)
+                        self.elements += ref_box.elements
+
+                elif doctype == self.name and reftype in ref_types:
+                    ref_id = row['RefNo']
+                    if ref_id == record_id:
+                        continue
+                    print('Info: RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
+                          .format(NAME=self.name, ID=ref_id, TYPE=reftype))
+
+                    try:
+                        ref_box = mod_elem.ReferenceElement(doctype, row, parent=self.name, inverted=False)
                     except Exception as e:
                         print('Warning: RecordType {NAME}: failed to add reference {ID} to list of references - {ERR}'
                               .format(NAME=self.name, ID=ref_id, ERR=e))
@@ -466,7 +481,7 @@ class DatabaseRecord:
                         self.elements += ref_box.elements
 
                 # Store imported components as table rows
-                if reftype in comp_types:
+                elif doctype == self.name and reftype in comp_types:
                     ref_id = row['RefNo']
                     print('Info: RecordType {NAME}: adding component record {ID} with record type {TYPE}'
                           .format(NAME=self.name, ID=ref_id, TYPE=reftype))
