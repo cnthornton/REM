@@ -118,9 +118,8 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Main', 'Summary', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
-                          'FrameHeight', 'PanelWidth', 'PanelHeight', 'MoneyOutTabHeight', 'MoneyInTabHeight',
-                          'Withdrawal', 'Deposit', 'MainTG', 'SummaryTG', 'SinkTG', 'SourceTG']]
+                         ['MainPanel', 'SummaryPanel', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
+                          'FrameHeight', 'PanelWidth', 'PanelHeight', 'Withdrawal', 'Deposit', 'MainTG', 'SummaryTG']]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -193,35 +192,7 @@ class BankRule:
                 self.tabs.append(tab_rule)
                 self.elements += tab_rule.elements
 
-        try:
-            summary_entry = entry["Summary"]
-        except KeyError:
-            msg = 'Configuration Error: BankRule {NAME}: missing required "Summary"' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
-
-        try:
-            self.summary_title = summary_entry["Title"]
-        except KeyError:
-            self.summary_title = self.name
-
-        try:
-            assoc_entries = summary_entry['Tabs']
-        except KeyError:
-            msg = 'Configuration Error: BankRule {NAME}: missing required parameter "Associations"'.format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
-
-        self.associations = []
-        for assoc_name in assoc_entries:
-            assoc_entry = assoc_entries[assoc_name]
-            assoc = BankAssociationTab(assoc_name, assoc_entry)
-
-            self.associations.append(assoc)
-            self.elements += assoc.elements
-
-        self.panel_keys = {0: self.key_lookup('Main'), 1: self.key_lookup('Summary')}
+        self.panel_keys = {0: self.key_lookup('MainPanel'), 1: self.key_lookup('SummaryPanel')}
         self.current_panel = 0
         self.first_panel = 0
         self.last_panel = 1
@@ -285,27 +256,6 @@ class BankRule:
 
         return tab_item
 
-    def fetch_association(self, fetch_key, by_key: bool = False, by_title: bool = False):
-        """
-        Fetch an association rule by name or event key.
-        """
-        if by_key is True:
-            element_type = fetch_key[1:-1].split('_')[-1]
-            associations = [i.key_lookup(element_type) for i in self.associations]
-        elif by_title is True:
-            associations = [i.title for i in self.associations]
-        else:
-            associations = [i.name for i in self.associations]
-
-        if fetch_key in associations:
-            index = associations.index(fetch_key)
-            association_rule = self.associations[index]
-        else:
-            raise KeyError('association {ELEM} not found in list of {NAME} associations'
-                           .format(ELEM=fetch_key, NAME=self.name))
-
-        return association_rule
-
     def summary_layout(self, win_size: tuple = None):
         """
         Generate a GUI layout for the bank reconciliation summary.
@@ -326,10 +276,6 @@ class BankRule:
 
         pad_frame = mod_const.FRAME_PAD
 
-        # Association tables
-        associations = self.associations
-        titles = {i.name: i.title for i in self.tabs}
-
         # Element sizes
         layout_height = height * 0.8
         frame_height = layout_height * 0.70
@@ -348,73 +294,46 @@ class BankRule:
         # Layout elements
 
         # Tab layouts
-        sink_tabs = []
-        source_tabs = []
-        for assoc in associations:
-            assoc_layout = assoc.layout(width=tbl_width, height=tbl_height)
+        summary_layout = []
+        for tab in self.tabs:
 
-            assoc_type = assoc.type
-            if assoc_type.lower() == 'deposit':
-                source_tabs.append(assoc_layout)
+            # Tab group layout
+            association_tabs = []
+            for association in tab.associations:
+                association_tabs.append(association.layout(width=tbl_width, height=tbl_height))
+
+            assoc_key = tab.key_lookup('AssociationTG')
+            height_key = tab.key_lookup('TabHeight')
+            group_layout = [[sg.Canvas(key=height_key, size=(0, tab_height), background_color=bg_col),
+                             sg.Col([[sg.Text('{}'.format(tab.title), background_color=bg_col,
+                                              font=font_h)],
+                                     [sg.TabGroup([association_tabs], key=assoc_key, pad=(0, 0), enable_events=True,
+                                                  tab_background_color=inactive_col, selected_title_color=select_col,
+                                                  title_color=text_col, selected_background_color=bg_col,
+                                                  background_color=bg_col)]],
+                                    pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
+                                    vertical_alignment='t', expand_x=True, expand_y=True)]]
+
+            tg_disabled = True if len(association_tabs) < 1 else False
+            if tg_disabled is True:
+                title_col = disabled_col
             else:
-                sink_tabs.append(assoc_layout)
+                title_col = text_col
 
-        # Money In layout
-        source_tg_key = self.key_lookup('SourceTG')
-        source_height_key = self.key_lookup('MoneyInTabHeight')
-        source_layout = [[sg.Canvas(key=source_height_key, size=(0, tab_height), background_color=bg_col),
-                          sg.Col([[sg.Text('{} Income Sources'.format(self.menu_title), background_color=bg_col,
-                                           font=font_h)],
-                                  [sg.TabGroup([source_tabs], key=source_tg_key, pad=(0, 0), enable_events=True,
-                                               tab_background_color=inactive_col, selected_title_color=select_col,
-                                               title_color=text_col, selected_background_color=bg_col,
-                                               background_color=bg_col)]],
-                                 pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
-                                 vertical_alignment='t', expand_x=True, expand_y=True)]]
+            tg_title = '{}: {}'.format(self.menu_title, tab.title)
+            tg_key = tab.key_lookup('SummaryTab')
+            tab_layout = [sg.Tab(tg_title, group_layout, key=tg_key, title_color=title_col,
+                                 background_color=bg_col, disabled=tg_disabled)]
+            summary_layout.append(tab_layout)
 
-        source_key = self.key_lookup('Deposit')
-        source_disabled = True if len(source_tabs) < 1 else False
-        if source_disabled is True:
-            title_col = disabled_col
-        else:
-            title_col = text_col
-
-        deposit_title = titles.get('Deposit', 'Money In')
-        source_tab = [sg.Tab(deposit_title, source_layout, key=source_key, title_color=title_col, background_color=bg_col,
-                             disabled=source_disabled)]
-
-        # Money Out layout
-        sink_tg_key = self.key_lookup('SinkTG')
-        sink_height_key = self.key_lookup('MoneyOutTabHeight')
-        sink_layout = [[sg.Canvas(key=sink_height_key, size=(0, tab_height), background_color=bg_col),
-                        sg.Col([[sg.Text('{} Expense Destinations'.format(self.menu_title), background_color=bg_col,
-                                         font=font_h)],
-                                [sg.TabGroup([sink_tabs], key=sink_tg_key, pad=(0, 0), enable_events=True,
-                                             tab_background_color=inactive_col, selected_title_color=select_col,
-                                             title_color=text_col, selected_background_color=bg_col,
-                                             background_color=bg_col)]],
-                               pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
-                               vertical_alignment='t', expand_x=True, expand_y=True)]]
-
-        sink_key = self.key_lookup('Withdrawal')
-        sink_disabled = True if len(sink_tabs) < 1 else False
-        if sink_disabled is True:
-            title_col = disabled_col
-        else:
-            title_col = text_col
-
-        withdrawal_title = titles.get('Withdrawal', 'Money Out')
-        sink_tab = [sg.Tab(withdrawal_title, sink_layout, key=sink_key, title_color=title_col, background_color=bg_col,
-                           disabled=sink_disabled)]
-
-        # TabGroup layout
+        # Summary TabGroup layout
         tg_key = self.key_lookup('SummaryTG')
-        panel_layout = [[sg.TabGroup([source_tab, sink_tab], key=tg_key, pad=(0, 0), enable_events=True,
+        panel_layout = [[sg.TabGroup(summary_layout, key=tg_key, pad=(0, 0), enable_events=True,
                                      tab_background_color=inactive_col, selected_title_color=select_col,
                                      title_color=text_col,
                                      selected_background_color=bg_col, background_color=bg_col)]]
 
-        summary_key = self.key_lookup('Summary')
+        summary_key = self.key_lookup('SummaryPanel')
         layout = sg.Col(panel_layout, key=summary_key, pad=(0, 0), background_color=bg_col, vertical_alignment='t',
                         visible=False, expand_y=True, expand_x=True)
 
@@ -497,7 +416,7 @@ class BankRule:
                                  title_color=text_col, selected_background_color=bg_col, background_color=bg_col)]
 
         # Main panel layout
-        main_key = self.key_lookup('Main')
+        main_key = self.key_lookup('MainPanel')
         main_layout = sg.Col([param_layout,
                               [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
                               tg_layout],
@@ -587,18 +506,6 @@ class BankRule:
         for tab in tabs:
             tab.resize_elements(window, (tab_width, tab_height))
 
-        # Resize summary tab elements
-        tab_height = panel_height - 30  # minus size of the tabs
-        source_height_key = self.key_lookup('MoneyInTabHeight')
-        window[source_height_key].set_size((None, tab_height))
-
-        sink_height_key = self.key_lookup('MoneyOutTabHeight')
-        window[sink_height_key].set_size((None, tab_height))
-
-        tab_width = panel_width - 70
-        for assoc in self.associations:
-            assoc.table.resize(window, size=(tab_width, tab_height), row_rate=80)
-
     def run_event(self, window, event, values):
         """
         Run a bank reconciliation event.
@@ -613,13 +520,10 @@ class BankRule:
         start_key = self.key_lookup('Start')
         main_tg_key = self.key_lookup('MainTG')
         summary_tg_key = self.key_lookup('SummaryTG')
-        sink_tg_key = self.key_lookup('SinkTG')
-        source_tg_key = self.key_lookup('SourceTG')
 
         # Component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
         param_keys = [i for j in self.parameters for i in j.elements]
-        association_keys = [i for j in self.associations for i in j.elements]
 
         # Cancel button pressed
         if event == cancel_key:
@@ -650,18 +554,18 @@ class BankRule:
             window[self.panel_keys[next_subpanel]].update(visible=True)
 
             # Collapse the filter frame of the first summary tab
-            summary_tab = window[summary_tg_key].Get()
-            trans_type = summary_tab[1:-1].split('_')[-1]
-            if trans_type.lower() == 'deposit':
-                tg_key = self.key_lookup('SourceTG')
-            else:
-                tg_key = self.key_lookup('SinkTG')
+            tg_key = self.key_lookup('SummaryTG')
+            window[tg_key].Widget.select(0)
 
-            tab_key = window[tg_key].Get()
-            tab = self.fetch_association(tab_key, by_key=True)
-            filter_key = tab.table.key_lookup('FilterFrame')
+            summary_tab_key = window[tg_key].Get()
+            tab = self.fetch_tab(summary_tab_key, by_key=True)
+
+            assoc_tg_key = tab.key_lookup('AssociationTG')
+            assoc_key = window[assoc_tg_key].Get()
+            association = tab.fetch_association(assoc_key, by_key=True)
+            filter_key = association.table.key_lookup('FilterFrame')
             if window[filter_key].metadata['visible'] is True:
-                tab.table.collapse_expand(window, frame='filter')
+                association.table.collapse_expand(window, frame='filter')
 
             # Reset current panel attribute
             self.current_panel = next_subpanel
@@ -684,10 +588,11 @@ class BankRule:
             window[self.key_lookup('Back')].update(disabled=True)
 
             # Un-collapse the filter frame of all summary tabs
-            for tab in self.associations:
-                filter_key = tab.table.key_lookup('FilterFrame')
-                if window[filter_key].metadata['visible'] is False:
-                    tab.table.collapse_expand(window, frame='filter')
+            for tab in self.tabs:
+                for association in tab.associations:
+                    filter_key = association.table.key_lookup('FilterFrame')
+                    if window[filter_key].metadata['visible'] is False:
+                        association.table.collapse_expand(window, frame='filter')
 
             # Switch to first tab
             tg_key = self.key_lookup('MainTG')
@@ -728,13 +633,7 @@ class BankRule:
                 initialized = []
                 # Import tab data from the database
                 for tab in self.tabs:
-                    reftypes = tab.reference_record_types(self.associations)
-                    initialized.append(tab.load_data(self.parameters, reftypes))
-
-                # Import association data from the database
-                for association in self.associations:
-                    reftypes = association.reference_record_types(self.tabs)
-                    initialized.append(association.load_data(self.parameters, reftypes))
+                    initialized.append(tab.load_data(self.parameters))
 
                 # Show that a bank reconciliation is in progress
                 if all(initialized) is True:
@@ -751,25 +650,19 @@ class BankRule:
                         # Enable table element events
                         tab.table.enable(window)
 
-                        # Add reference information to record table
-                        tab.merge_references()
-
                         # Update the tab table display
                         tab.table.update_display(window)
 
                         # Enable the tab reconciliation button
                         window[tab.key_lookup('Reconcile')].update(disabled=False)
 
-                    # Update the associate table events
-                    for assoc in self.associations:
-                        # Enable table element events
-                        assoc.table.enable(window)
+                        # Update the associate table events
+                        for assoc in tab.associations:
+                            # Enable table element events
+                            assoc.table.enable(window)
 
-                        # Add reference information to record table
-                        assoc.merge_references()
-
-                        # Update the association display table
-                        assoc.table.update_display(window)
+                            # Update the association display table
+                            assoc.table.update_display(window)
 
                     self.toggle_parameters(window, 'disable')
 
@@ -798,63 +691,20 @@ class BankRule:
             summary_tab = window[summary_tg_key].Get()
             print('Info: BankRule {NAME}: moving to summary tab {TAB}'.format(NAME=self.name, TAB=summary_tab))
 
-            trans_type = summary_tab[1:-1].split('_')[-1]
-            if trans_type.lower() == 'deposit':
-                tg_key = self.key_lookup('SourceTG')
-            else:
-                tg_key = self.key_lookup('SinkTG')
+            tab = self.fetch_tab(summary_tab, by_key=True)
+            tg_key = tab.key_lookup('AssociationTG')
 
             tab_key = window[tg_key].Get()
-            tab = self.fetch_association(tab_key, by_key=True)
+            association = tab.fetch_association(tab_key, by_key=True)
 
             # Collapse the filter frame of current tab
-            filter_key = tab.table.key_lookup('FilterFrame')
+            filter_key = association.table.key_lookup('FilterFrame')
             if window[filter_key].metadata['visible'] is True:
-                tab.table.collapse_expand(window, frame='filter')
+                association.table.collapse_expand(window, frame='filter')
 
             # Un-collapse the filter frame of all other tabs
-            for unselected_tab in self.associations:
-                if tab.name == unselected_tab.name:
-                    continue
-                else:
-                    filter_key = unselected_tab.table.key_lookup('FilterFrame')
-                    if window[filter_key].metadata['visible'] is False:
-                        unselected_tab.table.collapse_expand(window, frame='filter')
-
-        # Switch between summary sink tabs
-        elif event == sink_tg_key:
-            tab_key = window[sink_tg_key].Get()
-            tab = self.fetch_association(tab_key, by_key=True)
-            print('Info: BankRule {NAME}: moving to bank association tab {TAB}'.format(NAME=self.name, TAB=tab.name))
-
-            # Collapse the filter frame of current tab
-            filter_key = tab.table.key_lookup('FilterFrame')
-            if window[filter_key].metadata['visible'] is True:
-                tab.table.collapse_expand(window, frame='filter')
-
-            # Un-collapse the filter frame of all other tabs
-            for unselected_tab in self.associations:
-                if tab.name == unselected_tab.name:
-                    continue
-                else:
-                    filter_key = unselected_tab.table.key_lookup('FilterFrame')
-                    if window[filter_key].metadata['visible'] is False:
-                        unselected_tab.table.collapse_expand(window, frame='filter')
-
-        # Switch between summary source tabs
-        elif event == source_tg_key:
-            tab_key = window[source_tg_key].Get()
-            tab = self.fetch_association(tab_key, by_key=True)
-            print('Info: BankRule {NAME}: moving to bank association tab {TAB}'.format(NAME=self.name, TAB=tab.name))
-
-            # Collapse the filter frame of current tab
-            filter_key = tab.table.key_lookup('FilterFrame')
-            if window[filter_key].metadata['visible'] is True:
-                tab.table.collapse_expand(window, frame='filter')
-
-            # Un-collapse the filter frame of all other tabs
-            for unselected_tab in self.associations:
-                if tab.name == unselected_tab.name:
+            for unselected_tab in tab.associations:
+                if association.name == unselected_tab.name:
                     continue
                 else:
                     filter_key = unselected_tab.table.key_lookup('FilterFrame')
@@ -872,23 +722,17 @@ class BankRule:
             else:
                 if event == tab.key_lookup('Reconcile'):
                     # Run the primary reconciliation algorithm
-                    tab.reconcile_statement(self.associations)
+                    tab.reconcile_statement()
 
                     # Update the tab table display
                     for tab in self.tabs:
-                        # Add reference information to record table
-                        tab.merge_references()
-
                         # Update the tab table display
                         tab.table.update_display(window)
 
-                    # Update the associate table events
-                    for assoc in self.associations:
-                        # Add reference information to record table
-                        assoc.merge_references()
-
-                        # Update the association display table
-                        assoc.table.update_display(window)
+                        # Update the associate table events
+                        for assoc in tab.associations:
+                            # Update the association display table
+                            assoc.table.update_display(window)
                 else:
                     tab.run_event(window, event, values)
 
@@ -899,17 +743,6 @@ class BankRule:
 
             if all(is_performed) is True:
                 window[next_key].update(disabled=False)
-
-        # Run an association event
-        elif event in association_keys:
-            # Fetch the association element
-            try:
-                association_table = self.fetch_association(event, by_key=True)
-            except KeyError:
-                print('Error: BankRule {NAME}: unable to find association table associated with event key {KEY}'
-                      .format(NAME=self.name, KEY=event))
-            else:
-                association_table.run_event(window, event, values)
 
         # Run parameter events
         elif event in param_keys:
@@ -965,10 +798,6 @@ class BankRule:
         for i, tab in enumerate(self.tabs):
             tab.reset(window)
 
-        # Reset association attributes
-        for association in self.associations:
-            association.reset(window)
-
         if current:
             window['-HOME-'].update(visible=False)
             window[panel_key].update(visible=True)
@@ -1022,12 +851,20 @@ class BankRecordTab:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Tab', 'Reconcile']]
+                         ['Tab', 'SummaryTab', 'Reconcile', 'TabHeight', 'AssociationTG']]
 
         try:
             self.title = entry['Title']
         except KeyError:
             self.title = name
+
+        try:
+            self.record_type = entry['RecordType']
+        except KeyError:
+            msg = 'Configuration Error: BankRecordTab {NAME}: missing required field "RecordType".' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
 
         try:
             self.import_rules = entry['ImportRules']
@@ -1036,6 +873,11 @@ class BankRecordTab:
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
+
+        try:
+            self.record_layout = entry['RecordLayout']
+        except KeyError:
+            self.record_layout = None
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
@@ -1051,6 +893,23 @@ class BankRecordTab:
             sys.exit(1)
         else:
             self.elements += self.table.elements
+
+        try:
+            assoc_entries = entry['Associations']
+        except KeyError:
+            msg = 'Configuration Error: BankRule {NAME}: missing required parameter "Associations"'.format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+
+        self.associations = []
+        self.reference_types = []
+        for assoc_name in assoc_entries:
+            assoc_entry = assoc_entries[assoc_name]
+            assoc = BankAssociationTab(assoc_name, assoc_entry)
+
+            self.associations.append(assoc)
+            self.reference_types.append(assoc.record_type)
+            self.elements += assoc.elements
 
         try:
             association_rules = entry['AssociationRules']
@@ -1077,7 +936,6 @@ class BankRecordTab:
                 sys.exit(1)
 
         self.reconciled = False
-        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
 
     def key_lookup(self, component):
         """
@@ -1094,6 +952,27 @@ class BankRecordTab:
 
         return key
 
+    def fetch_association(self, fetch_key, by_key: bool = False, by_title: bool = False):
+        """
+        Fetch an association rule by name or event key.
+        """
+        if by_key is True:
+            element_type = fetch_key[1:-1].split('_')[-1]
+            associations = [i.key_lookup(element_type) for i in self.associations]
+        elif by_title is True:
+            associations = [i.title for i in self.associations]
+        else:
+            associations = [i.name for i in self.associations]
+
+        if fetch_key in associations:
+            index = associations.index(fetch_key)
+            association_rule = self.associations[index]
+        else:
+            raise KeyError('association {ELEM} not found in list of {NAME} associations'
+                           .format(ELEM=fetch_key, NAME=self.name))
+
+        return association_rule
+
     def reset(self, window):
         """
         Reset the elements and attributes of the bank record tab.
@@ -1104,10 +983,12 @@ class BankRecordTab:
         self.table._df = pd.DataFrame(columns=list(self.table.columns))
         self.table.update_display(window)
 
-        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
-
         # Disable table element events
         self.table.disable(window)
+
+        # Reset association tables
+        for association in self.associations:
+            association.reset(window)
 
         # Un-collapse the tab filter frame
         filter_key = self.table.key_lookup('FilterFrame')
@@ -1162,12 +1043,22 @@ class BankRecordTab:
         tbl_height = int(height * 0.90)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
 
+        # Resize summary tab elements
+        tab_height = height  # minus size of the tabs
+        height_key = self.key_lookup('TabHeight')
+        window[height_key].set_size((None, tab_height))
+
+        # Resize association tables
+        for assoc in self.associations:
+            assoc.table.resize(window, size=(width, height), row_rate=80)
+
     def run_event(self, window, event, values):
         """
         Run a bank record tab event.
         """
-        reconcile_key = self.key_lookup('Reconcile')
         table_keys = self.table.elements
+        association_keys = [i for j in self.associations for i in j.elements]
+        tg_key = self.key_lookup('AssociationTG')
 
         success = True
         # Run component table events
@@ -1186,22 +1077,84 @@ class BankRecordTab:
                 except IndexError:  # user double-clicked too quickly
                     print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
                 else:
-                    if table.actions['open'] is True:
-                        table.df = table.export_row(select_row_index, level=0)
-                    elif table.actions['open'] is False and table.actions['edit'] is True:
-                        table.df = table.edit_row(select_row_index)
+                    table.export_row(select_row_index, layout=self.record_layout, level=0)
+
+                    # Check if reference was removed
+                    record_id = table.df.at[select_row_index, table.id_column]
+                    reference = self.load_reference(record_id)
+#                    if reference is None:
+                        # Remove reference from the references table
+#                        self.ref_df.drop(self.ref_df[self.ref_df['RecordID'] == record_id].index, inplace=True)
 
             else:
                 table.run_event(window, event, values)
 
+        # Switch between association tabs
+        elif event == tg_key:
+            tab_key = window[tg_key].Get()
+            tab = self.fetch_association(tab_key, by_key=True)
+            print('Info: BankRecordTab {NAME}: moving to association tab {TAB}'
+                  .format(NAME=self.name, TAB=tab.name))
+
+            # Collapse the filter frame of current tab
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
+
+            # Un-collapse the filter frame of all other tabs
+            for unselected_tab in self.associations:
+                if tab.name == unselected_tab.name:
+                    continue
+                else:
+                    filter_key = unselected_tab.table.key_lookup('FilterFrame')
+                    if window[filter_key].metadata['visible'] is False:
+                        unselected_tab.table.collapse_expand(window, frame='filter')
+
+        # Run an association event
+        elif event in association_keys:
+            # Fetch the association element
+            try:
+                association_table = self.fetch_association(event, by_key=True)
+            except KeyError:
+                print('Error: BankRecordTab {NAME}: unable to find association table associated with event key {KEY}'
+                      .format(NAME=self.name, KEY=event))
+            else:
+                association_table.run_event(window, event, values)
+
         return success
 
-    def load_data(self, parameters, reference_types):
+    def load_reference(self, record_id):
+        """
+        Load a record's references.
+        """
+        reference_types = self.reference_types
+
+        if len(reference_types) > 0:
+            ref_filters = [('DocType IN ({})'.format(','.join(['?' for _ in reference_types])),
+                            tuple(reference_types))]
+        else:
+            ref_filters = []
+
+        ref_filters += [('RefNo = ?', (record_id,))]
+        try:
+            reference = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
+        except Exception as e:
+            mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
+                                 .format(NAME=self.name, ERR=e))
+            reference = None
+        else:
+            if reference.empty is True:
+                reference = None
+
+        return reference
+
+    def load_data(self, parameters):
         """
         Load data from the database.
         """
         # Prepare the database query statement
         import_rules = self.import_rules
+        reference_types = self.reference_types
 
         param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in parameters]
         filters = param_filters + mod_db.format_import_filters(import_rules)
@@ -1218,10 +1171,6 @@ class BankRecordTab:
         else:
             print('Info: BankRecordTab {NAME}: loaded data for bank reconciliation {RULE}'
                   .format(NAME=self.name, RULE=self.parent))
-            # Update record table with imported data
-            self.table.df = self.table.append(df)
-            self.table.initialize_defaults()
-            self.table._df = self.table.df
             data_loaded = True
 
             # Update reference table with reference data
@@ -1244,55 +1193,37 @@ class BankRecordTab:
                 else:
                     ref_df = ref_df[list(ref_map)]
                     ref_df.rename(columns=ref_map, inplace=True)
-                    self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
-                    print(self.ref_df)
+
+                    # Add reference information to the imported data
+                    df = df.set_index(self.table.id_column)
+                    df = df.combine_first(ref_df.set_index('RecordID'))
+                    df.rename_axis(self.table.id_column, inplace=True)
+                    df.reset_index(inplace=True)
+
+            # Update record table with imported data
+            self.table.df = self.table.append(df)
+            self.table.initialize_defaults()
+            self.table._df = self.table.df
+
+            # Import association data from the database
+            for association in self.associations:
+                data_loaded = association.load_data(parameters)
 
         return data_loaded
 
-    def merge_references(self):
-        """
-        Merge references with record table.
-        """
-        pd.set_option('display.max_columns', None)
-        table = self.table
-        df = table.df.copy()
-        ref_df = self.ref_df
-
-        df = df.set_index(table.id_column)
-        df = df.combine_first(ref_df.set_index('RecordID'))
-        df.rename_axis(table.id_column, inplace=True)
-        df.reset_index(inplace=True)
-
-        self.table.df = df
-
-    def reference_record_types(self, associations):
-        """
-        Get list of relevant record types for association.
-        """
-        reftypes = []
-        for association in associations:
-            if association.type != self.name:
-                continue
-
-            record_type = association.table.record_type
-            if record_type not in reftypes:
-                reftypes.append(record_type)
-
-        return reftypes
-
-    def reconcile_statement(self, associations):
+    def reconcile_statement(self):
         """
         Run the primary Bank Reconciliation rule algorithm for the record tab.
         """
         rule_columns = self.association_columns
         rule_tables = self.association_tables
+        associations = self.associations
         table = self.table
         df = table.df.copy()
-        ref_df = self.ref_df
         ref_table = configuration.reference_lookup
 
         # Filter out rows that are already associated with another record
-        df.drop(df[df[table.id_column].isin(ref_df['RecordID'].tolist())].index, inplace=True)
+        df.drop(df[~df['ReferenceID'].isna()].index, inplace=True)
 
         # Define the fields that will be included in the merged association table
         core_cols = []
@@ -1321,37 +1252,36 @@ class BankRecordTab:
             assoc_name = association.name
             assoc_names.append(assoc_name)
 
-            if assoc_name in rule_tables:
+            try:
                 rule_entry = rule_tables[assoc_name]
+            except KeyError:
+                print('Warning: BankRecordTab {NAME}: no association rules configured for association {ASSOC}'
+                      .format(NAME=self.name, ASSOC=assoc_name))
+                continue
 
-                # Create the column mapping
-                col_map = {rule_entry[i]: i for i in rule_entry}
-                col_map[association.table.id_column] = "RecordID"
+            # Create the column mapping
+            col_map = {rule_entry[i]: i for i in rule_entry}
+            col_map[association.table.id_column] = "RecordID"
 
-                # Filter out rows that are already associated with another record
-                assoc_df = association.table.df.copy()
-                assoc_df.drop(assoc_df[assoc_df[association.table.id_column].isin(association.ref_df['RecordID'])].index,
-                              inplace=True)
+            # Filter out rows that are already associated with another record
+            assoc_df = association.table.df.copy()
+            assoc_df.drop(assoc_df[~assoc_df['ReferenceID'].isna()].index, inplace=True)
 
-                # Subset by relevant columns
-                assoc_df = assoc_df[list(col_map)]
+            # Subset by relevant columns
+            assoc_df = assoc_df[list(col_map)]
 
-                # Change relevant column names
-                assoc_df.rename(columns=col_map, inplace=True)
+            # Change relevant column names
+            assoc_df.rename(columns=col_map, inplace=True)
 
-                # Add table name and index columns
-                assoc_df["Association"] = assoc_name
-#                assoc_df["Index"] = assoc_df.index
-                assoc_df["RecordType"] = association.table.record_type
+            # Add table name and index columns
+            assoc_df["Association"] = assoc_name
+            assoc_df["RecordType"] = association.table.record_type
 
-                # Subset dataframe on relevant columns
-                assoc_df = assoc_df[rule_fields]
+            # Subset dataframe on relevant columns
+            assoc_df = assoc_df[rule_fields]
 
-                # Concatentate association tables
-                merged_df = merged_df.append(assoc_df, ignore_index=True)
-
-        print('merged df is:')
-        print(merged_df.head())
+            # Concatentate association tables
+            merged_df = merged_df.append(assoc_df, ignore_index=True)
 
         # Iterate over record rows, attempting to find matches in the merged table
         for index, row in df.iterrows():
@@ -1372,7 +1302,7 @@ class BankRecordTab:
 
                     # Get the relevant association table
                     assoc_name = results['Association']
-                    association = associations[assoc_names.index(assoc_name)]
+                    association = self.fetch_association(assoc_name)
 
                     # Determine appropriate warning for the expanded search
                     warning = "expanded search"
@@ -1415,7 +1345,7 @@ class BankRecordTab:
 
                 # Get the relevant association table
                 assoc_name = results['Association']
-                association = associations[assoc_names.index(assoc_name)]
+                association = self.fetch_association(assoc_name)
 
                 # Create an entry in the association reference table for the match
                 ref_id = results['RecordID']
@@ -1451,7 +1381,6 @@ class BankRecordTab:
                 print('too many matches for record: {}'.format(row["RecordID"]))
 
         self.reconciled = True
-        self.ref_df = ref_df
 
 
 class BankAssociationTab:
@@ -1483,20 +1412,12 @@ class BankAssociationTab:
             self.title = name
 
         try:
-            transaction_type = entry['Type']
+            self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "Type"' \
+            msg = 'Configuration Error: BankRecordTab {NAME}: missing required field "RecordType".' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
-        else:
-            if transaction_type not in ('Deposit', 'Withdrawal'):
-                msg = 'Configuration Error: BankAssociationTab {NAME}: unsupported value {VAL} provided to parameter ' \
-                      '"Type". Type must be one of "Deposit" or "Withdrawal"'.format(NAME=name, VAL=transaction_type)
-                mod_win2.popup_error(msg)
-                sys.exit(1)
-            else:
-                self.type = transaction_type
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
@@ -1520,8 +1441,6 @@ class BankAssociationTab:
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
-
-        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
 
     def key_lookup(self, component):
         """
@@ -1547,28 +1466,7 @@ class BankAssociationTab:
 
         # Table event
         if event in table_keys:
-            table = self.table
-
-            import_key = self.table.key_lookup('Import')
-            export_key = self.table.key_lookup('Element')
-            if event == import_key:
-                table.df = table.import_rows(self.import_rules, id_only=True)
-                table.update_display(window, window_values=values)
-            elif event == export_key:
-                # Find row selected by user
-                try:
-                    select_row_index = values[event][0]
-                except IndexError:  # user double-clicked too quickly
-                    print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
-                else:
-                    if table.actions['open'] is True:
-                        table.df = table.export_row(select_row_index, level=0)
-                    elif table.actions['open'] is False and table.actions['edit'] is True:
-                        table.df = table.edit_row(select_row_index)
-
-                    # Check if reference was removed
-            else:
-                table.run_event(window, event, values)
+            self.table.run_event(window, event, values)
 
         return True
 
@@ -1597,8 +1495,6 @@ class BankAssociationTab:
         self.table._df = pd.DataFrame(columns=list(self.table.columns))
         self.table.update_display(window)
 
-        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
-
         # Disable table element events
         self.table.disable(window)
 
@@ -1607,7 +1503,7 @@ class BankAssociationTab:
         if window[filter_key].metadata['visible'] is False:
             self.table.collapse_expand(window, frame='filter')
 
-    def load_data(self, parameters, reference_types):
+    def load_data(self, parameters):
         """
         Load association data from the database.
         """
@@ -1636,58 +1532,4 @@ class BankAssociationTab:
             self.table._df = self.table.df
             data_loaded = True
 
-            # Update reference table with imported reference data
-            if len(reference_types) > 0:
-                ref_filters = [('DocType IN ({})'.format(','.join(['?' for _ in reference_types])),
-                                tuple(reference_types))]
-            else:
-                ref_filters = []
-
-            ref_map = {'DocNo': 'ReferenceID', 'RefNo': 'RecordID', 'Warnings': 'ReferenceWarnings'}
-            record_ids = tuple(df[self.table.id_column].tolist())
-            if len(record_ids) > 0:
-                ref_filters += [('RefNo IN ({})'.format(','.join(['?' for _ in record_ids])), record_ids)]
-                try:
-                    ref_df = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
-                except Exception as e:
-                    mod_win2.popup_error(
-                        'Error: BankRuleAssociation {NAME}: failed to import data from the database - {ERR}'
-                            .format(NAME=self.name, ERR=e))
-                    data_loaded = False
-                else:
-                    ref_df = ref_df[list(ref_map)]
-                    ref_df.rename(columns=ref_map, inplace=True)
-                    self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
-                    print(self.ref_df)
-
         return data_loaded
-
-    def merge_references(self):
-        """
-        Merge references with record table.
-        """
-        table = self.table
-        df = table.df.copy()
-        ref_df = self.ref_df
-
-        df = df.set_index(table.id_column)
-        df = df.combine_first(ref_df.set_index('RecordID'))
-        df.rename_axis(table.id_column, inplace=True)
-        df.reset_index(inplace=True)
-
-        self.table.df = df
-
-    def reference_record_types(self, tabs):
-        """
-        Get list of relevant record types for association.
-        """
-        reftypes = []
-        for tab in tabs:
-            if tab.name != self.type:
-                continue
-
-            record_type = tab.table.record_type
-            if record_type not in reftypes:
-                reftypes.append(record_type)
-
-        return reftypes
