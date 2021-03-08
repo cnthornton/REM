@@ -123,13 +123,6 @@ class DatabaseRecord:
         except KeyError:
             self.title = self.name
 
-#        self.record_id = None
-#        self.record_date = None
-#        self.creator = None
-#        self.creation_date = None
-#        self.editor = None
-#        self.edit_date = None
-
         # Record header
         self.headers = []
         try:
@@ -434,8 +427,11 @@ class DatabaseRecord:
         record_id = self.record_id()
         print('Info: RecordType {NAME}: record ID is {ID}'.format(NAME=self.name, ID=record_id))
         if record_id is not None and (references is not None or record_entry is not None):
+            print(references, record_id)
             ref_df = references if references is not None else record_entry.import_references(record_id)
+            print(record_entry.import_references(record_id))
             print('Info: RecordType {NAME}: importing references and components'.format(NAME=self.name))
+            print(ref_df)
             for index, row in ref_df.iterrows():
                 if row['DocNo'] != record_id and row['RefNo'] != record_id:
                     continue
@@ -454,6 +450,8 @@ class DatabaseRecord:
                 # Store imported references as references box objects
                 if doctype in ref_types:
                     ref_id = row['DocNo']
+                    if ref_id == record_id:
+                        continue
                     print('Info: RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
                           .format(NAME=self.name, ID=ref_id, TYPE=doctype))
 

@@ -2,11 +2,13 @@
 REM bank reconciliation configuration classes and objects.
 """
 
+import datetime
 import pandas as pd
 import PySimpleGUI as sg
 from random import randint
 import sys
 
+from REM.config import configuration
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.elements as mod_elem
@@ -583,7 +585,7 @@ class BankRule:
 
         tabs = self.tabs
         for tab in tabs:
-            tab.resize_elements(window, size=(tab_width, tab_height))
+            tab.resize_elements(window, (tab_width, tab_height))
 
         # Resize summary tab elements
         tab_height = panel_height - 30  # minus size of the tabs
@@ -726,11 +728,13 @@ class BankRule:
                 initialized = []
                 # Import tab data from the database
                 for tab in self.tabs:
-                    initialized.append(tab.load_data(self.parameters))
+                    reftypes = tab.reference_record_types(self.associations)
+                    initialized.append(tab.load_data(self.parameters, reftypes))
 
                 # Import association data from the database
                 for association in self.associations:
-                    initialized.append(association.load_data(self.parameters))
+                    reftypes = association.reference_record_types(self.tabs)
+                    initialized.append(association.load_data(self.parameters, reftypes))
 
                 # Show that a bank reconciliation is in progress
                 if all(initialized) is True:
@@ -747,6 +751,9 @@ class BankRule:
                         # Enable table element events
                         tab.table.enable(window)
 
+                        # Add reference information to record table
+                        tab.merge_references()
+
                         # Update the tab table display
                         tab.table.update_display(window)
 
@@ -757,6 +764,9 @@ class BankRule:
                     for assoc in self.associations:
                         # Enable table element events
                         assoc.table.enable(window)
+
+                        # Add reference information to record table
+                        assoc.merge_references()
 
                         # Update the association display table
                         assoc.table.update_display(window)
@@ -860,7 +870,27 @@ class BankRule:
                 print('Error: AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
                       .format(NAME=self.name, KEY=event))
             else:
-                tab.run_event(window, event, values)
+                if event == tab.key_lookup('Reconcile'):
+                    # Run the primary reconciliation algorithm
+                    tab.reconcile_statement(self.associations)
+
+                    # Update the tab table display
+                    for tab in self.tabs:
+                        # Add reference information to record table
+                        tab.merge_references()
+
+                        # Update the tab table display
+                        tab.table.update_display(window)
+
+                    # Update the associate table events
+                    for assoc in self.associations:
+                        # Add reference information to record table
+                        assoc.merge_references()
+
+                        # Update the association display table
+                        assoc.table.update_display(window)
+                else:
+                    tab.run_event(window, event, values)
 
             # Enable movement to summary panel if reconciliation has been performed for all tabs
             is_performed = []
@@ -992,7 +1022,7 @@ class BankRecordTab:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Tab', 'Reconcile', 'Width', 'Height']]
+                         ['Tab', 'Reconcile']]
 
         try:
             self.title = entry['Title']
@@ -1000,14 +1030,12 @@ class BankRecordTab:
             self.title = name
 
         try:
-            import_rules = entry['ImportRules']
+            self.import_rules = entry['ImportRules']
         except KeyError:
             msg = 'Configuration Error: BankRecordTab {NAME}: missing required field "ImportRules".' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
-        else:
-            self.import_rules = import_rules
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
@@ -1024,7 +1052,32 @@ class BankRecordTab:
         else:
             self.elements += self.table.elements
 
+        try:
+            association_rules = entry['AssociationRules']
+        except KeyError:
+            msg = 'Configuration Error: BankRecordTab {NAME}: missing required parameter "AssociationRules"' \
+                .format(NAME=name)
+            mod_win2.popup_error(msg)
+            sys.exit(1)
+        else:
+            if 'Columns' in association_rules:
+                self.association_columns = association_rules['Columns']
+            else:
+                msg = 'Configuration Error: BankRecordTab {NAME}: missing required "AssociationRules" parameter ' \
+                      '"Columns"'.format(NAME=name)
+                mod_win2.popup_error(msg)
+                sys.exit(1)
+
+            if 'Tables' in association_rules:
+                self.association_tables = association_rules['Tables']
+            else:
+                msg = 'Configuration Error: BankRecordTab {NAME}: missing required "AssociationRules" parameter ' \
+                      '"Tables"'.format(NAME=name)
+                mod_win2.popup_error(msg)
+                sys.exit(1)
+
         self.reconciled = False
+        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
 
     def key_lookup(self, component):
         """
@@ -1046,10 +1099,12 @@ class BankRecordTab:
         Reset the elements and attributes of the bank record tab.
         """
 
-        # Reset the data table
+        # Reset the data tables
         self.table.df = pd.DataFrame(columns=list(self.table.columns))
         self.table._df = pd.DataFrame(columns=list(self.table.columns))
         self.table.update_display(window)
+
+        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
 
         # Disable table element events
         self.table.disable(window)
@@ -1078,8 +1133,8 @@ class BankRecordTab:
         pad_frame = mod_const.FRAME_PAD
 
         # Element sizes
-        tbl_width = width - 40
-        tbl_height = height * 0.8
+        tbl_width = width - 30
+        tbl_height = height * 0.9
 
         # Layout
         reconcile_key = self.key_lookup('Reconcile')
@@ -1091,11 +1146,7 @@ class BankRecordTab:
                                pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
                                expand_x=True)]]
 
-        height_key = self.key_lookup('Height')
-        width_key = self.key_lookup('Width')
-        layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
-                  [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
-                   sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
+        layout = [[sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
                           background_color=bg_col, expand_x=True)]]
 
         return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col)
@@ -1105,13 +1156,6 @@ class BankRecordTab:
         Resize the bank record tab.
         """
         width, height = size
-
-        # Reset tab element size
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(width, None))
-
-        height_key = self.key_lookup('Height')
-        window[height_key].set_size(size=(None, height))
 
         # Reset table size
         tbl_width = width - 30  # includes padding on both sides and scroll bar
@@ -1131,20 +1175,28 @@ class BankRecordTab:
             table = self.table
 
             import_key = self.table.key_lookup('Import')
+            export_key = self.table.key_lookup('Element')
             if event == import_key:
                 table.df = table.import_rows(self.import_rules, id_only=True)
                 table.update_display(window, window_values=values)
+            elif event == export_key:
+                # Find row selected by user
+                try:
+                    select_row_index = values[event][0]
+                except IndexError:  # user double-clicked too quickly
+                    print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
+                else:
+                    if table.actions['open'] is True:
+                        table.df = table.export_row(select_row_index, level=0)
+                    elif table.actions['open'] is False and table.actions['edit'] is True:
+                        table.df = table.edit_row(select_row_index)
 
             else:
                 table.run_event(window, event, values)
 
-        # Run the bank reconciliation algorithm
-        elif event == reconcile_key:
-            self.reconciled = True
-
         return success
 
-    def load_data(self, parameters):
+    def load_data(self, parameters, reference_types):
         """
         Load data from the database.
         """
@@ -1166,12 +1218,240 @@ class BankRecordTab:
         else:
             print('Info: BankRecordTab {NAME}: loaded data for bank reconciliation {RULE}'
                   .format(NAME=self.name, RULE=self.parent))
+            # Update record table with imported data
             self.table.df = self.table.append(df)
             self.table.initialize_defaults()
             self.table._df = self.table.df
             data_loaded = True
 
+            # Update reference table with reference data
+            if len(reference_types) > 0:
+                ref_filters = [('DocType IN ({})'.format(','.join(['?' for _ in reference_types])),
+                                tuple(reference_types))]
+            else:
+                ref_filters = []
+
+            ref_map = {'DocNo': 'ReferenceID', 'RefNo': 'RecordID', 'Warnings': 'ReferenceWarnings'}
+            record_ids = tuple(df[self.table.id_column].tolist())
+            if len(record_ids) > 0:
+                ref_filters += [('RefNo IN ({})'.format(','.join(['?' for _ in record_ids])), record_ids)]
+                try:
+                    ref_df = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
+                except Exception as e:
+                    mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
+                                         .format(NAME=self.name, ERR=e))
+                    data_loaded = False
+                else:
+                    ref_df = ref_df[list(ref_map)]
+                    ref_df.rename(columns=ref_map, inplace=True)
+                    self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
+                    print(self.ref_df)
+
         return data_loaded
+
+    def merge_references(self):
+        """
+        Merge references with record table.
+        """
+        pd.set_option('display.max_columns', None)
+        table = self.table
+        df = table.df.copy()
+        ref_df = self.ref_df
+
+        df = df.set_index(table.id_column)
+        df = df.combine_first(ref_df.set_index('RecordID'))
+        df.rename_axis(table.id_column, inplace=True)
+        df.reset_index(inplace=True)
+
+        self.table.df = df
+
+    def reference_record_types(self, associations):
+        """
+        Get list of relevant record types for association.
+        """
+        reftypes = []
+        for association in associations:
+            if association.type != self.name:
+                continue
+
+            record_type = association.table.record_type
+            if record_type not in reftypes:
+                reftypes.append(record_type)
+
+        return reftypes
+
+    def reconcile_statement(self, associations):
+        """
+        Run the primary Bank Reconciliation rule algorithm for the record tab.
+        """
+        rule_columns = self.association_columns
+        rule_tables = self.association_tables
+        table = self.table
+        df = table.df.copy()
+        ref_df = self.ref_df
+        ref_table = configuration.reference_lookup
+
+        # Filter out rows that are already associated with another record
+        df.drop(df[df[table.id_column].isin(ref_df['RecordID'].tolist())].index, inplace=True)
+
+        # Define the fields that will be included in the merged association table
+        core_cols = []
+        expanded_cols = []
+        rule_fields = ["Association", "RecordID", "RecordType"]
+        for assoc_column in rule_columns:
+            rule_entry = rule_columns[assoc_column]
+            if assoc_column not in rule_fields:
+                rule_fields.append(assoc_column)
+            try:
+                expanded = bool(int(rule_entry['Expand']))
+            except (KeyError, ValueError, TypeError):
+                expanded = False
+
+            if expanded is False:
+                core_cols.append(assoc_column)
+            else:
+                expanded_cols.append(assoc_column)
+
+        # Initialize the merged association table
+        merged_df = pd.DataFrame(columns=rule_fields)
+
+        # Add association table data to the merged table
+        assoc_names = []
+        for association in associations:
+            assoc_name = association.name
+            assoc_names.append(assoc_name)
+
+            if assoc_name in rule_tables:
+                rule_entry = rule_tables[assoc_name]
+
+                # Create the column mapping
+                col_map = {rule_entry[i]: i for i in rule_entry}
+                col_map[association.table.id_column] = "RecordID"
+
+                # Filter out rows that are already associated with another record
+                assoc_df = association.table.df.copy()
+                assoc_df.drop(assoc_df[assoc_df[association.table.id_column].isin(association.ref_df['RecordID'])].index,
+                              inplace=True)
+
+                # Subset by relevant columns
+                assoc_df = assoc_df[list(col_map)]
+
+                # Change relevant column names
+                assoc_df.rename(columns=col_map, inplace=True)
+
+                # Add table name and index columns
+                assoc_df["Association"] = assoc_name
+#                assoc_df["Index"] = assoc_df.index
+                assoc_df["RecordType"] = association.table.record_type
+
+                # Subset dataframe on relevant columns
+                assoc_df = assoc_df[rule_fields]
+
+                # Concatentate association tables
+                merged_df = merged_df.append(assoc_df, ignore_index=True)
+
+        print('merged df is:')
+        print(merged_df.head())
+
+        # Iterate over record rows, attempting to find matches in the merged table
+        for index, row in df.iterrows():
+            record_id = row[table.id_column]
+
+            # Attempt to find exact matches using all columns, both core and expanded
+            matches = merged_df[merged_df[core_cols + expanded_cols].eq(row[core_cols + expanded_cols]).all(axis=1)]
+            nmatch = matches.shape[0]
+            if nmatch == 0:  # no matching entries in the merged dataset
+                # Attempt to find matches using only the core columns
+                matches = merged_df[merged_df[core_cols].eq(row[core_cols]).all(axis=1)]
+                nmatch = matches.shape[0]
+                if nmatch == 0:  # no matches found given the parameters supplied
+                    continue
+
+                elif nmatch == 1:  # found one exact match using the column subset
+                    results = matches.iloc[0]
+
+                    # Get the relevant association table
+                    assoc_name = results['Association']
+                    association = associations[assoc_names.index(assoc_name)]
+
+                    # Determine appropriate warning for the expanded search
+                    warning = "expanded search"
+
+                    # Create an entry in the association reference table for the match
+                    ref_id = results['RecordID']
+                    ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings',
+                                         configuration.creator_code, configuration.creation_date]
+
+                    ref_entry = [record_id, ref_id, datetime.datetime.now(), table.record_type, results['RecordType'],
+                                 warning, user.uid, datetime.datetime.now()]
+                    entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
+                    if entry_saved is False:
+                        msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                            .format(ID=ref_id, REF=record_id, TBL=ref_table)
+                        mod_win2.popup_error(msg)
+
+                    reference = pd.Series([ref_id, record_id, warning],
+                                          index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
+                    association.ref_df = association.ref_df.append(reference, ignore_index=True)
+
+                    # Create an entry in the reference table for the match
+                    ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
+                                 warning, user.uid, datetime.datetime.now()]
+                    entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
+                    if entry_saved is False:
+                        msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                            .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                        mod_win2.popup_error(msg)
+
+                    reference = pd.Series([record_id, ref_id, warning],
+                                          index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
+                    ref_df = ref_df.append(reference, ignore_index=True)
+
+                elif nmatch > 1:  # too many matches
+                    print('too many matches for record: {}'.format(row["RecordID"]))
+
+            elif nmatch == 1:  # found one exact match
+                results = matches.iloc[0]
+
+                # Get the relevant association table
+                assoc_name = results['Association']
+                association = associations[assoc_names.index(assoc_name)]
+
+                # Create an entry in the association reference table for the match
+                ref_id = results['RecordID']
+                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
+                                     configuration.creator_code, configuration.creation_date]
+
+                ref_entry = [record_id, ref_id, datetime.datetime.now(),
+                             table.record_type, results['RecordType'], user.uid, datetime.datetime.now()]
+                entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
+                if entry_saved is False:
+                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                        .format(ID=ref_id, REF=record_id, TBL=ref_table)
+                    mod_win2.popup_error(msg)
+
+                reference = pd.Series([ref_id, record_id, None],
+                                      index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
+                association.ref_df = association.ref_df.append(reference, ignore_index=True)
+
+                # Create an entry in the reference table for the match
+                ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
+                             user.uid, datetime.datetime.now()]
+                entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
+                if entry_saved is False:
+                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                    mod_win2.popup_error(msg)
+
+                reference = pd.Series([record_id, ref_id, None],
+                                      index=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
+                ref_df = ref_df.append(reference, ignore_index=True)
+
+            elif nmatch > 1:  # too many matches
+                print('too many matches for record: {}'.format(row["RecordID"]))
+
+        self.reconciled = True
+        self.ref_df = ref_df
 
 
 class BankAssociationTab:
@@ -1241,6 +1521,8 @@ class BankAssociationTab:
             mod_win2.popup_error(msg)
             sys.exit(1)
 
+        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
+
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -1265,7 +1547,28 @@ class BankAssociationTab:
 
         # Table event
         if event in table_keys:
-            self.table.run_event(window, event, values)
+            table = self.table
+
+            import_key = self.table.key_lookup('Import')
+            export_key = self.table.key_lookup('Element')
+            if event == import_key:
+                table.df = table.import_rows(self.import_rules, id_only=True)
+                table.update_display(window, window_values=values)
+            elif event == export_key:
+                # Find row selected by user
+                try:
+                    select_row_index = values[event][0]
+                except IndexError:  # user double-clicked too quickly
+                    print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
+                else:
+                    if table.actions['open'] is True:
+                        table.df = table.export_row(select_row_index, level=0)
+                    elif table.actions['open'] is False and table.actions['edit'] is True:
+                        table.df = table.edit_row(select_row_index)
+
+                    # Check if reference was removed
+            else:
+                table.run_event(window, event, values)
 
         return True
 
@@ -1294,6 +1597,8 @@ class BankAssociationTab:
         self.table._df = pd.DataFrame(columns=list(self.table.columns))
         self.table.update_display(window)
 
+        self.ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceWarnings'])
+
         # Disable table element events
         self.table.disable(window)
 
@@ -1302,7 +1607,7 @@ class BankAssociationTab:
         if window[filter_key].metadata['visible'] is False:
             self.table.collapse_expand(window, frame='filter')
 
-    def load_data(self, parameters):
+    def load_data(self, parameters, reference_types):
         """
         Load association data from the database.
         """
@@ -1325,9 +1630,64 @@ class BankAssociationTab:
                                  .format(NAME=self.name, ERR=e))
             data_loaded = False
         else:
+            # Update the record table with imported data
             self.table.df = self.table.append(df)
             self.table.initialize_defaults()
             self.table._df = self.table.df
             data_loaded = True
 
+            # Update reference table with imported reference data
+            if len(reference_types) > 0:
+                ref_filters = [('DocType IN ({})'.format(','.join(['?' for _ in reference_types])),
+                                tuple(reference_types))]
+            else:
+                ref_filters = []
+
+            ref_map = {'DocNo': 'ReferenceID', 'RefNo': 'RecordID', 'Warnings': 'ReferenceWarnings'}
+            record_ids = tuple(df[self.table.id_column].tolist())
+            if len(record_ids) > 0:
+                ref_filters += [('RefNo IN ({})'.format(','.join(['?' for _ in record_ids])), record_ids)]
+                try:
+                    ref_df = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
+                except Exception as e:
+                    mod_win2.popup_error(
+                        'Error: BankRuleAssociation {NAME}: failed to import data from the database - {ERR}'
+                            .format(NAME=self.name, ERR=e))
+                    data_loaded = False
+                else:
+                    ref_df = ref_df[list(ref_map)]
+                    ref_df.rename(columns=ref_map, inplace=True)
+                    self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
+                    print(self.ref_df)
+
         return data_loaded
+
+    def merge_references(self):
+        """
+        Merge references with record table.
+        """
+        table = self.table
+        df = table.df.copy()
+        ref_df = self.ref_df
+
+        df = df.set_index(table.id_column)
+        df = df.combine_first(ref_df.set_index('RecordID'))
+        df.rename_axis(table.id_column, inplace=True)
+        df.reset_index(inplace=True)
+
+        self.table.df = df
+
+    def reference_record_types(self, tabs):
+        """
+        Get list of relevant record types for association.
+        """
+        reftypes = []
+        for tab in tabs:
+            if tab.name != self.type:
+                continue
+
+            record_type = tab.table.record_type
+            if record_type not in reftypes:
+                reftypes.append(record_type)
+
+        return reftypes

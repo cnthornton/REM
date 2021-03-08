@@ -388,8 +388,6 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
                     cond_results = pd.Series([False for _ in range(nrow)])
 
                 eval_results.append(cond_results)
-                print('current condition is: {}'.format(component))
-                print(cond_results)
 
     results = eval_results[0]
     for index, cond_results in enumerate(eval_results[1:]):
@@ -415,7 +413,6 @@ def evaluate_condition(data, condition, as_list: bool = True):
     Check whether rows in dataframe pass a given condition rule.
     """
     operators = {'>', '>=', '<', '<=', '==', '!=', 'in', 'not in'}
-    special_operators = {'in', 'not in'}
 
     if isinstance(data, pd.Series):
         header = data.index.tolist()
@@ -449,7 +446,6 @@ def evaluate_condition(data, condition, as_list: bool = True):
                 right = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), right)
             eval_str = "{} {} {}".format(left, oper, right)
 
-        print(eval_str)
         try:
             results = eval(eval_str)
         except SyntaxError:
@@ -464,13 +460,13 @@ def evaluate_condition(data, condition, as_list: bool = True):
             if colname in header:
                 results = data[colname].isna()
             else:
-                results = [False for _ in range(nrow)]
+                results = pd.Series([False for _ in range(nrow)])
         else:
             colname = eval_str
             if colname in header:
                 results = ~ data[colname].isna()
             else:
-                results = [False for _ in range(nrow)]
+                results = pd.Series([False for _ in range(nrow)])
     else:
         raise SyntaxError('unable to parse rule condition {} - unknown format of the condition rule'.format(condition))
 
@@ -518,7 +514,6 @@ def evaluate_rule(data, condition, as_list: bool = True):
                 rule_value.append(component)
 
     eval_str = ' '.join(rule_value)
-    print(eval_str)
     try:
         row_status = eval(eval_str)
     except SyntaxError:
@@ -576,7 +571,6 @@ def evaluate_rule(data, condition, as_list: bool = True):
                 rule_value.append(component)
 
     eval_str = ' '.join(rule_value)
-    print(eval_str)
     try:
         row_status = eval(eval_str)
     except SyntaxError:

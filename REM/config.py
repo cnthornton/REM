@@ -690,12 +690,15 @@ class RecordEntry:
         Import record references.
         """
         ref_table = configuration.reference_lookup
-        columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted']
+        columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings']
 
         # Define query statement
         query_str = 'SELECT {COLS} FROM {TABLE} WHERE {COL1} = ? OR {COL2} = ?;' \
             .format(COLS=','.join(columns), COL1='DocNo', COL2='RefNo', TABLE=ref_table)
-        import_df = program_account.query(query_str, params=(record_id, record_id))
+        params = (record_id, record_id)
+        import_df = program_account.query(query_str, params=params)
+        print('Info: querying record reference lookup table with string: {}; and parameters: {}'
+              .format(query_str, params))
 
         return import_df
 

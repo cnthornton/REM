@@ -436,7 +436,9 @@ class TableElement:
             export_df = self.update_display(window, values)
             print('Info: DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
             print(export_df)
-            self.export_table(export_df)
+            annotations = self.annotate_display(df)
+            annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+            self.export_table(export_df, annotation_map)
 
         result = self.update_display(window, values)
 
@@ -782,7 +784,6 @@ class TableElement:
                   .format(NAME=self.name, CODE=annot_code))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
-            print(annot_condition)
             try:
                 results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=False)
             except Exception as e:
@@ -1625,20 +1626,20 @@ class TableElement:
         """
         # Create a record object from the row data
         if layout is not None:
-            record_class = mod_records.StandardRecord
             record_entry = mod_records.CustomRecordEntry({'RecordLayout': layout})
+            record_group = 'custom'
         else:
             record_entry = configuration.records.fetch_rule(self.record_type)
             record_group = record_entry.group
 
-            if record_group in ('account', 'bank_statement', 'cash_expense'):
-                record_class = mod_records.StandardRecord
-            elif record_group == 'bank_deposit':
-                record_class = mod_records.DepositRecord
-            elif record_group == 'audit':
-                record_class = mod_records.TAuditRecord
-            else:
-                raise AttributeError('unknown record group provided {GROUP}'.format(NAME=self.name, GROUP=record_group))
+        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
+            record_class = mod_records.StandardRecord
+        elif record_group == 'bank_deposit':
+            record_class = mod_records.DepositRecord
+        elif record_group == 'audit':
+            record_class = mod_records.TAuditRecord
+        else:
+            raise AttributeError('unknown record group provided {GROUP}'.format(NAME=self.name, GROUP=record_group))
 
         record = record_class(record_entry, level=level)
         record.initialize(row, new=new_record, references=references)
