@@ -541,6 +541,14 @@ class DataParameterInput(DataParameter):
 
         return display_value
 
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        formatted_value = self.format_display()
+
+        return formatted_value
+
 
 class DataParameterCombo(DataParameter):
     """
@@ -660,6 +668,14 @@ class DataParameterCombo(DataParameter):
         display_value = aliases.get(value, value)
 
         return display_value
+
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        formatted_value = self.format_display()
+
+        return formatted_value
 
 
 class DataParameterDate(DataParameter):
@@ -783,6 +799,14 @@ class DataParameterDate(DataParameter):
             value_fmt = None
 
         return value_fmt
+
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        formatted_value = self.format_display()
+
+        return formatted_value.replace('-', '')
 
     def toggle_parameter(self, window, value: str = 'enable'):
         """
@@ -966,6 +990,23 @@ class DataParameterDateRange(DataParameter):
 
         return formatted_values
 
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        formatted_values = self.format_display()
+
+        nvals = len(formatted_values)
+        if nvals == 0:
+            return ''
+        elif nvals == 1:
+            return formatted_values[0].replace('-', '')
+        elif nvals == 2:
+            formatted_values = [i.replace('-', '') for i in formatted_values]
+            return '{}-{}'.format(*formatted_values)
+        else:
+            return ''
+
     def query_statement(self, column):
         """
         Generate the filter clause for SQL querying.
@@ -1100,6 +1141,14 @@ class DataParameterCheckbox(DataParameter):
         Format the parameter's value for displaying.
         """
         return self.value
+
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        formatted_value = self.format_display()
+
+        return formatted_value
 
 
 class DataParameterButton(DataParameter):
@@ -1258,3 +1307,11 @@ class DataParameterButton(DataParameter):
             display_value = str(value)
 
         return display_value
+
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        formatted_value = self.format_display()
+
+        return formatted_value

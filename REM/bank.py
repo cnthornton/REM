@@ -3,6 +3,7 @@ REM bank reconciliation configuration classes and objects.
 """
 
 import datetime
+from IPython.display import display
 import pandas as pd
 import PySimpleGUI as sg
 from random import randint
@@ -518,6 +519,7 @@ class BankRule:
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         start_key = self.key_lookup('Start')
+        save_key = self.key_lookup('Save')
         main_tg_key = self.key_lookup('MainTG')
         summary_tg_key = self.key_lookup('SummaryTG')
 
@@ -766,6 +768,53 @@ class BankRule:
                       .format(NAME=self.name, KEY=event))
             else:
                 param.run_event(window, event, values)
+
+        # Save tables to file
+        elif event == save_key:
+            default_title = '_'.join([self.title, '_'.join([i.print_value() for i in self.parameters])])\
+                                .replace(' ', '_') + '.xlsx'
+            outfile = sg.popup_get_file('', save_as=True, default_path=default_title, default_extension='xlsx',
+                                        no_window=True, file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
+            if not outfile:
+                return current_rule
+
+            with pd.ExcelWriter(outfile) as writer:
+                for tab in self.tabs:
+                    sheet_name = tab.table.title
+                    df = tab.table.df.copy()
+                    export_df = tab.table.format_display_table(df)
+                    annotations = tab.table.annotate_display(df)
+                    annotation_map = {i: tab.table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+                    try:
+                        export_df.style.apply(lambda x: ['background-color: {}'
+                                              .format(annotation_map.get(x.name, 'white')) for _ in x], axis=1)\
+                            .to_excel(writer, sheet_name=sheet_name, engine='openpyxl', header=True, index=False)
+                    except Exception as e:
+                        msg = 'failed to save table {SHEET} to file to {FILE} - {ERR}' \
+                            .format(SHEET=sheet_name, FILE=outfile, ERR=e)
+                        print('Error: {MSG}'.format(MSG=msg))
+                        mod_win2.popup_error(msg)
+                        continue
+
+                    for association in tab.associations:
+                        sheet_name = association.table.title
+                        df = association.table.df.copy()
+                        export_df = association.table.format_display_table(df)
+                        annotations = association.table.annotate_display(df)
+                        annotation_map = {i: association.table.annotation_rules[j]['BackgroundColor'] for i, j in
+                                          annotations.items()}
+                        try:
+                            export_df.style.apply(lambda x: ['background-color: {}'
+                                                  .format(annotation_map.get(x.name, 'white')) for _ in x], axis=1)\
+                                .to_excel(writer, sheet_name=sheet_name, engine='openpyxl', header=True, index=False)
+                        except Exception as e:
+                            msg = 'failed to save table {SHEET} to file to {FILE} - {ERR}' \
+                                .format(SHEET=sheet_name, FILE=outfile, ERR=e)
+                            print('Error: {MSG}'.format(MSG=msg))
+                            mod_win2.popup_error(msg)
+                            continue
+
+            current_rule = self.reset_rule(window, current=True)
 
         return current_rule
 
