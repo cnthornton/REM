@@ -1014,7 +1014,7 @@ class AuditTransactionTab:
                         print('Warning: AuditTransactionTab {NAME}: no row selected for exporting'
                               .format(NAME=self.name))
                     else:
-                        table.export_row(row_index, layout=self.record_layout)
+                        table.export_row(row_index, layout=self.record_layout, custom=True)
                 else:
                     print('Warning: AuditTransactionTab {NAME}: no layout specified for the transaction type'
                           .format(NAME=self.name))
