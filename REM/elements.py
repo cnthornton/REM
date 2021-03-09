@@ -725,7 +725,6 @@ class TableElement:
             param_value = param.value
             dtype = param.dtype
             column = param.name
-            print('parameter {} has datatype {} and value {}'.format(column, dtype, param_value))
 
             try:
                 if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
@@ -785,12 +784,11 @@ class TableElement:
                         print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
                               '{VAL}'.format(TBL=self.name, PARAM=column, VAL=to_value))
             else:  # parameter is a single element
-                print('Info: DataTable {NAME}: filtering table with parameter {PARAM} value {VAL}'
-                      .format(NAME=self.name, PARAM=param.name, VAL=param_value))
-                print(col_values.tolist())
-
                 if not param_value:
                     continue
+
+                print('Info: DataTable {NAME}: filtering table with parameter {PARAM} value {VAL}'
+                      .format(NAME=self.name, PARAM=param.name, VAL=param_value))
 
                 try:
                     df = df[col_values == param_value]
