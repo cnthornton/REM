@@ -1501,7 +1501,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     gc.collect()
 
 
-def import_window(table, import_rules, win_size: tuple = None, program_database: bool = False):
+def import_window(table, import_rules, win_size: tuple = None, program_database: bool = False, params: list = None):
     """
     Display the importer window.
     """
@@ -1510,11 +1510,14 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     else:
         width, height = (mod_const.WIN_WIDTH * 0.8, mod_const.WIN_HEIGHT * 0.8)
 
+    params = params if params is not None else []
+
     # Window and element size parameters
     font_h = mod_const.HEADER_FONT
     main_font = mod_const.MAIN_FONT
 
     pad_v = mod_const.VERT_PAD
+    pad_h = mod_const.HORZ_PAD
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
 
@@ -1529,12 +1532,21 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     header_layout = [[sg.Text('Import Missing Data', pad=(pad_frame, pad_frame), background_color=header_col,
                               font=font_h)]]
 
-    main_layout = [[sg.Text('Record ID:', pad=((pad_frame, pad_v), (pad_v, 0)), background_color=bg_col),
-                    sg.Input('', key='-ID-', pad=((0, pad_v), (pad_v, 0)), size=(14, 1), background_color=bg_col),
-                    mod_lo.B2('Find', key='-FIND-', pad=(0, (pad_v, 0)), button_color=(bttn_text_col, bttn_bg_col),
-                              use_ttk_buttons=True, bind_return_key=True)],
-                   [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)],
-                   [table.layout(width=tbl_width, nrow=10, tooltip='Select rows to import')]]
+    # Search parameter layout
+    param_layout = []
+    for param in params:
+        element_layout = param.layout(padding=((0, pad_h), 0))
+        param_layout += element_layout
+
+    if len(param_layout) > 0:
+        param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True,
+                                      button_color=(bttn_text_col, bttn_bg_col), use_ttk_buttons=True))
+
+        main_layout = [[sg.Col([param_layout], pad=(pad_frame, (pad_v, 0)), background_color=bg_col)],
+                       [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)],
+                       [table.layout(width=tbl_width, nrow=10, tooltip='Select rows to import')]]
+    else:
+        main_layout = [[table.layout(width=tbl_width, nrow=10, tooltip='Select rows to import')]]
 
     bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel importing'),
                     mod_lo.B2('Import', key='-IMPORT-', pad=(pad_el, 0),
@@ -1556,7 +1568,6 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
     table_statement = mod_db.format_tables(import_rules)
     import_columns = mod_db.format_import_columns(import_rules)
-    id_column = mod_db.get_import_column(import_rules, 'RecordID')
 
     # Start event loop
     selected_rows = []
@@ -1567,18 +1578,20 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             break
 
         if event == '-FIND-':
-            record_id = values['-ID-']
-            if not record_id:
-                popup_notice('no record ID provided')
-                continue
-
-            record_filter = ('{COL} = ?'.format(COL=id_column), (record_id,))
+            # Set search parameter values
+            query_filters = []
+            for param in params:
+                param.value = param.format_value(values)
+                query_statement = param.query_statement(mod_db.get_import_column(import_rules, param.name))
+                if query_statement is not None:
+                    query_filters.append(query_statement)
 
             try:
-                record_df = user.query(table_statement, columns=import_columns, filter_rules=record_filter,
+                record_df = user.query(table_statement, columns=import_columns, filter_rules=query_filters,
                                        prog_db=program_database)
             except Exception as e:
-                popup_error('failed to import record {ID} from the database - {ERR}'.format(ID=record_id, ERR=e))
+                popup_error('failed to import records matching the defined search parameters from the database - {ERR}'
+                            .format(ERR=e))
                 continue
 
             table.df = table.append(record_df)

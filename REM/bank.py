@@ -1128,7 +1128,7 @@ class BankRecordTab:
             import_key = self.table.key_lookup('Import')
             export_key = self.table.key_lookup('Element')
             if event == import_key:
-                table.df = table.import_rows(self.import_rules, id_only=True)
+                table.df = table.import_rows(self.import_rules, id_only=True, program_database=True)
                 table.update_display(window, window_values=values)
             elif event == export_key:
                 # Find row selected by user

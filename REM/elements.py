@@ -1537,8 +1537,7 @@ class TableElement:
 
         return df
 
-    def import_rows(self, filter_rules: list = None, id_only: bool = False,
-                    program_database: bool = False):
+    def import_rows(self, filter_rules: list = None, id_only: bool = False, program_database: bool = False):
         """
         Import one or more records from a table of records.
         """
@@ -1579,11 +1578,21 @@ class TableElement:
             else:
                 import_table.df = import_df
 
-        pd.set_option('display.max_columns', None)
-        print(import_table.df.head)
+        # Add relevant search parameters
+        if self.search_field:
+            display_map = {j: i for i, j in self.display_columns.items()}
+            try:
+                search_desc = display_map[self.search_field]
+            except KeyError:
+                search_desc = self.search_field
+            search_entry = {'Description': search_desc, 'ElementType': 'input', 'DataType': 'string'}
+            search_params = [mod_param.DataParameterInput(self.search_field, search_entry)]
+        else:
+            search_params = None
 
         import_table.sort()
-        select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database)
+        select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
+                                           params=search_params)
 
         # Verify that selected records are not already in table
         current_ids = self.df[self.id_column].tolist()
