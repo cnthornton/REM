@@ -330,6 +330,7 @@ class TableElement:
         self._df = pd.DataFrame(columns=columns)
         self.df = pd.DataFrame(columns=columns)
         self.import_df = pd.DataFrame(columns=columns)
+        self.index_map = {}
 
     def key_lookup(self, component):
         """
@@ -390,10 +391,16 @@ class TableElement:
             except IndexError:  # user double-clicked too quickly
                 print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
             else:
+                # Get the real index of the column
+                try:
+                    index = self.index_map[select_row_index]
+                except KeyError:
+                    index = select_row_index
+
                 if self.actions['open'] is True:
-                    self.df = self.export_row(select_row_index)
+                    self.df = self.export_row(index)
                 elif self.actions['open'] is False and self.actions['edit'] is True:
-                    self.df = self.edit_row(select_row_index)
+                    self.df = self.edit_row(index)
 
         elif event == self.key_lookup('CollapseButton'):
             print('Info: DataTable {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
@@ -435,7 +442,6 @@ class TableElement:
         elif event == self.key_lookup('Export'):
             export_df = self.format_display_table(self.df)
             print('Info: DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
-            print(export_df)
             annotations = self.annotate_display(self.df)
             annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
             self.export_table(export_df, annotation_map)
@@ -469,16 +475,22 @@ class TableElement:
         if not search_value:
             df = self.apply_filter()
         else:
-            df = self.df
+            df = self.df.copy()
             try:
                 df = df[df[search_field] == search_value]
             except KeyError:
                 print('Warning: DataTable {NAME}: search field {COL} not found in list of table columns'
                       .format(NAME=self.name, COL=search_field))
 
+        # Edit the index map to reflect what is currently displayed
+        self.index_map = {i: j for i, j in enumerate(df.index.tolist())}
+
+        df = df.reset_index()
+
         # Highlight table rows using configured annotation rules
         annotations = self.annotate_display(df)
         row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
+        print(row_colors)
 
         # Format the table
         display_df = self.format_display_table(df)
@@ -711,61 +723,84 @@ class TableElement:
 
         for param in parameters:
             param_value = param.value
+            dtype = param.dtype
+            column = param.name
+            print('parameter {} has datatype {} and value {}'.format(column, dtype, param_value))
 
-            if param_value:
-                if isinstance(param_value, tuple) or isinstance(param_value, list):  # parameter is range element
-                    try:
-                        from_value, to_value = param_value
-                    except ValueError:
-                        print('Error: DataTable {NAME}: ranged parameter {PARAM} requires exactly two values'
-                              .format(NAME=self.name, PARAM=param.name))
-                        continue
-                    if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
-                        try:
-                            df = df[(df[param.name] >= from_value) & (df[param.name] <= to_value)]
-                        except KeyError:
-                            print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                                  .format(TBL=self.name, PARAM=param.name))
-                            continue
-                        except SyntaxError:
-                            print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} for values '
-                                  'between {VAL1} and {VAL2}'
-                                  .format(TBL=self.name, PARAM=param.name, VAL1=from_value, VAL2=to_value))
-                    elif from_value not in (None, '') and to_value in (None, ''):  # rows equal to from component
-                        try:
-                            df = df[df[param.name] == from_value]
-                        except KeyError:
-                            print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                                  .format(TBL=self.name, PARAM=param.name))
-                            continue
-                        except SyntaxError:
-                            print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
-                                  '{VAL},'.format(TBL=self.name, PARAM=param.name, VAL=from_value))
-                    elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
-                        try:
-                            df = df[df[param.name] == to_value]
-                        except KeyError:
-                            print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                                  .format(TBL=self.name, PARAM=param.name))
-                            continue
-                        except SyntaxError:
-                            print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
-                                  '{VAL}'.format(TBL=self.name, PARAM=param.name, VAL=to_value))
-                else:  # parameter is a single element
-                    print('Info: DataTable {NAME}: filtering table with parameter {PARAM} value {VAL}'
-                          .format(NAME=self.name, PARAM=param.name, VAL=param_value))
-                    if param_value in ('', None):
-                        continue
+            try:
+                if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                    col_values = pd.to_datetime(df[column], errors='coerce', format=user.date_format)
+                elif dtype in ('int', 'integer', 'bit'):
+                    col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+                elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+                    col_values = pd.to_numeric(df[column], errors='coerce')
+                elif dtype in ('bool', 'boolean'):
+                    col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+                elif dtype in ('char', 'varchar', 'binary', 'text'):
+                    col_values = df[column].astype(np.object, errors='raise')
+                else:
+                    col_values = df[column].astype(np.object, errors='raise')
+            except Exception as e:
+                print('Warning: DataTable {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                      .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                col_values = df[column]
 
+            if isinstance(param_value, tuple) or isinstance(param_value, list):  # parameter is range element
+                try:
+                    from_value, to_value = param_value
+                except ValueError:
+                    print('Error: DataTable {NAME}: ranged parameter {PARAM} requires exactly two values'
+                          .format(NAME=self.name, PARAM=param.name))
+                    continue
+
+                if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
                     try:
-                        df = df[df[param.name] == param_value]
+                        df = df[(col_values >= from_value) & (col_values <= to_value)]
                     except KeyError:
                         print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                              .format(TBL=self.name, PARAM=param.name))
+                              .format(TBL=self.name, PARAM=column))
+                        continue
+                    except SyntaxError:
+                        print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} for values '
+                              'between {VAL1} and {VAL2}'
+                              .format(TBL=self.name, PARAM=param.name, VAL1=from_value, VAL2=to_value))
+                elif from_value not in (None, '') and to_value in (None, ''):  # rows equal to from component
+                    try:
+                        df = df[col_values == from_value]
+                    except KeyError:
+                        print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
+                              .format(TBL=self.name, PARAM=column))
                         continue
                     except SyntaxError:
                         print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
-                              '{VAL}'.format(TBL=self.name, PARAM=param.name, VAL=param_value))
+                              '{VAL},'.format(TBL=self.name, PARAM=column, VAL=from_value))
+                elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
+                    try:
+                        df = df[col_values == to_value]
+                    except KeyError:
+                        print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
+                              .format(TBL=self.name, PARAM=column))
+                        continue
+                    except SyntaxError:
+                        print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
+                              '{VAL}'.format(TBL=self.name, PARAM=column, VAL=to_value))
+            else:  # parameter is a single element
+                print('Info: DataTable {NAME}: filtering table with parameter {PARAM} value {VAL}'
+                      .format(NAME=self.name, PARAM=param.name, VAL=param_value))
+                print(col_values.tolist())
+
+                if not param_value:
+                    continue
+
+                try:
+                    df = df[col_values == param_value]
+                except KeyError:
+                    print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
+                          .format(TBL=self.name, PARAM=column))
+                    continue
+                except SyntaxError:
+                    print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
+                          '{VAL}'.format(TBL=self.name, PARAM=column, VAL=param_value))
 
         return df
 
@@ -1915,8 +1950,10 @@ class ReferenceElement:
 
         if inverted is True:
             colmap = {'DocNo': 'RecordID', 'RefNo': 'ReferenceID', 'DocType': 'RecordType', 'RefType': 'ReferenceType'}
+            self.inverted = True
         else:
             colmap = {'DocNo': 'ReferenceID', 'RefNo': 'RecordID', 'DocType': 'ReferenceType', 'RefType': 'RecordType'}
+            self.inverted = False
 
         entry = entry.rename(index=colmap)
 
