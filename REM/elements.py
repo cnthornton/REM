@@ -504,7 +504,7 @@ class TableElement:
         # Update table totals
         if self.tally_rule is not None:
             try:
-                tbl_total = self.calculate_total()
+                tbl_total = self.calculate_total(df)
             except Exception as e:
                 print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
                 tbl_total = 0
@@ -518,7 +518,7 @@ class TableElement:
             window[total_key].update(value=tbl_total)
 
         # Update the table summary
-        summary = self.summarize_table()
+        summary = self.summarize_table(df)
         for summary_item in summary:
             summ_rule, summ_value = summary_item
             if isinstance(summ_value, float):
@@ -643,7 +643,7 @@ class TableElement:
 
         return df
 
-    def summarize_table(self):
+    def summarize_table(self, df: pd.DataFrame = None):
         """
         Update Summary element with data summary
         """
@@ -654,7 +654,7 @@ class TableElement:
 
         operators = set('+-*/')
 
-        df = self.df
+        df = df if df is not None else self.df
         summ_rules = self.summary_rules
 
         # Calculate totals defined by summary rules
@@ -1409,7 +1409,7 @@ class TableElement:
                 df.style.apply(lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white')) for _ in x],
                                axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
 
-    def calculate_total(self):
+    def calculate_total(self, df: pd.DataFrame = None):
         """
         Calculate the record total using the configured tally rule.
         """
@@ -1420,11 +1420,12 @@ class TableElement:
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
         tally_rule = self.tally_rule
+        df = df if df is not None else self.df
 
         total = 0
         if tally_rule is not None:
             try:
-                result = mod_dm.evaluate_rule(self.df, tally_rule, as_list=False)
+                result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
             except Exception as e:
                 print('Warning: DataTable {NAME}: unable to calculate table total - {ERR}'
                       .format(NAME=self.name, ERR=e))

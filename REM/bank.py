@@ -305,7 +305,7 @@ class BankRule:
             assoc_key = tab.key_lookup('AssociationTG')
             height_key = tab.key_lookup('TabHeight')
             group_layout = [[sg.Canvas(key=height_key, size=(0, tab_height), background_color=bg_col),
-                             sg.Col([[sg.Text('{}'.format(tab.title), background_color=bg_col,
+                             sg.Col([[sg.Text('{}: {}'.format(self.menu_title, tab.title), background_color=bg_col,
                                               font=font_h)],
                                      [sg.TabGroup([association_tabs], key=assoc_key, pad=(0, 0), enable_events=True,
                                                   tab_background_color=inactive_col, selected_title_color=select_col,
@@ -320,7 +320,7 @@ class BankRule:
             else:
                 title_col = text_col
 
-            tg_title = '{}: {}'.format(self.menu_title, tab.title)
+            tg_title = tab.title
             tg_key = tab.key_lookup('SummaryTab')
             tab_layout = [sg.Tab(tg_title, group_layout, key=tg_key, title_color=title_col,
                                  background_color=bg_col, disabled=tg_disabled)]
@@ -675,9 +675,6 @@ class BankRule:
                             # Enable table element events
                             assoc.table.enable(window)
 
-                            # Update the association display table
-                            assoc.table.update_display(window)
-
                     self.toggle_parameters(window, 'disable')
 
         # Switch between tabs
@@ -742,11 +739,6 @@ class BankRule:
                     for tab in self.tabs:
                         # Update the tab table display
                         tab.table.update_display(window)
-
-                        # Update the associate table events
-                        for assoc in tab.associations:
-                            # Update the association display table
-                            assoc.table.update_display(window)
                 else:
                     tab.run_event(window, event, values)
 
@@ -1118,7 +1110,7 @@ class BankRecordTab:
 
         # Resize association tables
         for assoc in self.associations:
-            assoc.table.resize(window, size=(width - 10, height), row_rate=80)
+            assoc.table.resize(window, size=(width - 30, height), row_rate=80)
 
     def run_event(self, window, event, values):
         """
@@ -1145,15 +1137,23 @@ class BankRecordTab:
                 except IndexError:  # user double-clicked too quickly
                     print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
                 else:
-                    table.export_row(select_row_index, layout=self.record_layout, level=0)
+                    # Get the real index of the column
+                    try:
+                        index = table.index_map[select_row_index]
+                    except KeyError:
+                        index = select_row_index
+
+                    table.export_row(index, layout=self.record_layout, level=0)
 
                     # Check if reference was removed
-                    record_id = table.df.at[select_row_index, table.id_column]
+                    record_id = table.df.at[index, table.id_column]
                     reference = self.load_reference(record_id)
                     if reference is None:
                         # Remove reference from the references table
-                        table.df.at[select_row_index, 'ReferenceID'] = None
-                        table.df.at[select_row_index, 'Warning'] = None
+                        table.df.at[index, 'ReferenceID'] = None
+                        table.df.at[index, 'ReferenceWarnings'] = None
+
+                        table.update_display(window, window_values=values)
 
             else:
                 table.run_event(window, event, values)
@@ -1204,7 +1204,7 @@ class BankRecordTab:
         else:
             ref_filters = []
 
-        ref_filters += [('RefNo = ?', (record_id,))]
+        ref_filters += [('RefNo = ?', (record_id,)), ('IsDeleted = ?', (0,))]
         try:
             reference = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
         except Exception as e:
@@ -1252,7 +1252,8 @@ class BankRecordTab:
             ref_map = {'DocNo': 'ReferenceID', 'RefNo': 'RecordID', 'Warnings': 'ReferenceWarnings'}
             record_ids = tuple(df[self.table.id_column].tolist())
             if len(record_ids) > 0:
-                ref_filters += [('RefNo IN ({})'.format(','.join(['?' for _ in record_ids])), record_ids)]
+                ref_filters += [('RefNo IN ({})'.format(','.join(['?' for _ in record_ids])), record_ids),
+                                ('IsDeleted = ?', (0,))]
                 try:
                     ref_df = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
                 except Exception as e:
@@ -1350,11 +1351,8 @@ class BankRecordTab:
             merged_df = merged_df.append(assoc_df, ignore_index=True)
 
         # Iterate over record rows, attempting to find matches in the merged table
-        for index, row in df.iterrows():
+        for index, row in df.drop(df[~df['ReferenceID'].isna()].index).iterrows():
             record_id = row[table.id_column]
-
-            if row['ReferenceID'] is not None:  # skip rows that already have an association
-                continue
 
             # Attempt to find exact matches using all columns, both core and expanded
             matches = merged_df[merged_df[core_cols + expanded_cols].eq(row[core_cols + expanded_cols]).all(axis=1)]
@@ -1388,7 +1386,7 @@ class BankRecordTab:
 
                     # Update table with reference information
                     df.at[index, 'ReferenceID'] = ref_id
-                    df.at[index, 'Warning'] = warning
+                    df.at[index, 'ReferenceWarnings'] = warning
 
                 elif nmatch > 1:  # too many matches
                     print('too many matches for record: {}'.format(row["RecordID"]))
