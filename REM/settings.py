@@ -73,7 +73,12 @@ class UserSettings:
         except KeyError:
             cnfg_locale = 'en_US'
         self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
-        locale.setlocale(locale.LC_ALL, self.locale)
+        try:
+            locale.setlocale(locale.LC_ALL, self.locale)
+        except Exception as e:
+            print('Warning: {ERR}'.format(ERR=e))
+            locale.setlocale(locale.LC_ALL, self.locale.replace('_', '-'))
+
         locale_conv = locale.localeconv()
         self.decimal_sep = locale_conv['decimal_point']
         self.thousands_sep = locale_conv['thousands_sep']
