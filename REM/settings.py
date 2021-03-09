@@ -55,7 +55,8 @@ class UserSettings:
         self.icons_dir = os.path.join(self.dirname, 'docs', 'images', 'icons')
 
         # Supported locales
-        self._locales = ['en_US', 'en_UK', 'th_TH']
+#        self._locales = ['en_US', 'en_UK', 'th_TH']
+        self._locales = {'English': 'en', 'Thai': 'th'}
 
         # User parameters
         try:
@@ -71,13 +72,16 @@ class UserSettings:
         try:
             cnfg_locale = cnfg['localization']['locale']
         except KeyError:
-            cnfg_locale = 'en_US'
-        self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
+            cnfg_locale = 'English'
+#        self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
+        self.locale = cnfg_locale if cnfg_locale in self._locales else 'English'
         try:
             locale.setlocale(locale.LC_ALL, self.locale)
         except Exception as e:
-            print('Warning: {ERR}'.format(ERR=e))
-            locale.setlocale(locale.LC_ALL, self.locale.replace('_', '-'))
+            msg = 'unable to set locale: {}'.format(e)
+            print('Warning: {MSG}'.format(MSG=msg))
+            popup_error(msg)
+            sys.exit(1)
 
         locale_conv = locale.localeconv()
         self.decimal_sep = locale_conv['decimal_point']
@@ -290,7 +294,9 @@ class UserSettings:
         localdir = self.localedir
         domain = self.domain
 
-        if language not in [i.split('_')[0] for i in self._locales]:
+#        if language not in [i.split('_')[0] for i in self._locales]:
+#            raise NameError
+        if language not in self._locales.values():
             raise NameError
 
         try:
