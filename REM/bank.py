@@ -3,7 +3,6 @@ REM bank reconciliation configuration classes and objects.
 """
 
 import datetime
-from IPython.display import display
 import pandas as pd
 import PySimpleGUI as sg
 from random import randint
@@ -864,6 +863,13 @@ class BankRule:
             window['-HOME-'].update(visible=False)
             window[panel_key].update(visible=True)
             window[self.panel_keys[self.first_panel]].update(visible=True)
+
+            # Collapse the filter frame of the first tab
+            tab_key = window[tg_key].Get()
+            tab = self.fetch_tab(tab_key, by_key=True)
+            filter_key = tab.table.key_lookup('FilterFrame')
+            if window[filter_key].metadata['visible'] is True:
+                tab.table.collapse_expand(window, frame='filter')
 
             return self.name
         else:
