@@ -76,9 +76,10 @@ class UserSettings:
 #        self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
         self.locale = cnfg_locale if cnfg_locale in self._locales else 'English'
         try:
+            print('Info: settings locale to {}'.format(self.locale))
             locale.setlocale(locale.LC_ALL, self.locale)
         except Exception as e:
-            msg = 'unable to set locale: {}'.format(e)
+            msg = 'unable to set locale - {ERR}'.format(ERR=e)
             print('Warning: {MSG}'.format(MSG=msg))
             popup_error(msg)
             sys.exit(1)
@@ -388,7 +389,7 @@ class UserSettings:
         """
         locale = self.locale
 
-        if locale == 'th_TH':
+        if locale == 'Thai':
             offset = 543
         else:
             offset = 0
