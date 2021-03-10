@@ -412,7 +412,7 @@ def evaluate_condition(data, condition, as_list: bool = True):
     """
     Check whether rows in dataframe pass a given condition rule.
     """
-    operators = {'>', '>=', '<', '<=', '==', '!=', 'in', 'not in'}
+    operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'in', 'not in'}
 
     if isinstance(data, pd.Series):
         header = data.index.tolist()
@@ -429,6 +429,9 @@ def evaluate_condition(data, condition, as_list: bool = True):
         if oper not in operators:
             raise SyntaxError('unable to parse rule condition {} - operator must separate the operands'
                               .format(condition))
+        else:
+            if oper == '=':
+                oper = '=='
 
         if oper.lower() == 'in':
             for column in header:

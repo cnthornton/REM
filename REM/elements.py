@@ -566,7 +566,6 @@ class TableElement:
                 continue
 
             dtype = col_to_add.dtype
-            print('Info: the datatype of display column {COL} is {DTYPE}'.format(COL=col_name, DTYPE=dtype))
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
             elif is_datetime_dtype(dtype):
@@ -1860,14 +1859,13 @@ class TableElement:
             print('Info: DataTable {NAME}: setting default values for column {COL}'.format(NAME=self.name, COL=column))
 
             entry = columns[column]
-            print(column, entry)
             if 'DefaultConditions' in entry:
                 default_rules = entry['DefaultConditions']
 
                 for default_value in default_rules:
                     default_rule = default_rules[default_value]
-                    results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=True)
-                    for index, result in enumerate(results):
+                    results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
+                    for index, result in results.iteritems():
                         if result is True and pd.isna(df.at[index, column]) is True:
                             df.at[index, column] = default_value
             elif 'DefaultRule' in entry:
