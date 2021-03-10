@@ -490,7 +490,6 @@ class TableElement:
         # Highlight table rows using configured annotation rules
         annotations = self.annotate_display(df)
         row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
-        print(row_colors)
 
         # Format the table
         display_df = self.format_display_table(df)
@@ -1745,8 +1744,6 @@ class TableElement:
                 except ValueError as e:
                     print('Error: DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - {ERR}'
                           .format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
-                    print(df[col_name])
-                    raise
 
         return df
 

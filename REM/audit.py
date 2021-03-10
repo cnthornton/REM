@@ -1940,8 +1940,21 @@ class AuditRecordTab:
             record_date = row['RecordDate']
             record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
             record_data['RecordID'] = record_id
+            try:
+                deposit_date = row['PaymentDate']
+            except KeyError:
+                msg = 'missing deposit date for new deposit record {ID}'.format(ID=record_id)
+                print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                mod_win2.popup_error(msg)
+            else:
+                if deposit_date:
+                    record_data['DepositDate'] = deposit_date
+                else:
+                    msg = 'no deposit date set for new deposit record {ID}'.format(ID=record_id)
+                    print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
 
-            record = mod_records.DepositRecord(record_type, record_entry.record_layout)
+            record = mod_records.DepositRecord(record_entry)
             record.initialize(record_data, new=True)
 
             # Save the deposit record to the database
