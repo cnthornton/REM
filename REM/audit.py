@@ -1020,7 +1020,7 @@ class AuditTransactionTab:
                           .format(NAME=self.name))
 
             elif event == import_key:
-                table.df = table.import_rows(self.import_rules, id_only=True)
+                table.df = table.import_rows(self.import_rules)
                 table.update_display(window, window_values=values)
 
             else:
@@ -1923,6 +1923,7 @@ class AuditRecordTab:
         else:
             record_type = record_entry.name
 
+        # Create deposit records
         deposit_header = mod_db.format_record_columns(record_entry.import_rules)
         for index, row in account_df.iterrows():
             record_data = pd.Series(index=deposit_header)

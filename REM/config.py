@@ -266,37 +266,40 @@ class RecordEntry:
 
             for import_column in import_columns:
                 column_alias = import_columns[import_column]
-                column_modifier = modifiers.get(import_column, None)
-
-                column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
-
-                if column_modifier is not None:
-                    try:
-                        converter, dtype, col_size = column_modifier
-                    except ValueError:
-                        try:
-                            converter, dtype = column_modifier
-                        except KeyError:
-                            print('Warning: the "Modifiers" parameter of import table {TBL} requires at minimum a '
-                                  'converter function and data type'.format(TBL=import_table))
-                            converter = dtype = col_size = None
-                        else:
-                            col_size = None
-                    if converter not in converter_functions:
-                        print('Warning: unknown converter function {FUNC} supplied to the "Modifiers parameter of '
-                              'import table {TBL}"'.format(FUNC=converter, TBL=import_table))
-                        column = import_column
-                    else:
-                        if col_size is not None:
-                            column = '{FUNC}({COL} AS {DTYPE}({SIZE}))' \
-                                .format(FUNC=converter, COL=column, DTYPE=dtype, SIZE=col_size)
-                        else:
-                            column = '{FUNC}({COL} AS {DTYPE})'.format(FUNC=converter, COL=column, DTYPE=dtype)
+                if isinstance(column_alias, list):
+                    column = 'COALESCE({}) AS {}'.format(','.join(column_alias), import_column)
                 else:
-                    column = column
+                    column_modifier = modifiers.get(import_column, None)
 
-                if column_alias != import_column:
-                    column = '{COL} AS {ALIAS}'.format(COL=column, ALIAS=column_alias)
+                    column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+
+                    if column_modifier is not None:
+                        try:
+                            converter, dtype, col_size = column_modifier
+                        except ValueError:
+                            try:
+                                converter, dtype = column_modifier
+                            except KeyError:
+                                print('Warning: the "Modifiers" parameter of import table {TBL} requires at minimum a '
+                                      'converter function and data type'.format(TBL=import_table))
+                                converter = dtype = col_size = None
+                            else:
+                                col_size = None
+                        if converter not in converter_functions:
+                            print('Warning: unknown converter function {FUNC} supplied to the "Modifiers parameter of '
+                                  'import table {TBL}"'.format(FUNC=converter, TBL=import_table))
+                            column = import_column
+                        else:
+                            if col_size is not None:
+                                column = '{FUNC}({COL} AS {DTYPE}({SIZE}))' \
+                                    .format(FUNC=converter, COL=column, DTYPE=dtype, SIZE=col_size)
+                            else:
+                                column = '{FUNC}({COL} AS {DTYPE})'.format(FUNC=converter, COL=column, DTYPE=dtype)
+                    else:
+                        column = column
+
+                    if column_alias != import_column:
+                        column = '{COL} AS {ALIAS}'.format(COL=column, ALIAS=column_alias)
 
                 columns.append(column)
 

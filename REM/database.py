@@ -81,37 +81,41 @@ def format_import_columns(import_rules):
 
         for import_column in import_columns:
             column_alias = import_columns[import_column]
-            column_modifier = modifiers.get(import_column, None)
-
-            column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
-
-            if column_modifier is not None:
-                try:
-                    converter, dtype, col_size = column_modifier
-                except ValueError:
-                    try:
-                        converter, dtype = column_modifier
-                    except KeyError:
-                        print('Warning: the "Modifiers" parameter of import table {TBL} requires at minimum a '
-                              'converter function and data type'.format(TBL=import_table))
-                        converter = dtype = col_size = None
-                    else:
-                        col_size = None
-                if converter not in converter_functions:
-                    print('Warning: unknown converter function {FUNC} supplied to the "Modifiers parameter of '
-                          'import table {TBL}"'.format(FUNC=converter, TBL=import_table))
-                    column = import_column
-                else:
-                    if col_size is not None:
-                        column = '{FUNC}({COL} AS {DTYPE}({SIZE}))' \
-                            .format(FUNC=converter, COL=column, DTYPE=dtype, SIZE=col_size)
-                    else:
-                        column = '{FUNC}({COL} AS {DTYPE})'.format(FUNC=converter, COL=column, DTYPE=dtype)
+            if isinstance(column_alias, list):
+                column_alias = ['{TBL}.{COL}'.format(TBL=import_table, COL=i) for i in column_alias]
+                column = 'COALESCE({}) AS {}'.format(','.join(column_alias), import_column)
             else:
-                column = column
+                column_modifier = modifiers.get(import_column, None)
 
-            if column_alias != import_column:
-                column = '{COL} AS {ALIAS}'.format(COL=column, ALIAS=column_alias)
+                column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+
+                if column_modifier is not None:
+                    try:
+                        converter, dtype, col_size = column_modifier
+                    except ValueError:
+                        try:
+                            converter, dtype = column_modifier
+                        except KeyError:
+                            print('Warning: the "Modifiers" parameter of import table {TBL} requires at minimum a '
+                                  'converter function and data type'.format(TBL=import_table))
+                            converter = dtype = col_size = None
+                        else:
+                            col_size = None
+                    if converter not in converter_functions:
+                        print('Warning: unknown converter function {FUNC} supplied to the "Modifiers parameter of '
+                              'import table {TBL}"'.format(FUNC=converter, TBL=import_table))
+                        column = import_column
+                    else:
+                        if col_size is not None:
+                            column = '{FUNC}({COL} AS {DTYPE}({SIZE}))' \
+                                .format(FUNC=converter, COL=column, DTYPE=dtype, SIZE=col_size)
+                        else:
+                            column = '{FUNC}({COL} AS {DTYPE})'.format(FUNC=converter, COL=column, DTYPE=dtype)
+                else:
+                    column = column
+
+                if column_alias != import_column:
+                    column = '{COL} AS {ALIAS}'.format(COL=column, ALIAS=column_alias)
 
             columns.append(column)
 
@@ -129,7 +133,12 @@ def format_record_columns(import_rules):
         import_columns = import_rule['Columns']
         for import_column in import_columns:
             column_alias = import_columns[import_column]
-            columns.append(column_alias)
+            if isinstance(column_alias, list):
+                column = import_column
+            else:
+                column = column_alias
+
+            columns.append(column)
 
     return columns
 
@@ -146,8 +155,13 @@ def get_import_column(import_rules, column):
         import_columns = import_rule['Columns']
         for import_column in import_columns:
             column_alias = import_columns[import_column]
-            if column_alias == column:
-                query_column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+            if isinstance(column_alias, list):
+                if import_column == column:
+                    column_alias = ['{TBL}.{COL}'.format(TBL=import_table, COL=i) for i in column_alias]
+                    query_column = 'COALESCE({})'.format(','.join(column_alias), import_column)
+            else:
+                if column_alias == column:
+                    query_column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
 
         return query_column
 
