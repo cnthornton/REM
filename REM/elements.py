@@ -539,6 +539,7 @@ class TableElement:
         is_integer_dtype = pd.api.types.is_integer_dtype
         is_bool_dtype = pd.api.types.is_bool_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
 
         display_map = self.display_columns
         aliases = self.aliases
@@ -565,12 +566,15 @@ class TableElement:
                 continue
 
             dtype = col_to_add.dtype
+            print('Info: the datatype of display column {COL} is {DTYPE}'.format(COL=col_name, DTYPE=dtype))
             if is_float_dtype(dtype):
                 col_to_add = col_to_add.apply('{:,.2f}'.format)
             elif is_datetime_dtype(dtype):
                 col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
                                                          relativedelta(years=+date_offset)).strftime(date_fmt)
                 if pd.notnull(x) else '')
+            elif is_string_dtype(dtype):
+                col_to_add = col_to_add.fillna('')
 
             display_df[col_name] = col_to_add
 
@@ -1537,7 +1541,7 @@ class TableElement:
 
         return df
 
-    def import_rows(self, filter_rules: list = None, id_only: bool = False, program_database: bool = False):
+    def import_rows(self, filter_rules: list = None, no_import: bool = False, program_database: bool = False):
         """
         Import one or more records from a table of records.
         """
@@ -1564,7 +1568,7 @@ class TableElement:
         table_statement = mod_db.format_tables(import_rules)
         import_columns = mod_db.format_import_columns(import_rules)
 
-        if id_only is False:
+        if no_import is False:
             if import_df.empty:
                 try:
                     df = user.query(table_statement, columns=import_columns, filter_rules=import_filters, prog_db=True)
