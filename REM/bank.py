@@ -1128,7 +1128,7 @@ class BankRecordTab:
             import_key = self.table.key_lookup('Import')
             export_key = self.table.key_lookup('Element')
             if event == import_key:
-                table.df = table.import_rows(self.import_rules, id_only=True, program_database=True)
+                table.df = table.import_rows(self.import_rules, no_import=True, program_database=True)
                 table.update_display(window, window_values=values)
             elif event == export_key:
                 # Find row selected by user
@@ -1347,7 +1347,7 @@ class BankRecordTab:
             # Subset dataframe on relevant columns
             assoc_df = assoc_df[rule_fields]
 
-            # Concatentate association tables
+            # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)
 
         # Iterate over record rows, attempting to find matches in the merged table
@@ -1367,10 +1367,20 @@ class BankRecordTab:
 
                 elif nmatch == 1:  # found one exact match using the column subset
                     results = matches.iloc[0]
+                    merged_df.drop(matches.index.tolist()[0], inplace=True)
                     ref_id = results['RecordID']
 
                     # Determine appropriate warning for the expanded search
-                    warning = "expanded search"
+                    warning = ["Potential false positive: the association is the result of an expanded search"]
+                    for column in expanded_cols:
+                        if row[column] != results[column]:
+                            try:
+                                warning.append('- {}'.format(rule_columns[column]['Description']))
+                            except KeyError:
+                                print('Warning: BankRecordTab {NAME}: no description provided for expanded '
+                                      'association rule {COL}'.format(NAME=self.name, COL=column))
+
+                    warning = '\n'.join(warning)
 
                     # Create an entry in the reference table for the match
                     ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings',
@@ -1389,10 +1399,14 @@ class BankRecordTab:
                     df.at[index, 'ReferenceWarnings'] = warning
 
                 elif nmatch > 1:  # too many matches
-                    print('too many matches for record: {}'.format(row["RecordID"]))
+                    print('Info: BankRecordTab {NAME}: found more than one match for record {RECORD}'
+                          .format(NAME=self.name, RECORD=record_id))
+                    continue
 
             elif nmatch == 1:  # found one exact match
                 results = matches.iloc[0]
+
+                merged_df.drop(matches.index.tolist()[0], inplace=True)
                 ref_id = results['RecordID']
 
                 # Create an entry in the reference table for the match
@@ -1411,7 +1425,30 @@ class BankRecordTab:
                 df.at[index, 'ReferenceID'] = ref_id
 
             elif nmatch > 1:  # too many matches
-                print('too many matches for record: {}'.format(row["RecordID"]))
+                print('Info: BankRecordTab {NAME}: found more than one match for record {RECORD}'
+                      .format(NAME=self.name, RECORD=record_id))
+
+                # Match the first of the exact matches
+                results = matches.iloc[0]
+                ref_id = results['RecordID']
+
+                # Remove match from list of unmatched association records
+                merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                # Create an entry in the reference table for the match
+                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
+                                     configuration.creator_code, configuration.creation_date]
+                ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
+                             user.uid, datetime.datetime.now()]
+
+                entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
+                if entry_saved is False:
+                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                    mod_win2.popup_error(msg)
+
+                # Update table with reference information
+                df.at[index, 'ReferenceID'] = ref_id
 
         self.reconciled = True
 
