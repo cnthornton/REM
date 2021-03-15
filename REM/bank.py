@@ -154,8 +154,6 @@ class BankRule:
                 param_class = mod_param.DataParameterDateRange
             elif param_layout == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
-            elif param_layout == 'button':
-                param_class = mod_param.DataParameterButton
             else:
                 msg = 'Configuration Error: BankRule {NAME}: unknown type {TYPE} provided to DataParameter {PARAM}' \
                     .format(NAME=name, TYPE=param_layout, PARAM=param)

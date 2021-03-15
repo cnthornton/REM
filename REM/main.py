@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '2.1.1'
+__version__ = '2.1.3'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -619,13 +619,13 @@ def main():
             record_entry = configuration.records.fetch_rule(record_type, by_title=True)
 
             # Import all records of relevant type from the database
-            import_df = record_entry.import_records(user)
+#            import_df = record_entry.import_records(user)
 
             # Display the import record window
             table_entry = record_entry.import_table
             table_entry['RecordType'] = record_entry.name
             import_table = mod_elem.TableElement(record_entry.name, table_entry)
-            import_table.df = import_table.append(import_df)
+#            import_table.df = import_table.append(import_df)
 
             try:
                 mod_win2.record_import_window(import_table, enable_new=False)
@@ -633,6 +633,7 @@ def main():
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
+                raise
 
             continue
 
@@ -728,7 +729,7 @@ def main():
                     .format(EVENT=event, RULE=current_rule.name, ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
-#                raise
+                raise
 
             if current_rule_name is None:
                 # Enable toolbar
@@ -749,7 +750,7 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         mod_win2.popup_error('Error: fatal program error - {}'.format(e))
-#        raise
+        raise
         sys.exit(1)
     else:
         sys.exit(0)

@@ -1398,36 +1398,65 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
         # Run table filter event
         if event == filter_key:
-            if table.df.empty:  # no data yet loaded
+            for param in table.parameters:
+                # Set parameter values from window elements
+                param.value = param.format_value(values)
+
+            import_df = record_entry.import_records(user, params=table.parameters)
+
+            table.df = pd.DataFrame(columns=list(table.columns))
+            table.df = table.append(import_df)
+            display_df = table.update_display(window)
+
+        # Run table filter event
+#        if event == filter_key:
+#            for param in table.parameters:
+                # Set parameter values from window elements
+#                param.value = param.format_value(values)
+
+#            if table.df.empty:  # no data yet loaded
                 # Get list of required filter parameters
-                required_params = [i for i in table.parameters if i.required is True]
-                for param in required_params:
-                    param_value = param.value
-                    if isinstance(param_value, list) or isinstance(param_value, tuple):
-                        try:
-                            from_value, to_value = param_value
-                        except ValueError:
-                            print('Error: DataTable {NAME}: ranged parameter {PARAM} requires exactly two values'
-                                  .format(NAME=table.name, PARAM=param.name))
-                            continue
-                        else:
-                            if from_value is None and to_value is None:
-                                msg = 'Warning: no values set for required parameter {PARAM}'.format(PARAM=param.name)
-                                popup_notice(msg)
-                                continue
-                    else:
-                        if param_value is None:
-                            msg = 'Warning: no values set for required parameter {PARAM}'.format(PARAM=param.name)
-                            popup_notice(msg)
-                            continue
+#                required_params = [i for i in table.parameters if i.required is True]
+#                params_set = True
+#                for param in required_params:
+#                    param_value = param.value
+#                    value_set = True
+#                    if isinstance(param_value, list) or isinstance(param_value, tuple):
+#                        try:
+#                            from_value, to_value = param_value
+#                        except ValueError:
+#                            print('Error: DataTable {NAME}: ranged parameter {PARAM} requires exactly two values'
+#                                  .format(NAME=table.name, PARAM=param.name))
+#                            continue
+#                        else:
+#                            if from_value is None and to_value is None:
+#                                value_set = False
+#                    else:
+#                        if param_value is None:
+#                            value_set = False
+
+#                    if value_set is False:
+                        # Highlight element to show user what parameter requires values
+#                        param_key = param.key_lookup('Description')
+#                        window[param_key].update(background_color=mod_const.FAIL_COL)
+
+                        # Let user know what is happening
+#                        msg = 'Warning: no values set for required parameter {PARAM}'.format(PARAM=param.name)
+#                        popup_notice(msg)
+
+#                        params_set = False
+#                        break
 
                 # Import all records of relevant type from the database
-                import_df = record_entry.import_records(user, params=required_params)
-                table.df = table.append(import_df)
+#                if params_set is True:
+#                    import_df = record_entry.import_records(user, params=required_params)
+#                    table.df = table.append(import_df)
+#                else:
+#                    continue
 
-            display_df = table.run_event(window, event, values)
+#            display_df = table.run_event(window, event, values)
 
-            continue
+#            continue
 
         # Run table events
         if event in table_elements:

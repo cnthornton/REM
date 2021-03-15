@@ -164,8 +164,6 @@ class AuditRule:
                 param_class = mod_param.DataParameterDateRange
             elif param_layout == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
-            elif param_layout == 'button':
-                param_class = mod_param.DataParameterButton
             else:
                 msg = 'Configuration Error: AuditRule {NAME}: unknown type {TYPE} provided to RuleParameter {PARAM}' \
                     .format(NAME=name, TYPE=param_layout, PARAM=param_name)

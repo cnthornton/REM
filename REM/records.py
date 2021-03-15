@@ -144,8 +144,6 @@ class DatabaseRecord:
                     param_class = mod_param.DataParameterDateRange
                 elif param_layout == 'checkbox':
                     param_class = mod_param.DataParameterCheckbox
-                elif param_layout == 'button':
-                    param_class = mod_param.DataParameterButton
                 else:
                     raise AttributeError('unknown type {TYPE} provided to record header {PARAM}'
                                          .format(TYPE=param_layout, PARAM=param_name))

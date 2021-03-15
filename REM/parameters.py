@@ -35,6 +35,8 @@ class DataParameter:
 
         hidden (bool): element is not visible to the user. [Default: False]
 
+        required (bool): parameter value is required for an event.
+
         icon (str): file name of the parameter's icon [Default: None].
 
         value: value of the parameter's data storage elements.
@@ -51,7 +53,8 @@ class DataParameter:
         """
         self.name = name
         self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in ['Element']]
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ['Element', 'Description']]
 
         try:
             self.description = entry['Description']
@@ -94,6 +97,17 @@ class DataParameter:
             self.hidden = hidden
 
         try:
+            required = bool(int(entry['IsRequired']))
+        except KeyError:
+            self.required = False
+        except ValueError:
+            mod_win2.popup_error('Configuration Error: DataParameter {NAME}: "IsRequired" must be either 0 '
+                                 '(False) or 1 (True)'.format(NAME=self.name))
+            sys.exit(1)
+        else:
+            self.required = required
+
+        try:
             self.icon = entry['Icon']
         except KeyError:
             self.icon = None
@@ -109,6 +123,7 @@ class DataParameter:
             self.default = None
 
         self.value = None
+        self.bg_col = mod_const.ACTION_COL
 
     def key_lookup(self, component):
         """
@@ -365,7 +380,7 @@ class DataParameter:
         else:
             query_value = value
 
-        if query_value is not None:
+        if query_value:
             statement = ('{COL} = ?'.format(COL=column), (query_value,))
         else:
             statement = None
@@ -390,6 +405,8 @@ class DataParameterInput(DataParameter):
         """
         Create a GUI layout for the parameter.
         """
+        self.bg_col = bg_col
+
         # Element settings
         pad_el = mod_const.ELEM_PAD
 
@@ -415,14 +432,15 @@ class DataParameterInput(DataParameter):
 
         # Element layout
         elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
         if self.editable is True:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
                             sg.Input(param_value, key=elem_key, size=size, enable_events=True, font=font,
                                      background_color=in_col, tooltip='Input value for {}'.format(self.description),
                                      metadata={'value': param_value, 'disabled': False})]
         else:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
                             sg.Text(param_value, key=elem_key, size=size, font=font, background_color=bg_col,
                                     border_width=1)]
@@ -585,6 +603,8 @@ class DataParameterCombo(DataParameter):
         """
         Create a GUI layout for the parameter.
         """
+        self.bg_col = bg_col
+
         # Element settings
         pad_el = mod_const.ELEM_PAD
 
@@ -599,6 +619,7 @@ class DataParameterCombo(DataParameter):
         icon = self.icon
 
         elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
         desc = '{}:'.format(self.description)
         values = [aliases[i] for i in combo_values if i in aliases]
         if '' not in values:  # the no selection option
@@ -622,14 +643,14 @@ class DataParameterCombo(DataParameter):
 
         # Element layout
         if self.editable is True:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
                             sg.Combo(values, default_value=param_value, key=elem_key, size=size, font=font,
                                      background_color=in_col, enable_events=True,
                                      tooltip='Select a value for {}'.format(self.description),
                                      metadata={'value': param_value, 'disabled': False})]
         else:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
                             sg.Text(param_value, key=elem_key, size=size, font=font, background_color=bg_col,
                                     border_width=1)]
@@ -696,9 +717,11 @@ class DataParameterDate(DataParameter):
         """
         Create a GUI layout for the parameter.
         """
-        pad_el = mod_const.ELEM_PAD
+        self.bg_col = bg_col
 
         # Element settings
+        pad_el = mod_const.ELEM_PAD
+
         date_ico = mod_const.CALENDAR_ICON
         font = mod_const.MID_FONT
         bold_font = mod_const.BOLD_FONT
@@ -722,9 +745,10 @@ class DataParameterDate(DataParameter):
 
         # Element layout
         input_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
         calendar_key = self.key_lookup('Calendar')
         if self.editable is True:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
                             sg.Input(param_value, key=input_key, size=size, enable_events=True, pad=((0, pad_el), 0),
                                      font=font, background_color=in_col, disabled=False,
@@ -734,7 +758,7 @@ class DataParameterDate(DataParameter):
                                               image_data=date_ico, font=font, border_width=0,
                                               tooltip='Select date from calendar menu')]
         else:
-            param_layout = [sg.Text(desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
                             sg.Text(param_value, key=input_key, size=size, font=font, background_color=bg_col,
                                     border_width=1, metadata={'value': param_value, 'disabled': True})]
@@ -849,6 +873,8 @@ class DataParameterDateRange(DataParameter):
         """
         Create a GUI layout for the parameter.
         """
+        self.bg_col = bg_col
+
         # Element settings
         pad_el = mod_const.ELEM_PAD
 
@@ -878,6 +904,7 @@ class DataParameterDateRange(DataParameter):
                 icon_layout = []
 
         # Element layout
+        desc_key = self.key_lookup('Description')
         from_key = self.key_lookup('Element')
         from_date_key = self.key_lookup('Calendar')
         to_key = self.key_lookup('Element2')
@@ -885,8 +912,8 @@ class DataParameterDateRange(DataParameter):
         if self.editable is True:
             layout = [
                 sg.Col([icon_layout +
-                        [sg.Text('{}:'.format(from_desc), auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
-                                 background_color=bg_col),
+                        [sg.Text('{}:'.format(from_desc), key=desc_key, auto_size_text=True, pad=((0, pad_el), 0),
+                                 font=bold_font, background_color=bg_col),
                          sg.Input(from_value, key=from_key, size=size, enable_events=True, pad=((0, pad_el), 0),
                                   font=font, background_color=in_col,
                                   tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
@@ -908,7 +935,7 @@ class DataParameterDateRange(DataParameter):
         else:
             layout = [
                 sg.Col([icon_layout +
-                        [sg.Text(from_desc, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                        [sg.Text(from_desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                  background_color=bg_col),
                          sg.Text(from_value, key=from_key, size=size, font=font, background_color=bg_col,
                                  border_width=1, metadata={'value': [], 'disabled': True})]],
@@ -1012,10 +1039,19 @@ class DataParameterDateRange(DataParameter):
         Generate the filter clause for SQL querying.
         """
         values = self.value
-        if len(values) == 2:
-            statement = ('{COL} BETWEEN ? AND ?'.format(COL=column), values)
-        else:
+        try:
+            from_val, to_val = values
+        except ValueError:
             statement = None
+        else:
+            if from_val and to_val:
+                statement = ('{COL} BETWEEN ? AND ?'.format(COL=column), values)
+            elif from_val and not to_val:
+                statement = ('{COL} = ?'.format(COL=column), (from_val,))
+            elif to_val and not from_val:
+                statement = ('{COL} = ?'.format(COL=column), (to_val,))
+            else:
+                statement = None
 
         return statement
 
@@ -1078,9 +1114,12 @@ class DataParameterCheckbox(DataParameter):
         """
         Create a GUI layout for the parameter.
         """
+        self.bg_col = bg_col
+
         bold_font = mod_const.BOLD_FONT
 
         key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
         desc = self.description
         disabled = False if self.editable is True else True
 
@@ -1105,7 +1144,8 @@ class DataParameterCheckbox(DataParameter):
                 icon_layout = []
 
         # Parameter layout
-        param_layout = [sg.Checkbox(desc, default=param_value, key=key, pad=padding, font=bold_font,
+        param_layout = [sg.Text('', key=desc_key, background_color=bg_col),
+                        sg.Checkbox(desc, default=param_value, key=key, pad=padding, font=bold_font,
                                     enable_events=True, background_color=bg_col, disabled=disabled)]
 
         layout = [icon_layout + param_layout]
@@ -1141,172 +1181,6 @@ class DataParameterCheckbox(DataParameter):
         Format the parameter's value for displaying.
         """
         return self.value
-
-    def print_value(self):
-        """
-        Generate printable statement of the parameter's value.
-        """
-        formatted_value = self.format_display()
-
-        return formatted_value
-
-
-class DataParameterButton(DataParameter):
-    """
-    Button data storage parameter.
-    """
-    def __init__(self, name, entry):
-        super().__init__(name, entry)
-        self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Button'))
-
-        # Dynamic attributes
-        self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-              '{DEF}, and formatted value {VAL}'
-              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-    def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
-        """
-        Create a GUI layout for the parameter.
-        """
-        # Element settings
-        pad_el = mod_const.ELEM_PAD
-
-        font = mod_const.MID_FONT
-        bold_font = mod_const.BOLD_FONT
-
-        in_col = mod_const.INPUT_COL
-        text_col = mod_const.TEXT_COL
-
-        # Parameter settings
-        desc = '{}:'.format(self.description)
-        param_value = self.format_display()
-        icon = self.icon
-
-        # Icon layout
-        bttn_key = self.key_lookup('Button')
-        elem_key = self.key_lookup('Element')
-        if icon is None:
-            icon_layout = []
-        else:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Button('', key=bttn_key, target=elem_key, image_filename=icon_path, font=font,
-                                         button_color=(text_col, bg_col), border_width=0, tooltip=desc,
-                                         disabled=(not self.editable), enable_events=True)]
-            else:
-                icon_layout = [sg.Button('', key=bttn_key, target=elem_key, button_color=(text_col, bg_col), font=font,
-                                         tooltip=desc, border_width=0, disabled=(not self.editable),
-                                         enable_events=True)]
-
-        # Element layout
-        param_layout = [sg.Input(param_value, key=elem_key, visible=False,
-                                 tooltip='Input value for {}'.format(self.description),
-                                 metadata={'value': param_value, 'disabled': (not self.editable), 'visible': False})]
-
-        layout = [icon_layout + param_layout]
-
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
-
-    def format_value(self, values):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-
-            values (dict): GUI element values.
-        """
-        group_sep = settings.thousands_sep
-        dtype = self.dtype
-
-        try:
-            input_value = values[self.key_lookup('Element')]
-        except KeyError:
-            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
-                  .format(NAME=self.name))
-            return self.value
-        else:
-            if input_value is None:
-                return None
-
-        if dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-            try:
-                value_fmt = float(input_value)
-            except (ValueError, TypeError):
-                try:
-                    value_fmt = float(input_value.replace(group_sep, ''))
-                except (ValueError, TypeError, AttributeError):
-                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
-                    return None
-        elif dtype in ('int', 'integer', 'bit'):
-            try:
-                value_fmt = int(input_value)
-            except (ValueError, TypeError, AttributeError):
-                try:
-                    value_fmt = input_value.replace(',', '')
-                except (ValueError, TypeError):
-                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
-                    return None
-        elif dtype in ('bool', 'boolean'):
-            if isinstance(input_value, bool):
-                value_fmt = input_value
-            else:
-                try:
-                    value_fmt = bool(int(input_value))
-                except (ValueError, TypeError):
-                    value_fmt = bool(input_value)
-        else:
-            value_fmt = str(input_value)
-
-        return value_fmt
-
-    def format_display(self):
-        """
-        Format the parameter's value for displaying.
-        """
-        dec_sep = settings.decimal_sep
-        group_sep = settings.thousands_sep
-
-        dtype = self.dtype
-        value = self.value
-        print('Info: DataParameter {NAME}: formatting parameter value {VAL} for display'
-              .format(NAME=self.name, VAL=value))
-
-        if value == '' or value is None:
-            return ''
-
-        if dtype == 'money':
-            if dec_sep in value:
-                integers, decimals = value.split(dec_sep)
-                decimals = decimals[0:2]
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(integers[::-1])][::-1]).lstrip(',') + dec_sep + decimals
-            else:
-                display_value = ''.join([group_sep * (n % 3 == 2) + i
-                                         for n, i in enumerate(value[::-1])][::-1]).lstrip(',')
-
-        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric'):
-            try:
-                new_value = float(value)
-            except ValueError:
-                display_value = value
-            else:
-                display_value = str(new_value)
-
-        elif dtype in ('int', 'integer', 'bit'):
-            try:
-                new_value = int(value)
-            except ValueError:
-                display_value = value
-            else:
-                display_value = str(new_value)
-
-        else:
-            display_value = str(value)
-
-        return display_value
 
     def print_value(self):
         """

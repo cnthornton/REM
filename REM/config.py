@@ -389,19 +389,31 @@ class RecordEntry:
                 column_alias = import_columns[import_column]
                 if column_alias == column:
                     query_column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+                    break
 
             return query_column
 
-    def import_records(self, user):
+    def import_records(self, user, params: list = None):
         """
         Import all records from the database.
         """
+        params = [] if params is None else params
 
         # Add configured import filters
         filters = self.format_import_filters()
         table_statement = self.format_tables()
         columns = self.format_import_columns()
 
+        # Add optional parameter-based filters
+        for param in params:
+            dbcol = self.get_import_column(param.name)
+            if dbcol:
+                param_filter = param.query_statement(dbcol)
+                print(param_filter)
+                if param_filter is not None:
+                    filters.append(param_filter)
+
+        print(filters)
         # Query existing database entries
         import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
 
