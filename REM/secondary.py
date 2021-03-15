@@ -1174,131 +1174,6 @@ def database_importer_window(win_size: tuple = None):
     return True
 
 
-def associate_data(to_df, from_df, pkey, column_map: dict = None, to_title: str = None, from_title: str = None):
-    """
-    Associate data from one table with data in another table.
-    """
-    width = mod_const.WIN_WIDTH - 40
-
-    to_title = 'Collection' if to_title is None else to_title
-    from_title = 'Source' if from_title is None else from_title
-
-    column_map = column_map if column_map is not None else {i: i for i in to_df.columns.values.tolist()}
-    column_header = list(column_map.values())
-
-    to_df = to_df.copy()
-    from_df = from_df.copy()
-
-    to_df.rename(columns=column_map, inplace=True)
-    from_df.rename(columns=column_map, inplace=True)
-
-    # Window and element size parameters
-    pad_frame = mod_const.FRAME_PAD
-    pad_v = mod_const.VERT_PAD
-    pad_el = mod_const.ELEM_PAD
-
-    bg_col = mod_const.ACTION_COL
-    header_col = mod_const.HEADER_COL
-
-    main_font = mod_const.MAIN_FONT
-    header_font = mod_const.HEADER_FONT
-
-    # Layout
-    title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
-                    [sg.Text('Associate Data Records', pad=((pad_frame, 0), (0, pad_v)), font=header_font,
-                             background_color=header_col)]]
-
-    main_layout = [[mod_lo.create_table_layout(mod_dm.format_display_table(from_df, column_map).values.tolist(),
-                                               column_header, '-FROM-', events=True,
-                                               tooltip='Double-click row to add row to the collection', nrow=10,
-                                               width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
-                                               table_name=from_title),
-                    mod_lo.create_table_layout(mod_dm.format_display_table(to_df, column_map).values.tolist(),
-                                               column_header,
-                                               '-TO-', events=True,
-                                               tooltip='Double-click row to remove row from the collection', nrow=10,
-                                               width=int(width / 2), font=main_font, pad=(pad_frame, pad_frame),
-                                               table_name=to_title)]]
-
-    bttn_layout = [[sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel selections')]],
-                           pad=(0, 0), justification='l', expand_x=True),
-                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                    sg.Col([[mod_lo.B2('Save', key='-SAVE-', pad=((0, pad_el), 0), tooltip='Save selections')]],
-                           pad=(0, 0), justification='r')]]
-
-    layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-              [sg.Col(main_layout, pad=(pad_frame, 0), background_color=bg_col, justification='c')],
-              [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
-
-    window = sg.Window('', layout, modal=False, resizable=False)
-
-    select_rows = to_df[column_map[pkey]].tolist()
-    while True:
-        event, values = window.read(close=False)
-
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
-            select_rows = []
-            break
-
-        if event == '-FROM-':  # click to add row to collection
-            row_index = values['-FROM-'][0]
-
-            # Add row ID to list of selected rows
-            row_id = from_df.at[row_index, column_map[pkey]]
-            select_rows.append(row_id)
-
-            # Add row to collection
-            to_df = to_df.append(from_df.iloc[row_index], ignore_index=True)
-            to_df.reset_index(drop=True, inplace=True)
-
-            # Remove row from source
-            from_df.drop(row_index, axis=0, inplace=True)
-            from_df.reset_index(drop=True, inplace=True)
-
-            # Update display tables
-            window['-FROM-'].update(values=mod_dm.format_display_table(from_df, column_map).values.tolist())
-            window['-TO-'].update(values=mod_dm.format_display_table(to_df, column_map).values.tolist())
-
-            continue
-
-        if event == '-TO-':  # click to remove row from collection
-            row_index = values['-TO-'][0]
-
-            # Remove row ID from list of selected rows
-            row_id = to_df.at[row_index, column_map[pkey]]
-            try:
-                select_rows.remove(row_id)
-            except ValueError:
-                continue
-
-            # Add row to source
-            from_df = from_df.append(to_df.iloc[row_index], ignore_index=True)
-            from_df.reset_index(drop=True, inplace=True)
-
-            # Remove row from collection
-            to_df.drop(row_index, axis=0, inplace=True)
-            to_df.reset_index(drop=True, inplace=True)
-
-            print(to_df.dtypes)
-
-            # Update display tables
-            window['-FROM-'].update(values=mod_dm.format_display_table(from_df, column_map).values.tolist())
-            window['-TO-'].update(values=mod_dm.format_display_table(to_df, column_map).values.tolist())
-
-            continue
-
-        if event == '-SAVE-':  # click 'Save' button
-            # Add selected rows to the to_df
-            break
-
-    window.close()
-    layout = None
-    window = None
-    gc.collect()
-
-    return select_rows
-
-
 def record_import_window(table, win_size: tuple = None, enable_new: bool = False, record_layout: dict = None):
     """
     Display the import from database window.
@@ -1306,7 +1181,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     if win_size:
         width, height = win_size
     else:
-        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+        width, height = (int(mod_const.WIN_WIDTH * 0.2), int(mod_const.WIN_HEIGHT * 0.2))
 
     # Layout
     record_col = None
@@ -1322,13 +1197,14 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Window and element size parameters
     header_col = mod_const.HEADER_COL
-    bg_col = mod_const.ACTION_COL
 
     header_font = mod_const.HEADER_FONT
 
     pad_el = mod_const.ELEM_PAD
     pad_v = mod_const.VERT_PAD
     pad_frame = mod_const.FRAME_PAD
+
+    tbl_diff = 55
 
     # Title
     title = 'Import {TYPE} records'.format(TYPE=table.title)
@@ -1337,7 +1213,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                              background_color=header_col)]]
 
     # Import data table
-    main_layout = [[table.layout(width=width, height=height, padding=(0, 0))]]
+    main_layout = [[table.layout(width=width - tbl_diff, height=height * 0.9, padding=(0, 0))]]
 
     # Control buttons
     bttn_layout = [[sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
@@ -1348,19 +1224,32 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                              mod_lo.B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
                            pad=(0, 0), justification='r')]]
 
-    layout = [[sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-              [sg.Col(main_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, justification='c')],
-              [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
+    width_key = '-WIDTH-'
+    height_key = 'HEIGHT'
+    layout = [[sg.Canvas(key=width_key, size=(width, 0))],
+              [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+              [sg.Canvas(key=height_key, size=(0, height)),
+               sg.Col([[sg.Col(main_layout, pad=(pad_frame, (pad_frame, 0)), justification='c',
+                               expand_x=True, expand_y=True)],
+                       [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]],
+                      expand_x=True, expand_y=True, vertical_alignment='t', scrollable=True,
+                      vertical_scroll_only=True)]]
 
     # Finalize GUI window
-    window = sg.Window('', layout, modal=True, resizable=False)
+    window = sg.Window('', layout, modal=True, resizable=True)
     window.finalize()
 
     screen_w, screen_h = window.get_screen_dimensions()
-    win_w = int(screen_w * 0.8)
-    win_h = int(screen_h * 0.8)
+    if win_size:
+        win_w, win_h = win_size
+    else:
+        win_w = int(screen_w * 0.8)
+        win_h = int(screen_h * 0.7)
 
-    table.resize(window, size=(win_w, win_h))
+    window[width_key].set_size((win_w, None))
+    window[height_key].set_size((None, win_h))
+
+    table.resize(window, size=(win_w - tbl_diff, win_h * 0.9))
 
     window = center_window(window)
 
@@ -1383,9 +1272,12 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Update display with default filter values
     tbl_key = table.key_lookup('Element')
-    table_elements = [i for i in table.elements if i != tbl_key]
+    filter_key = table.key_lookup('Filter')
+    table_elements = [i for i in table.elements if i not in (tbl_key, filter_key)]
 
     display_df = table.update_display(window)
+
+    current_w, current_h = window.size
 
     # Main loop
     while True:
@@ -1393,6 +1285,18 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             break
+
+        win_w, win_h = window.size
+        if win_w != current_w or win_h != current_h:
+            print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
+
+            # Update sizable elements
+            window[width_key].set_size((win_h, None))
+            window[height_key].set_size((None, win_h))
+
+            table.resize(window, size=(win_w - tbl_diff, win_h * 0.9))
+
+            current_w, current_h = (win_w, win_h)
 
         if event == '-NEW-':  # selected to create a new record
             if table.record_type is None:
@@ -1492,9 +1396,43 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
                 continue
 
+        # Run table filter event
+        if event == filter_key:
+            if table.df.empty:  # no data yet loaded
+                # Get list of required filter parameters
+                required_params = [i for i in table.parameters if i.required is True]
+                for param in required_params:
+                    param_value = param.value
+                    if isinstance(param_value, list) or isinstance(param_value, tuple):
+                        try:
+                            from_value, to_value = param_value
+                        except ValueError:
+                            print('Error: DataTable {NAME}: ranged parameter {PARAM} requires exactly two values'
+                                  .format(NAME=table.name, PARAM=param.name))
+                            continue
+                        else:
+                            if from_value is None and to_value is None:
+                                msg = 'Warning: no values set for required parameter {PARAM}'.format(PARAM=param.name)
+                                popup_notice(msg)
+                                continue
+                    else:
+                        if param_value is None:
+                            msg = 'Warning: no values set for required parameter {PARAM}'.format(PARAM=param.name)
+                            popup_notice(msg)
+                            continue
+
+                # Import all records of relevant type from the database
+                import_df = record_entry.import_records(user, params=required_params)
+                table.df = table.append(import_df)
+
+            display_df = table.run_event(window, event, values)
+
+            continue
+
         # Run table events
         if event in table_elements:
             display_df = table.run_event(window, event, values)
+
             continue
 
     window.close()
@@ -1508,9 +1446,9 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     Display the importer window.
     """
     if win_size:
-        width, height = [i * 0.8 for i in win_size]
+        width, height = win_size
     else:
-        width, height = (mod_const.WIN_WIDTH * 0.8, mod_const.WIN_HEIGHT * 0.8)
+        width, height = (int(mod_const.WIN_WIDTH * 0.2), int(mod_const.WIN_HEIGHT * 0.2))
 
     params = params if params is not None else []
 
@@ -1528,7 +1466,8 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     bg_col = mod_const.ACTION_COL
     header_col = mod_const.HEADER_COL
 
-    tbl_width = width - 4  # width minus border
+    tbl_diff = 65
+    tbl_width = width - tbl_diff  # width minus border and padding
 
     # GUI layout
     header_layout = [[sg.Text('Import Missing Data', pad=(pad_frame, pad_frame), background_color=header_col,
@@ -1544,27 +1483,42 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
         param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True,
                                       button_color=(bttn_text_col, bttn_bg_col), use_ttk_buttons=True))
 
-        main_layout = [[sg.Col([param_layout], pad=(pad_frame, (pad_v, 0)), background_color=bg_col)],
+        main_layout = [[sg.Col([param_layout], pad=(pad_frame, pad_v), background_color=bg_col)],
                        [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)],
-                       [table.layout(width=tbl_width, nrow=10, tooltip='Select rows to import')]]
+                       [table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]]
     else:
-        main_layout = [[table.layout(width=tbl_width, nrow=10, tooltip='Select rows to import')]]
+        main_layout = [[table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]]
 
     bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel importing'),
                     mod_lo.B2('Import', key='-IMPORT-', pad=(pad_el, 0),
                               tooltip='Import the selected transaction orders')]]
 
-    layout = [[sg.Col(header_layout, pad=(pad_frame, 0), background_color=header_col, element_justification='l',
+    width_key = '-WIDTH-'
+    height_key = 'HEIGHT'
+    layout = [[sg.Canvas(key=width_key, size=(width, 0))],
+              [sg.Col(header_layout, pad=(0, 0), background_color=header_col, element_justification='l',
                       expand_x=True, expand_y=True)],
-              [sg.Col(main_layout, background_color=bg_col, element_justification='l', pad=(pad_frame, 0),
-                      expand_x=True)],
-              [sg.Col(bttn_layout, element_justification='c', pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
+              [sg.Canvas(key=height_key, size=(0, height)),
+               sg.Col([[sg.Col(main_layout, background_color=bg_col, element_justification='l', pad=(0, 0),
+                               expand_x=True, expand_y=True)],
+                       [sg.Col(bttn_layout, element_justification='c', pad=(0, (pad_v, 0)), expand_x=True)]],
+                      pad=(0, 0), expand_x=True, expand_y=True, vertical_alignment='t', scrollable=True,
+                      vertical_scroll_only=True)]]
 
-    window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=False)
+    window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=True)
     window.finalize()
 
-    win_w, win_h = window.get_screen_dimensions()
-    table.resize(window, size=(win_w * 0.8, win_h * 0.8))
+    screen_w, screen_h = window.get_screen_dimensions()
+    if win_size:
+        win_w, win_h = win_size
+    else:
+        win_w = int(screen_w * 0.8)
+        win_h = int(screen_h * 0.7)
+
+    window[width_key].set_size((win_w, None))
+    window[height_key].set_size((None, win_h))
+
+    table.resize(window, size=(win_w - tbl_diff, win_h * 0.8))
 
     window = center_window(window)
 
@@ -1572,12 +1526,26 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     import_columns = mod_db.format_import_columns(import_rules)
 
     # Start event loop
+    current_w, current_h = window.size
+
     selected_rows = []
     while True:
-        event, values = window.read()
+        event, values = window.read(timeout=500)
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             break
+
+        win_w, win_h = window.size
+        if win_w != current_w or win_h != current_h:
+            print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
+
+            # Update sizable elements
+            window[width_key].set_size((win_h, None))
+            window[height_key].set_size((None, win_h))
+
+            table.resize(window, size=(win_w - tbl_diff, win_h * 0.8))
+
+            current_w, current_h = (win_w, win_h)
 
         if event == '-FIND-':
             # Set search parameter values
