@@ -444,8 +444,9 @@ def main():
     debug_win = None
 
     # Initialize main window and login window
-    window = sg.Window('REM Tila', layout, icon=settings.logo, font=mod_const.MAIN_FONT, size=(current_w, current_h),
-                       resizable=True, return_keyboard_events=True)
+    window = sg.Window('REM Tila (v{VER})'.format(VER=__version__), layout, icon=settings.logo,
+                       font=mod_const.MAIN_FONT, size=(current_w, current_h), resizable=True,
+                       return_keyboard_events=True)
     window.finalize()
     window.maximize()
     print('Info: starting up')
