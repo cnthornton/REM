@@ -1539,44 +1539,55 @@ class TableElement:
 
         return df
 
-    def import_rows(self, filter_rules: list = None, no_import: bool = False, program_database: bool = False):
+    def import_rows(self, import_rules: dict = None, reftype: str = None, program_database: bool = False):
         """
         Import one or more records from a table of records.
         """
         import_df = self.import_df.copy()
-        import_rules = self.import_rules
-        record_entry = configuration.records.fetch_rule(self.record_type)
+        import_rules = import_rules if import_rules is None else self.import_rules
+        record_type = self.record_type
 
+        record_entry = configuration.records.fetch_rule(record_type)
         if import_rules is None and record_entry is None:
             msg = 'unable to display the record import window - no record type or import rules were configured'
             mod_win2.popup_error(msg)
             print('Error: DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             return self.df
+        elif record_entry is not None and import_rules is None:
+            import_rules = record_entry.import_rules
 
         # Initialize the import table
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
-                        'RecordType': self.record_type, 'Title': self.title}
+                        'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules}
         import_table = TableElement(self.name, table_layout)
 
-        # Import data from the database
-        record_entry = configuration.records.fetch_rule(self.record_type)
-        import_rules = import_rules if import_rules is not None else record_entry.import_rules
-        import_filters = mod_db.format_import_filters(import_rules) if filter_rules is None else filter_rules
-        table_statement = mod_db.format_tables(import_rules)
-        import_columns = mod_db.format_import_columns(import_rules)
+        if reftype is not None:  # search for records without an existing reference to provided reference type
+            if import_df.empty:  # only search when no current import data
+                # Prepare query arguments
+                import_filters = mod_db.format_import_filters(import_rules)
+                table_statement = mod_db.format_tables(import_rules)
+                import_columns = mod_db.format_import_columns(import_rules)
+                id_col = self.id_column
 
-        if no_import is False:
-            if import_df.empty:
+                # Search for records in record reference table with associations
+                ref_table = configuration.reference_lookup
+                ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (record_type, reftype, 0))
+                references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
+                ids_with_reference = references['RefNo'].tolist()
+
                 try:
                     df = user.query(table_statement, columns=import_columns, filter_rules=import_filters, prog_db=True)
                 except Exception as e:
                     print('Warning: DataTable {NAME}: failed to import data from the database - {ERR}'
                           .format(NAME=self.name, ERR=e))
                 else:
+                    # Drop records that already have associations to reference type records
+                    df.drop(df[df[id_col].isin(ids_with_reference)].index, inplace=True)
+
                     # Add import dataframe to data table object
-                    import_table.df = import_table.append(df)
                     import_df = import_df.append(df, ignore_index=True)
+                    import_table.df = import_table.append(df)
             else:
                 import_table.df = import_df
 
@@ -1610,7 +1621,6 @@ class TableElement:
 
         # Remove selected rows from the table of available import rows
         self.import_df = import_df[~import_df[self.id_column].isin(select_df[self.id_column])]
-        print(self.import_df)
 
         return df
 

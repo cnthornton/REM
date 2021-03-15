@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '2.1.0'
+__version__ = '2.1.1'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -357,7 +357,6 @@ def resize_elements(window, rules):
         try:
             rule.resize_elements(window)
         except Exception as e:
-            raise
             print('Error: {}'.format(e))
             continue
 
@@ -633,7 +632,6 @@ def main():
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
-                raise
 
             continue
 
@@ -687,7 +685,6 @@ def main():
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {}'.format(msg))
-                raise
 
             continue
 
@@ -730,7 +727,7 @@ def main():
                     .format(EVENT=event, RULE=current_rule.name, ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
-                raise
+#                raise
 
             if current_rule_name is None:
                 # Enable toolbar
@@ -750,8 +747,8 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        raise
         mod_win2.popup_error('Error: fatal program error - {}'.format(e))
+#        raise
         sys.exit(1)
     else:
         sys.exit(0)

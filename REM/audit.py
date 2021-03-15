@@ -1020,7 +1020,7 @@ class AuditTransactionTab:
                           .format(NAME=self.name))
 
             elif event == import_key:
-                table.df = table.import_rows(self.import_rules)
+                table.df = table.import_rows(import_rules=self.import_rules)
                 table.update_display(window, window_values=values)
 
             else:
@@ -1034,7 +1034,6 @@ class AuditTransactionTab:
                 msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=sg))
-                raise
 
                 success = False
             else:

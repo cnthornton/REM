@@ -1008,31 +1008,12 @@ class DepositRecord(DatabaseRecord):
                 print('Error: record {ID}: unable to find component associated with event key {KEY}'
                       .format(ID=self.record_id(), KEY=event))
             else:
-                # Check if component table is an account table
-                comp_record_type = component_table.record_type
-                if comp_record_type in configuration.records.group_elements('account'):
-                    if event == component_table.key_lookup('Import'):  # import account records
-                        comp_entry = configuration.records.fetch_rule(comp_record_type)
-
-                        # Filter out import records that are already referenced
-                        ref_table = configuration.reference_lookup
-                        ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (comp_record_type, self.name, 0))
-                        references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
-                        referenced_ids = references['RefNo'].tolist()
-                        filters = []
-                        if len(referenced_ids) > 0:
-                            id_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordID')
-                            filters += [('{COL} NOT IN ({IDS})'
-                                        .format(COL=id_col, IDS=','.join(['?' for _ in referenced_ids])),
-                                         referenced_ids)]
-
-                        component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
-                    elif event == component_table.key_lookup('Add'):  # add account records
-                        default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                        component_table.df = component_table.add_row(record_date=self.record_date(),
-                                                                     defaults=default_values)
-                    else:
-                        component_table.run_event(window, event, values)
+                if event == component_table.key_lookup('Import'):  # import account records
+                    component_table.df = component_table.import_rows(reftype=self.name, program_database=True)
+                elif event == component_table.key_lookup('Add'):  # add account records
+                    default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
+                    component_table.df = component_table.add_row(record_date=self.record_date(),
+                                                                 defaults=default_values)
                 else:
                     component_table.run_event(window, event, values)
 
@@ -1169,34 +1150,12 @@ class TAuditRecord(DatabaseRecord):
                 print('Error: record {ID}: unable to find component associated with event key {KEY}'
                       .format(ID=self.record_id(), KEY=event))
             else:
-                # Check if component table is an account table
-                comp_record_type = component_table.record_type
-                if comp_record_type in configuration.records.group_elements('account'):
-                    if event == component_table.key_lookup('Import'):  # import account records
-                        comp_entry = configuration.records.fetch_rule(comp_record_type)
-
-                        # Filter component records with the same record date
-                        date_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordDate')
-                        filters = [('{COL} = ?'.format(COL=date_col), (self.record_date(),))]
-
-                        # Filter out import records that are already referenced
-                        ref_table = configuration.reference_lookup
-                        ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (comp_record_type, self.name, 0))
-                        references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
-                        referenced_ids = references['RefNo'].tolist()
-                        if len(referenced_ids) > 0:
-                            id_col = mod_db.get_import_column(comp_entry.import_rules, 'RecordID')
-                            filters += [('{COL} NOT IN ({IDS})'
-                                        .format(COL=id_col, IDS=','.join(['?' for _ in referenced_ids])),
-                                        referenced_ids)]
-
-                        component_table.df = component_table.import_rows(filter_rules=filters, program_database=True)
-                    elif event == component_table.key_lookup('Add'):  # add account records
-                        default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                        component_table.df = component_table.add_row(record_date=self.record_date(),
-                                                                     defaults=default_values)
-                    else:
-                        component_table.run_event(window, event, values)
+                if event == component_table.key_lookup('Import'):  # import account records
+                    component_table.df = component_table.import_rows(reftype=self.name, program_database=True)
+                elif event == component_table.key_lookup('Add'):  # add account records
+                    default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
+                    component_table.df = component_table.add_row(record_date=self.record_date(),
+                                                                 defaults=default_values)
                 else:
                     component_table.run_event(window, event, values)
 
