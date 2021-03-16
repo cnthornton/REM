@@ -1249,7 +1249,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     window[width_key].set_size((win_w, None))
     window[height_key].set_size((None, win_h))
 
-    table.resize(window, size=(win_w - tbl_diff, win_h * 0.9))
+    table.resize(window, size=(win_w - tbl_diff, win_h))
 
     window = center_window(window)
 
@@ -1294,7 +1294,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             window[width_key].set_size((win_h, None))
             window[height_key].set_size((None, win_h))
 
-            table.resize(window, size=(win_w - tbl_diff, win_h * 0.9))
+            table.resize(window, size=(win_w - tbl_diff, win_h))
 
             current_w, current_h = (win_w, win_h)
 
@@ -1530,7 +1530,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
               [sg.Canvas(key=height_key, size=(0, height)),
                sg.Col([[sg.Col(main_layout, background_color=bg_col, element_justification='l', pad=(0, 0),
                                expand_x=True, expand_y=True)],
-                       [sg.Col(bttn_layout, element_justification='c', pad=(0, (pad_v, 0)), expand_x=True)]],
+                       [sg.Col(bttn_layout, element_justification='c', pad=(0, (pad_v, pad_frame)), expand_x=True)]],
                       pad=(0, 0), expand_x=True, expand_y=True, vertical_alignment='t', scrollable=True,
                       vertical_scroll_only=True)]]
 
@@ -1542,12 +1542,12 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
         win_w, win_h = win_size
     else:
         win_w = int(screen_w * 0.8)
-        win_h = int(screen_h * 0.7)
+        win_h = int(screen_h * 0.5)
 
     window[width_key].set_size((win_w, None))
     window[height_key].set_size((None, win_h))
 
-    table.resize(window, size=(win_w - tbl_diff, win_h * 0.8))
+    table.resize(window, size=(win_w - tbl_diff, win_h * 0.75), row_rate=40)
 
     window = center_window(window)
 
@@ -1572,7 +1572,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             window[width_key].set_size((win_h, None))
             window[height_key].set_size((None, win_h))
 
-            table.resize(window, size=(win_w - tbl_diff, win_h * 0.8))
+            table.resize(window, size=(win_w - tbl_diff, win_h * 0.75), row_rate=40)
 
             current_w, current_h = (win_w, win_h)
 

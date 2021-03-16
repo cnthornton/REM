@@ -1270,6 +1270,8 @@ class TableElement:
         else:
             width, height = window.size
 
+        row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
+
         print('Info: DataTable {TBL}: resizing table display to {W}, {H}'.format(TBL=self.name, W=width, H=height))
 
         tbl_key = self.key_lookup('Element')

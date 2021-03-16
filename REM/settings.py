@@ -83,6 +83,8 @@ class UserSettings:
             print('Warning: {MSG}'.format(MSG=msg))
             popup_error(msg)
             sys.exit(1)
+        else:
+            print('Info: will offset dates by {} years'.format(self.get_date_offset()))
 
         locale_conv = locale.localeconv()
         self.decimal_sep = locale_conv['decimal_point']
@@ -384,9 +386,9 @@ class UserSettings:
         """
         Find date offset for calendar systems other than the gregorian calendar
         """
-        locale = self.locale
+        current_locale = self.locale
 
-        if locale == 'Thai':
+        if current_locale == 'Thai':
             offset = 543
         else:
             offset = 0
