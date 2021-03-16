@@ -633,7 +633,7 @@ def main():
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
-                raise
+#                raise
 
             continue
 
@@ -729,7 +729,7 @@ def main():
                     .format(EVENT=event, RULE=current_rule.name, ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
-                raise
+#                raise
 
             if current_rule_name is None:
                 # Enable toolbar
@@ -750,7 +750,7 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         mod_win2.popup_error('Error: fatal program error - {}'.format(e))
-        raise
+#        raise
         sys.exit(1)
     else:
         sys.exit(0)
