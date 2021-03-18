@@ -1226,27 +1226,24 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                              background_color=header_col)]]
 
     # Import data table
-    main_layout = [[table.layout(width=width - tbl_diff, height=height * 0.9, padding=(0, 0))]]
+    tbl_layout = [table.layout(width=width - tbl_diff, height=height * 0.9, padding=(0, (0, pad_v)))]
 
     # Control buttons
-    bttn_layout = [[sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
-                           pad=(0, 0), justification='l', expand_x=True),
-                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                    sg.Col([[mod_lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=enable_new,
-                                       tooltip='Create new record'),
-                             mod_lo.B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
-                           pad=(0, 0), justification='r')]]
+    bttn_layout = [sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
+                          pad=(0, 0), justification='l', expand_x=True),
+                   sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
+                   sg.Col([[mod_lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=enable_new,
+                                      tooltip='Create new record'),
+                            mod_lo.B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
+                          pad=(0, 0), justification='r')]
 
     width_key = '-WIDTH-'
     height_key = 'HEIGHT'
     layout = [[sg.Canvas(key=width_key, size=(width, 0))],
               [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-              [sg.Canvas(key=height_key, size=(0, height)),
-               sg.Col([[sg.Col(main_layout, pad=(pad_frame, (pad_frame, 0)), justification='c',
-                               expand_x=True, expand_y=True)],
-                       [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]],
-                      expand_x=True, expand_y=True, vertical_alignment='t', scrollable=True,
-                      vertical_scroll_only=True)]]
+              [sg.Col([[sg.Canvas(key=height_key, size=(0, height))]], vertical_alignment='t'),
+               sg.Col([tbl_layout, bttn_layout], pad=((pad_frame, 0), pad_frame), expand_x=True, expand_y=True,
+                      vertical_alignment='t', scrollable=True, vertical_scroll_only=True)]]
 
     # Finalize GUI window
     window = sg.Window('', layout, modal=True, resizable=True)
@@ -1525,27 +1522,27 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
         param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True,
                                       button_color=(bttn_text_col, bttn_bg_col), use_ttk_buttons=True))
 
-        main_layout = [[sg.Col([param_layout], pad=(pad_frame, pad_v), background_color=bg_col)],
-                       [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)],
-                       [table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]]
+        main_layout = [sg.Col([[sg.Col([param_layout], pad=(pad_frame, pad_v), background_color=bg_col)],
+                               [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)],
+                               [table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]],
+                              background_color=bg_col, vertical_alignment='t', expand_x=True, expand_y=True)]
     else:
-        main_layout = [[table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]]
+        main_layout = [table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]
 
-    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel importing'),
-                    mod_lo.B2('Import', key='-IMPORT-', pad=(pad_el, 0),
-                              tooltip='Import the selected transaction orders')]]
+    bttn_layout = [sg.Col([[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel importing'),
+                            mod_lo.B2('Import', key='-IMPORT-', pad=(pad_el, 0),
+                                      tooltip='Import the selected transaction orders')]],
+                          pad=(0, (pad_v, pad_frame)), element_justification='c', justification='c', expand_x=True)]
 
     width_key = '-WIDTH-'
     height_key = 'HEIGHT'
+    frame_key = '-FRAME-'
     layout = [[sg.Canvas(key=width_key, size=(width, 0))],
               [sg.Col(header_layout, pad=(0, 0), background_color=header_col, element_justification='l',
                       expand_x=True, expand_y=True)],
-              [sg.Canvas(key=height_key, size=(0, height)),
-               sg.Col([[sg.Col(main_layout, background_color=bg_col, element_justification='l', pad=(0, 0),
-                               expand_x=True, expand_y=True)],
-                       [sg.Col(bttn_layout, element_justification='c', pad=(0, (pad_v, pad_frame)), expand_x=True)]],
-                      pad=(0, 0), expand_x=True, expand_y=True, vertical_alignment='t', scrollable=True,
-                      vertical_scroll_only=True)]]
+              [sg.Col([[sg.Canvas(key=height_key, size=(0, height))]], vertical_alignment='t'),
+               sg.Col([main_layout, bttn_layout], key=frame_key, pad=(0, 0), expand_x=True, expand_y=True,
+                      scrollable=True, vertical_scroll_only=True)]]
 
     window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=True)
     window.finalize()
@@ -1582,7 +1579,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            window[width_key].set_size((win_h, None))
+            window[width_key].set_size((win_w, None))
             window[height_key].set_size((None, win_h))
 
             table.resize(window, size=(win_w - tbl_diff, win_h * 0.75), row_rate=40)
