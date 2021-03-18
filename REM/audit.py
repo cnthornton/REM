@@ -1898,8 +1898,13 @@ class AuditRecordTab:
 
         success = []
         # Export audit record
-        record_entry = configuration.records.fetch_rule(record.name)
-        success.append(record_entry.export_record(user, record))
+#        record_entry = configuration.records.fetch_rule(record.name)
+#        success.append(record_entry.export_record(user, record))
+        saved = record.save()
+        success.append(saved)
+
+        if saved is False:
+            return False
 
         # Export associated deposit records for the relevant account records
         account_table = self.record.fetch_component('account')
@@ -1955,7 +1960,12 @@ class AuditRecordTab:
             record.initialize(record_data, new=True)
 
             # Save the deposit record to the database
-            success.append(record_entry.export_record(user, record))
+#            success.append(record_entry.export_record(user, record))
+            saved = record.save()
+            success.append(saved)
+
+            if saved is False:  # don't save reference to non-existing record
+                continue
 
             # Save the association to the references database table
             ref_id = row['RecordID']

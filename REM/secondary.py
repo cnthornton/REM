@@ -323,6 +323,16 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
             for modifier in record.modifiers:
                 modifier.value = modifier.format_value(values)
 
+            # Verify that required parameters have values
+            for param in record.parameters:
+                if param.required is True and param.value_set() is False:
+                    msg = 'Record {ID}: no value provided for the required field {FIELD}' \
+                        .format(ID=record.record_id(), FIELD=param.description)
+                    print('Warning: {MSG}'.format(MSG=msg))
+                    popup_error(msg)
+
+                    continue
+
             break
 
         if event == '-SAVE-':  # selected to save the record (changes) to the database
@@ -335,8 +345,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
                 modifier.value = modifier.format_value(values)
 
             # Save the record to the database table
-            record_entry = configuration.records.fetch_rule(record.name)
-            saved = record_entry.export_record(user, record)
+#            record_entry = configuration.records.fetch_rule(record.name)
+#            saved = record_entry.export_record(user, record)
+            saved = record.save()
             if saved is False:
                 continue
             else:
@@ -347,9 +358,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
             try:
                 record.run_event(window, event, values)
             except Exception as e:
-                print('Warning: Record {NAME}: failed to run record event {EVENT} - {ERR}'
-                      .format(NAME=record.name, EVENT=event, ERR=e))
-                raise
+                msg = 'Record {ID}: failed to run record event {EVENT} - {ERR}'\
+                    .format(ID=record.record_id(), EVENT=event, ERR=e)
+                print('Warning: {MSG}'.format(MSG=msg))
+                popup_notice(msg)
+
                 continue
 
     window.close()

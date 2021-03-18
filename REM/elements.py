@@ -1460,6 +1460,15 @@ class TableElement:
 
         return row_ids
 
+    def value_set(self):
+        """
+        Return True if no NAs in the table else return False.
+        """
+        if self.df.isnull().values.any() is True:
+            return False
+        else:
+            return True
+
     def summarize_columns(self):
         """
         Summarize columns based on data type.
@@ -2209,6 +2218,8 @@ class DataElement:
 
         hidden (bool): element is not visible to the user. [Default: False]
 
+        required (bool): element requires a value [Default: False].
+
         value: value of the data element.
     """
 
@@ -2266,6 +2277,17 @@ class DataElement:
             sys.exit(1)
         else:
             self.hidden = hidden
+
+        try:
+            required = bool(int(entry['IsRequired']))
+        except KeyError:
+            self.required = False
+        except ValueError:
+            print('Configuration Warning: DataElement {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
+                  .format(NAME=name))
+            sys.exit(1)
+        else:
+            self.required = required
 
         try:
             self.options = entry['Options']
@@ -2375,6 +2397,7 @@ class DataElement:
         dtype = self.dtype
         is_disabled = False if overwrite_edit is True or (editable is True and self.editable is True) else True
         self.disabled = is_disabled
+        is_required = self.required
 
         element_options = self.options
         aliases = element_options.get('Aliases', {})
@@ -2406,6 +2429,13 @@ class DataElement:
                 icon_layout = []
         else:
             icon_layout = []
+
+        # Required symbol
+        if is_required is True:
+            required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
+                                       text_color=mod_const.WARNING_COL, tooltip='required')]
+        else:
+            required_layout = []
 
         # Element name
         description_layout = [sg.Text(self.description, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font,
@@ -2499,11 +2529,11 @@ class DataElement:
             # Second row
             frame_key = self.key_lookup('CollapseFrame')
             row2 = [sg.pin(sg.Col([element_layout], key=frame_key, background_color=bg_col, visible=True,
-                                  metadata={'visible': True}))]
+                                  metadata={'visible': True}))] + required_layout
 
             layout = sg.Col([row1, row2], pad=padding, background_color=bg_col)
         else:  # display the element in a single row, parameter style
-            row = icon + description_layout + element_layout
+            row = icon + description_layout + element_layout + required_layout
             layout = sg.Col([row], pad=padding, background_color=bg_col)
 
         return layout
@@ -2780,7 +2810,7 @@ class DataElement:
         dtype = self.dtype
         options = self.options
 
-        if input_value is None or pd.isna(input_value):
+        if input_value == '' or pd.isna(input_value):
             return self.value
 
         try:
@@ -2855,6 +2885,15 @@ class DataElement:
               .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
 
         return value_fmt
+
+    def value_set(self):
+        """
+        Return True if element has a valid value else False
+        """
+        if self.value is not None:
+            return True
+        else:
+            return False
 
     def format_date(self, date_str):
         """

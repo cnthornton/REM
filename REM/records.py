@@ -7,10 +7,10 @@ import PySimpleGUI as sg
 from random import randint
 
 import REM.constants as mod_const
-import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
 from REM.config import configuration
+import REM.secondary as mod_win2
 from REM.settings import user
 
 
@@ -349,31 +349,6 @@ class DatabaseRecord:
                       .format(NAME=self.name, PARAM=header_name, VAL=value))
                 header.value = header.format_value({header.key_lookup('Element'): value})
 
-#        try:
-#            self.record_id = record_data['RecordID']
-#        except KeyError:
-#            raise AttributeError('input data is missing required column "RecordID"')
-#
-#        try:
-#            record_date = record_data['RecordDate']
-#        except KeyError:
-#            raise AttributeError('input data is missing required column "RecordDate"')
-#        else:
-#            if is_datetime_dtype(record_date) or isinstance(record_date, datetime.datetime):
-#                self.record_date = record_date
-#            elif isinstance(record_date, str):
-#                try:
-#                    self.record_date = datetime.datetime.strptime(record_date, '%Y-%m-%d')
-#                except ValueError:
-#                    raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
-#            else:
-#                raise AttributeError('unknown format for "RecordDate" value {}'.format(record_date))
-#
-#        self.creator = record_data.get(configuration.creator_code, None)
-#        self.creation_date = record_data.get(configuration.creation_date, None)
-#        self.editor = record_data.get(configuration.editor_code, None)
-#        self.edit_date = record_data.get(configuration.edit_date, None)
-
         # Set modifier values
         if new is True:
             self.modifiers = []
@@ -668,6 +643,26 @@ class DatabaseRecord:
                 values.append(param.value)
 
         return pd.Series(values, index=columns)
+
+    def save(self):
+        """
+        Save record to the database.
+        """
+        record_entry = self.record_entry
+
+        # Verify that required parameters have values
+        for param in self.parameters:
+            if param.required is True and param.value_set() is False:
+                msg = 'Record {ID}: no value provided for the required field {FIELD}'\
+                    .format(ID=self.record_id(), FIELD=param.description)
+                print('Warning: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error(msg)
+                return False
+
+        # Save record
+        success = record_entry.export_record(user, self)
+
+        return success
 
     def layout(self, win_size: tuple = None, view_only: bool = False, ugroup: list = None):
         """
