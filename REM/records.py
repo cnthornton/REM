@@ -466,6 +466,7 @@ class DatabaseRecord:
                     comp_table.df = comp_table.import_row(ref_id)
 
             self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
+            print(ref_df)
 
     def reset(self, window):
         """

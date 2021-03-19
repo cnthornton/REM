@@ -324,16 +324,21 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
                 modifier.value = modifier.format_value(values)
 
             # Verify that required parameters have values
+            can_continue = True
             for param in record.parameters:
                 if param.required is True and param.value_set() is False:
                     msg = 'Record {ID}: no value provided for the required field {FIELD}' \
                         .format(ID=record.record_id(), FIELD=param.description)
                     print('Warning: {MSG}'.format(MSG=msg))
                     popup_error(msg)
+                    can_continue = False
 
-                    continue
+                    break
 
-            break
+            if can_continue is True:
+                break
+            else:
+                continue
 
         if event == '-SAVE-':  # selected to save the record (changes) to the database
             # Update data element values

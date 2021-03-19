@@ -327,6 +327,22 @@ class TableElement:
         except KeyError:
             self.tooltip = None
 
+        try:
+            self.required_columns = entry['RequiredColumns']
+        except KeyError:
+            self.required_columns = []
+
+        try:
+            required = bool(int(entry['IsRequired']))
+        except KeyError:
+            self.required = False
+        except ValueError:
+            print('Configuration Warning: DataElement {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
+                  .format(NAME=name))
+            sys.exit(1)
+        else:
+            self.required = required
+
         self._df = pd.DataFrame(columns=columns)
         self.df = pd.DataFrame(columns=columns)
         self.import_df = pd.DataFrame(columns=columns)

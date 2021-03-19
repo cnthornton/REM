@@ -515,8 +515,6 @@ class AuditRule:
                 msg = 'Please select an output file before continuing'
                 mod_win2.popup_error(msg)
             else:
-                print('Info: AuditRule {NAME}: saving summary report to {FILE}'.format(NAME=self.name, FILE=outfile))
-
                 # Save summary to the program database
                 try:
                     save_status = self.summary.save_records()
@@ -1538,10 +1536,12 @@ class AuditSummary:
         """
         Resize the summary panel.
         """
+        width, height = size
+
         tabs = self.tabs
         for tab in tabs:
             # Reset summary item attributes
-            tab.record.resize(window, win_size=size)
+            tab.record.resize(window, win_size=(width, height * 0.9))
 
     def update_title(self, window, params):
         """
@@ -1609,6 +1609,8 @@ class AuditSummary:
         date_offset = settings.get_date_offset()
 
         report_def = self.report
+
+        print('Info: AuditRule {NAME}: saving summary report to {FILE}'.format(NAME=self.name, FILE=filename))
 
         tabs = []
         for tab_name in report_def:
@@ -1725,6 +1727,40 @@ class AuditSummary:
         """
         tabs = self.tabs
 
+        print('Info: AuditRuleSummary {NAME}: verifying that all required fields have input'.format(NAME=self.name))
+        for tab in tabs:
+            # Verify that all required fields for tab record have values
+            for param in tab.record.parameters:
+                if param.required is True and param.value_set() is False:
+                    msg = 'Record {ID}: no value provided for the required field {FIELD}' \
+                        .format(ID=tab.record.record_id(), FIELD=param.description)
+                    print('Warning: {MSG}'.format(MSG=msg))
+                    mod_win2.popup_error(msg)
+
+                    return False
+
+            # Verify that tab record components have values for their required fields.
+            for component_table in tab.record.components:
+                comp_df = component_table.df
+
+                required_columns = component_table.required_columns
+                for required_column in required_columns:
+                    has_na = comp_df[required_column].isnull().any()
+                    print('Info: required column {COL} has NA values: {HAS}'.format(COL=required_column, HAS=has_na))
+                    if has_na:
+                        display_map = {j: i for i, j in component_table.display_columns.items()}
+                        try:
+                            display_column = display_map[required_column]
+                        except KeyError:
+                            display_column = required_column
+
+                        msg = 'missing values for required column {COL}'.format(COL=display_column)
+                        print('Warning: {MSG}'.format(MSG=msg))
+                        mod_win2.popup_error(msg)
+
+                        return False
+
+        print('Info: AuditRuleSummary {NAME}: saving audit records and their components'.format(NAME=self.name))
         success = []
         for tab in tabs:
             # Save audit tab record
@@ -1896,10 +1932,8 @@ class AuditRecordTab:
         record = self.record
         ref_table = configuration.reference_lookup
 
-        success = []
         # Export audit record
-#        record_entry = configuration.records.fetch_rule(record.name)
-#        success.append(record_entry.export_record(user, record))
+        success = []
         saved = record.save()
         success.append(saved)
 
@@ -1942,6 +1976,7 @@ class AuditRecordTab:
             record_date = row['RecordDate']
             record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
             record_data['RecordID'] = record_id
+            # Add the deposit date
             try:
                 deposit_date = row['PaymentDate']
             except KeyError:
@@ -1953,6 +1988,21 @@ class AuditRecordTab:
                     record_data['DepositDate'] = deposit_date
                 else:
                     msg = 'no deposit date set for new deposit record {ID}'.format(ID=record_id)
+                    print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
+
+            # Add the deposit amount
+            try:
+                deposit_amount = row['CorrectedAmount']
+            except KeyError:
+                msg = 'missing deposit amount for new deposit record {ID}'.format(ID=record_id)
+                print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                mod_win2.popup_error(msg)
+            else:
+                if deposit_amount is not None:
+                    record_data['DepositAmount'] = deposit_amount
+                else:
+                    msg = 'no deposit amount set for new deposit record {ID}'.format(ID=record_id)
                     print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
