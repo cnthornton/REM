@@ -1501,7 +1501,9 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     # Start event loop
     current_w, current_h = window.size
 
-    selected_rows = []
+    display_table = table.update_display(window)
+
+    select_index = []
     while True:
         event, values = window.read(timeout=500)
 
@@ -1542,17 +1544,23 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
                 continue
 
             table.df = table.append(record_df)
-            table.update_display(window)
+            display_table = table.update_display(window)
 
             continue
 
         if event == '-IMPORT-':  # click 'Import' button
             # Get index of selected rows
             selected_rows = values[table.key_lookup('Element')]
+            print(selected_rows)
+            print(display_table)
+
+            # Get real index of selected rows
+            select_index = [table.index_map[i] for i in selected_rows]
+            print(select_index)
             break
 
         if event in table.elements:
-            table.run_event(window, event, values)
+            display_table = table.run_event(window, event, values)
             continue
 
     window.close()
@@ -1560,7 +1568,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     window = None
     gc.collect()
 
-    return table.df.iloc[selected_rows]
+    return table.df.iloc[select_index]
 
 
 def about():

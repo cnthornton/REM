@@ -1593,33 +1593,37 @@ class TableElement:
         import_table = TableElement(self.name, table_layout)
 
         if reftype is not None:  # search for records without an existing reference to provided reference type
-            if import_df.empty:  # only search when no current import data
-                # Prepare query arguments
-                import_filters = mod_db.format_import_filters(import_rules)
-                table_statement = mod_db.format_tables(import_rules)
-                import_columns = mod_db.format_import_columns(import_rules)
-                id_col = self.id_column
+            # Prepare query arguments
+            import_filters = mod_db.format_import_filters(import_rules)
+            table_statement = mod_db.format_tables(import_rules)
+            import_columns = mod_db.format_import_columns(import_rules)
+            id_col = self.id_column
 
-                # Search for records in record reference table with associations
-                ref_table = configuration.reference_lookup
-                ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (record_type, reftype, 0))
-                references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
-                ids_with_reference = references['RefNo'].tolist()
+            # Search for records in record reference table with associations
+            ref_table = configuration.reference_lookup
+            ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (record_type, reftype, 0))
+            references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
 
-                try:
-                    df = user.query(table_statement, columns=import_columns, filter_rules=import_filters, prog_db=True)
-                except Exception as e:
-                    print('Warning: DataTable {NAME}: failed to import data from the database - {ERR}'
-                          .format(NAME=self.name, ERR=e))
-                else:
-                    # Drop records that already have associations to reference type records
-                    df.drop(df[df[id_col].isin(ids_with_reference)].index, inplace=True)
-
-                    # Add import dataframe to data table object
-                    import_df = import_df.append(df, ignore_index=True)
-                    import_table.df = import_table.append(df)
+            try:
+                df = user.query(table_statement, columns=import_columns, filter_rules=import_filters, prog_db=True)
+            except Exception as e:
+                print('Warning: DataTable {NAME}: failed to import data from the database - {ERR}'
+                      .format(NAME=self.name, ERR=e))
             else:
-                import_table.df = import_df
+                # Drop records that already have associations to reference type records
+                ids_with_reference = references['RefNo'].tolist()
+                df.drop(df[df[id_col].isin(ids_with_reference)].index, inplace=True)
+
+                # Drop records that are already in the import table
+                import_ids = import_df[self.id_column].tolist()
+                df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
+
+                # Drop records that are already in the table
+                current_ids = self.df[self.id_column].tolist()
+                df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
+
+                # Add import dataframe to data table object
+                import_table.df = import_df.append(df, ignore_index=True)
 
         # Add relevant search parameters
         if self.search_field:
