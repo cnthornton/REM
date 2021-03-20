@@ -515,7 +515,7 @@ class DataParameterInput(DataParameter):
         print('Info: DataParameter {NAME}: formatting parameter value {VAL} for display'
               .format(NAME=self.name, VAL=value))
 
-        if value == '' or value is None:
+        if value == '' or pd.isna(value) is True:
             return ''
         else:
             value = str(value)
@@ -686,6 +686,9 @@ class DataParameterCombo(DataParameter):
         value = self.value
         aliases = self.aliases
 
+        if pd.isna(value) is True:
+            return ''
+
         display_value = aliases.get(value, value)
 
         return display_value
@@ -808,7 +811,7 @@ class DataParameterDate(DataParameter):
         Format the parameter's value for displaying.
         """
         value = self.value
-        if value is None:
+        if pd.isna(value) is True:
             return ''
 
         if isinstance(value, str):
@@ -995,7 +998,7 @@ class DataParameterDateRange(DataParameter):
         Format the parameter's value for displaying.
         """
         values = self.value
-        if values is None:
+        if pd.isna(values) is True:
             return ('', '')
 
         formatted_values = []

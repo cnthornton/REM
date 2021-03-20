@@ -100,7 +100,7 @@ class DatabaseRecord:
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame',
-                          'Height', 'Width', 'DetailsTab', 'InfoTab', 'TG']]
+                          'Height', 'Width', 'DetailsTab', 'InfoTab', 'TG', 'FrameHeight', 'FrameWidth']]
 
         entry = record_entry.record_layout if record_layout is None else record_layout
 
@@ -159,20 +159,33 @@ class DatabaseRecord:
         if 'RecordDate' not in header_names:
             raise AttributeError('missing required header "RecordDate"')
 
-        # Record modifiers
-        self.modifiers = []
+        # Record metadata
+        self.metadata = []
         try:
-            modifiers = entry['Modifiers']
+            metadata = entry['Metadata']
         except KeyError:
-            self.modifiers = []
+            self.metadata = []
         else:
-            for param_name in modifiers:
-                param_entry = modifiers[param_name]
-                param_entry['ElementType'] = 'checkbox'
-                param_entry['DataType'] = 'bool'
-                param = mod_param.DataParameterCheckbox(param_name, param_entry)
+            for param_name in metadata:
+                param_entry = metadata[param_name]
+                param_layout = param_entry['ElementType']
+                if param_layout == 'dropdown':
+                    param_class = mod_param.DataParameterCombo
+                elif param_layout == 'input':
+                    param_class = mod_param.DataParameterInput
+                elif param_layout == 'date':
+                    param_class = mod_param.DataParameterDate
+                elif param_layout == 'date_range':
+                    param_class = mod_param.DataParameterDateRange
+                elif param_layout == 'checkbox':
+                    param_class = mod_param.DataParameterCheckbox
+                else:
+                    raise AttributeError('unknown type {TYPE} provided to record header {PARAM}'
+                                         .format(TYPE=param_layout, PARAM=param_name))
 
-                self.modifiers.append(param)
+                param = param_class(param_name, param_entry)
+
+                self.metadata.append(param)
                 self.elements += param.elements
 
         # Required record elements
@@ -306,7 +319,7 @@ class DatabaseRecord:
         """
         headers = self.headers
         parameters = self.parameters
-        modifiers = self.modifiers
+        modifiers = self.metadata
         comp_types = self.component_types
         ref_types = self.reference_types
 
@@ -351,7 +364,7 @@ class DatabaseRecord:
 
         # Set modifier values
         if new is True:
-            self.modifiers = []
+            self.metadata = []
         else:
             for modifier in modifiers:
                 modifier_name = modifier.name
@@ -479,7 +492,7 @@ class DatabaseRecord:
             header.reset(window)
 
         # Reset modifier values
-        for modifier in self.modifiers:
+        for modifier in self.metadata:
             modifier.reset(window)
 
         # Reset data element values
@@ -539,15 +552,15 @@ class DatabaseRecord:
         """
         if by_key is True:
             element_type = element[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.modifiers]
+            element_names = [i.key_lookup(element_type) for i in self.metadata]
         else:
-            element_names = [i.name for i in self.modifiers]
+            element_names = [i.name for i in self.metadata]
 
         if element in element_names:
             index = element_names.index(element)
-            parameter = self.modifiers[index]
+            parameter = self.metadata[index]
         else:
-            raise KeyError('element {ELEM} not found in list of record {NAME} modifiers'
+            raise KeyError('element {ELEM} not found in list of record {NAME} metadata'
                            .format(ELEM=element, NAME=self.name))
 
         return parameter
@@ -605,7 +618,7 @@ class DatabaseRecord:
 
         headers = self.headers
         parameters = self.parameters
-        modifiers = self.modifiers
+        modifiers = self.metadata
 
         columns = []
         values = []
@@ -654,7 +667,7 @@ class DatabaseRecord:
         # Verify that required parameters have values
         for param in self.parameters:
             if param.required is True and param.value_set() is False:
-                msg = 'Record {ID}: no value provided for the required field {FIELD}'\
+                msg = 'Record {ID}: no value provided for the required field {FIELD}' \
                     .format(ID=self.record_id(), FIELD=param.description)
                 print('Warning: {MSG}'.format(MSG=msg))
                 mod_win2.popup_error(msg)
@@ -775,28 +788,45 @@ class DatabaseRecord:
             details_layout.append([sg.Col(comp_layout, pad=(0, pad_el), expand_x=True, background_color=bg_col)])
 
         height_key = self.key_lookup('Height')
-        details_tab = sg.Tab('{:^40}'.format('Details'), details_layout, key=self.key_lookup('DetailsTab'),
-                             background_color=bg_col)
+        width_key = self.key_lookup('Width')
+        details_tab = sg.Tab('{:^40}'.format('Details'),
+                             [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)],
+                              [sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
+                               sg.Col(details_layout, pad=(0, pad_v), background_color=bg_col, expand_y=True,
+                                      expand_x=True, scrollable=True, vertical_scroll_only=True)]],
+                             key=self.key_lookup('DetailsTab'), background_color=bg_col)
 
         # Create layout for record metadata
-        info_layout = [[]]
-        info_tab = sg.Tab('{:^40}'.format('Metadata'), info_layout, key=self.key_lookup('InfoTab'),
-                          background_color=bg_col)
+        deletable = True if self.permissions['delete'] in ugroup and self.level < 1 \
+                            and view_only is False else False
+        markable = True if self.permissions['mark'] in ugroup and self.new is False \
+                           and view_only is False else False
+        approvable = True if self.permissions['approve'] in ugroup and self.new is False \
+                             and view_only is False else False
+        modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': deletable}
+        if len(self.metadata) > 0:
+            annotation_layout = []
+            for param in self.metadata:
+                param_name = param.name
+                if param_name in modifier_perms:
+                    param.editable = modifier_perms[param_name]
 
-        main_layout = [[sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
-                        sg.Col([[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
-                                             background_color=inactive_col,
-                                             tab_background_color=inactive_col, selected_background_color=bg_col,
-                                             selected_title_color=select_col, title_color=text_col, border_width=0,
-                                             tab_location='topleft', font=main_font)]],
-                               pad=(0, 0), vertical_alignment='t', background_color=bg_col, scrollable=True,
-                               vertical_scroll_only=True, expand_x=True, expand_y=True)]]
+                annotation_layout.append(param.layout())
+        else:
+            annotation_layout = [[]]
+
+        info_tab = sg.Tab('{:^40}'.format('Metadata'),
+                          [[sg.Col(annotation_layout, pad=(0, pad_v), background_color=bg_col, scrollable=True,
+                                   vertical_scroll_only=True, expand_x=True, expand_y=True)]],
+                          key=self.key_lookup('InfoTab'), background_color=bg_col)
+
+        main_layout = [[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
+                                    background_color=inactive_col, tab_background_color=inactive_col,
+                                    selected_background_color=bg_col, selected_title_color=select_col,
+                                    title_color=text_col, border_width=0, tab_location='topleft', font=main_font)]]
 
         # Pane elements must be columns
-        width_key = self.key_lookup('Width')
-        width_layout = [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)]]
-        layout = [[sg.Col(width_layout, pad=(0, 0), background_color=bg_col)],
-                  [sg.Col(header_layout, pad=(pad_frame, pad_v), background_color=bg_col, expand_x=True)],
+        layout = [[sg.Col(header_layout, pad=(pad_frame, pad_v), background_color=bg_col, expand_x=True)],
                   [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)]]
 
         return layout
@@ -814,17 +844,16 @@ class DatabaseRecord:
 
         # Expand the frame width and height
         width_key = self.key_lookup('Width')
-        window[width_key].set_size((width, None))
+        window.bind("<Configure>", window[width_key].Widget.config(width=int(width - 40)))
 
         height_key = self.key_lookup('Height')
-        window[height_key].set_size((None, height))
         window.bind("<Configure>", window[height_key].Widget.config(height=int(height)))
 
         # Expand the size of multiline parameters
         for param in self.parameters:
             param_type = param.etype
             if param_type == 'multiline':
-                param_size = (int((width - width % 9) / 9) - int((64 - 64 % 9)/9), None)
+                param_size = (int((width - width % 9) / 9) - int((64 - 64 % 9) / 9), None)
             elif param_type == 'table':
                 param_size = (width - 64, 1)
             else:
@@ -872,7 +901,7 @@ class StandardRecord(DatabaseRecord):
         Perform a record action.
         """
         param_elems = [i for param in self.parameters for i in param.elements]
-        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
+        modifier_elems = [i for param in self.metadata for i in param.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
 
@@ -970,7 +999,7 @@ class DepositRecord(DatabaseRecord):
         Perform a record action.
         """
         param_elems = [i for param in self.parameters for i in param.elements]
-        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
+        modifier_elems = [i for modifier in self.metadata for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
 
@@ -1115,7 +1144,7 @@ class TAuditRecord(DatabaseRecord):
         Perform a record action.
         """
         param_elems = [i for param in self.parameters for i in param.elements]
-        modifier_elems = [i for modifier in self.modifiers for i in modifier.elements]
+        modifier_elems = [i for modifier in self.metadata for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
 

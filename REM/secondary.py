@@ -247,34 +247,35 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
 
     # User permissions
     user_priv = user.access_permissions()
-    deletable = True if record.permissions['delete'] in user_priv and record.level < 1 \
-                        and view_only is False else False
+#    deletable = True if record.permissions['delete'] in user_priv and record.level < 1 \
+#                        and view_only is False else False
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
-    markable = True if record.permissions['mark'] in user_priv and record.new is False \
-                       and view_only is False else False
-    approvable = True if record.permissions['approve'] in user_priv and record.new is False \
-                         and view_only is False else False
+#    markable = True if record.permissions['mark'] in user_priv and record.new is False \
+#                       and view_only is False else False
+#    approvable = True if record.permissions['approve'] in user_priv and record.new is False \
+#                         and view_only is False else False
 
     # Window Title
-    modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': deletable}
-    if record_modifiers is True:
-        annotation_layout = []
-        for modifier in record.modifiers:
-            modifier_name = modifier.name
-            if modifier_name in modifier_perms:
-                modifier.editable = modifier_perms[modifier_name]
-
-            annotation_layout.append(modifier.layout(bg_col=header_col))
-    else:
-        annotation_layout = [[]]
+#    modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': deletable}
+#    if record_modifiers is True:
+#        annotation_layout = []
+#        for modifier in record.metadata:
+#            modifier_name = modifier.name
+#            if modifier_name in modifier_perms:
+#                modifier.editable = modifier_perms[modifier_name]
+#
+#            annotation_layout.append(modifier.layout(bg_col=header_col))
+#    else:
+#        annotation_layout = [[]]
 
     title = record.title
-    title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
-                            pad=(0, 0), justification='l', background_color=header_col, expand_x=True),
-                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-                            background_color=header_col, justification='c', expand_x=True),
-                     sg.Col(annotation_layout, pad=(pad_frame, 0), background_color=header_col,
-                            justification='r', vertical_alignment='c')]]
+#    title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
+#                            pad=(0, 0), justification='l', background_color=header_col, expand_x=True),
+#                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
+#                            background_color=header_col, justification='c', expand_x=True),
+#                     sg.Col(annotation_layout, pad=(pad_frame, 0), background_color=header_col,
+#                            justification='r', vertical_alignment='c')]]
+    title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
     # Button layout
     bttn_layout = [[mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=(not savable), tooltip='Accept changes'),
@@ -320,7 +321,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
                 param_elem.update_display(window, window_values=values)
 
             # Update modifier values
-            for modifier in record.modifiers:
+            for modifier in record.metadata:
                 modifier.value = modifier.format_value(values)
 
             # Verify that required parameters have values
@@ -346,7 +347,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
                 param_elem.update_display(window, window_values=values)
 
             # Update modifier values
-            for modifier in record.modifiers:
+            for modifier in record.metadata:
                 modifier.value = modifier.format_value(values)
 
             # Save the record to the database table

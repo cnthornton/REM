@@ -2528,7 +2528,7 @@ class DataElement:
                                            tooltip='Input value for {}'.format(self.description),
                                            metadata={'disabled': is_disabled, 'value': param_value})]
         elif etype == 'checkbox':
-            element_layout = [sg.Checkbox(self.description, default=param_value, key=elem_key, font=bold_font,
+            element_layout = [sg.Checkbox('', default=param_value, key=elem_key, font=bold_font,
                                           enable_events=True, background_color=bg_col, disabled=is_disabled,
                                           metadata={'disabled': is_disabled, 'value': stored_value})]
         else:
@@ -2549,7 +2549,7 @@ class DataElement:
 
             layout = sg.Col([row1, row2], pad=padding, background_color=bg_col)
         else:  # display the element in a single row, parameter style
-            row = icon + description_layout + element_layout + required_layout
+            row = icon_layout + description_layout + element_layout + required_layout
             layout = sg.Col([row], pad=padding, background_color=bg_col)
 
         return layout

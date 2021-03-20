@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '2.1.8'
+__version__ = '2.1.9'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -124,9 +124,9 @@ class ToolBar:
 
         toolbar = [[sg.Canvas(key='-CANVAS_WIDTH-', size=(width, 0), visible=True)],
                    [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
-                                           button_color=(text_col, header_col), pad=(padding, padding)),
+                                           button_color=(text_col, header_col), pad=(padding, padding), border_width=0),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
-                                           button_color=(text_col, header_col),
+                                           button_color=(text_col, header_col), border_width=0,
                                            tooltip=configuration.records.title, pad=(padding, padding)),
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
@@ -135,10 +135,10 @@ class ToolBar:
                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
                            justification='c', background_color=header_col, expand_x=True),
                     sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', pad=(padding, padding), image_data=user_ico,
-                                           button_color=(text_col, header_col),
+                                           button_color=(text_col, header_col), border_width=0,
                                            tooltip=_('User Settings')),
                              sg.ButtonMenu('', menu_menu, key='-MMENU-', pad=(padding, padding), image_data=menu_ico,
-                                           button_color=(text_col, header_col),
+                                           button_color=(text_col, header_col), border_width=0,
                                            tooltip=_('Help and program settings'))]],
                            justification='r', background_color=header_col)]]
 
@@ -439,7 +439,7 @@ def main():
     cash_names = cash_rules.print_rules()
     bank_names = bank_rules.print_rules()
 
-    # Event modifiers
+    # Event metadata
     current_rule = None
     debug_win = None
 
@@ -633,7 +633,7 @@ def main():
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
-#                raise
+                raise
 
             continue
 
@@ -750,7 +750,7 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         mod_win2.popup_error('Error: fatal program error - {}'.format(e))
-#        raise
+        raise
         sys.exit(1)
     else:
         sys.exit(0)
