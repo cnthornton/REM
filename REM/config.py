@@ -478,6 +478,15 @@ class RecordEntry:
 
             # Prepare column value updates
             record_data = record.table_values()
+            if id_exists is True:  # record already exists in the database
+                # Add edit details to record data
+                record_data[configuration.editor_code] = user.uid
+                record_data[configuration.edit_date] = datetime.datetime.now().strftime(configuration.date_format)
+            else:
+                # Add record creation details to record data
+                record_data[configuration.creator_code] = user.uid
+                record_data[configuration.creation_date] = datetime.datetime.now().strftime(configuration.date_format)
+
             include_columns = [i for i in record_data.index.tolist() if i in references]
             try:
                 export_data = record_data[include_columns].dropna()
@@ -491,9 +500,6 @@ class RecordEntry:
             # Save the record data
             if id_exists is True:  # record already exists in the database
                 # Edit an existing record in the database
-                export_columns += [configuration.editor_code, configuration.edit_date]
-                export_values += [user.uid, datetime.datetime.now().strftime(configuration.date_format)]
-
                 filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
                 print('Info: RecordType {NAME}, Record {ID}: updating existing record in the database'
                       .format(NAME=self.name, ID=record_id))
@@ -507,9 +513,6 @@ class RecordEntry:
 
             else:  # record does not exist yet, must be inserted
                 # Create new entry for the record in the database
-                export_columns += [configuration.creator_code, configuration.creation_date]
-                export_values += [user.uid, datetime.datetime.now().strftime(configuration.date_format)]
-
                 print('Info: RecordType {NAME}, Record {ID}: saving new record to the database'
                       .format(NAME=self.name, ID=record_id))
                 entry_saved = user.insert(table, export_columns, export_values)

@@ -327,8 +327,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
                 modifier.value = modifier.format_value(values)
 
             # Save the record to the database table
-#            record_entry = configuration.records.fetch_rule(record.name)
-#            saved = record_entry.export_record(user, record)
             saved = record.save()
             if saved is False:
                 continue

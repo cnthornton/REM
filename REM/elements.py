@@ -741,6 +741,7 @@ class TableElement:
 
         for param in parameters:
             param_value = param.value
+            match_pattern = param.pattern_matching
             dtype = param.dtype
             column = param.name
 
@@ -808,15 +809,10 @@ class TableElement:
                 print('Info: DataTable {NAME}: filtering table with parameter {PARAM} value {VAL}'
                       .format(NAME=self.name, PARAM=param.name, VAL=param_value))
 
-                try:
+                if match_pattern is True:
+                    df = df[col_values.str.contains(param_value, case=False, regex=True)]
+                else:
                     df = df[col_values == param_value]
-                except KeyError:
-                    print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                          .format(TBL=self.name, PARAM=column))
-                    continue
-                except SyntaxError:
-                    print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
-                          '{VAL}'.format(TBL=self.name, PARAM=column, VAL=param_value))
 
         return df
 

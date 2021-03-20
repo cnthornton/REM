@@ -37,6 +37,8 @@ class DataParameter:
 
         required (bool): parameter value is required for an event.
 
+        pattern_matching (bool): query with paramter using pattern matching [Default: False]
+
         icon (str): file name of the parameter's icon [Default: None].
 
         value: value of the parameter's data storage elements.
@@ -106,6 +108,17 @@ class DataParameter:
             sys.exit(1)
         else:
             self.required = required
+
+        try:
+            pattern = bool(int(entry['PatternMatching']))
+        except KeyError:
+            self.pattern_matching = False
+        except ValueError:
+            mod_win2.popup_error('Configuration Error: DataParameter {NAME}: "PatternMatching" must be either 0 '
+                                 '(False) or 1 (True)'.format(NAME=self.name))
+            sys.exit(1)
+        else:
+            self.pattern_matching = pattern
 
         try:
             self.icon = entry['Icon']
@@ -371,6 +384,7 @@ class DataParameter:
         Generate the filter clause for SQL querying.
         """
         dtype = self.dtype
+        pattern = self.pattern_matching
 
         value = self.value
         if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
@@ -381,7 +395,11 @@ class DataParameter:
             query_value = value
 
         if query_value:
-            statement = ('{COL} = ?'.format(COL=column), (query_value,))
+            if pattern is True:
+                query_value = '%{VAL}%'.format(VAL=query_value)
+                statement = ('{COL} LIKE ?'.format(COL=column), (query_value,))
+            else:
+                statement = ('{COL} = ?'.format(COL=column), (query_value,))
         else:
             statement = None
 
