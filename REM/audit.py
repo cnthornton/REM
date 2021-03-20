@@ -632,7 +632,7 @@ class AuditRule:
                              visible=True, expand_y=True, expand_x=True)
 
         # Panels
-        summary_layout = self.summary.layout(win_size, ugroup=self.permissions)
+        summary_layout = self.summary.layout(win_size)
 
         panels = [main_layout, summary_layout]
 
@@ -1473,7 +1473,7 @@ class AuditSummary:
             else:
                 tab.run_event(window, event, values)
 
-    def layout(self, win_size: tuple = None, ugroup: str = 'admin'):
+    def layout(self, win_size: tuple = None):
         """
         Generate a GUI layout for the Audit Rule Summary.
         """

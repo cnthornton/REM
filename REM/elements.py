@@ -1584,9 +1584,16 @@ class TableElement:
             import_rules = record_entry.import_rules
 
         # Initialize the import table
-        table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
-                        'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
-                        'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules}
+        if record_entry is not None:
+            table_layout = record_entry.import_table
+            table_layout['RecordType'] = record_type
+            table_layout['Actions'] = {'filter': 1, 'search': 1}
+        else:
+            table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
+                            'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
+                            'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
+                            'Actions': {'search': 1, 'filter': 1}, 'FilterParameters': self.parameters}
+
         import_table = TableElement(self.name, table_layout)
 
         if reftype is not None:  # search for records without an existing reference to provided reference type

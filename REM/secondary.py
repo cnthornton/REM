@@ -247,34 +247,10 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
 
     # User permissions
     user_priv = user.access_permissions()
-#    deletable = True if record.permissions['delete'] in user_priv and record.level < 1 \
-#                        and view_only is False else False
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
-#    markable = True if record.permissions['mark'] in user_priv and record.new is False \
-#                       and view_only is False else False
-#    approvable = True if record.permissions['approve'] in user_priv and record.new is False \
-#                         and view_only is False else False
 
     # Window Title
-#    modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': deletable}
-#    if record_modifiers is True:
-#        annotation_layout = []
-#        for modifier in record.metadata:
-#            modifier_name = modifier.name
-#            if modifier_name in modifier_perms:
-#                modifier.editable = modifier_perms[modifier_name]
-#
-#            annotation_layout.append(modifier.layout(bg_col=header_col))
-#    else:
-#        annotation_layout = [[]]
-
     title = record.title
-#    title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
-#                            pad=(0, 0), justification='l', background_color=header_col, expand_x=True),
-#                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-#                            background_color=header_col, justification='c', expand_x=True),
-#                     sg.Col(annotation_layout, pad=(pad_frame, 0), background_color=header_col,
-#                            justification='r', vertical_alignment='c')]]
     title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
     # Button layout
@@ -1475,27 +1451,30 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     if len(param_layout) > 0:
         param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True,
                                       button_color=(bttn_text_col, bttn_bg_col), use_ttk_buttons=True))
-
-        main_layout = [[sg.Col([param_layout], pad=(pad_frame, pad_v), background_color=bg_col)],
-                       [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)],
-                       [table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]]
+        top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col)],
+                      [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)]]
     else:
-        main_layout = [[table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]]
+        top_layout = [[]]
+
+    width_key = '-WIDTH-'
+    height_key = 'HEIGHT'
+    tbl_layout = [[sg.Canvas(key=width_key, size=(width, 0))],
+                  [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
+                   sg.Col([[table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]],
+                          background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
+                          vertical_scroll_only=True)]]
 
     bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel importing'),
                     mod_lo.B2('Import', key='-IMPORT-', pad=(pad_el, 0),
                               tooltip='Import the selected transaction orders')]]
 
-    width_key = '-WIDTH-'
-    height_key = 'HEIGHT'
-    layout = [[sg.Canvas(key=width_key, size=(width, 0))],
-              [sg.Col(header_layout, key='-HEADER-', pad=(0, 0), background_color=header_col, element_justification='l',
+    layout = [[sg.Col(header_layout, key='-HEADER-', pad=(0, 0), background_color=header_col, element_justification='l',
                       expand_x=True, expand_y=True)],
-              [sg.Col([[sg.Canvas(key=height_key, size=(0, height), background_color=bg_col)]], vertical_alignment='t'),
-               sg.Col(main_layout, pad=(0, 0), background_color=bg_col, expand_x=True, expand_y=True, scrollable=True,
-                      vertical_scroll_only=True)],
+              [sg.Col(top_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, expand_x=True,
+                      vertical_alignment='t')],
+              [sg.Col(tbl_layout, pad=(0, 0), background_color=bg_col, expand_x=True, vertical_alignment='t')],
               [sg.Col(bttn_layout, key='-BUTTON-', pad=(0, (pad_v, pad_frame)), element_justification='c',
-                      justification='c', expand_x=True)]]
+                      justification='c', expand_x=True, vertical_alignment='t')]]
 
     window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=True)
     window.finalize()
@@ -1505,15 +1484,16 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
         win_w, win_h = win_size
     else:
         win_w = int(screen_w * 0.8)
-        win_h = int(screen_h * 0.5)
+        win_h = int(screen_h * 0.8)
 
-    other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1]
+    other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
+              + window['-PARAMS-'].get_size()[1]
     tbl_h = win_h - other_h
 
     window[width_key].set_size((win_w, None))
     window[height_key].set_size((None, tbl_h))
 
-    table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=40)
+    table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
 
     window = center_window(window)
 
@@ -1535,13 +1515,14 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1]
+            other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
+                      + window['-PARAMS-'].get_size()[1]
             tbl_h = win_h - other_h
 
             window[width_key].set_size((win_w, None))
             window[height_key].set_size((None, tbl_h))
 
-            table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=40)
+            table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
 
             current_w, current_h = (win_w, win_h)
 
@@ -1571,6 +1552,10 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             # Get index of selected rows
             selected_rows = values[table.key_lookup('Element')]
             break
+
+        if event in table.elements:
+            table.run_event(window, event, values)
+            continue
 
     window.close()
     layout = None
