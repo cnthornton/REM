@@ -100,7 +100,7 @@ class DatabaseRecord:
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame',
-                          'Height', 'Width']]
+                          'Height', 'Width', 'DetailsTab', 'InfoTab', 'TG']]
 
         entry = record_entry.record_layout if record_layout is None else record_layout
 
@@ -683,8 +683,11 @@ class DatabaseRecord:
         # Element parameters
         bg_col = mod_const.ACTION_COL
         text_col = mod_const.TEXT_COL
+        inactive_col = mod_const.INACTIVE_COL
+        select_col = mod_const.SELECT_TEXT_COL
 
         bold_font = mod_const.BOLD_LARGE_FONT
+        main_font = mod_const.MAIN_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
@@ -772,16 +775,28 @@ class DatabaseRecord:
             details_layout.append([sg.Col(comp_layout, pad=(0, pad_el), expand_x=True, background_color=bg_col)])
 
         height_key = self.key_lookup('Height')
+        details_tab = sg.Tab('{:^40}'.format('Details'), details_layout, key=self.key_lookup('DetailsTab'),
+                             background_color=bg_col)
+
+        # Create layout for record metadata
+        info_layout = [[]]
+        info_tab = sg.Tab('{:^40}'.format('Metadata'), info_layout, key=self.key_lookup('InfoTab'),
+                          background_color=bg_col)
+
         main_layout = [[sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
-                        sg.Col(details_layout, pad=(0, 0), background_color=bg_col, expand_x=True, expand_y=True,
-                               scrollable=True, vertical_scroll_only=True, vertical_alignment='t')]]
+                        sg.Col([[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
+                                             background_color=inactive_col,
+                                             tab_background_color=inactive_col, selected_background_color=bg_col,
+                                             selected_title_color=select_col, title_color=text_col, border_width=0,
+                                             tab_location='topleft', font=main_font)]],
+                               pad=(0, 0), vertical_alignment='t', background_color=bg_col, scrollable=True,
+                               vertical_scroll_only=True, expand_x=True, expand_y=True)]]
 
         # Pane elements must be columns
         width_key = self.key_lookup('Width')
         width_layout = [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)]]
         layout = [[sg.Col(width_layout, pad=(0, 0), background_color=bg_col)],
-                  [sg.Col(header_layout, pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, expand_x=True)],
-                  [sg.HorizontalSeparator(pad=(pad_frame, (pad_v, pad_frame)), color=mod_const.INACTIVE_COL)],
+                  [sg.Col(header_layout, pad=(pad_frame, pad_v), background_color=bg_col, expand_x=True)],
                   [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)]]
 
         return layout

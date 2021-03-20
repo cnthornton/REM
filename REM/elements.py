@@ -2544,8 +2544,8 @@ class DataElement:
 
             # Second row
             frame_key = self.key_lookup('CollapseFrame')
-            row2 = [sg.pin(sg.Col([element_layout], key=frame_key, background_color=bg_col, visible=True,
-                                  metadata={'visible': True}))] + required_layout
+            row2 = [sg.pin(sg.Col([element_layout + required_layout], key=frame_key, background_color=bg_col,
+                                  visible=True, metadata={'visible': True}))]
 
             layout = sg.Col([row1, row2], pad=padding, background_color=bg_col)
         else:  # display the element in a single row, parameter style
