@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '2.1.11'
+__version__ = '2.1.12'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -618,14 +618,10 @@ def main():
             # Get record entry
             record_entry = configuration.records.fetch_rule(record_type, by_title=True)
 
-            # Import all records of relevant type from the database
-#            import_df = record_entry.import_records(user)
-
             # Display the import record window
             table_entry = record_entry.import_table
             table_entry['RecordType'] = record_entry.name
             import_table = mod_elem.TableElement(record_entry.name, table_entry)
-#            import_table.df = import_table.append(import_df)
 
             try:
                 mod_win2.record_import_window(import_table, enable_new=False)
@@ -633,7 +629,7 @@ def main():
                 msg = 'Record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 print('Error: {MSG}'.format(MSG=msg))
-                raise
+#                raise
 
             continue
 
@@ -672,13 +668,13 @@ def main():
                 print('Info: the record type selected is {TYPE}'.format(TYPE=record_type))
 
             # Import all records of relevant type from the database
-            import_df = record_entry.import_records(user)
+#            import_df = record_entry.import_records(user)
 
             # Display the import record window
             table_entry = current_rule.import_table_entry
             table_entry['RecordType'] = record_type
             import_table = mod_elem.TableElement(current_rule.name, table_entry)
-            import_table.df = import_table.append(import_df)
+#            import_table.df = import_table.append(import_df)
 
             try:
                 mod_win2.record_import_window(import_table, enable_new=True,
@@ -750,7 +746,7 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         mod_win2.popup_error('Error: fatal program error - {}'.format(e))
-        raise
+#        raise
         sys.exit(1)
     else:
         sys.exit(0)

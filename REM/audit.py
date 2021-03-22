@@ -1033,6 +1033,7 @@ class AuditTransactionTab:
 
                 success = False
             else:
+                self.table.df = self.table.filter_table()
                 self.table.sort()
                 self.table.update_display(window)
 
@@ -1187,6 +1188,21 @@ class AuditTransactionTab:
                         if missing_id not in id_list:
                             missing_transactions.append(missing_id)
 
+            # Search for skipped transaction numbers
+            print('Info: AuditTransactionTab {NAME}: searching for skipped transactions'
+                  .format(NAME=self.name))
+            prev_number = first_number_comp
+            for record_id in id_list:
+                record_number = int(self.get_id_component(record_id, 'variable'))
+                if (prev_number + 1) != record_number:
+                    missing_range = list(range(prev_number + 1, record_number))
+                    for missing_number in missing_range:
+                        missing_id = self.format_id(missing_number, date=first_date_comp)
+                        if missing_id not in id_list:
+                            missing_transactions.append(missing_id)
+
+                prev_number = record_number
+
             # Search for missed numbers at end of day
             print('Info: AuditTransactionTab {NAME}: searching for transactions created at the end of the day'
                   .format(NAME=self.name))
@@ -1204,21 +1220,6 @@ class AuditTransactionTab:
                 current_number_comp = int(self.get_id_component(current_id, 'variable'))
                 if current_id == self.format_id(current_number_comp, date=first_date_comp):
                     missing_transactions.append(current_id)
-
-        # Search for skipped transaction numbers
-        print('Info: AuditTransactionTab {NAME}: searching for skipped transactions'
-              .format(NAME=self.name))
-        prev_number = first_number_comp
-        for record_id in id_list:
-            record_number = int(self.get_id_component(record_id, 'variable'))
-            if (prev_number + 1) != record_number:
-                missing_range = list(range(prev_number + 1, record_number))
-                for missing_number in missing_range:
-                    missing_id = self.format_id(missing_number, date=first_date_comp)
-                    if missing_id not in id_list:
-                        missing_transactions.append(missing_id)
-
-            prev_number = record_number
 
         print('Info: AuditRuleTransactions {NAME}: potentially missing transactions: {MISS}'
               .format(NAME=self.name, MISS=missing_transactions))
