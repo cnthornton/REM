@@ -524,6 +524,8 @@ class RecordEntry:
                     saved.append(entry_saved)
 
         # Handle associated records and references
+        print('Info: RecordType {NAME}, Record {ID}: saving references and components'
+              .format(NAME=self.name, ID=record_id))
         import_df = record.ref_df
 
         if deleted is True:  # record was marked as deleted
@@ -544,8 +546,8 @@ class RecordEntry:
                 ref_data = reference.as_table()
                 ref_id = ref_data['DocNo']  # reference record ID
                 if ref_id == record_id:
-                    print('oops ... got the order wrong')
-                    sys.exit(1)
+                    print('Warning: oops ... got the order wrong')
+                    return False
 
                 # Determine if reference entry already exists in the database
                 nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) & (import_df['RefNo'].isin([ref_id, record_id]))].shape[0]
@@ -589,7 +591,8 @@ class RecordEntry:
                     continue
 
                 try:
-                    orig_comps = import_df[(import_df['DocNo'] == record_id) & (import_df['RefType'] == comp_type)]['RefNo'].tolist()
+                    orig_comps = import_df[(import_df['DocNo'] == record_id) &
+                                           (import_df['RefType'] == comp_type)]['RefNo'].tolist()
                 except Exception as e:
                     print('Warning: RecordEntry {NAME}: failed to extract existing components from component table '
                           '{TBL} - {ERR}'.format(NAME=self.name, TBL=comp_table, ERR=e))
@@ -628,16 +631,23 @@ class RecordEntry:
                 # Handle added component records
                 for row_index, comp_id in current_comps.iteritems():
                     if comp_id in orig_comps:  # update entries for existing records
+                        # Set deleted field to false in case reference previously deleted
+                        import_df.loc[import_df['RefNo'] == comp_id, 'IsDeleted'] = False
+
+                        # Create record object for the component
                         comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], new_record=False,
                                                                references=import_df)
                         print('Info: RecordType {NAME}, Record {ID}: updating component record {REF} in the '
                               'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
+
+                        # Update component in database
                         entry_saved = comp_entry.export_record(user, comp_record)
                         if entry_saved is False:
                             msg = 'failed to save record {ID} to database table {TBL}' \
                                 .format(ID=record_id, TBL=ref_table)
                             popup_error(msg)
                         saved.append(entry_saved)
+
                         continue
 
                     # Save component record to the database if records can be created (not imported)
