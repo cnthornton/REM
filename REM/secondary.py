@@ -248,13 +248,16 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
     # User permissions
     user_priv = user.access_permissions()
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
+    deletable = True if record.permissions['delete'] in user_priv and record.level < 1 and view_only is False and \
+                        record.new is False else False
 
     # Window Title
     title = record.title
     title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
     # Button layout
-    bttn_layout = [[mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=(not savable), tooltip='Accept changes'),
+    bttn_layout = [[mod_lo.B2('Delete', key='-DELETE-', pad=(pad_el, 0), visible=deletable, tooltip='Delete record'),
+                    mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=(not savable), tooltip='Accept changes'),
                     mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=savable, tooltip='Save to database')]]
 
     # Window layout
@@ -332,6 +335,19 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
                 continue
             else:
                 break
+
+        if event == '-DELETE-':
+            # Verify that the user would like to delete the record
+            msg = 'Are you sure that you would like to delete the record?'
+            user_input = popup_confirm(msg)
+            if user_input == 'OK':
+                deleted = record.delete()
+                if deleted is False:
+                    continue
+                else:
+                    break
+            else:
+                continue
 
         # Update the record parameters with user-input
         if event in record_elements:  # selected a record event element

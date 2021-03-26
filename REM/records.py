@@ -2,6 +2,7 @@
 REM records classes and functions. Includes audit records and account records.
 """
 
+import datetime
 import pandas as pd
 import PySimpleGUI as sg
 from random import randint
@@ -276,7 +277,7 @@ class DatabaseRecord:
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
 
-        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
+        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
 
     def key_lookup(self, component):
         """
@@ -506,7 +507,7 @@ class DatabaseRecord:
         # Reset references
         self.references = []
 
-        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted'])
+        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
 
     def fetch_header(self, element, by_key: bool = False):
         """
@@ -658,6 +659,41 @@ class DatabaseRecord:
 
         return pd.Series(values, index=columns)
 
+    def deleted(self):
+        """
+        Check if record was deleted.
+        """
+        try:
+            del_param = self.fetch_modifier('Deleted')
+        except KeyError:
+            is_deleted = False
+        else:
+            is_deleted = del_param.value
+
+        return is_deleted
+
+    def delete(self):
+        """
+        Delete record from the database.
+        """
+        record_entry = self.record_entry
+        record_id = self.record_id()
+
+        # Check if record was deleted
+        success = []
+        # Determine associations to delete as well
+        msg = 'Would you like to delete the components of this record as well?'
+        user_input = mod_win2.popup_confirm(msg)
+        if user_input == 'OK':
+            delete_comp = True
+        else:
+            delete_comp = False
+
+        # Remove record and associations
+        success.append(record_entry.delete_record(user, record_id, components=delete_comp))
+
+        return all(success)
+
     def save(self):
         """
         Save record to the database.
@@ -797,13 +833,11 @@ class DatabaseRecord:
                              key=self.key_lookup('DetailsTab'), background_color=bg_col)
 
         # Create layout for record metadata
-        deletable = True if self.permissions['delete'] in ugroup and self.level < 1 \
-                            and view_only is False else False
         markable = True if self.permissions['mark'] in ugroup and self.new is False \
                            and view_only is False else False
         approvable = True if self.permissions['approve'] in ugroup and self.new is False \
                              and view_only is False else False
-        modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': deletable}
+        modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
         if len(self.metadata) > 0:
             annotation_layout = []
             for param in self.metadata:
