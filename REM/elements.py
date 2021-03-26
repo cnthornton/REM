@@ -69,6 +69,8 @@ class TableElement:
         widths (list): list of relative column widths. If values are fractions < 1, values will be taken as percentages,
             else relative widths will be calculated relative to size of largest column.
 
+        sort_on (list): columns to sort the table by
+
         row_color (str): hex code for the color of alternate rows.
 
         tooltip (str): table tooltip.
@@ -302,6 +304,11 @@ class TableElement:
             self.widths = None
 
         try:
+            self.sort_on = entry['SortBy']
+        except KeyError:
+            self.sort_on = None
+
+        try:
             self.nrow = int(entry['Rows'])
         except KeyError:
             self.nrow = None
@@ -470,7 +477,7 @@ class TableElement:
         """
         Format object elements for display.
         """
-        self.sort()
+        self.sort(self.sort_on)
 
         search_field = self.search_field
         # Modify records tables for displaying
@@ -1336,19 +1343,28 @@ class TableElement:
 
         return df
 
-    def sort(self, sort_key: str = None, ascending: bool = True):
+    def sort(self, sort_on=None, ascending: bool = True):
         """
         Sort the table on provided column name.
         """
-        sort_key = sort_key if sort_key is not None else self.id_column
         df = self.df.copy()
+
+        # Prepare the columns to sort the table on
+        sort_keys = []
+        if sort_on is not None:
+            if isinstance(sort_on, str):
+                sort_keys.append(sort_on)
+            elif isinstance(sort_on, list):
+                sort_keys = sort_on
+        else:
+            sort_keys.append(self.id_column)
 
         if not df.empty:  # can't sort an empty table
             try:
-                df.sort_values(by=[sort_key], inplace=True, ascending=ascending)
+                df.sort_values(by=sort_keys, inplace=True, ascending=ascending)
             except KeyError:  # sort key is not in table header
-                print('Warning: DataTable {NAME}: sort key column {COL} not find in dataframe. Values will not be '
-                      'sorted.'.format(NAME=self.name, COL=sort_key))
+                print('Warning: DataTable {NAME}: one or more sort key columns ({COLS}) not find in the table header. '
+                      'Values will not be sorted.'.format(NAME=self.name, COLS=', '.join(sort_keys)))
                 return df
             else:
                 df.reset_index(drop=True, inplace=True)
