@@ -412,6 +412,7 @@ def evaluate_condition(data, condition, as_list: bool = True):
     """
     Check whether rows in dataframe pass a given condition rule.
     """
+    is_bool_dtype = pd.api.types.is_bool_dtype
     operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'in', 'not in'}
 
     if isinstance(data, pd.Series):
@@ -461,13 +462,19 @@ def evaluate_condition(data, condition, as_list: bool = True):
         if eval_str[0] == '!':
             colname = eval_str.replace(' ', '')[1:]
             if colname in header:
-                results = data[colname].isna()
+                if is_bool_dtype(data[colname].dtype) is True:
+                    results = data[colname]
+                else:
+                    results = data[colname].isna()
             else:
                 results = pd.Series([False for _ in range(nrow)])
         else:
             colname = eval_str
             if colname in header:
-                results = ~ data[colname].isna()
+                if is_bool_dtype(data[colname].dtype) is True:
+                    results = ~ data[colname]
+                else:
+                    results = ~ data[colname].isna()
             else:
                 results = pd.Series([False for _ in range(nrow)])
     else:
