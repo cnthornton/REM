@@ -1363,9 +1363,8 @@ def remove_unsaved_keys(record):
     Remove any unsaved IDs associated with the record, including the records own ID.
     """
     # Remove unsaved ID if record is new
-    if record.new is True:
-        record_entry = record.record_entry
-        record_entry.remove_unsaved_id(record.record_id())
+    record_entry = record.record_entry
+    record_entry.remove_unsaved_id(record.record_id())
 
     # Remove unsaved components
     for comp_table in record.components:
