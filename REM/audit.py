@@ -1029,6 +1029,7 @@ class AuditTransactionTab:
             except Exception as e:
                 msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
                 mod_win2.popup_error(msg)
+                raise
                 print('Error: {MSG}'.format(MSG=sg))
 
                 success = False
@@ -1156,7 +1157,15 @@ class AuditTransactionTab:
                 prev_number_comp = None
                 prev_ids = last_df[pkey].tolist()
                 for prev_id in prev_ids:
-                    prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
+                    try:
+                        prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
+                    except ValueError:
+                        msg = 'inconsistent format found in record ID {ID}'.format(ID=prev_id)
+                        mod_win2.popup_notice(msg)
+                        print('Warning: AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        print(last_df[last_df[pkey] == prev_id])
+                        continue
+
                     prev_date_comp = self.get_id_component(prev_id, 'date')
 
                     if prev_number_comp > first_number_comp:
@@ -1217,7 +1226,15 @@ class AuditTransactionTab:
                 if last_id_of_df == current_id:
                     break
 
-                current_number_comp = int(self.get_id_component(current_id, 'variable'))
+                try:
+                    current_number_comp = int(self.get_id_component(current_id, 'variable'))
+                except ValueError:
+                    msg = 'inconsistent format found in record ID {ID}'.format(ID=current_id)
+                    mod_win2.popup_notice(msg)
+                    print('Warning: AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    print(current_df[current_df[pkey] == current_id])
+                    continue
+
                 if current_id == self.format_id(current_number_comp, date=first_date_comp):
                     missing_transactions.append(current_id)
 
