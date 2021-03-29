@@ -477,6 +477,8 @@ class TableElement:
         """
         Format object elements for display.
         """
+        is_float_dtype = pd.api.types.is_float_dtype
+
         self.sort(self.sort_on)
 
         search_field = self.search_field
@@ -525,15 +527,18 @@ class TableElement:
 
         # Update table totals
         if self.tally_rule is not None:
+            print('Info: DataTable {NAME}: calculating table totals'.format(NAME=self.name))
             try:
                 tbl_total = self.calculate_total(df)
             except Exception as e:
                 print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
                 tbl_total = 0
 
-            if isinstance(tbl_total, float):
+            if is_float_dtype(type(tbl_total)):
+                print('Info: DataTable {NAME}: table totals are formatted as float'.format(NAME=self.name))
                 tbl_total = '{:,.2f}'.format(tbl_total)
             else:
+                print('Info: DataTable {NAME}: table totals are formatted as a string'.format(NAME=self.name))
                 tbl_total = str(tbl_total)
 
             total_key = self.key_lookup('Total')
@@ -1343,12 +1348,16 @@ class TableElement:
 
         return df
 
+    def ffill(self):
+        """
+        Forward fill table NA values.
+        """
+        self.df.fillna(method='ffill', inplace=True)
+
     def sort(self, sort_on=None, ascending: bool = True):
         """
         Sort the table on provided column name.
         """
-        df = self.df.copy()
-
         # Prepare the columns to sort the table on
         sort_keys = []
         if sort_on is not None:
@@ -1359,17 +1368,13 @@ class TableElement:
         else:
             sort_keys.append(self.id_column)
 
-        if not df.empty:  # can't sort an empty table
-            try:
-                df.sort_values(by=sort_keys, inplace=True, ascending=ascending)
-            except KeyError:  # sort key is not in table header
-                print('Warning: DataTable {NAME}: one or more sort key columns ({COLS}) not find in the table header. '
-                      'Values will not be sorted.'.format(NAME=self.name, COLS=', '.join(sort_keys)))
-                return df
-            else:
-                df.reset_index(drop=True, inplace=True)
-
-        self.df = df
+        try:
+            self.df.sort_values(by=sort_keys, inplace=True, ascending=ascending)
+        except KeyError:  # sort key is not in table header
+            print('Warning: DataTable {NAME}: one or more sort key columns ({COLS}) not find in the table header. '
+                  'Values will not be sorted.'.format(NAME=self.name, COLS=', '.join(sort_keys)))
+        else:
+            self.df.reset_index(drop=True, inplace=True)
 
     def subset(self, subset_rule):
         """
