@@ -854,6 +854,7 @@ class DatabaseRecord:
                              and view_only is False else False
         modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
         if len(self.metadata) > 0:
+            metadata_visible = True
             annotation_layout = []
             for param in self.metadata:
                 param_name = param.name
@@ -862,12 +863,13 @@ class DatabaseRecord:
 
                 annotation_layout.append(param.layout())
         else:
+            metadata_visible = False
             annotation_layout = [[]]
 
         info_tab = sg.Tab('{:^40}'.format('Metadata'),
                           [[sg.Col(annotation_layout, pad=(0, pad_v), background_color=bg_col, scrollable=True,
                                    vertical_scroll_only=True, expand_x=True, expand_y=True)]],
-                          key=self.key_lookup('InfoTab'), background_color=bg_col)
+                          key=self.key_lookup('InfoTab'), background_color=bg_col, visible=metadata_visible)
 
         main_layout = [[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
                                     background_color=inactive_col, tab_background_color=inactive_col,
