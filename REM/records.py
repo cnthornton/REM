@@ -54,7 +54,7 @@ class CustomRecordEntry:
 
         return success
 
-    def import_references(self, *args):
+    def import_references(self, *args, **kwargs):
         """
         Dummy method.
         """
@@ -277,7 +277,8 @@ class DatabaseRecord:
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
 
-        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
+        self.ref_df = pd.DataFrame(
+            columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
 
     def key_lookup(self, component):
         """
@@ -507,7 +508,8 @@ class DatabaseRecord:
         # Reset references
         self.references = []
 
-        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
+        self.ref_df = pd.DataFrame(
+            columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
 
     def fetch_header(self, element, by_key: bool = False):
         """
@@ -659,38 +661,51 @@ class DatabaseRecord:
 
         return pd.Series(values, index=columns)
 
-    def deleted(self):
-        """
-        Check if record was deleted.
-        """
-        try:
-            del_param = self.fetch_modifier('Deleted')
-        except KeyError:
-            is_deleted = False
-        else:
-            is_deleted = del_param.value
-
-        return is_deleted
-
     def delete(self):
         """
         Delete record from the database.
         """
         record_entry = self.record_entry
         record_id = self.record_id()
+        components = self.components
+        ref_df = self.ref_df
 
         # Check if record was deleted
         success = []
-        # Determine associations to delete as well
-        msg = 'Would you like to delete the components of this record as well?'
-        user_input = mod_win2.popup_confirm(msg)
-        if user_input == 'OK':
-            delete_comp = True
-        else:
-            delete_comp = False
 
-        # Remove record and associations
-        success.append(record_entry.delete_record(user, record_id, components=delete_comp))
+        # Determine associations to delete as well
+        components_to_delete = []
+        for comp_table in components:
+            comp_df = comp_table.df
+            for index, row in comp_df.iterrows():
+                comp_id = row[comp_table.id_column]
+                reference = ref_df[(ref_df['DocNo'] == record_id) & (ref_df['RefNo'] == comp_id) &
+                                   (ref_df['IsDeleted'] == False)]
+                if any(reference['IsParentChild'].tolist()) is True:
+                    components_to_delete.append(comp_id)
+
+        if len(components_to_delete) > 0:
+            msg = 'Deleting record {ID} will also delete {N} component records as well. Would you like ' \
+                  'to continue with record deletion?'.format(ID=record_id, N=len(components_to_delete))
+            user_input = mod_win2.popup_confirm(msg)
+            if user_input == 'OK':
+                # Remove record and associations
+                success.append(record_entry.delete_record(user, record_id))
+
+                # Remove record components
+                for comp_table in components:
+                    comp_df = comp_table.df
+                    comp_type = comp_table.record_type
+                    for index, row in comp_df.iterrows():
+                        comp_id = row[comp_table.id_column]
+                        if comp_id in components_to_delete:
+                            comp_entry = configuration.records.fetch_rule(comp_type)
+                            success.append(comp_entry.delete_record(user, comp_id))
+            else:
+                return False
+        else:
+            # Remove record and associations
+            success.append(record_entry.delete_record(user, record_id))
 
         return all(success)
 

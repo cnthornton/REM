@@ -1963,7 +1963,7 @@ class AuditRecordTab:
         # Create deposit records
         deposit_header = mod_db.format_record_columns(record_entry.import_rules)
         for index, row in account_df.iterrows():
-            record_data = pd.Series(index=deposit_header)
+            deposit_data = pd.Series(index=deposit_header)
             account_no = row['Account']
             if account_no == 'resting':  # do not create deposit records for account records in the resting account
                 continue
@@ -1971,24 +1971,24 @@ class AuditRecordTab:
             # Add value to new deposit record based on account record values
             for colname in account_header:
                 if colname in deposit_header:
-                    record_data[colname] = row[colname]
+                    deposit_data[colname] = row[colname]
 
             # Create a new record ID for the deposit record
-            record_date = row['RecordDate']
-            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
-            record_data['RecordID'] = record_id
+            deposit_date = row['RecordDate']
+            deposit_id = record_entry.create_id(deposit_date, offset=settings.get_date_offset())
+            deposit_data['RecordID'] = deposit_id
             # Add the deposit date
             try:
-                deposit_date = row['PaymentDate']
+                payment_date = row['PaymentDate']
             except KeyError:
-                msg = 'missing deposit date for new deposit record {ID}'.format(ID=record_id)
+                msg = 'missing deposit date for new deposit record {ID}'.format(ID=deposit_id)
                 print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
-                if deposit_date:
-                    record_data['DepositDate'] = deposit_date
+                if payment_date:
+                    deposit_data['DepositDate'] = payment_date
                 else:
-                    msg = 'no deposit date set for new deposit record {ID}'.format(ID=record_id)
+                    msg = 'no deposit date set for new deposit record {ID}'.format(ID=deposit_id)
                     print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
@@ -1996,38 +1996,53 @@ class AuditRecordTab:
             try:
                 deposit_amount = row['CorrectedAmount']
             except KeyError:
-                msg = 'missing deposit amount for new deposit record {ID}'.format(ID=record_id)
+                msg = 'missing deposit amount for new deposit record {ID}'.format(ID=deposit_id)
                 print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
                 if deposit_amount is not None:
-                    record_data['DepositAmount'] = deposit_amount
+                    deposit_data['DepositAmount'] = deposit_amount
                 else:
-                    msg = 'no deposit amount set for new deposit record {ID}'.format(ID=record_id)
+                    msg = 'no deposit amount set for new deposit record {ID}'.format(ID=deposit_id)
                     print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
-            record = mod_records.DepositRecord(record_entry)
-            record.initialize(record_data, new=True)
+            deposit_record = mod_records.DepositRecord(record_entry)
+            deposit_record.initialize(deposit_data, new=True)
 
             # Save the deposit record to the database
 #            success.append(record_entry.export_record(user, record))
-            saved = record.save()
+            saved = deposit_record.save()
             success.append(saved)
 
-            if saved is False:  # don't save reference to non-existing record
+            if saved is False:  # don't save reference to failed record
                 continue
 
             # Save the association to the references database table
-            ref_id = row['RecordID']
+            # Save reference to the account record
+            account_id = row['RecordID']
             ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
-                           configuration.creation_date]
-            ref_values = [record_id, record_type, ref_id, ref_type, datetime.datetime.now(), user.uid,
-                          datetime.datetime.now()]
+                           configuration.creation_date, 'IsParentChild']
+            ref_values = [deposit_id, record_type, account_id, ref_type, datetime.datetime.now(), user.uid,
+                          datetime.datetime.now(), True]
             entry_saved = user.insert(ref_table, ref_columns, ref_values)
             if entry_saved is False:
                 msg = 'failed to save record {ID} reference to {REF} to database table {TBL}' \
-                    .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                    .format(ID=deposit_id, REF=account_id, TBL=ref_table)
+                mod_win2.popup_error(msg)
+            success.append(entry_saved)
+
+            # Save reference to the audit record
+            audit_id = record.record_id()
+            audit_record_type = record.name
+            ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
+                           configuration.creation_date, 'IsParentChild']
+            ref_values = [audit_id, audit_record_type, deposit_id, record_type, datetime.datetime.now(), user.uid,
+                          datetime.datetime.now(), True]
+            entry_saved = user.insert(ref_table, ref_columns, ref_values)
+            if entry_saved is False:
+                msg = 'failed to save record {ID} reference to {REF} to database table {TBL}' \
+                    .format(ID=deposit_id, REF=account_id, TBL=ref_table)
                 mod_win2.popup_error(msg)
             success.append(entry_saved)
 

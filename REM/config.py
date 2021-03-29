@@ -646,23 +646,38 @@ class RecordEntry:
                     else:
                         saved.append(entry_saved)
 
-                # Update reference table with new parent-child relationship
-                comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
-                                configuration.creation_date]
-                comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
-                               datetime.datetime.now()]
-                print('Info: RecordType {NAME}, Record {ID}: adding reference for component {REF}'
-                      .format(NAME=self.name, ID=record_id, REF=comp_id))
-                entry_saved = user.insert(ref_table, comp_columns, comp_values)
-                if entry_saved is False:
-                    msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
-                        .format(ID=record_id, REF=comp_id, TBL=ref_table)
-                    popup_error(msg)
-                saved.append(entry_saved)
+                    # Create new parent-child association in the record references table
+                    comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
+                                    configuration.creation_date, 'IsParentChild']
+                    comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
+                                   datetime.datetime.now(), True]
+                    print('Info: RecordType {NAME}, Record {ID}: adding reference for component {REF}'
+                          .format(NAME=self.name, ID=record_id, REF=comp_id))
+                    entry_saved = user.insert(ref_table, comp_columns, comp_values)
+                    if entry_saved is False:
+                        msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
+                            .format(ID=record_id, REF=comp_id, TBL=ref_table)
+                        popup_error(msg)
+                    saved.append(entry_saved)
+
+                else:
+                    # Create new association in the record references table
+                    comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', configuration.creator_code,
+                                    configuration.creation_date, 'IsParentChild']
+                    comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
+                                   datetime.datetime.now(), False]
+                    print('Info: RecordType {NAME}, Record {ID}: adding reference for component {REF}'
+                          .format(NAME=self.name, ID=record_id, REF=comp_id))
+                    entry_saved = user.insert(ref_table, comp_columns, comp_values)
+                    if entry_saved is False:
+                        msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
+                            .format(ID=record_id, REF=comp_id, TBL=ref_table)
+                        popup_error(msg)
+                    saved.append(entry_saved)
 
         return all(saved)
 
-    def delete_record(self, user, record_id, components: bool = False):
+    def delete_record(self, user, record_id):
         """
         Delete a record from the database.
         """

@@ -141,19 +141,19 @@ def login_window():
                                      sg.Input(default_text=settings.username, key='-USER-', size=(isize - 2, 1),
                                               pad=((0, 2), 0), text_color=help_col, border_width=0, do_not_clear=True,
                                               background_color=input_col, enable_events=True,
-                                              tooltip=_('Input account username'))]],
+                                              tooltip='Input account username')]],
                                background_color=input_col, pad=(pad_frame, pad_el), relief='sunken')],
                      [sg.Frame('', [[sg.Image(data=lock_icon, pad=((pad_el, pad_h), 0), background_color=input_col),
-                                     sg.Input(default_text=_('password'), key='-PASSWORD-', size=(isize - 2, 1),
+                                     sg.Input(default_text='password', key='-PASSWORD-', size=(isize - 2, 1),
                                               pad=((0, 2), 0), password_char='*', text_color=help_col,
                                               background_color=input_col, border_width=0, do_not_clear=True,
-                                              enable_events=True, tooltip=_('Input account password'))]],
+                                              enable_events=True, tooltip='Input account password')]],
                                background_color=input_col, pad=(pad_frame, pad_el), relief='sunken')],
                      [sg.Text('', key='-SUCCESS-', size=(20, 6), pad=(pad_frame, pad_frame), font=small_font,
                               justification='center', text_color='Red', background_color=bg_col)],
-                     [sg.Button(_('Sign In'), key='-LOGIN-', size=(bsize, 1), pad=(pad_frame, pad_el), font=bold_text,
+                     [sg.Button('Sign In', key='-LOGIN-', size=(bsize, 1), pad=(pad_frame, pad_el), font=bold_text,
                                 button_color=(text_col, login_col))],
-                     [sg.Button(_('Cancel'), key='-CANCEL-', size=(bsize, 1), pad=(pad_frame, (pad_el, pad_frame)),
+                     [sg.Button('Cancel', key='-CANCEL-', size=(bsize, 1), pad=(pad_frame, (pad_el, pad_frame)),
                                 font=bold_text, button_color=(text_col, cancel_col))]]
 
     layout = [[sg.Col(column_layout, element_justification='center', justification='center', background_color=bg_col)]]
@@ -201,10 +201,10 @@ def login_window():
 
             # Verify values for username and password fields
             if not uname:
-                msg = _('username is required')
+                msg = 'username is required'
                 window['-SUCCESS-'].update(value=msg)
             elif not pwd:
-                msg = _('password is required')
+                msg = 'password is required'
                 window['-SUCCESS-'].update(value=msg)
             else:
                 try:
@@ -405,7 +405,7 @@ def database_importer_window(win_size: tuple = None):
     # Window layout
     layout = mod_lo.importer_layout(win_size=(width, height))
 
-    window = sg.Window(_('Import to Database'), layout, font=main_font, modal=True, return_keyboard_events=True)
+    window = sg.Window('Import to Database', layout, font=main_font, modal=True, return_keyboard_events=True)
     window.finalize()
 
     deletion_keys = ['d', 'Delete', 'BackSpace']
@@ -740,15 +740,15 @@ def database_importer_window(win_size: tuple = None):
                             continue
 
                         if elem_col not in all_cols.values.tolist():
-                            msg = 'The column {COL} selected in modify column rule {RULE} must be one of the required ' \
+                            msg = 'Column {COL} selected in modify column rule {RULE} must be one of the required ' \
                                   'or mapping columns chosen for importing'.format(COL=elem_col, RULE=elem_num + 1)
                             popup_error(msg)
                             print('Warning: {}'.format(msg))
                             continue
 
                         if elem_oper not in math_operators:
-                            msg = 'The operator {OPER} selected for modify column rule {RULE} is not a supported math ' \
-                                  'operator'.format(OPER=elem_oper, RULE=elem_num + 1)
+                            msg = 'The operator {OPER} selected for modify column rule {RULE} is not a supported ' \
+                                  'math operator'.format(OPER=elem_oper, RULE=elem_num + 1)
                             popup_error(msg)
                             print('Warning: {}'.format(msg))
                             continue
@@ -1232,12 +1232,13 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     width_key = '-WIDTH-'
     height_key = 'HEIGHT'
     layout = [[sg.Canvas(key=width_key, size=(width, 0))],
-              [sg.Col(title_layout, key='-HEADER-', pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+              [sg.Col(title_layout, key='-HEADER-', pad=(0, 0), justification='l', background_color=header_col,
+                      expand_x=True)],
               [sg.Col([[sg.Canvas(key=height_key, size=(0, height))]], vertical_alignment='t'),
                sg.Col(tbl_layout, pad=((pad_frame, 0), 0), expand_x=True, expand_y=True,
                       vertical_alignment='t', scrollable=True, vertical_scroll_only=True)],
-              [sg.Col(bttn_layout, key='-BUTTON-', pad=(0, (pad_v, pad_frame)), justification='l', element_justification='c',
-                      expand_x=True)]]
+              [sg.Col(bttn_layout, key='-BUTTON-', pad=(0, (pad_v, pad_frame)), justification='l',
+                      element_justification='c', expand_x=True)]]
 
     # Finalize GUI window
     window = sg.Window('', layout, modal=True, resizable=True)
@@ -1623,7 +1624,7 @@ def about():
                                   element_justification='l', background_color=bg_col, vertical_alignment='t')]],
                         background_color=bg_col, border_width=0)]]
 
-    window = sg.Window(_('About REM'), layout, modal=True, resizable=False)
+    window = sg.Window('About REM', layout, modal=True, resizable=False)
 
     # Start event loop
     while True:
@@ -1658,10 +1659,10 @@ def edit_settings(win_size: tuple = None):
     bg_col = mod_const.ACTION_COL
 
     # GUI layout
-    ## Buttons
-    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                    mod_lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip=_('Save changes'))]]
+    # Buttons
+    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel edit'),
+                    mod_lo.B2('Save', key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip='Save changes')]]
 
     layout = [[sg.Col([[sg.Text('Edit Settings', pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
                                 background_color=header_col)]], pad=(0, 0), justification='l',
@@ -1670,7 +1671,7 @@ def edit_settings(win_size: tuple = None):
                         background_color=bg_col)],
               [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
 
-    window = sg.Window(_('Settings'), layout, modal=True, resizable=False)
+    window = sg.Window('Settings', layout, modal=True, resizable=False)
     window.finalize()
 
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
@@ -1811,7 +1812,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, (pad_frame, 0)))],
               [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
 
-    window = sg.Window(_('Modify Record'), layout, modal=True, resizable=False)
+    window = sg.Window('Modify Record', layout, modal=True, resizable=False)
     window.finalize()
 
     for display_column in display_header:
@@ -1979,13 +1980,12 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     in_col = mod_const.INPUT_COL
 
     # GUI layout
-    ## Buttons
-    #    if edit is True and index > 0:
-    bttn_layout = [[mod_lo.B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), tooltip=_('Cancel edit')),
-                    mod_lo.B2(_('Save'), key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip=_('Save changes'))]]
+    # Buttons
+    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel edit'),
+                    mod_lo.B2('Save', key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
+                              tooltip='Save changes')]]
 
-    ## Table
+    # Table
     lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
 
     tbl_layout = []
@@ -2028,7 +2028,7 @@ def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple
     layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, (pad_frame, 0)))],
               [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
 
-    window = sg.Window(_('Edit Row'), layout, modal=True, resizable=False)
+    window = sg.Window('Edit Row', layout, modal=True, resizable=False)
     window.finalize()
 
     for display_column in display_header:
