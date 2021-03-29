@@ -224,7 +224,7 @@ def login_window():
     gc.collect()
 
 
-def record_window(record, win_size: tuple = None, view_only: bool = False, record_modifiers: bool = True):
+def record_window(record, win_size: tuple = None, view_only: bool = False):
     """
     Display the record window.
     """
@@ -256,9 +256,18 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, recor
     title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
     # Button layout
-    bttn_layout = [[mod_lo.B2('Delete', key='-DELETE-', pad=(pad_el, 0), visible=deletable, tooltip='Delete record'),
-                    mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=(not savable), tooltip='Accept changes'),
-                    mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=savable, tooltip='Save to database')]]
+    if savable is True:
+        bttn_layout = [[mod_lo.B2('Delete', key='-DELETE-', pad=(pad_el, 0), visible=deletable,
+                                  tooltip='Delete record'),
+                        mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=False, tooltip='Accept changes'),
+                        mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=True, tooltip='Save to database',
+                                  bind_return_key=True)]]
+    else:
+        bttn_layout = [[mod_lo.B2('Delete', key='-DELETE-', pad=(pad_el, 0), visible=deletable,
+                                  tooltip='Delete record'),
+                        mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=False, tooltip='Accept changes',
+                                  bind_return_key=True),
+                        mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=True, tooltip='Save to database')]]
 
     # Window layout
     layout = [[sg.Col(title_layout, background_color=header_col, expand_x=True)],
@@ -1336,7 +1345,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
                 popup_error(msg)
             else:
-                record = record_window(record, record_modifiers=False)
+                record = record_window(record)
 
                 # Add record to the import table
                 try:
