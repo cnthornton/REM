@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '2.1.16'
+__version__ = '2.1.17'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -488,7 +488,7 @@ def main():
                 continue
 
         # Resize screen
-        ## Get window dimensions
+        # Get window dimensions
         win_w, win_h = window.size
         if win_w != current_w or win_h != current_h:
             print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
