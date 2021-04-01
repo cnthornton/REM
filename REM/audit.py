@@ -390,6 +390,8 @@ class AuditRule:
 
             # Load data from the database
             if all(inputs):  # all rule parameters have input
+                window[start_key].update(disabled=True)
+
                 # Verify that the audit has not already been performed with these parameters
                 audit_exists = self.summary.load_records(self.parameters)
                 if audit_exists is True:
@@ -399,6 +401,7 @@ class AuditRule:
                     current_rule = self.reset_rule(window, current=True)
 
                     return current_rule
+
                 # Initialize audit
                 initialized = []
                 for tab in self.tabs:
@@ -417,7 +420,6 @@ class AuditRule:
                           .format(NAME=self.name, PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
                     # Enable/Disable control buttons and parameter elements
-                    window[start_key].update(disabled=True)
                     self.toggle_parameters(window, 'disable')
 
                     # Update summary panel title with rule parameter values
@@ -437,8 +439,9 @@ class AuditRule:
                         window[tab.key_lookup('Audit')].update(disabled=False)
 
                 else:  # reset tabs that may have already loaded
-                    for tab in self.tabs:
-                        tab.reset(window)
+                    msg = 'Failed to load all transaction audit data from the database'
+                    mod_win2.popup_error(msg)
+                    current_rule = self.reset_rule(window, current=True)
 
         # Switch between tabs
         elif event == tg_key:
