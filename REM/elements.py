@@ -309,9 +309,17 @@ class TableElement:
             self.widths = None
 
         try:
-            self.sort_on = entry['SortBy']
+            sort_on = entry['SortBy']
         except KeyError:
             self.sort_on = []
+        else:
+            self.sort_on = []
+            for sort_col in sort_on:
+                if sort_col in self.columns:
+                    self.sort_on.append(sort_col)
+                else:
+                    print('Configuration Warning: DataTable {NAME}: sort column {COL} not found in table columns'
+                          .format(NAME=self.name, COL=sort_col))
 
         try:
             self.nrow = int(entry['Rows'])
@@ -1534,24 +1542,39 @@ class TableElement:
         """
         Forward fill table NA values.
         """
-        if rows is not None or len(rows) > 0:
-            try:
-                self.df.iloc[rows] = self.df.iloc[rows].fillna(method=fill_method)
-            except IndexError:
-                print('Warning: unable to fill table on selected rows')
+        if rows is not None:
+            if len(rows) > 0:
+                try:
+                    self.df.iloc[rows] = self.df.iloc[rows].fillna(method=fill_method)
+                except IndexError:
+                    print('Warning: DataTable {NAME}: unable to fill table on selected rows'.format(NAME=self.name))
+                except ValueError:
+                    print('Warning: DataTable {NAME}: invalid method provided'.format(NAME=self.name))
+            else:
+                print('Warning: DataTable {NAME}: no rows selected for filling'.format(NAME=self.name))
         else:
-            self.df.fillna(method=fill_method, inplace=True)
+            try:
+                self.df.fillna(method=fill_method, inplace=True)
+            except ValueError:
+                print('Warning: DataTable {NAME}: invalid method provided'.format(NAME=self.name))
 
     def sort(self, sort_on=None, ascending: bool = True):
         """
         Sort the table on provided column name.
         """
+        col_header = self.df.columns.tolist()
+
         # Prepare the columns to sort the table on
         sort_keys = []
         if isinstance(sort_on, str):
             sort_keys.append(sort_on)
         elif isinstance(sort_on, list):
-            sort_keys = sort_on
+            for sort_col in sort_on:
+                if sort_col in col_header:
+                    sort_keys.append(sort_col)
+                else:
+                    print('Warning: DataTable {NAME}: sort column {COL} not found in table header'
+                          .format(NAME=self.name, COL=sort_col))
 
         if len(sort_keys) > 0:
             print('Info: DataTable {NAME}: sorting table on {KEYS}'.format(NAME=self.name, KEYS=sort_keys))
