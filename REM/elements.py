@@ -540,7 +540,7 @@ class TableElement:
                 indices = []
 
             # Fill in NA values
-            print('Info: DataTable {Name}: filling NA values using fill method {METHOD}'
+            print('Info: DataTable {NAME}: filling NA values using fill method {METHOD}'
                   .format(NAME=self.name, METHOD=selected_method))
             self.fill(fill_method=fill_method, rows=indices)
 
@@ -663,23 +663,22 @@ class TableElement:
         window[tbl_key].update(values=data, row_colors=row_colors)
 
         # Update table totals
-        if self.tally_rule is not None:
-            print('Info: DataTable {NAME}: calculating table totals'.format(NAME=self.name))
-            try:
-                tbl_total = self.calculate_total(df)
-            except Exception as e:
-                print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
-                tbl_total = 0
+        print('Info: DataTable {NAME}: calculating table totals'.format(NAME=self.name))
+        try:
+            tbl_total = self.calculate_total(df)
+        except Exception as e:
+            print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
+            tbl_total = 0
 
-            if is_float_dtype(type(tbl_total)):
-                print('Info: DataTable {NAME}: table totals are formatted as float'.format(NAME=self.name))
-                tbl_total = '{:,.2f}'.format(tbl_total)
-            else:
-                print('Info: DataTable {NAME}: table totals are formatted as a string'.format(NAME=self.name))
-                tbl_total = str(tbl_total)
+        if is_float_dtype(type(tbl_total)):
+            print('Info: DataTable {NAME}: table totals are formatted as float'.format(NAME=self.name))
+            tbl_total = '{:,.2f}'.format(tbl_total)
+        else:
+            print('Info: DataTable {NAME}: table totals are formatted as a string'.format(NAME=self.name))
+            tbl_total = str(tbl_total)
 
-            total_key = self.key_lookup('Total')
-            window[total_key].update(value=tbl_total)
+        total_key = self.key_lookup('Total')
+        window[total_key].update(value=tbl_total)
 
         # Update the table summary
         summary = self.summarize_table(df)
@@ -1247,21 +1246,22 @@ class TableElement:
         row5.append(sg.Col([mod_row], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
                            background_color=header_col, expand_x=True))
 
-        if self.tally_rule is not None:
-            init_totals = self.calculate_total()
-            if isinstance(init_totals, float):
-                init_totals = '{:,.2f}'.format(init_totals)
-            else:
-                init_totals = str(init_totals)
-            row5.append(sg.Col([[sg.Text('Total:', pad=((0, pad_el), 0), font=bold_font,
-                                         background_color=header_col),
-                                 sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
-                                         font=font, background_color=bg_col, justification='r', relief='sunken')]],
-                               pad=(pad_el, int(pad_el / 2)), vertical_alignment='b', justification='r',
-                               background_color=header_col))
+        if self.tally_rule is None:
+            total_desc = 'Rows:'
         else:
-            row5.append(sg.Col([[sg.Canvas(size=(0, 0), background_color=header_col)]],
-                               justification='b', background_color=header_col))
+            total_desc = 'Total:'
+
+        init_totals = self.calculate_total()
+        if isinstance(init_totals, float):
+            init_totals = '{:,.2f}'.format(init_totals)
+        else:
+            init_totals = str(init_totals)
+        row5.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
+                                     background_color=header_col),
+                             sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
+                                     font=font, background_color=bg_col, justification='r', relief='sunken')]],
+                           pad=(pad_el, int(pad_el / 2)), vertical_alignment='b', justification='r',
+                           background_color=header_col))
 
         # Table summary rows
         summary_rules = self.summary_rules
@@ -1663,6 +1663,8 @@ class TableElement:
                 else:  # possibly empty dataframe
                     total = 0
                 print('Info: DataTable {NAME}: table totals calculated as {TOTAL}'.format(NAME=self.name, TOTAL=total))
+        else:
+            total = df.shape[0]
 
         return total
 

@@ -265,9 +265,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     else:
         bttn_layout = [[mod_lo.B2('Delete', key='-DELETE-', pad=(pad_el, 0), visible=deletable,
                                   tooltip='Delete record'),
-                        mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=False, tooltip='Accept changes',
+                        mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=True, tooltip='Accept changes',
                                   bind_return_key=True),
-                        mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=True, tooltip='Save to database')]]
+                        mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=False, tooltip='Save to database')]]
 
     # Window layout
     layout = [[sg.Col(title_layout, background_color=header_col, expand_x=True)],
