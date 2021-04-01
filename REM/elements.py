@@ -355,7 +355,7 @@ class TableElement:
         else:
             self.required = required
 
-        self.dimensions = (mod_const.TBL_WIDTH_PX, int(mod_const.TBL_ROW_HEIGHT * self.nrow))
+        self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
 
         self._df = pd.DataFrame(columns=columns)
         self.df = pd.DataFrame(columns=columns)
@@ -412,16 +412,28 @@ class TableElement:
         """
         Perform a table action.
         """
+        tbl_key = self.key_lookup('Element')
+        options_key = self.key_lookup('Options')
+        frame_key = self.key_lookup('OptionsFrame')
+        cancel_key = self.key_lookup('Cancel')
+        sort_key = self.key_lookup('Sort')
+        fill_key = self.key_lookup('Fill')
+        export_key = self.key_lookup('Export')
+        filter_key = self.key_lookup('Filter')
+        add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
+
         param_elems = [i for param in self.parameters for i in param.elements]
 
-        if event == self.key_lookup('Element'):
+        # Row click event
+        if event == tbl_key:
             # Find row selected by user
             try:
                 select_row_index = values[event][0]
             except IndexError:  # user double-clicked too quickly
                 print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
             else:
-                # Get the real index of the column
+                # Get the real index of the selected row
                 try:
                     index = self.index_map[select_row_index]
                 except KeyError:
@@ -444,18 +456,18 @@ class TableElement:
             print('Info: DataTable {TBL}: expanding / collapsing summary frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='summary')
 
-        elif event == self.key_lookup('Filter'):
+        # Click filter Apply button to apply filtering to table
+        elif event == filter_key:
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
 
-        elif event == self.key_lookup('Options'):
-            frame_key = self.key_lookup('OptionsFrame')
+        # Click to open table options panel
+        elif event == options_key:
             if window[frame_key].metadata['visible'] is False:
                 window[frame_key].metadata['visible'] = True
 
-                tbl_key = self.key_lookup('Element')
-                tbl_width, tbl_height = self.dimensions
+                tbl_width, tbl_height = window[tbl_key].get_size()
 
                 # Reveal the options panel
                 window[tbl_key].update(visible=False)
@@ -468,7 +480,7 @@ class TableElement:
                 # Reduce table size
                 columns = self.display_columns
                 header = list(columns.keys())
-                new_width = tbl_width - frame_w if tbl_width - frame_w > 0 else 0
+                new_width = tbl_width - frame_w - 2 if tbl_width - frame_w - 2 > 0 else 0
                 print('Info: DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                       'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
                 lengths = self.calc_column_widths(width=new_width, pixels=True)
@@ -478,32 +490,14 @@ class TableElement:
 
                 # Reveal the table frame
                 window[tbl_key].update(visible=True)
+            else:
+                self.resize(window, size=self.dimensions)
 
-        elif event == self.key_lookup('Cancel'):
-            frame_key = self.key_lookup('OptionsFrame')
+        elif event == cancel_key:
+            self.resize(window, size=self.dimensions)
 
-            # Hide the options panel
-            window[frame_key].metadata['visible'] = False
-            window[frame_key].update(visible=False)
-
-            # Increase table size
-            tbl_key = self.key_lookup('Element')
-            tbl_width, tbl_height = self.dimensions
-            print('Info: DataTable {NAME}: resizing table width from to {W}'.format(NAME=self.name, W=tbl_width))
-
-            columns = self.display_columns
-            header = list(columns.keys())
-            lengths = self.calc_column_widths(width=tbl_width, pixels=True)
-            for col_index, col_name in enumerate(header):
-                col_width = lengths[col_index]
-                window[tbl_key].Widget.column(col_name, width=col_width)
-
-            window[tbl_key].expand((True, True))
-            window[tbl_key].table_frame.pack(expand=True, fill='both')
-
-        elif event == self.key_lookup('Sort'):
-            sort_key = self.key_lookup('Sort')
-
+        # Sort column selected from menu of sort columns
+        elif event == sort_key:
             sort_on = self.sort_on
             display_map = self.display_columns
 
@@ -522,6 +516,34 @@ class TableElement:
                     # Add column to sortby list
                     self.sort_on.append(sort_col)
 
+        # NA value fill method selected from menu of fill methods
+        elif event == fill_key:
+            # Find selected fill method
+            selected_method = values[fill_key]
+            if selected_method.lower() == 'forward':
+                fill_method = 'ffill'
+            elif selected_method.lower() == 'backward':
+                fill_method = 'bfill'
+            else:
+                fill_method = 'ffill'
+
+            # Get selected rows, if any
+            select_row_indices = values[tbl_key]
+
+            # Get the real indices of the selected rows
+            try:
+                indices = [self.index_map[i] for i in select_row_indices]
+            except KeyError:
+                msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
+                print('Warning: DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                mod_win2.popup_notice(msg)
+                indices = []
+
+            # Fill in NA values
+            print('Info: DataTable {Name}: filling NA values using fill method {METHOD}'
+                  .format(NAME=self.name, METHOD=selected_method))
+            self.fill(fill_method=fill_method, rows=indices)
+
         elif event in param_elems:
             try:
                 param = self.fetch_parameter(event, by_key=True)
@@ -531,18 +553,28 @@ class TableElement:
             else:
                 param.run_event(window, event, values)
 
-        elif event == self.key_lookup('Add'):
+        elif event == add_key:
             self.df = self.add_row()
 
-        elif event == self.key_lookup('Delete'):
+        elif event == delete_key:
             # Find rows selected by user for deletion
-            select_row_indices = values[self.key_lookup('Element')]
+            select_row_indices = values[tbl_key]
+
+            # Get the real indices of the selected rows
+            try:
+                indices = [self.index_map[i] for i in select_row_indices]
+            except KeyError:
+                msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
+                print('Warning: DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                mod_win2.popup_notice(msg)
+                indices = []
+
             print('Info: DataTable {NAME}: rows {IND} have been selected for removal'
                   .format(NAME=self.name, IND=select_row_indices))
 
-            self.df = self.delete_rows(select_row_indices)
+            self.df = self.delete_rows(indices)
 
-        elif event == self.key_lookup('Export'):
+        elif event == export_key:
             export_df = self.format_display_table(self.df)
             print('Info: DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
             annotations = self.annotate_display(self.df)
@@ -569,21 +601,22 @@ class TableElement:
 
         self.sort(self.sort_on)
 
-        for menu_index, display_col in enumerate(display_map):
-            display_val = display_map[display_col]
-            if display_val in self.sort_on:
-                # Get order of sort column
-                sort_order = self.sort_on.index(display_val) + 1
+        if self.actions['sort'] is True:
+            for menu_index, display_col in enumerate(display_map):
+                display_val = display_map[display_col]
+                if display_val in self.sort_on:
+                    # Get order of sort column
+                    sort_order = self.sort_on.index(display_val) + 1
 
-                # Add highlight to menu item
-                window[sort_key].TKMenu.entryconfig(menu_index, label='{} - {}'.format(sort_order, display_col),
-                                                    foreground=white_text_col, background=highlight_col)
-                window[sort_key].TKButtonMenu.configure(menu=window[sort_key].TKMenu)
-            else:
-                # Remove highlight from menu item
-                window[sort_key].TKMenu.entryconfig(menu_index, label=display_col,
-                                                    foreground=text_col, background=def_bg_col)
-                window[sort_key].TKButtonMenu.configure(menu=window[sort_key].TKMenu)
+                    # Add highlight to menu item
+                    window[sort_key].TKMenu.entryconfig(menu_index, label='{} - {}'.format(sort_order, display_col),
+                                                        foreground=white_text_col, background=highlight_col)
+                    window[sort_key].TKButtonMenu.configure(menu=window[sort_key].TKMenu)
+                else:
+                    # Remove highlight from menu item
+                    window[sort_key].TKMenu.entryconfig(menu_index, label=display_col,
+                                                        foreground=text_col, background=def_bg_col)
+                    window[sort_key].TKButtonMenu.configure(menu=window[sort_key].TKMenu)
 
         search_field = self.search_field
         # Modify records tables for displaying
@@ -1178,22 +1211,22 @@ class TableElement:
                     background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
 
         if self.actions['fill'] is True:
-            fill_menu = ['&Fill', ['Forward', 'Backfill']]
+            fill_menu = ['&Fill', ['Forward', 'Backward']]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
-                                          image_size=(320, 40), pad=(pad_h, pad_v), border_width=1,
+                                          image_size=(240, 40), pad=(pad_h, (pad_v, int(pad_v/2))), border_width=1,
                                           button_color=(text_col, filter_bg_col), tooltip='Fill NA values')])
 
         if self.actions['export'] is True:
-            options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON, image_size=(320, 40),
-                                      pad=(pad_h, pad_v), border_width=1, button_color=(text_col, filter_bg_col),
-                                      tooltip='Export to spreadsheet')])
+            options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON, image_size=(240, 40),
+                                      pad=(pad_h, (pad_v, int(pad_v/2))), border_width=1,
+                                      button_color=(text_col, filter_bg_col), tooltip='Export to spreadsheet')])
 
         if self.actions['sort'] is True:
             sort_menu = ['&Sort', list(self.display_columns)]
             options.append(
-                [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON, image_size=(320, 40),
-                               pad=(pad_h, pad_v), border_width=1, button_color=(text_col, filter_bg_col),
-                               tearoff=True, tooltip='Sort table on columns')])
+                [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON, image_size=(240, 40),
+                               pad=(pad_h, (pad_v, int(pad_v/2))), border_width=1,
+                               button_color=(text_col, filter_bg_col), tooltip='Sort table on columns')])
 
         row4.append(sg.Col(options, key=self.key_lookup('OptionsFrame'), background_color=filter_bg_col,
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
@@ -1438,7 +1471,8 @@ class TableElement:
 
         row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
 
-        print('Info: DataTable {TBL}: resizing table display to {W}, {H}'.format(TBL=self.name, W=width, H=height))
+        print('Info: DataTable {TBL}: resizing element display to {W}, {H}'.format(TBL=self.name, W=width, H=height))
+        self.dimensions = (width, height)
 
         tbl_key = self.key_lookup('Element')
 
@@ -1472,9 +1506,6 @@ class TableElement:
 
         window[tbl_key].update(num_rows=nrows)
 
-        print('Info: setting table dimensions to {}'.format(window[tbl_key].get_size()))
-        self.dimensions = (tbl_width, int(nrows * mod_const.TBL_ROW_HEIGHT))
-
         # Expand the table frames
         filter_params = self.parameters
         if len(filter_params) > 0 and self.actions['filter'] is True:
@@ -1499,14 +1530,17 @@ class TableElement:
 
         return df
 
-    def fill(self, sort_method: str = 'forward'):
+    def fill(self, fill_method: str = 'ffill', rows: list = None):
         """
         Forward fill table NA values.
         """
-        if sort_method == 'forward':
-            self.df.fillna(method='ffill', inplace=True)
-        elif sort_method == 'backward':
-            self.df.fillna(method='bfill', inplace=True)
+        if rows is not None or len(rows) > 0:
+            try:
+                self.df.iloc[rows] = self.df.iloc[rows].fillna(method=fill_method)
+            except IndexError:
+                print('Warning: unable to fill table on selected rows')
+        else:
+            self.df.fillna(method=fill_method, inplace=True)
 
     def sort(self, sort_on=None, ascending: bool = True):
         """
