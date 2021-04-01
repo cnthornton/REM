@@ -590,7 +590,7 @@ class TableElement:
             self.df = self.delete_rows(indices)
 
         elif event == export_key:
-            export_df = self.format_display_table(self.df)
+            export_df = self.update_display(window, values)
             print('Info: DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
             annotations = self.annotate_display(self.df)
             annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
@@ -1083,6 +1083,7 @@ class TableElement:
         isize = mod_const.IN1_SIZE
 
         header_col_size = 200
+        option_col_size = 40
 
         # Row layouts
 
@@ -1215,13 +1216,16 @@ class TableElement:
 
         # Table options
         options = [
-            [sg.Col([[sg.Col([[sg.Text('Options', text_color=select_text_col, background_color=filter_head_col)]],
+            [sg.Col([[sg.Col([[sg.Canvas(size=(option_col_size, 0), background_color=filter_head_col)]],
+                             pad=(0, int(pad_el/2)), background_color=filter_head_col, justification='l'),
+                      sg.Col([[sg.Text('Options', text_color=select_text_col, background_color=filter_head_col)]],
                              pad=(0, int(pad_el / 2)), background_color=filter_head_col, element_justification='c',
                              expand_x=True, vertical_alignment='c'),
-                      sg.Col([[sg.Button('', image_data=mod_const.EXIT_ICON, key=cancel_key, border_width=0,
+                      sg.Col([[sg.Canvas(size=(option_col_size, 0), background_color=filter_head_col)],
+                              [sg.Button('', image_data=mod_const.EXIT_ICON, key=cancel_key, border_width=0,
                                          button_color=(text_col, filter_head_col))]],
-                             pad=(0, int(pad_el / 2)), background_color=filter_head_col, justification='r',
-                             vertical_alignment='c')]],
+                             pad=(pad_el, int(pad_el / 2)), background_color=filter_head_col, justification='r',
+                             element_justification='r', vertical_alignment='c')]],
                     pad=(0, (0, pad_v)), background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
 
         if self.actions['fill'] is True:

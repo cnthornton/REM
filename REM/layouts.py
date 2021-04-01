@@ -515,13 +515,15 @@ def home_screen(win_size: tuple = None):
     """
     Create layout for the home screen.
     """
+    bg_col = mod_const.DEFAULT_COL
     if win_size:
         width, height = win_size
     else:
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
-    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width * 0.6), int(height * 0.6)))]], key='-HOME-',
-                    element_justification='c', vertical_alignment='c')
+    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width * 0.8), int(height * 0.8)),
+                               background_color=bg_col)]],
+                    key='-HOME-', element_justification='c', vertical_alignment='c', background_color=bg_col)
 
     return layout
 

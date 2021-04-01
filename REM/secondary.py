@@ -127,7 +127,7 @@ def login_window():
     main_font = mod_const.MAIN_FONT
     small_font = mod_const.SMALL_FONT
 
-    logo = settings.logo
+    logo = settings.logo_icon
 
     # GUI layout
     if logo:
@@ -156,7 +156,8 @@ def login_window():
                      [sg.Button('Cancel', key='-CANCEL-', size=(bsize, 1), pad=(pad_frame, (pad_el, pad_frame)),
                                 font=bold_text, button_color=(text_col, cancel_col))]]
 
-    layout = [[sg.Col(column_layout, element_justification='center', justification='center', background_color=bg_col)]]
+    layout = [[sg.Frame('', column_layout, element_justification='center', background_color=bg_col, border_width=2,
+                        relief='raised')]]
 
     window = sg.Window('', layout, font=main_font, modal=True, keep_on_top=True, no_titlebar=True,
                        return_keyboard_events=True)

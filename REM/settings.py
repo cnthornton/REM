@@ -105,6 +105,24 @@ class UserSettings:
 
         # Display parameters
         try:
+            icon_name = cnfg['display']['icon']
+        except KeyError:
+            icon_file = os.path.join(dirname, 'docs', 'images', 'icon.ico')
+        else:
+            if not icon_name:
+                icon_file = os.path.join(dirname, 'docs', 'images', 'icon.ico')
+            else:
+                icon_file = os.path.join(dirname, 'docs', 'images', icon_name)
+
+        try:
+            fh = open(icon_file, 'r', encoding='utf-8')
+        except FileNotFoundError:
+            self.icon = None
+        else:
+            self.icon = icon_file
+            fh.close()
+
+        try:
             logo_name = cnfg['display']['logo']
         except KeyError:
             logo_file = os.path.join(dirname, 'docs', 'images', 'logo.png')
@@ -120,6 +138,24 @@ class UserSettings:
             self.logo = None
         else:
             self.logo = logo_file
+            fh.close()
+
+        try:
+            logo_icon = cnfg['display']['logo_icon']
+        except KeyError:
+            logo_file = os.path.join(dirname, 'docs', 'images', 'icons', 'logo_icon.png')
+        else:
+            if not logo_icon:
+                logo_file = os.path.join(dirname, 'docs', 'images', 'icons', 'logo_icon.png')
+            else:
+                logo_file = os.path.join(dirname, 'docs', 'images', logo_icon)
+
+        try:
+            fh = open(logo_file, 'r', encoding='utf-8')
+        except FileNotFoundError:
+            self.logo_icon = None
+        else:
+            self.logo_icon = logo_file
             fh.close()
 
         try:
