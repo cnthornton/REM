@@ -435,6 +435,12 @@ class TableElement:
 
         # Row click event
         if event == tbl_key:
+            # Close options panel, if open
+            if window[frame_key].metadata['visible'] is True:
+                window[frame_key].metadata['visible'] = False
+                window[frame_key].update(visible=False)
+                self.resize(window, size=self.dimensions)
+
             # Find row selected by user
             try:
                 select_row_index = values[event][0]
@@ -526,14 +532,7 @@ class TableElement:
 
         # NA value fill method selected from menu of fill methods
         elif event == fill_key:
-            # Find selected fill method
-            selected_method = values[fill_key]
-            if selected_method.lower() == 'forward':
-                fill_method = 'ffill'
-            elif selected_method.lower() == 'backward':
-                fill_method = 'bfill'
-            else:
-                fill_method = 'ffill'
+            display_map = self.display_columns
 
             # Get selected rows, if any
             select_row_indices = values[tbl_key]
@@ -547,10 +546,18 @@ class TableElement:
                 mod_win2.popup_notice(msg)
                 indices = []
 
-            # Fill in NA values
-            print('Info: DataTable {NAME}: filling NA values using fill method {METHOD}'
-                  .format(NAME=self.name, METHOD=selected_method))
-            self.fill(fill_method=fill_method, rows=indices)
+            # Find selected fill method
+            display_col = values[fill_key]
+            try:
+                fill_col = display_map[display_col]
+            except KeyError:
+                print('Configuration Warning: DataTable {NAME}: fill display column {COL} must have a one-to-one '
+                      'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
+            else:
+                # Fill in NA values
+                print('Info: DataTable {NAME}: filling column {COL} NAs by forwarding last value'
+                      .format(NAME=self.name, COL=fill_col))
+                self.fill(fill_col, rows=indices)
 
         elif event in param_elems:
             try:
@@ -1215,25 +1222,25 @@ class TableElement:
                                          button_color=(text_col, filter_head_col))]],
                              pad=(0, int(pad_el / 2)), background_color=filter_head_col, justification='r',
                              vertical_alignment='c')]],
-                    background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
+                    pad=(0, (0, pad_v)), background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
 
         if self.actions['fill'] is True:
-            fill_menu = ['&Fill', ['Forward', 'Backward']]
+            fill_menu = ['&Fill', list(self.display_columns)]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
-                                          image_size=(240, 40), pad=(pad_h, (pad_v, int(pad_v/2))), border_width=1,
-                                          button_color=(text_col, filter_bg_col), tooltip='Fill NA values')])
+                                          image_size=(240, 40), pad=(pad_h, (0, int(pad_v/2))), border_width=1,
+                                          button_color=(text_col, bg_col), tooltip='Fill NA values')])
 
         if self.actions['export'] is True:
-            options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON, image_size=(240, 40),
-                                      pad=(pad_h, (pad_v, int(pad_v/2))), border_width=1,
-                                      button_color=(text_col, filter_bg_col), tooltip='Export to spreadsheet')])
+            options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON,
+                                      image_size=(240, 40), pad=(pad_h, (0, int(pad_v/2))), border_width=1,
+                                      button_color=(text_col, bg_col), tooltip='Export to spreadsheet')])
 
         if self.actions['sort'] is True:
             sort_menu = ['&Sort', list(self.display_columns)]
             options.append(
-                [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON, image_size=(240, 40),
-                               pad=(pad_h, (pad_v, int(pad_v/2))), border_width=1,
-                               button_color=(text_col, filter_bg_col), tooltip='Sort table on columns')])
+                [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON,
+                               image_size=(240, 40), pad=(pad_h, (0, int(pad_v/2))), border_width=1,
+                               button_color=(text_col, bg_col), tooltip='Sort table on columns')])
 
         row4.append(sg.Col(options, key=self.key_lookup('OptionsFrame'), background_color=filter_bg_col,
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
@@ -1538,14 +1545,15 @@ class TableElement:
 
         return df
 
-    def fill(self, fill_method: str = 'ffill', rows: list = None):
+    def fill(self, column, fill_method: str = 'ffill', rows: list = None):
         """
         Forward fill table NA values.
         """
         if rows is not None:
             if len(rows) > 0:
                 try:
-                    self.df.iloc[rows] = self.df.iloc[rows].fillna(method=fill_method)
+                    self.df.iloc[rows, self.df.columns.get_loc(column)] = \
+                        self.df.iloc[rows, self.df.columns.get_loc(column)].fillna(method=fill_method)
                 except IndexError:
                     print('Warning: DataTable {NAME}: unable to fill table on selected rows'.format(NAME=self.name))
                 except ValueError:
@@ -1554,7 +1562,7 @@ class TableElement:
                 print('Warning: DataTable {NAME}: no rows selected for filling'.format(NAME=self.name))
         else:
             try:
-                self.df.fillna(method=fill_method, inplace=True)
+                self.df[column].fillna(method=fill_method, inplace=True)
             except ValueError:
                 print('Warning: DataTable {NAME}: invalid method provided'.format(NAME=self.name))
 
@@ -1817,12 +1825,13 @@ class TableElement:
         if record_entry is not None:
             table_layout = record_entry.import_table
             table_layout['RecordType'] = record_type
-            table_layout['Actions'] = {'filter': 1, 'search': 1}
+            table_layout['Actions'] = {'filter': 1, 'search': 1, 'export': 1, 'options': 1, 'sort': 1}
         else:
             table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                             'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
                             'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
-                            'Actions': {'search': 1, 'filter': 1}, 'FilterParameters': self.parameters}
+                            'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
+                            'FilterParameters': self.parameters}
 
         import_table = TableElement(self.name, table_layout)
 

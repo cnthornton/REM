@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '2.1.17'
+__version__ = '2.1.18'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
