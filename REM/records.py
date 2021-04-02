@@ -667,40 +667,53 @@ class DatabaseRecord:
         """
         record_entry = self.record_entry
         record_id = self.record_id()
-        components = self.components
         ref_df = self.ref_df
 
         # Check if record was deleted
         success = []
 
         # Determine associations to delete as well
-        components_to_delete = []
-        for comp_table in components:
-            comp_df = comp_table.df
-            for index, row in comp_df.iterrows():
-                comp_id = row[comp_table.id_column]
-                reference = ref_df[(ref_df['DocNo'] == record_id) & (ref_df['RefNo'] == comp_id) &
-                                   (ref_df['IsDeleted'] == False)]
-                if any(reference['IsParentChild'].tolist()) is True:
-                    components_to_delete.append(comp_id)
+        child_df = ref_df[ref_df['IsParentChild']]
+        nchild = child_df.shape[0]
 
-        if len(components_to_delete) > 0:
-            msg = 'Deleting record {ID} will also delete {N} component records as well. Would you like ' \
-                  'to continue with record deletion?'.format(ID=record_id, N=len(components_to_delete))
+        if nchild > 0:  # Record contains child records
+            msg = 'Deleting record {ID} will also delete {N} dependant records as well. Would you like to continue ' \
+                  'with record deletion?'.format(ID=record_id, N=nchild)
             user_input = mod_win2.popup_confirm(msg)
             if user_input == 'OK':
                 # Remove record and associations
-                success.append(record_entry.delete_record(user, record_id))
+                saved = record_entry.delete_record(user, record_id)
+                success.append(saved)
+                if saved is False:
+                    msg = 'Record {ID}: attempt to delete record failed'.format(ID=record_id)
+                    print('Error: {MSG}'.format(MSG=msg))
+                    mod_win2.popup_error(msg)
+                    return False
 
-                # Remove record components
-                for comp_table in components:
-                    comp_df = comp_table.df
-                    comp_type = comp_table.record_type
-                    for index, row in comp_df.iterrows():
-                        comp_id = row[comp_table.id_column]
-                        if comp_id in components_to_delete:
-                            comp_entry = configuration.records.fetch_rule(comp_type)
-                            success.append(comp_entry.delete_record(user, comp_id))
+                # Remove child references
+                for index, row in child_df.iterrows():
+                    if record_id != row['DocNo']:  # only remove entries where primary record is the parent
+                        continue
+
+                    ref_id = row['RefNo']
+                    ref_type = row['RefType']
+                    print('Info: Record {ID}: deleting dependant record {REFID} of type {TYPE}'
+                          .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+                    ref_entry = configuration.records.fetch_rule(ref_type)
+                    if ref_entry is None:
+                        msg = 'Record {ID}: failed to delete dependant record {REFID} - invalid record type "{TYPE}"'\
+                            .format(ID=record_id, REFID=ref_id, TYPE=ref_type)
+                        print('Error: {MSG}'.format(MSG=msg))
+                        mod_win2.popup_error(msg)
+                        continue
+
+                    saved = ref_entry.delete_record(user, ref_id)
+                    success.append(saved)
+                    if saved is False:
+                        msg = 'Record {ID}: attempt to delete dependant record {REFID} failed'\
+                            .format(ID=record_id, REFID=ref_id)
+                        print('Error: {MSG}'.format(MSG=msg))
+                        mod_win2.popup_error(msg)
             else:
                 return False
         else:
