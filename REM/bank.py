@@ -438,16 +438,19 @@ class BankRule:
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         save_key = self.key_lookup('Save')
-        bttn_layout = [sg.Col([[mod_layout.B2('Cancel', key=cancel_key, pad=((0, pad_el), 0), disabled=False,
-                                              tooltip='Return to home screen')]],
-                              pad=(0, (pad_v, 0)), justification='l', expand_x=True),
-                       sg.Col([[mod_layout.B2('Back', key=back_key, pad=((0, pad_el), 0), disabled=True,
-                                              tooltip='Return to bank reconciliation panel'),
-                                mod_layout.B2('Next', key=next_key, pad=(pad_el, 0), disabled=True,
-                                              tooltip='Review results'),
-                                mod_layout.B2('Save', key=save_key, pad=((pad_el, 0), 0), disabled=True,
-                                              tooltip='Save to database and generate summary report')]],
-                              pad=(0, (pad_v, 0)), justification='r', element_justification='r')]
+        bttn_layout = [sg.Col([
+                           [sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
+                                      image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
+                                      tooltip='Return to home screen')]
+                              ], pad=(0, (pad_v, 0)), justification='l', expand_x=True),
+                       sg.Col([
+                           [sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
+                                      pad=((0, pad_el), 0), disabled=True, tooltip='Back'),
+                            sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
+                                      pad=(pad_el, 0), disabled=True, tooltip='Next'),
+                            sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                                      pad=((pad_el, 0), 0), disabled=True, tooltip='Generate summary report')]
+                               ], pad=(0, (pad_v, 0)), justification='r', element_justification='r')]
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')

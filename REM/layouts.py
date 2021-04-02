@@ -106,72 +106,6 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     return layout
 
 
-def import_data_layout(df, parameters, create_new: bool = False):
-    """
-    Create the layout for the import data window.
-    """
-    width = mod_const.WIN_WIDTH * 0.8
-
-    header = df.columns.values.tolist()
-    data = df.values.tolist()
-
-    # Layout settings
-    bg_col = mod_const.ACTION_COL
-
-    pad_el = mod_const.ELEM_PAD
-    pad_v = mod_const.VERT_PAD
-    pad_frame = mod_const.FRAME_PAD
-
-    layout_params = []
-    for param in parameters:
-        if param.filterable is True and param.hidden is False:
-            layout_params.append(param)
-
-    # Layout
-    # Import filters
-    param_layout = []
-    elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
-    if len(layout_params) > 2:
-        nrow = math.ceil(len(layout_params) / 2)
-    else:
-        nrow = 1
-    print('number of rows to display: {}'.format(nrow))
-    for parameter in layout_params:
-        row_size = len(elem_col) - 1
-        print('current rows in column: {}'.format(row_size))
-
-        if row_size == nrow:
-            param_layout.append(
-                sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='l', vertical_alignment='t'))
-            elem_col = [[sg.Canvas(size=(int(width * 0.4), 0), visible=True, background_color=bg_col)]]
-
-        elem_col.append([sg.Col([parameter.layout(text_size=(14, 1), size=(14, 1), padding=40, default=False)],
-                                background_color=bg_col, justification='l', expand_x=True)])
-
-    param_layout.append(sg.Col(elem_col, pad=(0, pad_v), background_color=bg_col, justification='r',
-                               vertical_alignment='t'))  # include last pair in series
-
-    # Import data table
-    main_layout = [[create_table_layout(data, header, '-TABLE-', events=False, width=width, nrow=20, pad=(0, 0))]]
-
-    # Control buttons
-    bttn_layout = [[sg.Col([[B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import')]],
-                           pad=(0, 0), justification='l', expand_x=True),
-                    sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-                    sg.Col(
-                        [[B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=create_new, tooltip='Create new record'),
-                          B2('OK', key='-OK-', disabled=True, tooltip='Import selected data')]],
-                        pad=(0, 0), justification='r')]]
-
-    layout = [[sg.Col([param_layout, [sg.HorizontalSeparator(pad=(0, (pad_v, 0)), color=mod_const.INACTIVE_COL)]],
-                      pad=(pad_frame, 0), background_color=bg_col, justification='c',
-                      expand_x=True, expand_y=True)],
-              [sg.Col(main_layout, pad=(pad_frame, pad_frame), background_color=bg_col, justification='c')],
-              [sg.Col(bttn_layout, pad=(pad_frame, (pad_v, pad_frame)), expand_x=True)]]
-
-    return layout
-
-
 def importer_layout(win_size: tuple = None):
     """
     Create the layout for the database import window.
@@ -481,11 +415,15 @@ def importer_layout(win_size: tuple = None):
                      sg.Col([[sg.Pane(panels, key='-PANELS-', orientation='horizontal', show_handle=False,
                                       border_width=0, relief='flat')]], pad=(0, pad_v), expand_x=True)]]
 
-    bttn_layout = [[B2(_('Back'), key='-BACK-', pad=(pad_el, 0), disabled=True, tooltip=_('Return to last step')),
-                    B2(_('Next'), key='-NEXT-', pad=(pad_el, 0), disabled=False, tooltip=_('Proceed to next step')),
-                    B2(_('Import'), bind_return_key=True, key='-IMPORT-', pad=(pad_el, 0), disabled=True,
-                       tooltip=_('Import file contents into the selected database table')),
-                    B2(_('Cancel'), key='-CANCEL-', pad=(pad_el, 0), disabled=False, tooltip=_('Cancel import'))]]
+    bttn_layout = [[sg.Button('', key='-BACK-', image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), disabled=True, tooltip='Back'),
+                    sg.Button('', key='-NEXT-', image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), disabled=False, tooltip='Next'),
+                    sg.Button('', bind_return_key=True, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                              key='-IMPORT-', pad=(pad_el, 0), disabled=True,
+                              tooltip='Import file contents to the selected database table'),
+                    sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), disabled=False, tooltip='Cancel')]]
 
     sidebar_layout = [
         [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=def_col)]], background_color=def_col),

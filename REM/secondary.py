@@ -258,17 +258,21 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     # Button layout
     if savable is True:
-        bttn_layout = [[mod_lo.B2('Delete', key='-DELETE-', pad=(pad_el, 0), visible=deletable,
-                                  tooltip='Delete record'),
-                        mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=False, tooltip='Accept changes'),
-                        mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=True, tooltip='Save to database',
+        bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+                                  pad=(pad_el, 0), visible=deletable, tooltip='Delete record'),
+                        sg.Button('OK', key='-OK-', image_size=mod_const.BTTN_SIZE,
+                                  pad=(pad_el, 0), visible=False, tooltip='Accept changes'),
+                        sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                                  pad=(pad_el, 0), visible=True, tooltip='Save to database',
                                   bind_return_key=True)]]
     else:
-        bttn_layout = [[mod_lo.B2('Delete', key='-DELETE-', pad=(pad_el, 0), visible=deletable,
-                                  tooltip='Delete record'),
-                        mod_lo.B2('OK', key='-OK-', pad=(pad_el, 0), visible=True, tooltip='Accept changes',
-                                  bind_return_key=True),
-                        mod_lo.B2('Save', key='-SAVE-', pad=(pad_el, 0), visible=False, tooltip='Save to database')]]
+        bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+                                  pad=(pad_el, 0), visible=deletable, tooltip='Delete record'),
+                        sg.Button('OK', key='-OK-', image_size=mod_const.BTTN_SIZE,
+                                  pad=(pad_el, 0), visible=True, tooltip='Accept changes'),
+                        sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                                  pad=(pad_el, 0), visible=False, tooltip='Save to database',
+                                  bind_return_key=True)]]
 
     # Window layout
     layout = [[sg.Col(title_layout, background_color=header_col, expand_x=True)],
@@ -1235,9 +1239,10 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     tbl_layout = [[table.layout(width=width - tbl_diff, height=height * 0.9, padding=(0, (0, pad_v)))]]
 
     # Control buttons
-    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', disabled=False, tooltip='Cancel data import'),
-                    mod_lo.B2('New', key='-NEW-', pad=((0, pad_el), 0), visible=enable_new,
-                              tooltip='Create new record')]]
+    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+                              disabled=False, tooltip='Cancel data import'),
+                    sg.Button('New', key='-NEW-', image_size=mod_const.BTTN_SIZE,
+                              pad=((0, pad_el), 0), visible=enable_new, tooltip='Create new record')]]
 
     width_key = '-WIDTH-'
     height_key = 'HEIGHT'
@@ -1489,9 +1494,10 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
                           background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
                           vertical_scroll_only=True)]]
 
-    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel importing'),
-                    mod_lo.B2('Import', key='-IMPORT-', pad=(pad_el, 0),
-                              tooltip='Import the selected transaction orders')]]
+    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), tooltip='Cancel importing'),
+                    sg.Button('', key='-IMPORT-', image_data=mod_const.DB_IMPORT_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), tooltip='Import the selected transaction orders')]]
 
     layout = [[sg.Col(header_layout, key='-HEADER-', pad=(0, 0), background_color=header_col, element_justification='l',
                       expand_x=True, expand_y=True)],
@@ -1670,9 +1676,10 @@ def edit_settings(win_size: tuple = None):
 
     # GUI layout
     # Buttons
-    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel edit'),
-                    mod_lo.B2('Save', key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip='Save changes')]]
+    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), tooltip='Cancel edit'),
+                    sg.Button('OK', key='-SAVE-', image_size=mod_const.BTTN_SIZE,
+                              bind_return_key=True, pad=(pad_el, 0), tooltip='Save changes')]]
 
     layout = [[sg.Col([[sg.Text('Edit Settings', pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
                                 background_color=header_col)]], pad=(0, 0), justification='l',
@@ -1775,9 +1782,10 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
 
     # GUI layout
     # Buttons
-    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel edit'),
-                    mod_lo.B2('Save', key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip='Save changes')]]
+    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), tooltip='Cancel edit'),
+                    sg.Button('OK', key='-SAVE-', image_size=mod_const.BTTN_SIZE,
+                              bind_return_key=True, pad=(pad_el, 0), tooltip='Save changes')]]
 
     # Table
     lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
@@ -1922,226 +1930,6 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     gc.collect()
 
     return row
-
-
-def modify_record(df, index, edit_cols, header_map: dict = None, win_size: tuple = None, edit: bool = True):
-    """
-    Display window for user to add or edit a row.
-
-    Arguments:
-        df (DataFrame): pandas dataframe.
-
-        index (int): dataframe index of row to edit.
-
-        edit_cols (dict): dictionary of columns that are editable.
-
-        header_map (dict): dictionary mapping dataframe columns to display columns.
-
-        win_size (tuple): tuple containing the window width and height.
-
-        edit (bool): edit an existing record [default: True].
-    """
-    is_float_dtype = pd.api.types.is_float_dtype
-    is_integer_dtype = pd.api.types.is_integer_dtype
-    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-    is_bool_dtype = pd.api.types.is_bool_dtype
-
-    if not isinstance(edit_cols, dict):
-        print('TypeError: argument edit_cols must be a dictionary')
-        return df
-
-    if not isinstance(index, int):
-        print('TypeError: argument index must be an integer value')
-        return df
-
-    if win_size:
-        width, height = win_size
-    else:
-        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
-
-    # Format dataframe as a list for the gui
-    row = df.iloc[index]
-    header = df.columns.values.tolist()
-
-    if header_map is None:
-        header_map = {i: i for i in header}
-
-    display_header = []
-    for column in header_map:
-        if column in header:
-            display_header.append(column)
-        else:
-            continue
-
-    edit_keys = {}
-    for column in edit_cols:
-        element_key = '-{COL}-'.format(COL=column)
-        edit_keys[column] = element_key
-
-    # Window and element size parameters
-    main_font = mod_const.MAIN_FONT
-    font_size = main_font[1]
-
-    pad_el = mod_const.ELEM_PAD
-    pad_frame = mod_const.FRAME_PAD
-    pad_v = mod_const.VERT_PAD
-
-    header_col = mod_const.TBL_HEADER_COL
-    in_col = mod_const.INPUT_COL
-
-    # GUI layout
-    # Buttons
-    bttn_layout = [[mod_lo.B2('Cancel', key='-CANCEL-', pad=(pad_el, 0), tooltip='Cancel edit'),
-                    mod_lo.B2('Save', key='-SAVE-', bind_return_key=True, pad=(pad_el, 0),
-                              tooltip='Save changes')]]
-
-    # Table
-    lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
-
-    tbl_layout = []
-    for i, display_column in enumerate(display_header):
-        display_name = header_map[display_column]
-
-        col_width = lengths[i]
-        column_layout = [[sg.Text(display_name, size=(col_width, 1), auto_size_text=False, border_width=1,
-                                  relief='sunken', background_color=header_col, justification='c', font=main_font,
-                                  tooltip=display_name)]]
-
-        field_val = row[display_column]
-        if display_column in edit_keys:
-            element_key = edit_keys[display_column]
-            readonly = False
-            try:
-                column_type = edit_cols[display_column]['ElementType']
-            except KeyError:
-                column_type = 'string'
-        else:
-            element_key = '-{COL}-'.format(COL=display_column)
-            readonly = True
-            column_type = 'string'
-
-        if column_type == 'dropdown':
-            try:
-                values = edit_cols[display_column]['Values']
-            except KeyError:
-                values = [field_val]
-            column_layout.append([sg.DropDown(values, default_value=field_val, key=element_key, size=(col_width - 2, 1),
-                                              font=main_font, readonly=readonly,
-                                              tooltip='Select item from the dropdown menu')])
-        else:
-            column_layout.append([sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
-                                           font=main_font, justification='r', readonly=readonly,
-                                           background_color=in_col, tooltip=field_val)])
-
-        tbl_layout.append(sg.Col(column_layout, pad=(0, 0), expand_x=True))
-
-    layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, (pad_frame, 0)))],
-              [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
-
-    window = sg.Window('Edit Row', layout, modal=True, resizable=False)
-    window.finalize()
-
-    for display_column in display_header:
-        if display_column in edit_keys:
-            element_key = edit_keys[display_column]
-            window[element_key].expand(expand_x=True)
-
-    # Start event loop
-    while True:
-        event, values = window.read()
-
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
-            if edit is False:
-                df.drop(index, axis=0, inplace=True)
-                df.reset_index(drop=True, inplace=True)
-
-            break
-
-        if event == '-SAVE-':  # click 'Save' button
-            ready_to_save = []
-            for column in edit_keys:
-                col_key = edit_keys[column]
-                input_val = values[col_key]
-
-                # Get data type of column
-                try:
-                    dtype = edit_cols[column]['ElementType'].lower()
-                except (KeyError, TypeError):
-                    dtype = df[column].dtype
-                else:
-                    if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                        dtype = np.datetime64
-                    elif dtype == 'dropdown':
-                        dtype = np.object
-                    elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-                        dtype = float
-                    elif dtype in ('int', 'integer', 'bit'):
-                        dtype = int
-                    elif dtype in ('bool', 'boolean'):
-                        dtype = bool
-                    else:
-                        dtype = np.object
-
-                # Set field value based on data type
-                print('Info: the data type of column {COL} is {DTYPE}'.format(COL=header_map[column], DTYPE=dtype))
-                msg = 'The value "{VAL}" provided to column "{COL}" is the wrong type'
-                if is_float_dtype(dtype):
-                    try:
-                        field_val = float(input_val)
-                    except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
-                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
-                        ready_to_save.append(False)
-                        break
-                elif is_integer_dtype(dtype):
-                    try:
-                        field_val = int(input_val)
-                    except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
-                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
-                        ready_to_save.append(False)
-                        break
-                elif is_bool_dtype(dtype):
-                    try:
-                        field_val = bool(input_val)
-                    except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
-                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
-                        ready_to_save.append(False)
-                        break
-                elif is_datetime_dtype(dtype):
-                    try:
-                        field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
-                    except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
-                        popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
-                        ready_to_save.append(False)
-                        break
-                else:
-                    field_val = input_val
-
-                # Replace field value with modified value
-                try:
-                    df.at[index, column] = field_val
-                except ValueError as e:
-                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type - {ERR}' \
-                        .format(VAL=field_val, COL=header_map[column], ERR=e)
-                    popup_notice(msg)
-                    ready_to_save.append(False)
-                else:
-                    ready_to_save.append(True)
-
-            if all(ready_to_save):
-                break
-            else:
-                continue
-
-    window.close()
-    layout = None
-    window = None
-    gc.collect()
-
-    return df
 
 
 def center_window(window):
