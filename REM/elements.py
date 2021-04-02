@@ -2653,7 +2653,6 @@ class DataElement:
 
                 return False
             else:
-                print(display_value)
                 window[elem_key].update(value=display_value)
 
         return True
@@ -2777,7 +2776,7 @@ class DataElement:
             nrow = element_options.get('Rows', 1)
             width = size[0]
             element_layout = [sg.Multiline(display_value, key=elem_key, size=(width, nrow), font=font,
-                                           background_color=input_col, text_color=text_col, write_only=True,
+                                           background_color=input_col, text_color=text_col, write_only=False,
                                            border_width=1, disabled=is_disabled, enable_events=True,
                                            tooltip='Input value for {}'.format(self.description),
                                            metadata={'disabled': is_disabled, 'value': param_value})]
@@ -3015,7 +3014,7 @@ class DataElement:
             window[elem_key].metadata['value'] = display_value
 
         else:
-            display_value = value
+            display_value = value.rstrip('\n\r')
 
         return display_value
 
@@ -3029,9 +3028,6 @@ class DataElement:
         dtype = self.dtype
         value = self.value
         options = self.options
-        print('Info: DataElement {NAME}: formatting element value {VAL} of type {TYPE} for display'
-              .format(NAME=self.name, VAL=value, TYPE=type(value)))
-
         if value == '' or value is None:
             return ''
 
@@ -3062,7 +3058,7 @@ class DataElement:
 
         else:
             aliases = options.get('Aliases', {})
-            display_value = aliases.get(value, str(value))
+            display_value = aliases.get(value, str(value).rstrip('\n\r'))
 
         return display_value
 
