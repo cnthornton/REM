@@ -11,6 +11,7 @@ REM/tests/*.xls
 logo.png
 
 # Configuration file
+REM/REM.log
 REM/settings.yaml
 REMServer/cnfg.yaml
 
