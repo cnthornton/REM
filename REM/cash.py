@@ -1,5 +1,5 @@
 """
-REM cash reconciliation configuration classes and objects.
+REM mod_cash reconciliation configuration classes and objects.
 """
 
 from random import randint
@@ -14,18 +14,15 @@ class CashRules:
 
     Arguments:
 
-        cnfg (Config): program configuration class.
+        cnfg (ConfigManager): program configuration class.
 
     Attributes:
 
         rules (list): List of CashRule objects.
     """
 
-    def __init__(self, cnfg):
+    def __init__(self, cash_param):
         self.name = 'Cash Reconciliation'
-
-        # Individual rules
-        cash_param = cnfg.cash_rules
 
         self.rules = []
         if cash_param is not None:
@@ -53,7 +50,7 @@ class CashRules:
 
     def print_rules(self, title=True):
         """
-        Return name of all cash rules defined in configuration file.
+        Return name of all mod_cash rules defined in configuration file.
         """
         if title is True:
             return [i.menu_title for i in self.rules]
@@ -68,7 +65,7 @@ class CashRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('Rule {NAME} not in list of configured cash reconciliation rules. Available rules are {ALL}'
+            print('Rule {NAME} not in list of configured mod_cash reconciliation rules. Available rules are {ALL}'
                   .format(NAME=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
@@ -79,15 +76,15 @@ class CashRules:
 
 class CashRule:
     """
-    Class to store and manage a configured cash reconciliation rule.
+    Class to store and manage a configured mod_cash reconciliation rule.
 
     Attributes:
 
-        name (str): cash reconciliation rule name.
+        name (str): mod_cash reconciliation rule name.
 
         id (int): rule element number.
 
-        menu_title (str): cash reconciliation rule title.
+        menu_title (str): mod_cash reconciliation rule title.
 
         element_key (str): panel element key.
 
@@ -100,9 +97,9 @@ class CashRule:
         """
         Arguments:
 
-            name (str): bank reconciliation rule name.
+            name (str): mod_bank reconciliation rule name.
 
-            entry (dict): dictionary of optional and required cash reconciliation arguments.
+            entry (dict): dictionary of optional and required mod_cash reconciliation arguments.
         """
 
         self.name = name
@@ -118,7 +115,7 @@ class CashRule:
 
         try:
             self.permissions = entry['AccessPermissions']
-        except KeyError:  # default permission for a cash rule is 'user'
+        except KeyError:  # default permission for a mod_cash rule is 'user'
             self.permissions = 'user'
 
         try:

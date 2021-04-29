@@ -11,7 +11,6 @@ from random import randint
 import re
 import sys
 
-from REM.config import configuration
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.data_manipulation as mod_dm
@@ -19,7 +18,8 @@ import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
-from REM.settings import settings, user
+#from REM.settings import settings, user
+from REM.client import logger, settings, user
 
 
 class TableElement:
@@ -118,7 +118,7 @@ class TableElement:
                 try:
                     action_val = bool(int(self.actions[action]))
                 except ValueError:
-                    print('Configuration Error: DataTable {TBL}: action {ACT} must be either 0 (False) or 1 (True)'
+                    print('Warning: DataTable {TBL}: action {ACT} must be either 0 (False) or 1 (True)'
                           .format(TBL=self.name, ACT=action))
                     action_val = False
 
@@ -365,7 +365,6 @@ class TableElement:
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
 
-        self._df = pd.DataFrame(columns=columns)
         self.df = pd.DataFrame(columns=columns)
         self.import_df = pd.DataFrame(columns=columns)
         self.index_map = {}
@@ -379,8 +378,8 @@ class TableElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: DataTable {NAME}: component {COMP} not found in list of element components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('DataTable {NAME}: component {COMP} not found in list of element components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -391,7 +390,6 @@ class TableElement:
         """
         columns = list(self.columns)
 
-        self._df = pd.DataFrame(columns=columns)
         self.df = pd.DataFrame(columns=columns)
         self.import_df = pd.DataFrame(columns=columns)
 
@@ -445,7 +443,8 @@ class TableElement:
             try:
                 select_row_index = values[event][0]
             except IndexError:  # user double-clicked too quickly
-                print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
+                msg = 'table row could not be selected'
+                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Get the real index of the selected row
                 try:
@@ -459,15 +458,12 @@ class TableElement:
                     self.df = self.edit_row(index)
 
         elif event == self.key_lookup('CollapseButton'):
-            print('Info: DataTable {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
             self.collapse_expand(window)
 
         elif event == self.key_lookup('FilterButton'):
-            print('Info: DataTable {TBL}: expanding / collapsing filter frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='filter')
 
         elif event == self.key_lookup('SummaryButton'):
-            print('Info: DataTable {TBL}: expanding / collapsing summary frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='summary')
 
         # Click filter Apply button to apply filtering to table
@@ -495,8 +491,8 @@ class TableElement:
                 columns = self.display_columns
                 header = list(columns.keys())
                 new_width = tbl_width - frame_w - 2 if tbl_width - frame_w - 2 > 0 else 0
-                print('Info: DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
-                      'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
+                logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
+                             'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
                 lengths = self.calc_column_widths(width=new_width, pixels=True)
                 for col_index, col_name in enumerate(header):
                     col_width = lengths[col_index]
@@ -520,8 +516,8 @@ class TableElement:
             try:
                 sort_col = display_map[display_col]
             except KeyError:
-                print('Configuration Warning: DataTable {NAME}: sort display column {COL} must have a one-to-one '
-                      'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
+                logger.warning('DataTable {NAME}: sort display column {COL} must have a one-to-one '
+                               'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
             else:
                 if sort_col in sort_on:
                     # Remove column from sortby list
@@ -542,7 +538,7 @@ class TableElement:
                 indices = [self.index_map[i] for i in select_row_indices]
             except KeyError:
                 msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
-                print('Warning: DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_notice(msg)
                 indices = []
 
@@ -551,20 +547,18 @@ class TableElement:
             try:
                 fill_col = display_map[display_col]
             except KeyError:
-                print('Configuration Warning: DataTable {NAME}: fill display column {COL} must have a one-to-one '
-                      'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
+                logger.warning('DataTable {NAME}: fill display column {COL} must have a one-to-one '
+                               'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
             else:
                 # Fill in NA values
-                print('Info: DataTable {NAME}: filling column {COL} NAs by forwarding last value'
-                      .format(NAME=self.name, COL=fill_col))
                 self.fill(fill_col, rows=indices)
 
         elif event in param_elems:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
-                print('Error: DataTable {TBL}: unable to find parameter associated with event key {KEY}'
-                      .format(TBL=self.name, KEY=event))
+                logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
+                             .format(TBL=self.name, KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -580,18 +574,14 @@ class TableElement:
                 indices = [self.index_map[i] for i in select_row_indices]
             except KeyError:
                 msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
-                print('Warning: DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_notice(msg)
                 indices = []
-
-            print('Info: DataTable {NAME}: rows {IND} have been selected for removal'
-                  .format(NAME=self.name, IND=select_row_indices))
 
             self.df = self.delete_rows(indices)
 
         elif event == export_key:
             export_df = self.update_display(window, values)
-            print('Info: DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
             annotations = self.annotate_display(self.df)
             annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
             self.export_table(export_df, annotation_map)
@@ -635,7 +625,7 @@ class TableElement:
 
         search_field = self.search_field
         # Modify records tables for displaying
-        print('Info: DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
+        logger.debug('DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
 
         # Filter the table rows, if applicable
         if search_field is not None and window_values is not None:
@@ -643,8 +633,9 @@ class TableElement:
             try:
                 search_value = window_values[search_key]
             except KeyError:
-                print('Warning: DataTable {NAME}: search field key {KEY} not found in list of window GUI elements'
-                      .format(NAME=self.name, KEY=search_key))
+                msg = 'DataTable {NAME}: search field key {KEY} not found in list of window GUI elements'\
+                    .format(NAME=self.name, KEY=search_key)
+                logger.warning(msg)
                 search_value = None
         else:
             search_value = None
@@ -656,8 +647,9 @@ class TableElement:
             try:
                 df = df[df[search_field] == search_value]
             except KeyError:
-                print('Warning: DataTable {NAME}: search field {COL} not found in list of table columns'
-                      .format(NAME=self.name, COL=search_field))
+                msg = 'DataTable {NAME}: search field {COL} not found in list of table columns'\
+                    .format(NAME=self.name, COL=search_field)
+                logger.warning(msg)
 
         # Edit the index map to reflect what is currently displayed
         self.index_map = {i: j for i, j in enumerate(df.index.tolist())}
@@ -678,18 +670,18 @@ class TableElement:
         window[tbl_key].update(values=data, row_colors=row_colors)
 
         # Update table totals
-        print('Info: DataTable {NAME}: calculating table totals'.format(NAME=self.name))
         try:
             tbl_total = self.calculate_total(df)
         except Exception as e:
-            print('Warning: DataTable {NAME}: failed to calculate the total - {ERR}'.format(NAME=self.name, ERR=e))
+            msg = 'DataTable {NAME}: failed to calculate table totals - {ERR}'.format(NAME=self.name, ERR=e)
+            logger.warning(msg)
             tbl_total = 0
 
         if is_float_dtype(type(tbl_total)):
-            print('Info: DataTable {NAME}: table totals are formatted as float'.format(NAME=self.name))
+            logger.debug('DataTable {NAME}: table totals are formatted as float'.format(NAME=self.name))
             tbl_total = '{:,.2f}'.format(tbl_total)
         else:
-            print('Info: DataTable {NAME}: table totals are formatted as a string'.format(NAME=self.name))
+            logger.debug('DataTable {NAME}: table totals are formatted as a string'.format(NAME=self.name))
             tbl_total = str(tbl_total)
 
         total_key = self.key_lookup('Total')
@@ -739,8 +731,8 @@ class TableElement:
             try:
                 col_to_add = mod_dm.generate_column_from_rule(df, col_rule)
             except Exception as e:
-                print('Error: DataTable {TBL}: unable to generate column from display rule {RULE} - {ERR}'
-                      .format(TBL=self.name, RULE=col_rule, ERR=e))
+                logger.error('DataTable {TBL}: unable to generate column from display rule {RULE} - {ERR}'
+                             .format(TBL=self.name, RULE=col_rule, ERR=e))
                 continue
 
             dtype = col_to_add.dtype
@@ -760,8 +752,8 @@ class TableElement:
             alias_map = aliases[alias_col]  # dictionary of mapped values
 
             if alias_col not in display_header:
-                print('Warning: DataTable {TBL}: alias column {ALIAS} not found in the list of display columns'
-                      .format(TBL=self.name, ALIAS=alias_col))
+                logger.warning('DataTable {TBL}: alias column {ALIAS} not found in the list of display columns'
+                               .format(TBL=self.name, ALIAS=alias_col))
                 continue
 
             try:
@@ -771,17 +763,17 @@ class TableElement:
                 elif is_bool_dtype(col_dtype):
                     alias_map = {bool(i): j for i, j in alias_map.items()}
             except KeyError:
-                print('Warning: DataTable {TBL}: alias {ALIAS} not found in the list of display columns'
-                      .format(TBL=self.name, ALIAS=alias_col))
+                logger.warning('DataTable {TBL}: alias {ALIAS} not found in the list of display columns'
+                               .format(TBL=self.name, ALIAS=alias_col))
             except ValueError:
-                print('Warning: DataTable {TBL}: aliases provided to column {ALIAS} should match data type {DTYPE} of '
-                      'the column'.format(TBL=self.name, ALIAS=alias_col, DTYPE=col_dtype))
+                logger.warning('DataTable {TBL}: aliases provided to column {ALIAS} does not match data type {DTYPE} '
+                               'of the column'.format(TBL=self.name, ALIAS=alias_col, DTYPE=col_dtype))
             else:
                 try:
                     display_df[alias_col] = display_df[alias_col].apply(lambda x: alias_map[x] if x in alias_map else x)
                 except TypeError:
-                    print('Warning: DataTable {TBL}: cannot replace values for column {ALIAS} with their aliases as '
-                          'alias values are not of the same data type'.format(TBL=self.name, ALIAS=alias_col))
+                    logger.warning('DataTable {TBL}: cannot replace values for column {ALIAS} with their aliases as '
+                                   'alias values are not of the same data type'.format(TBL=self.name, ALIAS=alias_col))
 
         return display_df.fillna('')
 
@@ -796,28 +788,30 @@ class TableElement:
         if df.empty or not filter_rules:
             return df
 
+        logger.debug('DataTable {NAME}: filtering display table on configured filter rules'.format(NAME=self.name))
+
         for column in filter_rules:
             filter_rule = filter_rules[column]
-            print('Info: DataTable {TBL}: filtering table on column {COL} with rule {RULE}'
-                  .format(TBL=self.name, COL=column, RULE=filter_rule))
+            logger.debug('DataTable {TBL}: filtering table on column {COL} based on rule "{RULE}"'
+                         .format(TBL=self.name, COL=column, RULE=filter_rule))
 
             try:
                 filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
             except Exception as e:
-                print('Info: DataTable {TBL}: filtering table on column {COL} failed - {ERR}'
-                      .format(TBL=self.name, COL=column, ERR=e))
+                logger.warning('DataTable {TBL}: filtering table on column {COL} failed - {ERR}'
+                               .format(TBL=self.name, COL=column, ERR=e))
                 continue
 
             try:
                 failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_cond)].index
             except Exception as e:
-                print('Info: DataTable {TBL}: filtering table on column {COL} failed - {ERR}'
-                      .format(TBL=self.name, COL=column, ERR=e))
+                logger.warning('DataTable {TBL}: filtering table on column {COL} failed - {ERR}'
+                               .format(TBL=self.name, COL=column, ERR=e))
                 continue
 
             if len(failed) > 0:
-                print('Info: DataTable {TBL}: rows {ROWS} were removed after applying filter rule on column {COL}'
-                      .format(TBL=self.name, ROWS=failed.tolist(), COL=column))
+                logger.info('DataTable {TBL}: rows {ROWS} were removed after applying filter rule on column {COL}'
+                            .format(TBL=self.name, ROWS=failed.tolist(), COL=column))
 
                 df.drop(failed, axis=0, inplace=True)
                 df.reset_index(drop=True, inplace=True)
@@ -838,10 +832,15 @@ class TableElement:
         df = df if df is not None else self.df
         summ_rules = self.summary_rules
 
+        logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
+
         # Calculate totals defined by summary rules
         outputs = []
         for rule_name in summ_rules:
             summ_rule = summ_rules[rule_name]
+
+            logger.debug('DataTable {NAME}: summarizing display table on configured summary rule "{RULE}"'
+                         .format(NAME=self.name, RULE=summ_rule))
 
             column = summ_rule['Column']
 
@@ -851,8 +850,8 @@ class TableElement:
                 try:
                     subset_df = self.subset(summ_rule['Condition'])
                 except Exception as e:
-                    print('Warning: DataTable {NAME}: unable to subset dataframe with subset rule {SUB} - {ERR}'
-                          .format(NAME=self.name, SUB=summ_rule['Subset'], ERR=e))
+                    logger.warning('DataTable {NAME}: unable to subset dataframe with subset rule {SUB} - {ERR}'
+                                   .format(NAME=self.name, SUB=summ_rule['Subset'], ERR=e))
                     break
             else:
                 subset_df = df
@@ -877,8 +876,8 @@ class TableElement:
                     try:  # component is a number
                         float(component)
                     except ValueError:  # component is an unsupported character
-                        print('Warning: DataTable {NAME}: unsupported character "{ITEM}" found in summary rule '
-                              '"{SUMM}"'.format(NAME=self.name, ITEM=component, SUMM=rule_name))
+                        logger.warning('DataTable {NAME}: unsupported character "{ITEM}" found in summary rule '
+                                       '"{SUMM}"'.format(NAME=self.name, ITEM=component, SUMM=rule_name))
                         rule_values = [0]
                         break
                     else:
@@ -899,8 +898,8 @@ class TableElement:
         if df.empty:
             return df
 
-        print('Info: DataTable {NAME}: filtering the display table based on user-supplied parameter values'
-              .format(NAME=self.name))
+        logger.debug('DataTable {NAME}: filtering the display table based on user-supplied parameter values'
+                     .format(NAME=self.name))
 
         for param in parameters:
             param_value = param.value
@@ -910,7 +909,7 @@ class TableElement:
 
             try:
                 if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                    col_values = pd.to_datetime(df[column], errors='coerce', format=user.date_format)
+                    col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
                 elif dtype in ('int', 'integer', 'bit'):
                     col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
                 elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
@@ -922,55 +921,61 @@ class TableElement:
                 else:
                     col_values = df[column].astype(np.object, errors='raise')
             except Exception as e:
-                print('Warning: DataTable {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
-                      .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                logger.error('DataTable {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                             .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
                 col_values = df[column]
 
             if isinstance(param_value, tuple) or isinstance(param_value, list):  # parameter is range element
                 try:
                     from_value, to_value = param_value
                 except ValueError:
-                    print('Error: DataTable {NAME}: ranged parameter {PARAM} requires exactly two values'
-                          .format(NAME=self.name, PARAM=param.name))
+                    logger.error('DataTable {NAME}: ranged parameter {PARAM} requires exactly two values'
+                                 .format(NAME=self.name, PARAM=param.name))
                     continue
 
                 if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
+                    logger.debug('DataTable {NAME}: filtering table on parameter {PARAM} values {VAL1} and {VAL2}'
+                                 .format(NAME=self.name, PARAM=param.name, VAL1=from_value, VAL2=to_value))
                     try:
                         df = df[(col_values >= from_value) & (col_values <= to_value)]
                     except KeyError:
-                        print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                              .format(TBL=self.name, PARAM=column))
+                        logger.warning('DataTable {TBL}: filter parameter {PARAM} not found in the table header'
+                                       .format(TBL=self.name, PARAM=column))
                         continue
                     except SyntaxError:
-                        print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} for values '
-                              'between {VAL1} and {VAL2}'
-                              .format(TBL=self.name, PARAM=param.name, VAL1=from_value, VAL2=to_value))
+                        logger.warning('DataTable {TBL}: unable to filter table on parameter {PARAM} values '
+                                       '{VAL1} and {VAL2}'
+                                       .format(TBL=self.name, PARAM=param.name, VAL1=from_value, VAL2=to_value))
                 elif from_value not in (None, '') and to_value in (None, ''):  # rows equal to from component
+                    logger.debug('DataTable {NAME}: filtering table on parameter {PARAM} value {VAL}'
+                                 .format(NAME=self.name, PARAM=param.name, VAL=from_value))
                     try:
                         df = df[col_values == from_value]
                     except KeyError:
-                        print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                              .format(TBL=self.name, PARAM=column))
+                        logger.warning('DataTable {TBL}: filter parameter {PARAM} not found in the table header'
+                                       .format(TBL=self.name, PARAM=column))
                         continue
                     except SyntaxError:
-                        print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
-                              '{VAL},'.format(TBL=self.name, PARAM=column, VAL=from_value))
+                        logger.warning('DataTable {TBL}: unable to filter table on parameter {PARAM} value '
+                                       '{VAL},'.format(TBL=self.name, PARAM=column, VAL=from_value))
                 elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
+                    logger.debug('DataTable {NAME}: filtering table on parameter {PARAM} value {VAL}'
+                                 .format(NAME=self.name, PARAM=param.name, VAL=to_value))
                     try:
                         df = df[col_values == to_value]
                     except KeyError:
-                        print('Warning: DataTable {TBL}: filter parameter {PARAM} not found in the table header'
-                              .format(TBL=self.name, PARAM=column))
+                        logger.warning('DataTable {TBL}: filter parameter {PARAM} not found in the table header'
+                                       .format(TBL=self.name, PARAM=column))
                         continue
                     except SyntaxError:
-                        print('Warning: DataTable {TBL}: unable to filter table using parameter {PARAM} with value '
-                              '{VAL}'.format(TBL=self.name, PARAM=column, VAL=to_value))
+                        logger.warning('DataTable {TBL}: unable to filter table on parameter {PARAM} value '
+                                       '{VAL}'.format(TBL=self.name, PARAM=column, VAL=to_value))
             else:  # parameter is a single element
                 if not param_value:
                     continue
 
-                print('Info: DataTable {NAME}: filtering table with parameter {PARAM} value {VAL}'
-                      .format(NAME=self.name, PARAM=param.name, VAL=param_value))
+                logger.debug('DataTable {NAME}: filtering table on parameter {PARAM} value {VAL}'
+                             .format(NAME=self.name, PARAM=param.name, VAL=param_value))
 
                 if match_pattern is True:
                     df = df[col_values.str.contains(param_value, case=False, regex=True)]
@@ -987,29 +992,31 @@ class TableElement:
         if df.empty or rules is None:
             return {}
 
+        logger.debug('DataTable {NAME}: annotating display table on configured annotation rules'.format(NAME=self.name))
+
         annotations = {}
         rows_annotated = []
         for annot_code in rules:
-            print('Info: DataTable {NAME}: annotating table based on configured annotation rule {CODE}'
-                  .format(NAME=self.name, CODE=annot_code))
+            logger.debug('DataTable {NAME}: annotating table based on configured annotation rule "{CODE}"'
+                         .format(NAME=self.name, CODE=annot_code))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
                 results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=False)
             except Exception as e:
-                print('Error: DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
-                      .format(NAME=self.name, CODE=annot_code, ERR=e))
-                raise
+                logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
+                             .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
-            print('Info: DataTable {NAME}: annotation results are {RES}'.format(NAME=self.name, RES=list(results)))
+            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
+                         .format(NAME=self.name, RULE=annot_code, RES=list(results)))
             for row_index, result in results.iteritems():
                 if result:
-                    print('Info: DataTable {NAME}: table row {ROW} annotated with annotation code {CODE}'
-                          .format(NAME=self.name, ROW=row_index, CODE=annot_code))
+                    logger.debug('DataTable {NAME}: table row {ROW} annotated on annotation code {CODE}'
+                                 .format(NAME=self.name, ROW=row_index, CODE=annot_code))
                     if row_index in rows_annotated:
-                        print('Warning: DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
-                              'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
+                        logger.warning('DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
+                                       'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
                     else:
                         annotations[row_index] = annot_code
                         rows_annotated.append(row_index)
@@ -1122,8 +1129,8 @@ class TableElement:
                 elif use_center is False and index_mod == 0:
                     right_cols.append([param_layout])
                 else:
-                    print('Warning: DataTable {NAME}: cannot assign layout for table filter parameter {PARAM}'
-                          .format(NAME=self.name, PARAM=parameter.name))
+                    logger.warning('DataTable {NAME}: cannot assign layout for table filter parameter {PARAM}'
+                                   .format(NAME=self.name, PARAM=parameter.name))
 
         if len(right_cols) < 1:
             right_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
@@ -1361,6 +1368,8 @@ class TableElement:
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
+        logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
+
         # Enable filter parameters
         if len(params) > 0 and self.actions['filter'] is True:
             # Enable the apply button
@@ -1381,6 +1390,8 @@ class TableElement:
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
+        logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
+
         # Enable filter parameters
         if len(params) > 0 and self.actions['filter'] is True:
             # Enable the apply button
@@ -1400,6 +1411,8 @@ class TableElement:
         """
         header = list(self.display_columns.keys())
         widths = self.widths
+
+        logger.debug('DataTable {NAME}: calculating table column widths'.format(NAME=self.name))
 
         # Size of data
         ncol = len(header)
@@ -1435,8 +1448,8 @@ class TableElement:
             try:
                 max_size_per_col = int(tbl_width / ncol)
             except ZeroDivisionError:
-                print('Warning: DataTable {NAME}: division by zero error encountered while attempting to calculate '
-                      'column widths'.format(NAME=self.name))
+                logger.warning('DataTable {NAME}: division by zero error encountered while attempting to calculate '
+                               'column widths'.format(NAME=self.name))
                 max_size_per_col = int(tbl_width / 10)
 
             # Each column has size == max characters per column
@@ -1469,11 +1482,13 @@ class TableElement:
             frame_key = self.key_lookup('CollapseFrame')
 
         if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
+            logger.debug('DataTable {TBL}: collapsing {FRAME} frame'.format(TBL=self.name, FRAME=frame))
             window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
             window[frame_key].update(visible=False)
 
             window[frame_key].metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
+            logger.debug('DataTable {TBL}: expanding {FRAME} frame'.format(TBL=self.name, FRAME=frame))
             window[hide_key].update(image_data=mod_const.HIDE_ICON)
             window[frame_key].update(visible=True)
 
@@ -1490,7 +1505,8 @@ class TableElement:
 
         row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
 
-        print('Info: DataTable {TBL}: resizing element display to {W}, {H}'.format(TBL=self.name, W=width, H=height))
+        logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
+                     .format(TBL=self.name, W=int(width), H=int(height)))
         self.dimensions = (width, height)
 
         tbl_key = self.key_lookup('Element')
@@ -1519,9 +1535,8 @@ class TableElement:
         orig_height = initial_nrow * mod_const.TBL_ROW_HEIGHT
         height_diff = int((height - orig_height) / row_rate)
         nrows = initial_nrow + height_diff if height_diff > -initial_nrow else 1
-        print('Info: DataTable {TBL}: changing the number of rows in the table from {IROW} to {CROW} based on the '
-              'calculated size difference {DIFF}'.format(TBL=self.name, IROW=initial_nrow, CROW=nrows,
-                                                         DIFF=height_diff))
+        logger.debug('DataTable {NAME}: changing the number of rows in the table from {IROW} to {CROW} based on table '
+                     'size difference {DIFF}'.format(NAME=self.name, IROW=initial_nrow, CROW=nrows, DIFF=height_diff))
 
         window[tbl_key].update(num_rows=nrows)
 
@@ -1544,6 +1559,9 @@ class TableElement:
         if add_df.empty:
             return df
 
+        logger.debug('DataTable {NAME}: appending {NROW} rows to the table'
+                     .format(NAME=self.name, NROW=add_df.shape[0]))
+
         df = df.append(add_df, ignore_index=True)
         df = self.set_datatypes(df)
 
@@ -1553,22 +1571,29 @@ class TableElement:
         """
         Forward fill table NA values.
         """
+        logger.info('DataTable {NAME}: filling {NROW} rows using fill method {METHOD}'
+                    .format(NAME=self.name, NROW=len(rows), METHOD=fill_method))
+
         if rows is not None:
             if len(rows) > 0:
                 try:
                     self.df.iloc[rows, self.df.columns.get_loc(column)] = \
                         self.df.iloc[rows, self.df.columns.get_loc(column)].fillna(method=fill_method)
                 except IndexError:
-                    print('Warning: DataTable {NAME}: unable to fill table on selected rows'.format(NAME=self.name))
+                    logger.warning('DataTable {NAME}: unable to fill table on selected rows - unknown rows selected'
+                                   .format(NAME=self.name))
                 except ValueError:
-                    print('Warning: DataTable {NAME}: invalid method provided'.format(NAME=self.name))
+                    logger.warning('DataTable {NAME}: unable to fill table on selected rows - invalid method provided'
+                                   .format(NAME=self.name))
             else:
-                print('Warning: DataTable {NAME}: no rows selected for filling'.format(NAME=self.name))
+                logger.warning('DataTable {NAME}: unable to fill table - no rows selected for filling'
+                               .format(NAME=self.name))
         else:
             try:
                 self.df[column].fillna(method=fill_method, inplace=True)
             except ValueError:
-                print('Warning: DataTable {NAME}: invalid method provided'.format(NAME=self.name))
+                logger.warning('DataTable {NAME}: unable to fill table on selected rows - invalid method provided'
+                               .format(NAME=self.name))
 
     def sort(self, sort_on=None, ascending: bool = True):
         """
@@ -1585,16 +1610,16 @@ class TableElement:
                 if sort_col in col_header:
                     sort_keys.append(sort_col)
                 else:
-                    print('Warning: DataTable {NAME}: sort column {COL} not found in table header'
-                          .format(NAME=self.name, COL=sort_col))
+                    logger.warning('DataTable {NAME}: sort column {COL} not found in table header'
+                                   .format(NAME=self.name, COL=sort_col))
 
         if len(sort_keys) > 0:
-            print('Info: DataTable {NAME}: sorting table on {KEYS}'.format(NAME=self.name, KEYS=sort_keys))
+            logger.debug('DataTable {NAME}: sorting table on {KEYS}'.format(NAME=self.name, KEYS=sort_keys))
             try:
                 self.df.sort_values(by=sort_keys, inplace=True, ascending=ascending)
             except KeyError:  # sort key is not in table header
-                print('Warning: DataTable {NAME}: one or more sort key columns ({COLS}) not find in the table header. '
-                      'Values will not be sorted.'.format(NAME=self.name, COLS=', '.join(sort_keys)))
+                logger.warning('DataTable {NAME}: one or more sort key columns ({COLS}) not find in the table header. '
+                               'Values will not be sorted.'.format(NAME=self.name, COLS=', '.join(sort_keys)))
             else:
                 self.df.reset_index(drop=True, inplace=True)
 
@@ -1604,6 +1629,8 @@ class TableElement:
         """
         operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'IN', 'In', 'in'}
         chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
+
+        logger.debug('DataTable {NAME}: subsetting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
 
         df = self.df.copy()
         header = df.columns.values.tolist()
@@ -1645,7 +1672,6 @@ class TableElement:
         except SyntaxError:
             raise SyntaxError('invalid syntax for subset rule {NAME}'.format(NAME=subset_rule))
         except NameError:
-            print(cond_str)
             raise NameError('unknown column specified in subset rule {NAME}'.format(NAME=subset_rule))
 
         return subset_df
@@ -1654,6 +1680,7 @@ class TableElement:
         """
         Export table to spreadsheet.
         """
+        logger.info('DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
         outfile = sg.popup_get_file('', title='Export table display', save_as=True,
                                     default_extension='xlsx', no_window=True,
                                     file_types=(
@@ -1681,14 +1708,16 @@ class TableElement:
 
         tally_rule = self.tally_rule
         df = df if df is not None else self.df
+        logger.debug('DataTable {NAME}: calculating table totals'.format(NAME=self.name))
 
         total = 0
         if tally_rule is not None:
             try:
                 result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
             except Exception as e:
-                print('Warning: DataTable {NAME}: unable to calculate table total - {ERR}'
-                      .format(NAME=self.name, ERR=e))
+                msg = 'DataTable {NAME}: unable to calculate table total - {ERR}'\
+                    .format(NAME=self.name, ERR=e)
+                logger.warning(msg)
             else:
                 dtype = result.dtype
                 if is_float_dtype(dtype) or is_integer_dtype(dtype) or is_bool_dtype(dtype):
@@ -1697,7 +1726,7 @@ class TableElement:
                     total = result.nunique()
                 else:  # possibly empty dataframe
                     total = 0
-                print('Info: DataTable {NAME}: table totals calculated as {TOTAL}'.format(NAME=self.name, TOTAL=total))
+                logger.debug('DataTable {NAME}: table totals calculated as {TOTAL}'.format(NAME=self.name, TOTAL=total))
         else:
             total = df.shape[0]
 
@@ -1712,8 +1741,8 @@ class TableElement:
         try:
             row_ids = self.df[id_field].tolist()
         except KeyError:  # database probably PostGreSQL
-            print('Warning: DataTable {TBL}: ID column {COL} not found in the data table'
-                  .format(TBL=self.name, COL=id_field))
+            logger.warning('DataTable {NAME}: unable to return a list of row IDs from the table - ID column {COL} not '
+                           'found in the data table'.format(NAME=self.name, COL=id_field))
             row_ids = []
 
         return row_ids
@@ -1764,14 +1793,23 @@ class TableElement:
         defaults = defaults if defaults is not None else {}
 
         if self.record_type is None:
-            print('Warning: DataTable {NAME}: attempting to add a new row to the table failed - missing required '
-                  'attribute record_type'.format(NAME=self.name))
+            msg = 'required attribute "record_type" missing from the configuration'
+            logger.warning('DataTable {NAME}: failed to add a new row to the table - {ERR}'
+                           .format(NAME=self.name, ERR=msg))
+            mod_win2.popup_error(msg)
             return df
 
         # Create a new record object
-        record_entry = configuration.records.fetch_rule(self.record_type)
+        record_entry = settings.records.fetch_rule(self.record_type)
 
         record_id = record_entry.create_id(creation_date, offset=settings.get_date_offset())
+        if not record_id:
+            msg = 'unable to create an ID for the new record'
+            logger.error('Error: DataTable {NAME}: failed to add new row to the table - {ERR}'
+                         .format(NAME=self.name, ERR=msg))
+            mod_win2.popup_error(msg)
+
+            return df
 
         record_data = pd.Series(index=header)
 
@@ -1791,8 +1829,9 @@ class TableElement:
         try:
             record = mod_records.create_record(record_entry, record_data)
         except Exception as e:
-            mod_win2.popup_error('Warning: DataTable {TBL}: failed to add record at row {IND} - {ERR}'
-                                 .format(TBL=self.name, IND=df.shape[0] + 2, ERR=e))
+            msg = 'failed to add record at row {IND} - {ERR}'.format(IND=df.shape[0] + 2, ERR=e)
+            mod_win2.popup_error(msg)
+            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             return df
 
         # Display the record window
@@ -1802,8 +1841,8 @@ class TableElement:
         except AttributeError:  # record creation was cancelled
             return df
         else:
-            print('Info: DataTable {TBL}: appending values {VALS} to the table'
-                  .format(TBL=self.name, VALS=record_values))
+            logger.debug('DataTable {NAME}: appending values {VALS} to the table'
+                         .format(NAME=self.name, VALS=record_values))
             df = self.append(record_values)
 
         return df
@@ -1816,11 +1855,11 @@ class TableElement:
         import_rules = import_rules if import_rules is None else self.import_rules
         record_type = self.record_type
 
-        record_entry = configuration.records.fetch_rule(record_type)
+        record_entry = settings.records.fetch_rule(record_type)
         if import_rules is None and record_entry is None:
-            msg = 'unable to display the record import window - no record type or import rules were configured'
+            msg = 'unable to display the record import window - record type was not configured for the table'
             mod_win2.popup_error(msg)
-            print('Error: DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             return self.df
         elif record_entry is not None and import_rules is None:
             import_rules = record_entry.import_rules
@@ -1847,15 +1886,15 @@ class TableElement:
             id_col = self.id_column
 
             # Search for records in record reference table with associations
-            ref_table = configuration.reference_lookup
+            ref_table = settings.reference_lookup
             ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (record_type, reftype, 0))
             references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
 
             try:
                 df = user.query(table_statement, columns=import_columns, filter_rules=import_filters, prog_db=True)
             except Exception as e:
-                print('Warning: DataTable {NAME}: failed to import data from the database - {ERR}'
-                      .format(NAME=self.name, ERR=e))
+                logger.warning('DataTable {NAME}: failed to import data from the database - {ERR}'
+                               .format(NAME=self.name, ERR=e))
             else:
                 # Drop records that already have associations to reference type records
                 ids_with_reference = references['RefNo'].tolist()
@@ -1894,7 +1933,8 @@ class TableElement:
         for index, record_id in select_df[self.id_column].items():
             if record_id in current_ids:
                 remove_indices.append(index)
-        print('Info: DataTable {NAME}: removing selected records already stored in the table'.format(NAME=self.name))
+        logger.debug('DataTable {NAME}: removing selected records at rows {ROWS} already stored in the table'
+                     .format(NAME=self.name, ROWS=remove_indices))
         select_df.drop(remove_indices, inplace=True, axis=0, errors='ignore')
 
         # Append selected rows to the table
@@ -1911,12 +1951,12 @@ class TableElement:
         """
         df = self.df.copy()
 
-        record_entry = configuration.records.fetch_rule(self.record_type)
+        record_entry = settings.records.fetch_rule(self.record_type)
         if record_entry is None:
             msg = 'unable to import record {ID} from the database - no record type was specified for the table' \
                 .format(ID=record_id)
             mod_win2.popup_error(msg)
-            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            logger.error('DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
 
             return df
 
@@ -1931,16 +1971,16 @@ class TableElement:
         """
         edit_columns = self.edit_columns
         if not edit_columns:
-            print('Warning: DataTable {TBL}: no columns have been configured to be editable'.format(TBL=self.name))
+            logger.warning('DataTable {TBL}: no columns have been configured to be editable'.format(TBL=self.name))
         df = self.df.copy()
 
         try:
             row = df.iloc[index]
         except IndexError:
-            msg = 'failed to edit record at row {IND} - no record found at table index {IND} to edit' \
-                .format(TBL=self.name, IND=index + 1)
+            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            logger.error('DataTable {NAME}: failed to edit record at row {IND} - {MSG}'
+                         .format(NAME=self.name, MSG=msg, IND=index + 1))
 
             return df
 
@@ -1965,7 +2005,7 @@ class TableElement:
             record_entry = mod_records.CustomRecordEntry({'RecordLayout': layout})
             record_group = 'custom'
         else:
-            record_entry = configuration.records.fetch_rule(self.record_type)
+            record_entry = settings.records.fetch_rule(self.record_type)
             record_group = record_entry.group
 
         if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
@@ -1992,10 +2032,10 @@ class TableElement:
         try:
             row = df.iloc[index]
         except IndexError:
-            msg = 'failed to open record at row {IND} - no record found at table index {IND} to edit' \
-                .format(TBL=self.name, IND=index + 1)
+            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            logger.error('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
+                         .format(NAME=self.name, IND=index + 1, MSG=msg))
 
             return df
 
@@ -2009,14 +2049,14 @@ class TableElement:
             record = self.translate_row(row, layout, level=level, new_record=new_record, references=references,
                                         custom=custom)
         except Exception as e:
-            msg = 'failed to open record at row {IND} - {ERR}' \
-                .format(TBL=self.name, IND=index + 1, ERR=e)
+            msg = 'failed to open record at row {IND}'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            print('Error: DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
+            logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             return df
         else:
-            print('Info: DataTable {NAME}: opening record at row {IND}'.format(NAME=self.name, IND=index))
+            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
+                        .format(NAME=self.name, ID=record.record_id(), IND=index))
 
         # Display the record window
         record = mod_win2.record_window(record, view_only=view_only)
@@ -2033,8 +2073,8 @@ class TableElement:
                 except KeyError:
                     continue
                 except ValueError as e:
-                    print('Error: DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - {ERR}'
-                          .format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
+                    logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - {ERR}'
+                                 .format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
 
         return df
 
@@ -2047,8 +2087,8 @@ class TableElement:
 
         # Get record IDs of selected rows
         record_ids = df.iloc[indices][self.id_column]
-        print('Info: DataTable {TBL}: removing records {IDS} from the table'
-              .format(TBL=self.name, IDS=record_ids.tolist()))
+        logger.info('DataTable {TBL}: removing records {IDS} from the table'
+                    .format(TBL=self.name, IDS=record_ids.tolist()))
 
         # Add removed rows to the import dataframe
         import_df = import_df.append(df.iloc[indices], ignore_index=True)
@@ -2059,7 +2099,7 @@ class TableElement:
         df.reset_index(drop=True, inplace=True)
 
         # Remove unsaved ID, if relevant
-        record_entry = configuration.records.fetch_rule(self.record_type)
+        record_entry = settings.records.fetch_rule(self.record_type)
         if record_entry is not None:
             for record_id in record_ids:
                 record_entry.remove_unsaved_id(record_id)
@@ -2076,19 +2116,21 @@ class TableElement:
                      'boolean': bool, 'char': str, 'varchar': str, 'binary': str, 'varbinary': str, 'tinytext': str,
                      'text': str, 'string': str}
 
+        logger.debug('DataTable {NAME}: setting column default values'.format(NAME=self.name))
+
         columns = self.defaults
         for column in columns:
             try:
                 dtype = self.columns[column]
             except KeyError:
-                print('Warning: DataTable {NAME}: default column {COL} not found in table header'
-                      .format(NAME=self.name, COL=column))
+                logger.warning('DataTable {NAME}: default column {COL} not found in table header'
+                               .format(NAME=self.name, COL=column))
                 continue
 
             if not pd.isna(row[column]):
                 continue
 
-            print('Info: DataTable {NAME}: setting default values for column {COL}'.format(NAME=self.name, COL=column))
+            logger.debug('DataTable {NAME}: setting default values for column {COL}'.format(NAME=self.name, COL=column))
 
             entry = columns[column]
             if 'DefaultConditions' in entry:
@@ -2102,21 +2144,21 @@ class TableElement:
                             row[column] = default_value
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(row, entry['DefaultRule'], as_list=True)
-                print('Info: DataTable {NAME}: assigning values {VAL} to empty cell at column {COL}'
-                      .format(NAME=self.name, VAL=default_values, COL=column))
+                logger.debug('DataTable {NAME}: assigning values {VAL} to empty cell at column {COL}'
+                             .format(NAME=self.name, VAL=default_values, COL=column))
                 for default_value in default_values:
                     row[column] = default_value
             elif 'DefaultValue' in entry:
                 default_value = entry['DefaultValue']
-                print('Info: DataTable {NAME}: assigning value {VAL} to empty cell at column {COL}'
-                      .format(NAME=self.name, VAL=default_value, COL=column))
+                logger.debug('DataTable {NAME}: assigning value {VAL} to empty cell at column {COL}'
+                             .format(NAME=self.name, VAL=default_value, COL=column))
                 try:
                     row[column] = dtype_map[dtype](default_value)
                 except KeyError:
                     continue
             else:
-                print('Warning: DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
-                      'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
+                logger.warning('DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
+                               'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
 
         return row
 
@@ -2130,6 +2172,8 @@ class TableElement:
                      'boolean': bool, 'char': str, 'varchar': str, 'binary': str, 'varbinary': str, 'tinytext': str,
                      'text': str, 'string': str}
 
+        logger.debug('DataTable {NAME}: setting column default values'.format(NAME=self.name))
+
         df = self.df.copy()
         header = df.columns.tolist()
         columns = self.defaults
@@ -2137,14 +2181,14 @@ class TableElement:
             try:
                 dtype = self.columns[column]
             except KeyError:
-                print('Warning: DataTable {NAME}: default column {COL} not found in table header'
-                      .format(NAME=self.name, COL=column))
+                logger.warning('DataTable {NAME}: default column {COL} not found in table header'
+                               .format(NAME=self.name, COL=column))
                 continue
 
             if column not in header:
                 df[column] = None
 
-            print('Info: DataTable {NAME}: setting default values for column {COL}'.format(NAME=self.name, COL=column))
+            logger.debug('DataTable {NAME}: setting default values for column {COL}'.format(NAME=self.name, COL=column))
 
             entry = columns[column]
             if 'DefaultConditions' in entry:
@@ -2158,22 +2202,22 @@ class TableElement:
                             df.at[index, column] = default_value
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=True)
-                print('Info: DataTable {NAME}: assigning values {VAL} to empty cells in column {COL}'
-                      .format(NAME=self.name, VAL=default_values, COL=column))
+                logger.debug('DataTable {NAME}: assigning values {VAL} to empty cells in column {COL}'
+                             .format(NAME=self.name, VAL=default_values, COL=column))
                 for index, default_value in enumerate(default_values):
                     if pd.isna(df.at[index, column]):
                         df.at[index, column] = default_value
             elif 'DefaultValue' in entry:
                 default_value = entry['DefaultValue']
-                print('Info: DataTable {NAME}: assigning value {VAL} to empty cells in column {COL}'
-                      .format(NAME=self.name, VAL=default_value, COL=column))
+                logger.debug('DataTable {NAME}: assigning value {VAL} to empty cells in column {COL}'
+                             .format(NAME=self.name, VAL=default_value, COL=column))
                 try:
                     df[column].fillna(dtype_map[dtype](default_value), inplace=True)
                 except KeyError:
                     df[column].fillna(default_value, inplace=True)
             else:
-                print('Warning: DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
-                      'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
+                logger.warning('DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
+                               'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
 
         return df
 
@@ -2184,9 +2228,11 @@ class TableElement:
         dtype_map = self.columns
         header = df.columns.tolist()
 
+        logger.debug('DataTable {NAME}: setting column data types to configured data types'.format(NAME=self.name))
+
         if not isinstance(dtype_map, dict):
-            print('Configuration Warning: DataTable {NAME}: unable to set column datatype. Columns must be configured '
-                  'as an object in order to use this feature'.format(NAME=self.name))
+            logger.warning('Warning: DataTable {NAME}: unable to set column datatype. Columns must be configured '
+                           'as an object in order to use this feature'.format(NAME=self.name))
             return df
 
         for column in dtype_map:
@@ -2197,7 +2243,7 @@ class TableElement:
 
             try:
                 if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                    df[column] = pd.to_datetime(df[column], errors='coerce', format=user.date_format)
+                    df[column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
                 elif dtype in ('int', 'integer', 'bit'):
                     df[column] = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
                 elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
@@ -2209,9 +2255,9 @@ class TableElement:
                 else:
                     df[column] = df[column].astype(np.object, errors='raise')
             except Exception as e:
-                print('Warning: DataTable {NAME}: unable to set column {COL} to data type {DTYPE} - {ERR}'
-                      .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
-                print(df[column])
+                logger.warning('DataTable {NAME}: unable to set column {COL} to data type {DTYPE} - {ERR}'
+                               .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                logger.debug('DataTable {NAME}: column values are {VALS}'.format(NAME=self.name, VALS=df[column]))
 
         return df
 
@@ -2295,7 +2341,7 @@ class ReferenceElement:
         except KeyError:
             self.warnings = None
 
-        record_entry = configuration.records.fetch_rule(self.record_type)
+        record_entry = settings.records.fetch_rule(self.record_type)
         self.record_data = record_entry.load_record_data(self.record_id)
 
         if record_entry is not None:
@@ -2317,8 +2363,8 @@ class ReferenceElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: ReferenceElement {NAME}: component {COMP} not found in list of element components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('ReferenceElement {NAME}: component {COMP} not found in list of element components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -2403,7 +2449,7 @@ class ReferenceElement:
         ref_key = self.key_lookup('Reference')
 
         # Delete a reference from the record reference database table
-        print('Info: ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
+        logger.info('ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
         if event == del_key:
             msg = 'Are you sure that you would like to disassociate reference {REF} from {RECORD}? This action ' \
                   'cannot be undone. Disassociating a reference does not delete the reference record.' \
@@ -2423,7 +2469,7 @@ class ReferenceElement:
             except Exception as e:
                 msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.record_id, ERR=e)
                 mod_win2.popup_error(msg)
-                print('Warning: ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Display the record window
                 mod_win2.record_window(record, view_only=True)
@@ -2434,7 +2480,7 @@ class ReferenceElement:
         """
         Create a record object from the reference.
         """
-        record_entry = configuration.records.fetch_rule(self.record_type)
+        record_entry = settings.records.fetch_rule(self.record_type)
         record_group = record_entry.group
         if record_group in ('account', 'bank_statement', 'cash_expense'):
             record_class = mod_records.StandardRecord
@@ -2542,7 +2588,7 @@ class DataElement:
         except KeyError:
             self.hidden = False
         except ValueError:
-            print('Configuration Warning: DataElement {NAME}: "IsHidden" must be either 0 (False) or 1 (True)'
+            print('Warning: DataElement {NAME}: configuration parameter "IsHidden" must be either 0 (False) or 1 (True)'
                   .format(NAME=name))
             sys.exit(1)
         else:
@@ -2553,8 +2599,8 @@ class DataElement:
         except KeyError:
             self.required = False
         except ValueError:
-            print('Configuration Warning: DataElement {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
-                  .format(NAME=name))
+            print('Warning: DataElement {NAME}: configuration parameter "IsRequired" must be either 0 (False) or 1 '
+                  '(True)'.format(NAME=name))
             sys.exit(1)
         else:
             self.required = required
@@ -2575,9 +2621,9 @@ class DataElement:
         except (KeyError, TypeError):
             self.value = self.format_value(None)
 
-        print('Info: DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
-              'and formatted value {VAL}'
-              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
+                     'and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
         self.disabled = False
 
@@ -2590,8 +2636,8 @@ class DataElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: DataElement {NAME}: component {COMP} not found in list of element components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('DataElement {NAME}: component {COMP} not found in list of element components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -2605,8 +2651,8 @@ class DataElement:
         except (KeyError, TypeError):
             default = self.format_value(None)
 
-        print('Info: DataElement {NAME}: resetting data element to default {DEF}'
-              .format(NAME=self.name, DEF=self.default))
+        logger.debug('DataElement {NAME}: resetting data element to default {DEF}'
+                     .format(NAME=self.name, DEF=self.default))
 
         self.value = default
 
@@ -2643,13 +2689,12 @@ class DataElement:
         elem_key = self.key_lookup('Element')
         expand_key = self.key_lookup('CollapseButton')
         if event == expand_key:
-            print('Info: DataElement {ELEM}: expanding / collapsing filter frame'.format(ELEM=self.name))
             self.collapse_expand(window)
         elif event == elem_key:
             try:
                 display_value = self.enforce_formatting(window, values)
             except Exception as e:
-                print('Error: DataElement {NAME}: failed to update the display - {ERR}'.format(NAME=self.name, ERR=e))
+                logger.error('DataElement {NAME}: failed to update the display - {ERR}'.format(NAME=self.name, ERR=e))
 
                 return False
             else:
@@ -2733,8 +2778,8 @@ class DataElement:
             try:
                 values = element_options['Values']
             except KeyError:
-                print('Configuration Warning: DataElement {NAME}: dropdown was selected for the data element but no '
-                      'values were provided to populate the dropdown'.format(NAME=self.name))
+                logger.warning('DataElement {NAME}: dropdown was selected for the data element but no '
+                               'values were provided to populate the dropdown'.format(NAME=self.name))
                 display_values = []
             else:
                 display_values = []
@@ -2818,8 +2863,8 @@ class DataElement:
         try:
             param_value = window_values[elem_key]
         except (KeyError, TypeError):
-            print('Warning: DataElement {NAME}: unable to locate values for element key {KEY}'
-                  .format(NAME=self.name, KEY=elem_key))
+            logger.warning('DataElement {NAME}: unable to locate values for element key {KEY}'
+                           .format(NAME=self.name, KEY=elem_key))
             if self.value:
                 display_value = self.format_display()
                 window[elem_key].update(value=display_value)
@@ -2857,7 +2902,7 @@ class DataElement:
                 value = values[elem_key]
             except KeyError:
                 msg = 'no values provided to update the display'
-                print('Info: DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.debug('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 raise KeyError(msg)
 
         if pd.isna(value) is True:
@@ -2876,7 +2921,7 @@ class DataElement:
                 except ValueError:  # date is incorrectly formatted
                     msg = '{} is not a valid date format'.format(''.join(new_value))
                     mod_win2.popup_notice(msg)
-                    print('Warning: DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     display_value = self.format_date(''.join(current_value))
                 else:
@@ -3089,8 +3134,8 @@ class DataElement:
             except KeyError:
                 input_value = input_value
             else:
-                print('Info: DataElement {NAME}: setting value to {VAL} with alias {ALIAS}'
-                      .format(NAME=self.name, VAL=input_value, ALIAS=alias_value))
+                logger.debug('DataElement {NAME}: setting value to {VAL} with alias {ALIAS}'
+                             .format(NAME=self.name, VAL=input_value, ALIAS=alias_value))
                 input_value = alias_value
 
         if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
@@ -3098,8 +3143,8 @@ class DataElement:
                 try:
                     date_format = self.options['DateFormat']
                 except KeyError:
-                    print(
-                        'Configuration Warning: DataElement {NAME}: date was selected for the data element but a date '
+                    logger.warning(
+                        'DataElement {NAME}: date was selected for the data element but a date '
                         'format was not provided ... defaulting to "YYYY-MM-DD"'.format(NAME=self.name))
                     year_first = True
                 else:
@@ -3108,14 +3153,14 @@ class DataElement:
                 try:
                     value_fmt = dparse(input_value, yearfirst=year_first)
                 except (ValueError, TypeError):
-                    print('Warning: DataElement {PARAM}: unable to parse date {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
+                    logger.warning('DataElement {PARAM}: unable to parse date {VAL}'
+                                   .format(PARAM=self.name, VAL=input_value))
                     return self.value
             elif isinstance(input_value, datetime.datetime):
                 value_fmt = input_value
             else:
-                print('Warning: DataElement {PARAM}: unknown object type for {VAL}'
-                      .format(PARAM=self.name, VAL=input_value))
+                logger.warning('DataElement {PARAM}: unknown object type for {VAL}'
+                               .format(PARAM=self.name, VAL=input_value))
                 return self.value
         elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
             try:
@@ -3124,8 +3169,8 @@ class DataElement:
                 try:
                     value_fmt = float(input_value.replace(group_sep, ''))
                 except (ValueError, TypeError, AttributeError):
-                    print('Warning: DataElement {PARAM}: unknown object type for parameter value {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
+                    logger.warning('DataElement {PARAM}: unknown object type for parameter value {VAL}'
+                                   .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('int', 'integer', 'bit'):
             try:
@@ -3134,8 +3179,8 @@ class DataElement:
                 try:
                     value_fmt = input_value.replace(',', '')
                 except (ValueError, TypeError):
-                    print('Warning: DataElement {PARAM}: unknown object type for parameter value {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
+                    logger.warning('DataElement {PARAM}: unknown object type for parameter value {VAL}'
+                                   .format(PARAM=self.name, VAL=input_value))
                     return self.value
         elif dtype in ('bool', 'boolean'):
             if isinstance(input_value, bool):
@@ -3148,8 +3193,8 @@ class DataElement:
         else:
             value_fmt = str(input_value)
 
-        print('Info: DataElement {NAME}: input value {VAL} formatted as {FMT}'
-              .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
+        logger.debug('DataElement {NAME}: input value {VAL} formatted as {FMT}'
+                     .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
 
         return value_fmt
 
@@ -3191,11 +3236,13 @@ class DataElement:
         frame_key = self.key_lookup('CollapseFrame')
 
         if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
+            logger.debug('DataElement {ELEM}: collapsing filter frame'.format(ELEM=self.name))
             window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
             window[frame_key].update(visible=False)
 
             window[frame_key].metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
+            logger.debug('DataElement {ELEM}: expanding filter frame'.format(ELEM=self.name))
             window[hide_key].update(image_data=mod_const.HIDE_ICON)
             window[frame_key].update(visible=True)
 

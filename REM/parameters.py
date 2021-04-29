@@ -10,7 +10,8 @@ from random import randint
 
 import REM.constants as mod_const
 import REM.secondary as mod_win2
-from REM.settings import settings, user
+#from REM.settings import settings, user
+from REM.client import logger, settings
 
 
 class DataParameter:
@@ -147,8 +148,10 @@ class DataParameter:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements'
-                  .format(COMP=component, NAME=self.name))
+            msg = 'DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements'\
+                .format(COMP=component, NAME=self.name)
+            logger.warning(msg)
+            print('Warning: {}'.format(msg))
             key = None
 
         return key
@@ -172,8 +175,8 @@ class DataParameter:
         dtype = self.dtype
 
         value = values[elem_key]
-        print('Info: DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
-              .format(PARAM=self.name, VAL=value))
+        logger.debug('DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
+                     .format(PARAM=self.name, VAL=value))
 
         if value == '' or value is None or pd.isna(value):
             return ''
@@ -358,8 +361,8 @@ class DataParameter:
         """
         Reset the parameter's values.
         """
-        print('Info: DataParameter {NAME}: resetting parameter value {VAL} to {DEF}'
-              .format(NAME=self.name, VAL=self.value, DEF=self.default))
+        logger.debug('DataParameter {NAME}: resetting parameter value {VAL} to {DEF}'
+                     .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
         self.value = None
 
@@ -374,8 +377,8 @@ class DataParameter:
         status = False if value == 'enable' else True
 
         element_key = self.key_lookup('Element')
-        print('Info: DataParameter {NAME}: updating element to "disabled={VAL}"'
-              .format(NAME=self.name, VAL=status))
+        logger.debug('DataParameter {NAME}: updating element to "disabled={VAL}"'
+                     .format(NAME=self.name, VAL=status))
 
         window[element_key].update(disabled=status)
 
@@ -388,7 +391,7 @@ class DataParameter:
 
         value = self.value
         if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-            query_value = self.value.strftime(user.date_format)
+            query_value = self.value.strftime(settings.date_format)
         elif dtype in ('bool', 'boolean'):
             query_value = int(value)
         else:
@@ -415,9 +418,9 @@ class DataParameterInput(DataParameter):
 
         # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-              '{DEF}, and formatted value {VAL}'
-              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+                     'value {DEF}, and formatted value {VAL}'
+                     .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -530,8 +533,8 @@ class DataParameterInput(DataParameter):
 
         dtype = self.dtype
         value = self.value
-        print('Info: DataParameter {NAME}: formatting parameter value {VAL} for display'
-              .format(NAME=self.name, VAL=value))
+        logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display'
+                     .format(NAME=self.name, VAL=value))
 
         if value == '' or pd.isna(value) is True:
             return ''
@@ -613,9 +616,9 @@ class DataParameterCombo(DataParameter):
             self.aliases = aliases
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-              '{DEF}, and formatted value {VAL}'
-              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -730,9 +733,9 @@ class DataParameterDate(DataParameter):
         self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-              '{DEF}, and formatted value {VAL}'
-              .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -859,8 +862,8 @@ class DataParameterDate(DataParameter):
         """
         status = False if value == 'enable' else True
 
-        print('Info: DataParameter {NAME}: updating elements to "disabled={VAL}"'
-              .format(NAME=self.name, VAL=status))
+        logger.debug('DataParameter {NAME}: updating elements to "disabled={VAL}"'
+                     .format(NAME=self.name, VAL=status))
 
         element_key = self.key_lookup('Element')
         calendar_key = self.key_lookup('Calendar')
@@ -886,9 +889,9 @@ class DataParameterDateRange(DataParameter):
         except (IndexError, TypeError):
             self.value = self.format_value({self.key_lookup('Element'): self.default,
                                             self.key_lookup('Element2'): self.default})
-        print('Info: DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-              '{DEF}, and formatted value {VAL}'
-              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -1080,8 +1083,8 @@ class DataParameterDateRange(DataParameter):
         """
         Reset the parameter's values.
         """
-        print('Info: DataParameter {NAME}: resetting parameter value {VAL} to {DEF}'
-              .format(NAME=self.name, VAL=self.value, DEF=self.default))
+        logger.debug('DataParameter {NAME}: resetting parameter value {VAL} to {DEF}'
+                     .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
         try:
             def_val1, def_val2 = self.default
@@ -1089,7 +1092,7 @@ class DataParameterDateRange(DataParameter):
             def_val1 = def_val2 = None
 
         self.format_value({self.key_lookup('Element'): def_val1, self.key_lookup('Element2'): def_val2})
-        print('Info: DataParameter {NAME}: values reset to {VAL}'.format(NAME=self.name, VAL=self.value))
+        logger.info('DataParameter {NAME}: values reset to {VAL}'.format(NAME=self.name, VAL=self.value))
 
         # Update the parameter window element
         window[self.key_lookup('Element')].update(value='')
@@ -1101,8 +1104,8 @@ class DataParameterDateRange(DataParameter):
         """
         status = False if value == 'enable' else True
 
-        print('Info: DataParameter {NAME}: updating elements to "disabled={VAL}"'
-              .format(NAME=self.name, VAL=status))
+        logger.debug('DataParameter {NAME}: updating elements to "disabled={VAL}"'
+                     .format(NAME=self.name, VAL=status))
 
         element_key = self.key_lookup('Element')
         calendar_key = self.key_lookup('Calendar')
@@ -1127,9 +1130,9 @@ class DataParameterCheckbox(DataParameter):
             self.default = False
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
-        print('Info: DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-              '{DEF}, formatted value {VAL}'
-              .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -1184,8 +1187,9 @@ class DataParameterCheckbox(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
-                  .format(NAME=self.name))
+            msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
+            logger.warning(msg)
+            print('Warning: {}'.format(msg))
             return self.value
 
         try:

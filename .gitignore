@@ -12,7 +12,7 @@ logo.png
 
 # Configuration file
 REM/settings.yaml
-REM/configuration.yaml
+REMServer/cnfg.yaml
 
 # C extensions
 *.so

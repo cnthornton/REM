@@ -1,16 +1,16 @@
 """
 REM Layout classes and functions.
 """
-import math
 import PySimpleGUI as sg
 
 import REM.data_manipulation as mod_dm
-from REM.config import configuration
 import REM.constants as mod_const
-from REM.settings import settings, user
+#from REM.settings import settings, user
+from REM.client import user, settings
 
 
 # Schema Layout Classes
+
 # GUI Element Functions
 def B1(*args, **kwargs):
     """
@@ -138,7 +138,7 @@ def importer_layout(win_size: tuple = None):
 
     # Element selection options
     try:
-        db_tables = [i.table_name for i in user.database_tables(user.dbname)]
+        db_tables = user.database_tables(settings.prog_db)
     except ValueError:
         db_tables = []
 
@@ -148,7 +148,7 @@ def importer_layout(win_size: tuple = None):
     header_req = ['Table Column Name', 'Data Type', 'Default Value']
     header_map = ['Table Column Name', 'Data Type', 'File Column Name']
 
-    record_types = configuration.records.print_rules(by_title=True)
+    record_types = settings.records.print_rules(by_title=True)
 
     cond_operators = ['=', '!=', '>', '<', '>=', '<=']
     math_operators = ['+', '-', '*', '/', '%']

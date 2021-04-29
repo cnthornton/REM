@@ -8,18 +8,17 @@ import datetime
 import gc
 import numpy as np
 import pandas as pd
-import pyodbc
 import PySimpleGUI as sg
 import textwrap
 
-from REM.config import configuration
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.data_manipulation as mod_dm
 import REM.layouts as mod_lo
 from REM.main import __version__
 import REM.records as mod_records
-from REM.settings import settings, user
+#from REM.settings import settings, user
+from REM.client import logger, settings, user
 
 
 # Popups
@@ -83,23 +82,6 @@ def verify_row(self, row_index):
 
 
 # Windows
-def debugger():
-    """
-    Display the debugger window.
-    """
-    # Window and element size parameters
-    pad_frame = mod_const.FRAME_PAD
-
-    main_font = mod_const.MAIN_FONT
-
-    # GUI layout
-    layout = [[sg.Output(key='-DEBUG-', size=(60, 20), pad=(pad_frame, pad_frame))]]
-
-    window = sg.Window('Debug', layout, font=main_font, modal=False, resizable=True)
-
-    return window
-
-
 def login_window():
     """
     Display the login window.
@@ -210,14 +192,13 @@ def login_window():
             else:
                 try:
                     login_success = user.login(uname, pwd)
-                except pyodbc.Error as e:
-                    sqlstat = e.args[1]
-                    window['-SUCCESS-'].update(value=sqlstat)
+                except Exception as e:
+                    window['-SUCCESS-'].update(value=e)
                     print(e)
+                    logger.error('login failed - {}'.format(e))
                 else:
                     if login_success:
-                        print('Info: successfully logged in as {}'.format(uname))
-                    break
+                        break
 
     window.close()
     layout = None
@@ -323,8 +304,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 if param.required is True and param.value_set() is False:
                     msg = 'Record {ID}: no value provided for the required field {FIELD}' \
                         .format(ID=record.record_id(), FIELD=param.description)
-                    print('Warning: {MSG}'.format(MSG=msg))
-                    popup_error(msg)
+                    logger.error(msg)
+                    popup_error('record {ID} is missing a value for the required field {FIELD}'
+                                .format(ID=record.record_id(), FIELD=param.description))
                     can_continue = False
 
                     break
@@ -370,8 +352,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             except Exception as e:
                 msg = 'Record {ID}: failed to run record event {EVENT} - {ERR}'\
                     .format(ID=record.record_id(), EVENT=event, ERR=e)
-                print('Warning: {MSG}'.format(MSG=msg))
-                popup_notice(msg)
+                logger.error(msg)
+                popup_notice('failed to run event for record {}'.format(record.record_id()))
 
                 continue
 
@@ -438,8 +420,8 @@ def database_importer_window(win_size: tuple = None):
     record_ids = []
     record_entry = None
     subset_df = None
-    reserved_values = [configuration.id_field, configuration.edit_date, configuration.editor_code,
-                       configuration.creation_date, configuration.creator_code]
+    reserved_values = [settings.id_field, settings.edit_date, settings.editor_code,
+                       settings.creation_date, settings.creator_code]
     listbox_values = []
 
     add_keys = ['-SUBSET_ADD_{}-'.format(i) for i in range(9)]  # last rule has no add button
@@ -477,7 +459,7 @@ def database_importer_window(win_size: tuple = None):
                 row_values = row.values.tolist()
                 entry_saved = user.insert(table, row_columns, row_values)
                 if entry_saved is False:
-                    msg = 'Failed to save row {ROW} to database table {TBL}' \
+                    msg = 'failed to save row {ROW} to database table {TBL}' \
                         .format(ROW=index + 1, TBL=table)
                     popup_error(msg)
                     print('Warning: {}'.format(msg))
@@ -711,26 +693,27 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             subset_df = subset_df[cond_results]
                         except Exception as e:
-                            msg = 'Failed to subset the dataframe using subset rule {RULE}. Use the debug window for ' \
-                                  'more information'.format(RULE=sub_num)
+                            msg = 'failed to subset the dataframe using subset rule {RULE}. See log for more ' \
+                                  'information'.format(RULE=sub_num)
                             popup_error(msg)
+                            logger.error('')
                             print('Warning: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
 
                     # Create record IDs for each row in the final import table
-                    record_entry = configuration.records.fetch_rule(record_type, by_title=True)
+                    record_entry = settings.records.fetch_rule(record_type, by_title=True)
 
                     failed_rows = []
                     for index, row in subset_df.iterrows():
                         try:
-                            date_list = pd.to_datetime(subset_df[configuration.date_field], errors='coerce')
+                            date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
                         except KeyError:
                             record_date = datetime.datetime.now()
                         else:
                             record_date = date_list[index]
 
                         record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
-                        if record_id is None:
-                            msg = 'Failed to create a record ID for row {}'.format(row)
+                        if not record_id:
+                            msg = 'failed to create a record ID for row {}'.format(row)
                             popup_notice(msg)
                             print('Error: {}'.format(msg))
                             failed_rows.append(index)
@@ -739,11 +722,11 @@ def database_importer_window(win_size: tuple = None):
 
                     subset_df = subset_df[~subset_df.index.isin(failed_rows)]
 
-                    subset_df[configuration.id_field] = record_ids
+                    subset_df[settings.id_field] = record_ids
 
                     # Set values for the creator fields
-                    subset_df[configuration.creator_code] = user.uid
-                    subset_df[configuration.creation_date] = datetime.datetime.now()
+                    subset_df[settings.creator_code] = user.uid
+                    subset_df[settings.creation_date] = datetime.datetime.now()
 
                     # Modify table column values based on the modify column rules
                     for elem_num in mods_in_view:
@@ -852,7 +835,7 @@ def database_importer_window(win_size: tuple = None):
 
                     # Populate preview with table values
                     final_cols = subset_df.columns.values.tolist()
-                    preview_cols = [configuration.id_field] + [i for i in final_cols if i != configuration.id_field]
+                    preview_cols = [settings.id_field] + [i for i in final_cols if i != settings.id_field]
                     col_widths = mod_dm.calc_column_widths(preview_cols, width=width * 0.77, pixels=True)
                     window['-PREVIEW-'].Widget['columns'] = tuple(preview_cols)
                     window['-PREVIEW-'].Widget['displaycolumns'] = '#all'
@@ -937,8 +920,7 @@ def database_importer_window(win_size: tuple = None):
         # Populate data tables based on database table selection
         if event == '-TABLE-':
             table = values['-TABLE-']
-            columns = {i.column_name: (i.type_name, i.column_size) for i in
-                       user.table_schema(settings.prog_db, table) if i.column_name not in reserved_values}
+            columns = {i: j for i, j in user.table_schema(settings.prog_db, table).items() if i not in reserved_values}
 
             listbox_values = list(columns.keys())
 
@@ -1276,14 +1258,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     window = center_window(window)
 
-    print('size of header is {}'.format(window['-HEADER-'].get_size()))
-    print('size of buttons is {}'.format(window['-BUTTON-'].get_size()))
-
     # Set table datatypes
     table.df = table.set_datatypes(table.df)
 
     # Prepare record
-    record_entry = configuration.records.fetch_rule(table.record_type)
+    record_entry = settings.records.fetch_rule(table.record_type)
 
     record_type = record_entry.group
     if record_type in ('account', 'bank_statement', 'cash_expense'):
@@ -1337,6 +1316,13 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             # Create a new record object
             record_date = datetime.datetime.now()
             record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
+            if not record_id:
+                msg = 'failed to create an ID for the new record'
+                print('Error: {ERR}'.format(ERR=msg))
+                popup_error(msg)
+
+                continue
+
             print('Info: RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
 
             record_data = pd.Series(index=list(table.columns))
@@ -1422,7 +1408,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 # Set parameter values from window elements
                 param.value = param.format_value(values)
 
-            import_df = record_entry.import_records(user, params=table.parameters)
+            import_df = record_entry.import_records(params=table.parameters)
 
             table.df = pd.DataFrame(columns=list(table.columns))
             table.df = table.append(import_df)
@@ -1692,8 +1678,7 @@ def edit_settings(win_size: tuple = None):
     window.finalize()
 
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
-                    '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'server', '-DRIVER-': 'driver',
-                    '-DATABASE-': 'dbname'}
+                    '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname'}
 
     # Start event loop
     while True:
@@ -1938,15 +1923,15 @@ def center_window(window):
     """
     screen_w, screen_h = window.get_screen_dimensions()
 
-    print('Info: centering window')
+    logger.debug('centering window')
     window.refresh()
 
-    print('Info: current window size: {}'.format(window.size))
+    logger.debug('current window size: {}'.format(window.size))
     win_w, win_h = window.size
     win_x = int(screen_w / 2 - win_w / 2)
     win_y = int(screen_h / 2 - win_h / 2)
-    print('Info: window current location: ({}, {})'.format(*window.current_location()))
-    print('Info: window new location: ({}, {})'.format(win_x, win_y))
+    logger.debug('window current location: ({}, {})'.format(*window.current_location()))
+    logger.debug('window new location: ({}, {})'.format(win_x, win_y))
     if win_x + win_w > screen_w:
         win_x = screen_w - win_w
     if win_y + win_h > screen_h:
@@ -1955,7 +1940,7 @@ def center_window(window):
     window.refresh()
     window.move(win_x, win_y)
     window.refresh()
-    print('Info: window real location: {}'.format(window.current_location()))
+    logger.debug('window real location: {}'.format(window.current_location()))
 
     return window
 

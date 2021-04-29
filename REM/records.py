@@ -3,16 +3,734 @@ REM records classes and functions. Includes audit records and account records.
 """
 
 import datetime
+import dateutil
 import pandas as pd
 import PySimpleGUI as sg
 from random import randint
+import sys
 
 import REM.constants as mod_const
+import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
-from REM.config import configuration
 import REM.secondary as mod_win2
-from REM.settings import user
+#from REM.settings import settings, user
+from REM.client import logger, server_conn, settings, user
+
+
+class RecordsConfiguration:
+    """
+    Class to store and manage program records configuration settings.
+
+    Attributes:
+
+        name (str): name of the configuration document.
+
+        title (str): descriptive name of the configuration document.
+
+        rules (list): List of record entries.
+    """
+
+    def __init__(self, records_doc):
+        """
+        Class to store and manage program records configuration settings.
+
+        Arguments:
+
+            records_doc: records document.
+        """
+
+        if records_doc is None:
+            mod_win2.popup_error('missing required configuration document Records')
+            sys.exit(1)
+
+        try:
+            audit_name = records_doc['name']
+        except KeyError:
+            mod_win2.popup_error('the "Records" parameter configuration "name" is a required field')
+            sys.exit(1)
+        else:
+            self.name = audit_name
+
+        try:
+            self.title = records_doc['title']
+        except KeyError:
+            self.title = audit_name
+
+        try:
+            record_entries = records_doc['rules']
+        except KeyError:
+            mod_win2.popup_error('the "Records" configuration parameter "rules" is a required field')
+            sys.exit(1)
+
+        self.rules = []
+        for record_group in record_entries:
+            record_entry = record_entries[record_group]
+            self.rules.append(RecordEntry(record_group, record_entry))
+
+        self.approved_groups = ['account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
+
+    def print_rules(self, by_title: bool = False):
+        """
+        Print rules of a the rule set by its name or title.
+        """
+        if by_title is True:
+            rule_names = [i.menu_title for i in self.rules]
+        else:
+            rule_names = [i.name for i in self.rules]
+
+        return rule_names
+
+    def fetch_rule(self, name, by_title: bool = False):
+        """
+        Fetch a given rule from the rule set by its name or title.
+        """
+        if by_title is True:
+            rule_names = [i.menu_title for i in self.rules]
+        else:
+            rule_names = [i.name for i in self.rules]
+
+        try:
+            index = rule_names.index(name)
+        except ValueError:
+            logger.warning('record entry {NAME} not in Records configuration. Available record entries are {ALL}'
+                           .format(NAME=name, ALL=', '.join(rule_names)))
+            rule = None
+        else:
+            rule = self.rules[index]
+
+        return rule
+
+    def get_approved_groups(self):
+        """
+        Return a list of approved record-type groups
+        """
+        return self.approved_groups
+
+
+class RecordEntry:
+
+    def __init__(self, name, entry):
+        """
+        Configuration record entry.
+        """
+        self.name = name
+
+        try:
+            self.permissions = entry['AccessPermissions']
+        except KeyError:
+            self.permissions = 'admin'
+
+        try:
+            self.menu_title = entry['MenuTitle']
+        except KeyError:
+            self.menu_title = name
+
+        try:
+            self.group = entry['RecordGroup']
+        except KeyError:
+            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "RecordGroup"'
+                                 .format(NAME=name))
+            sys.exit(1)
+
+        try:
+            self.id_code = entry['IDCode']
+        except KeyError:
+            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "IDCode"'
+                                 .format(NAME=name))
+            sys.exit(1)
+
+        # Database import rules
+        try:
+            import_rules = entry['ImportRules']
+        except KeyError:
+            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "ImportRules"'
+                                 .format(NAME=name))
+            sys.exit(1)
+        else:
+            for import_table in import_rules:
+                import_rule = import_rules[import_table]
+
+                if 'Columns' not in import_rule:
+                    mod_win2.popup_error('RecordsEntry {NAME}: configuration missing required "ImportRules" {TBL} '
+                                         'parameter "Columns"'.format(NAME=name, TBL=import_table))
+                    sys.exit(1)
+                if 'Filters' not in import_rule:
+                    import_rule['Filters'] = None
+
+        self.import_rules = import_rules
+
+        # Import table layout configuration
+        try:
+            self.import_table = entry['ImportTable']
+        except KeyError:
+            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "ImportTable"'
+                                 .format(NAME=name))
+            sys.exit(1)
+
+        # Record layout configuration
+        try:
+            self.record_layout = entry['RecordLayout']
+        except KeyError:
+            mod_win2.popup_error('RecordsEntry {NAME}: configuration missing required parameter "RecordLayout"'
+                                 .format(NAME=name))
+            sys.exit(1)
+
+#        self.ids = []
+
+    def import_records(self, params: list = None):
+        """
+        Import all records from the database.
+        """
+        params = [] if params is None else params
+
+        # Add configured import filters
+        filters = mod_db.format_import_filters(self.import_rules)
+        table_statement = mod_db.format_tables(self.import_rules)
+        columns = mod_db.format_import_columns(self.import_rules)
+
+        # Add optional parameter-based filters
+        for param in params:
+            dbcol = mod_db.get_import_column(self.import_rules, param.name)
+            if dbcol:
+                param_filter = param.query_statement(dbcol)
+                if param_filter is not None:
+                    filters.append(param_filter)
+
+        # Query existing database entries
+        import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
+
+        return import_df
+
+    def load_record_data(self, record_id):
+        """
+        Load a record from the database using the record ID.
+        """
+        # Add configured import filters
+        table_statement = mod_db.format_tables(self.import_rules)
+        columns = mod_db.format_import_columns(self.import_rules)
+        id_col = mod_db.get_import_column(self.import_rules, 'RecordID')
+        filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
+
+        # Query existing database entries
+        import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
+        nrow = import_df.shape[0]
+
+        if nrow < 1:
+            logger.warning('RecordType {NAME}: record {ID} not found in the database'
+                           .format(NAME=self.name, ID=record_id))
+            record_data = None
+        elif nrow == 1:
+            record_data = import_df.iloc[0]
+        else:
+            logger.warning('RecordType {NAME}: more than one database entry found for record {ID}'
+                           .format(NAME=self.name, ID=record_id))
+            record_data = import_df.iloc[0]
+
+        return record_data
+
+    def export_record(self, record):
+        """
+        Save a record to the database.
+        """
+        ref_table = settings.reference_lookup
+        delete_code = settings.delete_field
+        import_rules = self.import_rules
+
+        # Check if the record is already in the database and remove from list of unsaved IDs, if applicable
+        record_id = record.record_id()
+
+        id_exists = not self.remove_unsaved_id(record_id)
+
+        # Save record to each export table
+        saved = []
+        for table in import_rules:
+            table_entry = import_rules[table]
+
+            references = {j: i for i, j in table_entry['Columns'].items()}
+            id_col = references['RecordID']
+
+            # Prepare column value updates
+            record_data = record.table_values()
+            if id_exists is True:  # record already exists in the database
+                # Add edit details to record data
+                record_data[settings.editor_code] = user.uid
+                record_data[settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
+            else:
+                # Add record creation details to record data
+                record_data[settings.creator_code] = user.uid
+                record_data[settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+
+            include_columns = [i for i in record_data.index.tolist() if i in references]
+            try:
+                export_data = record_data[include_columns].dropna()
+            except Exception as e:
+                raise
+            else:
+                export_columns = [references[i] for i in export_data.index.tolist()]
+                export_values = export_data.tolist()
+
+            # Save the record data
+            if id_exists is True:  # record already exists in the database
+                # Edit an existing record in the database
+                filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
+                logger.info('RecordType {NAME}, Record {ID}: updating existing record in the database'
+                      .format(NAME=self.name, ID=record_id))
+                entry_saved = user.update(table, export_columns, export_values, filters)
+                if entry_saved is False:
+                    msg = 'failed to update record {ID} in database table {TBL}'.format(ID=record_id, TBL=table)
+                    mod_win2.popup_error(msg)
+                    return False
+                else:
+                    saved.append(entry_saved)
+
+            else:  # record does not exist yet, must be inserted
+                # Create new entry for the record in the database
+                logger.debug('RecordType {NAME}, Record {ID}: saving new record to the database'
+                             .format(NAME=self.name, ID=record_id))
+                entry_saved = user.insert(table, export_columns, export_values)
+                if entry_saved is False:
+                    msg = 'failed to save record {ID} to database table {TBL}'.format(ID=record_id, TBL=table)
+                    mod_win2.popup_error(msg)
+
+                    return False
+                else:
+                    saved.append(entry_saved)
+
+        # Handle associated records and references
+        logger.info('RecordType {NAME}, Record {ID}: saving references and components'
+                    .format(NAME=self.name, ID=record_id))
+        import_df = record.ref_df
+
+        # Handle added and removed references
+        for reference in record.references:
+            ref_data = reference.as_table()
+            ref_id = ref_data['DocNo']  # reference record ID
+            if ref_id == record_id:
+                print('Warning: oops ... got the order wrong')
+                return False
+
+            # Determine if reference entry already exists in the database
+            nrow = import_df[
+                (import_df['DocNo'].isin([ref_id, record_id])) & (import_df['RefNo'].isin([ref_id, record_id]))].shape[
+                0]
+            if nrow > 0:  # reference already exists in the database
+                # Update existing reference entry in the references table
+                # If mutually referenced, deleting one entry will also delete its partner
+                comp_columns = ['IsDeleted', settings.editor_code, settings.edit_date]
+                comp_values = [ref_data['IsDeleted']] + [user.uid, datetime.datetime.now()]
+                update_filters = ('(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)',
+                                  (ref_id, record_id, record_id, ref_id))
+
+                logger.info('RecordType {NAME}, Record {ID}: updating reference {REF}'
+                            .format(NAME=self.name, ID=record_id, REF=ref_id))
+                entry_saved = user.update(ref_table, comp_columns, comp_values, update_filters)
+                if entry_saved is False:
+                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                    mod_win2.popup_error(msg)
+
+                saved.append(entry_saved)
+            else:
+                # Add reference entry to the references table
+                comp_columns = ref_data.index.tolist() + [settings.creator_code, settings.creation_date]
+                comp_values = ref_data.tolist() + [user.uid, datetime.datetime.now()]
+
+                logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
+                            .format(NAME=self.name, ID=record_id, REF=ref_id))
+                entry_saved = user.insert(ref_table, comp_columns, comp_values)
+                if entry_saved is False:
+                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
+                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
+                    mod_win2.popup_error(msg)
+
+                saved.append(entry_saved)
+
+        # Handle added and removed record components
+        comp_tables = record.components
+        for comp_table in comp_tables:
+            comp_type = comp_table.record_type
+            if comp_type is None:
+                logger.warning('RecordEntry {NAME}: component table {TBL} has no record type assigned'
+                               .format(NAME=self.name, TBL=comp_table))
+                continue
+
+            try:
+                orig_comps = import_df[(import_df['DocNo'] == record_id) &
+                                       (import_df['RefType'] == comp_type)]['RefNo'].tolist()
+            except Exception as e:
+                logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
+                               '{TBL} - {ERR}'.format(NAME=self.name, TBL=comp_table, ERR=e))
+                continue
+
+            comp_entry = settings.records.fetch_rule(comp_type)
+            current_comps = comp_table.df[comp_table.id_column]
+            deleted_comps = set(orig_comps).difference(set(current_comps))
+
+            # Handle deleted component tables
+            for deleted_id in deleted_comps:
+                # Delete removed records if component records can be created (not just imported)
+                if comp_table.actions['add'] is True:  # delete record and all associations from DB
+                    logger.info('RecordType {NAME}, Record {ID}: deleting component record {REF} from the '
+                                'database'.format(NAME=self.name, ID=record_id, REF=deleted_id))
+                    entry_saved = comp_entry.delete_record(deleted_id)
+                    if entry_saved is False:
+                        msg = 'failed to delete record {ID} component {REF}' \
+                            .format(ID=record_id, REF=deleted_id)
+                        mod_win2.popup_error(msg)
+
+                    saved.append(entry_saved)
+                else:
+                    # Delete only the existing parent-child relationship
+                    comp_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_id)]
+                    logger.info('RecordType {NAME}, Record {ID}: removing reference to component {REF}'
+                                .format(NAME=self.name, ID=record_id, REF=deleted_id))
+                    entry_saved = user.update(ref_table, [settings.editor_code, settings.edit_date,
+                                                          delete_code],
+                                              [user.uid, datetime.datetime.now(), 1], comp_filters)
+                    if entry_saved is False:
+                        msg = 'failed to remove record {ID} references to component {REF} in database table ' \
+                              '{TBL}'.format(ID=record_id, REF=deleted_id, TBL=ref_table)
+                        mod_win2.popup_error(msg)
+
+                    saved.append(entry_saved)
+
+            # Handle added component records
+            for row_index, comp_id in current_comps.iteritems():
+                if comp_id in orig_comps:  # update entries for existing records
+                    # Set deleted field to false in case reference previously deleted
+                    import_df.loc[import_df['RefNo'] == comp_id, 'IsDeleted'] = False
+
+                    # Create record object for the component
+                    comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], new_record=False,
+                                                           references=import_df)
+                    logger.info('RecordType {NAME}, Record {ID}: updating component record {REF} in the '
+                                'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
+
+                    # Update component in database
+                    entry_saved = comp_entry.export_record(comp_record)
+                    if entry_saved is False:
+                        msg = 'failed to save record {ID} to database table {TBL}' \
+                            .format(ID=record_id, TBL=ref_table)
+                        mod_win2.popup_error(msg)
+
+                    saved.append(entry_saved)
+
+                    continue
+
+                # Save component record to the database if records can be created (not imported)
+                if comp_table.actions['add'] is True:  # add record to DB
+                    comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], new_record=True)
+                    logger.info('RecordType {NAME}, Record {ID}: adding component record {REF} to the '
+                                'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
+                    entry_saved = comp_entry.export_record(comp_record)
+                    if entry_saved is False:  # don't save reference in references table
+                        msg = 'failed to save record {ID} to database table {TBL}' \
+                            .format(ID=record_id, TBL=ref_table)
+                        mod_win2.popup_error(msg)
+                        saved.append(entry_saved)
+                        continue
+                    else:
+                        saved.append(entry_saved)
+
+                    # Create new parent-child association in the record references table
+                    comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
+                                    settings.creation_date, 'IsParentChild']
+                    comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
+                                   datetime.datetime.now(), True]
+                    logger.info('RecordType {NAME}, Record {ID}: adding reference for component {REF}'
+                                .format(NAME=self.name, ID=record_id, REF=comp_id))
+                    entry_saved = user.insert(ref_table, comp_columns, comp_values)
+                    if entry_saved is False:
+                        msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
+                            .format(ID=record_id, REF=comp_id, TBL=ref_table)
+                        mod_win2.popup_error(msg)
+
+                    saved.append(entry_saved)
+
+                else:
+                    # Create new association in the record references table
+                    comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
+                                    settings.creation_date, 'IsParentChild']
+                    comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
+                                   datetime.datetime.now(), False]
+                    logger.info('RecordType {NAME}, Record {ID}: adding reference for component {REF}'
+                                .format(NAME=self.name, ID=record_id, REF=comp_id))
+                    entry_saved = user.insert(ref_table, comp_columns, comp_values)
+                    if entry_saved is False:
+                        msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
+                            .format(ID=record_id, REF=comp_id, TBL=ref_table)
+                        mod_win2.popup_error(msg)
+
+                    saved.append(entry_saved)
+
+        return all(saved)
+
+    def delete_record(self, record_id):
+        """
+        Delete a record from the database.
+        """
+        ref_table = settings.reference_lookup
+        delete_code = settings.delete_code
+
+        import_rules = self.import_rules
+
+        # Check if the record can be found in the list of unsaved ids
+        id_exists = not self.remove_unsaved_id(record_id)
+
+        if id_exists is True:  # record is already saved in the database, must be deleted
+            # Set record as deleted in the database
+            updated = []
+            for table in import_rules:
+                table_entry = import_rules[table]
+
+                references = {j: i for i, j in table_entry['Columns'].items()}
+                id_column = references['RecordID']
+
+                # Remove record from the export table
+                filters = [('{} = ?'.format(id_column), (record_id,))]
+                updated.append(user.update(table, [delete_code], [1], filters))
+
+            # Remove all record associations
+            ref_filters = [('DocNo = ? OR RefNo = ?', (record_id, record_id))]
+            updated.append(user.update(ref_table, [settings.editor_code, settings.edit_date, delete_code],
+                                       [user.uid, datetime.datetime.now(), 1], ref_filters))
+
+        else:  # record was never saved, can remove the ID
+            updated = [True]
+
+        return all(updated)
+
+    def import_record_ids(self, record_date: datetime.datetime = None):
+        """
+        Import existing record IDs.
+        """
+        # Prepare query parameters
+        colname = 'RecordID'
+        table_statement = mod_db.format_tables(self.import_rules)
+        id_col = mod_db.get_import_column(self.import_rules, colname)
+
+        # Define query statement
+#        params = None
+        if record_date is not None:
+            # Search for database records with date within the same month
+            try:
+                first_day = record_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                last_day = datetime.datetime(record_date.year + record_date.month // 12, record_date.month % 12 + 1,
+                                             1) - datetime.timedelta(1)
+            except AttributeError:
+#                query_str = 'SELECT {COL} FROM {TABLE} ORDER BY {COL};' \
+#                    .format(COL=id_column, TABLE=primary_table)
+                filters = None
+            else:
+#                query_str = 'SELECT {COL} FROM {TABLE} WHERE {DATE} BETWEEN ? AND ? ORDER BY {COL};' \
+#                    .format(COL=id_column, TABLE=primary_table, DATE=settings.date_field)
+                params = (first_day, last_day)
+                filters = ('{DATE} BETWEEN ? AND ?'.format(DATE=settings.date_field), params)
+        else:
+#            query_str = 'SELECT {COL} FROM {TABLE} ORDER BY {COL};'.format(COL=id_column, TABLE=primary_table)
+            filters = None
+#        import_rows = db_manager.query(query_str, params=params)
+        import_rows = user.query(table_statement, columns=id_col, filter_rules=filters, order=id_col, prog_db=True)
+
+        # Connect to database
+        try:
+#            id_list = import_rows.squeeze().tolist()
+            id_list = import_rows.iloc[:, 0]
+        except IndexError:
+            logger.info('no existing record IDs found')
+            id_list = []
+        except Exception as e:
+            logger.error('failed to import saved record ids - {ERR}'.format(ERR=e))
+            logger.error(import_rows)
+            raise
+#        id_list = []
+#        for index, row in import_rows.iterrows():
+#            record_id = row[id_column]
+#            if record_id not in id_list:
+#                id_list.append(record_id)
+
+        return id_list
+
+    def create_id(self, record_date, offset: int = 0):
+        """
+        Create a new record ID.
+        """
+        logger.info('creating a new ID for the record')
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+
+        id_code = self.id_code
+        unsaved_ids = self.get_unsaved_ids()
+        if unsaved_ids is None:
+            return None
+
+        # Format the date component of the new ID
+        try:
+            id_date = (record_date + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
+        except Exception as e:
+            logger.debug(e)
+            id_date = (strptime(record_date.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S')
+                       + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
+
+        logger.debug('RecordEntry {NAME}: new ID has date component {COMP}'.format(NAME=self.name, COMP=id_date))
+
+        # Search list of unsaved IDs occurring within the current date cycle
+        logger.debug('RecordEntry {NAME}: searching for unsaved record IDs with date component {DATE}'
+                    .format(NAME=self.name, DATE=id_date))
+        prev_ids = []
+        for unsaved_id in unsaved_ids:
+            prev_date = self._id_date_component(unsaved_id)
+            if prev_date == id_date:
+                prev_ids.append(unsaved_id)
+
+        logger.debug('RecordEntry {NAME}: found {NUM} unsaved records with date component {DATE}'
+                     .format(NAME=self.name, NUM=len(prev_ids), DATE=id_date))
+
+        # Search list of saved IDs occurring within the current date cycle
+        if len(prev_ids) < 1:
+            logger.debug('RecordEntry {NAME}: searching for database record IDs with date component {DATE}'
+                         .format(NAME=self.name, DATE=id_date))
+
+            # Search list of saved IDs occurring within the current date cycle for the last created ID
+            db_ids = self.import_record_ids(record_date=record_date)
+            for db_id in db_ids:
+                prev_date = self._id_date_component(db_id)
+                if prev_date == id_date:
+                    prev_ids.append(db_id)
+
+            logger.debug('RecordEntry {NAME}: found {NUM} database records with date component {DATE}'
+                         .format(NAME=self.name, NUM=len(prev_ids), DATE=id_date))
+
+        # Get the number of the last ID used in the current date cycle
+        if len(prev_ids) > 0:
+            last_id = sorted(prev_ids)[-1]
+        else:
+            last_id = None
+
+        # Create the new ID
+        if last_id:
+            logger.info('RecordEntry {NAME}: last ID encountered is {ID}'.format(NAME=self.name, ID=last_id))
+            try:
+                last_num = int(last_id.split('-')[-1])
+            except ValueError:
+                msg = 'Record {NAME}: incorrect formatting for previous ID {ID}'.format(NAME=self.name, ID=last_id)
+                logger.error(msg)
+                return None
+        else:
+            logger.info('RecordEntry {NAME}: no previous IDs found for date {DATE} - starting new iteration at 1'
+                        .format(NAME=self.name, DATE=id_date))
+            last_num = 0
+        record_id = '{CODE}{DATE}-{NUM}'.format(CODE=id_code, DATE=id_date, NUM=str(last_num + 1).zfill(4))
+
+        logger.info('RecordEntry {NAME}: new record ID is {ID}'.format(NAME=self.name, ID=record_id))
+
+        # Add ID to the list of unsaved IDs
+        success = self.add_unsaved_id(record_id)
+        if success is False:
+            return None
+
+        return record_id
+
+    def _id_date_component(self, record_id):
+        """
+        Get the date component of a record ID.
+        """
+        id_code = self.id_code
+        code_len = len(id_code)
+        try:
+            id_name, id_num = record_id.split('-')
+        except ValueError:
+            raise AttributeError('no date component found for {TYPE} record ID {ID}'
+                                 .format(TYPE=self.name, ID=record_id))
+
+        return id_name[code_len:]
+
+    def remove_unsaved_id(self, record_ids):
+        """
+        Remove a record ID from the database of unsaved IDs associated with the record type.
+        """
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+        elif isinstance(record_ids, type(None)):
+            return True
+        elif isinstance(record_ids, list):
+            if not len(record_ids) > 0:
+                return True
+
+        logger.debug('RecordEntry {NAME}: attempting to remove IDs {ID} from the list of unsaved record IDs'
+                     .format(NAME=self.name, ID=record_ids))
+
+        value = {'ids': record_ids, 'record_type': self.name}
+        content = {'action': 'remove_ids', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+        response = server_conn.process_request(request)
+
+        success = response['success']
+        if success is False:
+            msg = 'RecordEntry {NAME}: failed to remove IDs {ID} from the list of unsaved record IDs of type ' \
+                  '{TYPE} - {ERR}'.format(NAME=self.name, ID=record_ids, TYPE=self.name, ERR=response['value'])
+            logger.error(msg)
+        else:
+            logger.debug('RecordEntry {NAME}: successfully removed {ID} from the list of unsaved record IDs '
+                         'associated with the record entry'.format(NAME=self.name, ID=record_ids))
+
+        return success
+
+    def get_unsaved_ids(self, internal_only: bool = False):
+        """
+        Retrieve a list of unsaved record IDs from the database of unsaved record IDs associated with the record type.
+        """
+        if internal_only:
+            instance = settings.instance_id
+            logger.debug('RecordEntry {NAME}: attempting to obtain an instance-specific list of unsaved record IDs '
+                         'associated with the record entry'.format(NAME=self.name))
+        else:
+            instance = None
+            logger.debug('RecordEntry {NAME}: attempting to obtain list of unsaved record IDs associated with the '
+                         'record entry'.format(NAME=self.name))
+
+        value = {'instance': instance, 'record_type': self.name}
+        content = {'action': 'request_ids', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+        response = server_conn.process_request(request)
+
+        if response['success'] is False:
+            msg = 'failed to obtain list of unsaved record IDs of type {TYPE} from the server - {ERR}' \
+                .format(TYPE=self.name, ERR=response['value'])
+            logger.error(msg)
+
+            return None
+        else:
+            logger.debug('RecordEntry {NAME}: successfully obtained a list of unsaved record IDs associated with the '
+                         'record entry'.format(NAME=self.name))
+
+        unsaved_ids = response['value']
+
+        return unsaved_ids
+
+    def add_unsaved_id(self, record_id):
+        """
+        Add a record ID to the list of unsaved record IDs associated with the record type.
+        """
+        logger.debug('RecordEntry {NAME}: attempting to add record ID {ID} to the list of unsaved record IDs '
+                     'associated with the record entry'.format(NAME=self.name, ID=record_id))
+
+        value = {'ids': [(record_id, settings.instance_id)], 'record_type': self.name}
+        content = {'action': 'add_ids', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+        response = server_conn.process_request(request)
+
+        success = response['success']
+        if success is False:
+            msg = 'failed to add {ID} to the list of unsaved record IDs of type {TYPE} on the server - {ERR}' \
+                .format(NAME=self.name, ID=record_id, TYPE=self.name, ERR=response['value'])
+            logger.error(msg)
+        else:
+            logger.debug('RecordEntry {NAME}: successfully added record ID {ID} to the list of unsaved record IDs '
+                         'associated with the record entry'.format(NAME=self.name, ID=record_id))
+
+        return success
 
 
 class CustomRecordEntry:
@@ -35,24 +753,25 @@ class CustomRecordEntry:
         except KeyError:
             raise AttributeError('missing required parameter "RecordLayout"')
 
-        self.ids = []
+#        self.ids = []
 
     def remove_unsaved_id(self, record_id):
         """
         Remove record ID from the list of unsaved IDs
         """
-        try:
-            self.ids.remove(record_id)
-        except ValueError:
-            print('Warning: RecordEntry {NAME}: record {ID} was not found in the list of unsaved {TYPE} record IDs'
-                  .format(NAME=self.name, ID=record_id, TYPE=self.name))
-            success = False
-        else:
-            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID} from the list of unsaved records'
-                  .format(NAME=self.name, ID=record_id))
-            success = True
-
-        return success
+        return True
+#        try:
+#            self.ids.remove(record_id)
+#        except ValueError:
+#            print('Warning: RecordEntry {NAME}: record {ID} was not found in the list of unsaved {TYPE} record IDs'
+#                  .format(NAME=self.name, ID=record_id, TYPE=self.name))
+#            success = False
+#        else:
+#            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID} from the list of unsaved records'
+#                  .format(NAME=self.name, ID=record_id))
+#            success = True
+#
+#        return success
 
     def import_references(self, *args, **kwargs):
         """
@@ -90,7 +809,7 @@ class DatabaseRecord:
 
             level (int): depth at which record was opened [Default: 0].
         """
-        approved_record_types = configuration.records.get_approved_groups()
+        approved_record_types = settings.records.get_approved_groups()
 
         self.record_entry = record_entry
         self.new = False
@@ -240,17 +959,17 @@ class DatabaseRecord:
         try:
             ref_entry = entry['References']
         except KeyError:
-            print('Warning: No reference record types configured for {NAME}'.format(NAME=self.name))
+            logger.warning('no reference record types configured for {NAME}'.format(NAME=self.name))
         else:
             try:
                 ref_elements = ref_entry['Elements']
             except KeyError:
-                print('Configuration Warning: missing required References parameter "Elements"'.format(NAME=self.name))
+                logger.warning('missing required References parameter "Elements"'.format(NAME=self.name))
             else:
                 for ref_element in ref_elements:
-                    if ref_element not in [i.name for i in configuration.records.rules]:
-                        print('Configuration Error: RecordEntry {NAME}: reference {TYPE} must be a pre-configured '
-                              'record type'.format(NAME=self.name, TYPE=ref_element))
+                    if ref_element not in [i.name for i in settings.records.rules]:
+                        logger.warning('RecordEntry {NAME}: reference {TYPE} must be a pre-configured '
+                                       'record type'.format(NAME=self.name, TYPE=ref_element))
                     else:
                         self.reference_types.append(ref_element)
 
@@ -259,17 +978,18 @@ class DatabaseRecord:
         try:
             comp_entry = entry['Components']
         except KeyError:
-            print('Warning: No component record types configured for {NAME}'.format(NAME=self.name))
+            logger.warning('RecordEntry: no component record types configured'.format(NAME=self.name))
         else:
             try:
                 comp_elements = comp_entry['Elements']
             except KeyError:
-                print('Configuration Warning: missing required References parameter "Elements"'.format(NAME=self.name))
+                logger.warning('RecordEntry {NAME}: missing required configuration References parameter "Elements"'
+                               .format(NAME=self.name))
             else:
                 for comp_element in comp_elements:
                     if comp_element not in approved_record_types:
-                        print('Configuration Error: RecordEntry {TYPE}: component table {TBL} must be an acceptable '
-                              'record type'.format(TYPE=self.name, TBL=comp_element))
+                        logger.warning('RecordEntry {NAME}: component table {TBL} must be an acceptable '
+                                       'record type'.format(NAME=self.name, TBL=comp_element))
                         continue
                     table_entry = comp_elements[comp_element]
                     comp_table = mod_elem.TableElement(comp_element, table_entry, parent=self.name)
@@ -347,8 +1067,8 @@ class DatabaseRecord:
         if 'RecordDate' not in record_data:
             raise AttributeError('input data is missing required column "RecordDate"')
 
-        print('Info RecordType {NAME}: initializing record data'.format(NAME=self.name))
-        print(record_data)
+        logger.info('RecordType {NAME}: initializing record'.format(NAME=self.name))
+        logger.debug('RecordType {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
 
         # Set header values from required columns
         for header in headers:
@@ -357,11 +1077,11 @@ class DatabaseRecord:
             try:
                 value = record_data[header_name]
             except KeyError:
-                print('Warning: RecordType {NAME}: input data is missing a value for header {COL}'
-                      .format(NAME=self.name, COL=header_name))
+                logger.warning('RecordType {NAME}: input data is missing a value for header {COL}'
+                               .format(NAME=self.name, COL=header_name))
             else:
-                print('Info: RecordType {NAME}: initializing header {PARAM} with value {VAL}'
-                      .format(NAME=self.name, PARAM=header_name, VAL=value))
+                logger.debug('RecordType {NAME}: initializing header {PARAM} with value {VAL}'
+                             .format(NAME=self.name, PARAM=header_name, VAL=value))
                 header.value = header.format_value({header.key_lookup('Element'): value})
 
         # Set modifier values
@@ -374,11 +1094,11 @@ class DatabaseRecord:
                 try:
                     value = record_data[modifier_name]
                 except KeyError:
-                    print('Warning: RecordType {NAME}: input data is missing a value for modifier {COL}'
-                          .format(NAME=self.name, COL=modifier_name))
+                    logger.warning('RecordType {NAME}: input data is missing a value for modifier {COL}'
+                                   .format(NAME=self.name, COL=modifier_name))
                 else:
-                    print('Info: RecordType {NAME}: initializing modifier {PARAM} with value {VAL}'
-                          .format(NAME=self.name, PARAM=modifier_name, VAL=value))
+                    logger.debug('RecordType {NAME}: initializing modifier {PARAM} with value {VAL}'
+                                 .format(NAME=self.name, PARAM=modifier_name, VAL=value))
                     modifier.value = modifier.format_value({modifier.key_lookup('Element'): value})
 
         # Set data element values
@@ -400,23 +1120,23 @@ class DatabaseRecord:
                 try:
                     value = record_data[param_name]
                 except KeyError:
-                    print('Warning: RecordType {NAME}: input data is missing a value for data element {PARAM}'
-                          .format(NAME=self.name, PARAM=param_name))
+                    logger.warning('RecordType {NAME}: input data is missing a value for data element {PARAM}'
+                                   .format(NAME=self.name, PARAM=param_name))
                 else:
                     if not pd.isna(value):
-                        print('Info: RecordType {NAME}: initializing data element {PARAM} with value {VAL}'
-                              .format(NAME=self.name, PARAM=param_name, VAL=value))
+                        logger.debug('RecordType {NAME}: initializing data element {PARAM} with value {VAL}'
+                                     .format(NAME=self.name, PARAM=param_name, VAL=value))
                         param.value = param.format_value(value)
                     else:
-                        print('Info: RecordType {NAME}: no value set for parameter {PARAM}'
-                              .format(NAME=self.name, PARAM=param_name))
+                        logger.debug('RecordType {NAME}: no value set for parameter {PARAM}'
+                                     .format(NAME=self.name, PARAM=param_name))
 
         # Import components and references for existing records
         record_id = self.record_id()
-        print('Info: RecordType {NAME}: record ID is {ID}'.format(NAME=self.name, ID=record_id))
+        logger.info('RecordType {NAME}: initialized record has ID {ID}'.format(NAME=self.name, ID=record_id))
         if record_id is not None and (references is not None or record_entry is not None):
-            ref_df = references if references is not None else record_entry.import_references(record_id)
-            print('Info: RecordType {NAME}: importing references and components'.format(NAME=self.name))
+            ref_df = references if references is not None else import_references(record_id)
+            logger.info('RecordType {NAME}: importing references and components'.format(NAME=self.name))
 
             for index, row in ref_df.iterrows():
                 if row['DocNo'] != record_id and row['RefNo'] != record_id:
@@ -438,14 +1158,14 @@ class DatabaseRecord:
                     ref_id = row['DocNo']
                     if ref_id == record_id:
                         continue
-                    print('Info: RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
-                          .format(NAME=self.name, ID=ref_id, TYPE=doctype))
+                    logger.debug('RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
+                                 .format(NAME=self.name, ID=ref_id, TYPE=doctype))
 
                     try:
                         ref_box = mod_elem.ReferenceElement(doctype, row, parent=self.name, inverted=True)
                     except Exception as e:
-                        print('Warning: RecordType {NAME}: failed to add reference {ID} to list of references - {ERR}'
-                              .format(NAME=self.name, ID=ref_id, ERR=e))
+                        logger.warning('RecordType {NAME}: failed to add reference {ID} to list of references - {ERR}'
+                                       .format(NAME=self.name, ID=ref_id, ERR=e))
                         continue
                     else:
                         self.references.append(ref_box)
@@ -455,14 +1175,14 @@ class DatabaseRecord:
                     ref_id = row['RefNo']
                     if ref_id == record_id:
                         continue
-                    print('Info: RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
-                          .format(NAME=self.name, ID=ref_id, TYPE=reftype))
+                    logger.debug('RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
+                                 .format(NAME=self.name, ID=ref_id, TYPE=reftype))
 
                     try:
                         ref_box = mod_elem.ReferenceElement(doctype, row, parent=self.name, inverted=False)
                     except Exception as e:
-                        print('Warning: RecordType {NAME}: failed to add reference {ID} to list of references - {ERR}'
-                              .format(NAME=self.name, ID=ref_id, ERR=e))
+                        logger.warning('RecordType {NAME}: failed to add reference {ID} to list of references - {ERR}'
+                                       .format(NAME=self.name, ID=ref_id, ERR=e))
                         continue
                     else:
                         self.references.append(ref_box)
@@ -471,8 +1191,8 @@ class DatabaseRecord:
                 # Store imported components as table rows
                 elif doctype == self.name and reftype in comp_types:
                     ref_id = row['RefNo']
-                    print('Info: RecordType {NAME}: adding component record {ID} with record type {TYPE}'
-                          .format(NAME=self.name, ID=ref_id, TYPE=reftype))
+                    logger.debug('RecordType {NAME}: adding component record {ID} with record type {TYPE}'
+                                 .format(NAME=self.name, ID=ref_id, TYPE=reftype))
 
                     # Fetch the relevant components table
                     comp_table = self.fetch_component(reftype, by_type=True)
@@ -481,7 +1201,6 @@ class DatabaseRecord:
                     comp_table.df = comp_table.import_row(ref_id)
 
             self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
-            print(ref_df)
 
     def reset(self, window):
         """
@@ -610,6 +1329,70 @@ class DatabaseRecord:
 
         return comp_tbl
 
+    def get_original_components(self, table):
+        """
+        Return a list of record IDs of the original records imported from the database.
+        """
+        record_id = self.record_id()
+
+        try:
+            comp_table = self.fetch_component(table)
+        except KeyError:
+            logger.warning('RecordEntry {NAME}: component table {TBL} not found'.format(NAME=self.name, TBL=table))
+            return []
+
+        import_df = self.ref_df
+        if import_df.empty:
+            return []
+
+        comp_type = comp_table.record_type
+        if comp_type is None:
+            logger.warning('RecordEntry {NAME}: component table {TBL} has no record type assigned'
+                           .format(NAME=self.name, TBL=comp_table.name))
+            return []
+
+        try:
+            orig_ids = import_df[(import_df['DocNo'] == record_id) &
+                                 (import_df['RefType'] == comp_type)]['RefNo'].tolist()
+        except Exception as e:
+            logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
+                           '{TBL} - {ERR}'.format(NAME=self.name, TBL=comp_table.name, ERR=e))
+            orig_ids = []
+
+        return orig_ids
+
+    def get_added_components(self, table):
+        """
+        Return a list of record IDs added to a component table post-record initialization.
+        """
+        try:
+            comp_table = self.fetch_component(table)
+        except KeyError:
+            logger.warning('RecordEntry {NAME}: component table {TBL} not found'.format(NAME=self.name, TBL=table))
+            return []
+
+        orig_ids = self.get_original_components(table)
+        current_ids = comp_table.df[comp_table.id_column].tolist()
+        added_ids = list(set(current_ids).difference(set(orig_ids)))
+
+        return added_ids
+
+    def get_deleted_components(self, table):
+        """
+        Return a list of original record IDs deleted from component table post-record initialization.
+        """
+        try:
+            comp_table = self.fetch_component(table)
+        except KeyError:
+            logger.warning('RecordEntry {NAME}: component table {TBL} not found'.format(NAME=self.name, TBL=table))
+            return []
+
+        orig_ids = self.get_original_components(table)
+        current_ids = comp_table.df[comp_table.id_column].tolist()
+        deleted_ids = list(set(orig_ids).difference(set(current_ids)))
+
+        return deleted_ids
+
     def table_values(self):
         """
         Format parameter values as a table row.
@@ -628,13 +1411,11 @@ class DatabaseRecord:
 
         # Add header values
         for header in headers:
-            print(header.name, header.value)
             columns.append(header.name)
             values.append(header.value)
 
         # Add modifier values
         for modifier in modifiers:
-            print(modifier.name, modifier.value)
             columns.append(modifier.name)
             values.append(modifier.value)
 
@@ -655,7 +1436,6 @@ class DatabaseRecord:
                     columns.append(column)
                     values.append(col_summary)
             else:  # parameter is a data element object
-                print(param.name, param.value)
                 columns.append(param.name)
                 values.append(param.value)
 
@@ -682,11 +1462,11 @@ class DatabaseRecord:
             user_input = mod_win2.popup_confirm(msg)
             if user_input == 'OK':
                 # Remove record and associations
-                saved = record_entry.delete_record(user, record_id)
+                saved = record_entry.delete_record(record_id)
                 success.append(saved)
                 if saved is False:
-                    msg = 'Record {ID}: attempt to delete record failed'.format(ID=record_id)
-                    print('Error: {MSG}'.format(MSG=msg))
+                    msg = 'Record {ID}: record deletion failed'.format(ID=record_id)
+                    logger.error(msg)
                     mod_win2.popup_error(msg)
                     return False
 
@@ -697,28 +1477,29 @@ class DatabaseRecord:
 
                     ref_id = row['RefNo']
                     ref_type = row['RefType']
-                    print('Info: Record {ID}: deleting dependant record {REFID} of type {TYPE}'
-                          .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
-                    ref_entry = configuration.records.fetch_rule(ref_type)
+                    logger.info('Record {ID}: deleting dependant record {REFID} of type {TYPE}'
+                                .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+                    ref_entry = settings.records.fetch_rule(ref_type)
                     if ref_entry is None:
                         msg = 'Record {ID}: failed to delete dependant record {REFID} - invalid record type "{TYPE}"'\
                             .format(ID=record_id, REFID=ref_id, TYPE=ref_type)
-                        print('Error: {MSG}'.format(MSG=msg))
+                        logger.error(msg)
                         mod_win2.popup_error(msg)
                         continue
 
-                    saved = ref_entry.delete_record(user, ref_id)
+                    saved = ref_entry.delete_record(ref_id)
                     success.append(saved)
                     if saved is False:
                         msg = 'Record {ID}: attempt to delete dependant record {REFID} failed'\
                             .format(ID=record_id, REFID=ref_id)
-                        print('Error: {MSG}'.format(MSG=msg))
+                        logger.error(msg)
                         mod_win2.popup_error(msg)
             else:
                 return False
         else:
             # Remove record and associations
-            success.append(record_entry.delete_record(user, record_id))
+            logger.info('Record {ID}: deleting record'.format(ID=record_id))
+            success.append(record_entry.delete_record(record_id))
 
         return all(success)
 
@@ -733,12 +1514,12 @@ class DatabaseRecord:
             if param.required is True and param.value_set() is False:
                 msg = 'Record {ID}: no value provided for the required field {FIELD}' \
                     .format(ID=self.record_id(), FIELD=param.description)
-                print('Warning: {MSG}'.format(MSG=msg))
+                logger.warning(msg)
                 mod_win2.popup_error(msg)
                 return False
 
         # Save record
-        success = record_entry.export_record(user, self)
+        success = record_entry.export_record(self)
 
         return success
 
@@ -904,7 +1685,7 @@ class DatabaseRecord:
         else:
             width, height = window.size
 
-        print('Info: Record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id(), W=width, H=height))
+        logger.debug('Record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id(), W=width, H=height))
 
         # Expand the frame width and height
         width_key = self.key_lookup('Width')
@@ -947,11 +1728,15 @@ class DatabaseRecord:
             frame_key = self.key_lookup('ComponentsFrame')
 
         if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
+            logger.debug('RecordType {NAME}, Record {ID}: collapsing {FRAME} frame'
+                         .format(NAME=self.name, ID=self.record_id(), FRAME=frame))
             window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
             window[frame_key].update(visible=False)
 
             window[frame_key].metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
+            logger.debug('RecordType {NAME}, Record {ID}: expanding {FRAME} frame'
+                         .format(NAME=self.name, ID=self.record_id(), FRAME=frame))
             window[hide_key].update(image_data=mod_const.HIDE_ICON)
             window[frame_key].update(visible=True)
 
@@ -971,14 +1756,10 @@ class StandardRecord(DatabaseRecord):
 
         # Expand or collapse the references frame
         if event == self.key_lookup('ReferencesButton'):
-            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing References frame'
-                  .format(NAME=self.name, ID=self.record_id()))
             self.collapse_expand(window, frame='references')
 
         # Expand or collapse the component tables frame
         elif event == self.key_lookup('ComponentsButton'):
-            print('Info: RecordType {NAME}, Record {ID}: expanding / collapsing Components frame'
-                  .format(NAME=self.name, ID=self.record_id()))
             self.collapse_expand(window, frame='components')
 
         # Run a modifier event
@@ -986,8 +1767,8 @@ class StandardRecord(DatabaseRecord):
             try:
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -996,8 +1777,8 @@ class StandardRecord(DatabaseRecord):
             try:
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.error('RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
+                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -1010,8 +1791,8 @@ class StandardRecord(DatabaseRecord):
             try:
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.error('RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
+                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 component_table.run_event(window, event, values)
 
@@ -1020,8 +1801,8 @@ class StandardRecord(DatabaseRecord):
             try:
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.error('RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
+                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 refbox.run_event(window, event, values)
 
@@ -1069,14 +1850,10 @@ class DepositRecord(DatabaseRecord):
 
         # Collapse or expand the references frame
         if event == self.key_lookup('ReferencesButton'):
-            print('Info: {NAME}, Record {ID}: expanding / collapsing References frame'
-                  .format(NAME=self.name, ID=self.record_id()))
             self.collapse_expand(window, frame='references')
 
         # Collapse or expand the component tables frame
         elif event == self.key_lookup('ComponentsButton'):
-            print('Info: {NAME}, Record {ID}: expanding / collapsing Components frame'
-                  .format(NAME=self.name, ID=self.record_id()))
             self.collapse_expand(window, frame='components')
 
         # Run a modifier event
@@ -1084,8 +1861,8 @@ class DepositRecord(DatabaseRecord):
             try:
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -1094,8 +1871,8 @@ class DepositRecord(DatabaseRecord):
             try:
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(ID=self.record_id(), KEY=event))
+                logger.error('Record {ID}: unable to find parameter associated with event key {KEY}'
+                             .format(ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -1107,8 +1884,8 @@ class DepositRecord(DatabaseRecord):
             try:
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find component associated with event key {KEY}'
-                      .format(ID=self.record_id(), KEY=event))
+                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
+                             .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Import'):  # import account records
                     component_table.df = component_table.import_rows(reftype=self.name, program_database=True)
@@ -1125,8 +1902,8 @@ class DepositRecord(DatabaseRecord):
             try:
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(ID=self.record_id(), KEY=event))
+                logger.error('Record {ID}: unable to find reference associated with event key {KEY}'
+                             .format(ID=self.record_id(), KEY=event))
             else:
                 refbox.run_event(window, event, values)
 
@@ -1152,24 +1929,24 @@ class DepositRecord(DatabaseRecord):
         try:
             account_table = self.fetch_component('account')
         except KeyError:
-            print('Configuration Error: RecordEntry {TYPE}: missing required component records of type "account"'
-                  .format(TYPE=self.name))
+            logger.warning('RecordEntry {TYPE}: missing required component records of type "account"'
+                           .format(TYPE=self.name))
             account_total = 0
         else:
             account_total = account_table.calculate_total()
-            print('Info: record {ID}: total income was calculated from the accounts table is {VAL}'
-                  .format(ID=self.record_id(), VAL=account_total))
+            logger.debug('Record {ID}: total income was calculated from the accounts table is {VAL}'
+                         .format(ID=self.record_id(), VAL=account_total))
 
         try:
             expense_table = self.fetch_component('cash_expense')
         except KeyError:
-            print('Configuration Error: RecordEntry {TYPE}: missing component records of type "cash_expense"'
-                  .format(TYPE=self.name))
+            logger.warning('RecordEntry {TYPE}: missing component records of type "cash_expense"'
+                           .format(TYPE=self.name))
             expense_total = 0
         else:
             expense_total = expense_table.calculate_total()
-            print('Info: record {ID}: total expenditures was calculated from the expense table to be {VAL}'
-                  .format(ID=self.record_id(), VAL=expense_total))
+            logger.debug('Record {ID}: total expenditures was calculated from the expense table to be {VAL}'
+                         .format(ID=self.record_id(), VAL=expense_total))
 
         deposit_total = account_total - expense_total
 
@@ -1213,11 +1990,9 @@ class TAuditRecord(DatabaseRecord):
         reference_elems = [i for reference in self.references for i in reference.elements]
 
         if event == self.key_lookup('ReferencesButton'):
-            print('Info: table {TBL}: expanding / collapsing References frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='references')
 
         elif event == self.key_lookup('ComponentsButton'):
-            print('Info: table {TBL}: expanding / collapsing Components frame'.format(TBL=self.name))
             self.collapse_expand(window, frame='components')
 
         # Run a modifier event
@@ -1225,8 +2000,8 @@ class TAuditRecord(DatabaseRecord):
             try:
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
-                print('Error: RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                      .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -1235,8 +2010,8 @@ class TAuditRecord(DatabaseRecord):
             try:
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find parameter associated with event key {KEY}'
-                      .format(ID=self.record_id(), KEY=event))
+                logger.error('Record {ID}: unable to find parameter associated with event key {KEY}'
+                             .format(ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
                 self.update_display(window, window_values=values)
@@ -1249,8 +2024,8 @@ class TAuditRecord(DatabaseRecord):
             try:
                 component_table = self.fetch_component(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find component associated with event key {KEY}'
-                      .format(ID=self.record_id(), KEY=event))
+                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
+                             .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Import'):  # import account records
                     component_table.df = component_table.import_rows(reftype=self.name, program_database=True)
@@ -1267,8 +2042,8 @@ class TAuditRecord(DatabaseRecord):
             try:
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
-                print('Error: record {ID}: unable to find reference associated with event key {KEY}'
-                      .format(ID=self.record_id(), KEY=event))
+                logger.error('Record {ID}: unable to find reference associated with event key {KEY}'
+                             .format(ID=self.record_id(), KEY=event))
             else:
                 refbox.run_event(window, event, values)
 
@@ -1297,7 +2072,8 @@ class TAuditRecord(DatabaseRecord):
         try:
             account_table = self.fetch_component('account')
         except KeyError:
-            print('Configuration Error: missing required component records of type "account"')
+            logger.warning('Record {ID}: missing required component records of type "account"'
+                           .format(ID=self.record_id()))
             account_total = 0
         else:
             account_total = account_table.calculate_total()
@@ -1305,12 +2081,12 @@ class TAuditRecord(DatabaseRecord):
         remainder = totals_sum - account_total
 
         if remainder > 0:
-            print('Info: {NAME}, record {ID}: account records are under-allocated by {AMOUNT}'
-                  .format(NAME=self.name, ID=self.record_id(), AMOUNT=remainder))
+            logger.info('Record {ID}: account records are under-allocated by {AMOUNT}'
+                        .format(NAME=self.name, ID=self.record_id(), AMOUNT=remainder))
             bg_color = greater_col
         elif remainder < 0:
-            print('Info: {NAME}, record {ID}: account records are over-allocated by {AMOUNT}'
-                  .format(NAME=self.name, ID=self.record_id(), AMOUNT=abs(remainder)))
+            logger.info('Record {ID}: account records are over-allocated by {AMOUNT}'
+                        .format(NAME=self.name, ID=self.record_id(), AMOUNT=abs(remainder)))
             bg_color = lesser_col
         else:
             bg_color = default_col
@@ -1327,31 +2103,6 @@ class TAuditRecord(DatabaseRecord):
             window[elem_key].update(value=display_value)
 
 
-def load_record(record_entry, record_id, level: int = 1):
-    """
-    Load an existing record from the program database.
-    """
-    # Extract the record data from the database
-    import_df = record_entry.load_record_data(record_id)
-
-    # Set the record object based on the record type
-    record_type = record_entry.group
-    if record_type in ('account', 'bank_statement', 'cash_expense'):
-        record_class = StandardRecord
-    elif record_type == 'bank_deposit':
-        record_class = DepositRecord
-    elif record_type == 'audit':
-        record_class = TAuditRecord
-    else:
-        print('Warning: unknown record layout type provided {}'.format(record_type))
-        return None
-
-    record = record_class(record_entry, level=level)
-    record.initialize(import_df)
-
-    return record
-
-
 def create_record(record_entry, record_data, level: int = 1):
     """
     Create a new database record.
@@ -1364,7 +2115,7 @@ def create_record(record_entry, record_data, level: int = 1):
     elif record_type == 'audit':
         record_class = TAuditRecord
     else:
-        print('Warning: unknown record layout type provided {}'.format(record_type))
+        logger.warning('unknown record layout type provided {}'.format(record_type))
         return None
 
     record = record_class(record_entry, level=level)
@@ -1387,8 +2138,30 @@ def remove_unsaved_keys(record):
         if comp_type is None:
             continue
         else:
-            comp_entry = configuration.records.fetch_rule(comp_type)
+            comp_entry = settings.records.fetch_rule(comp_type)
+
+        # Get a list of added components added to the component table (i.e. not in the database yet)
+        added_ids = record.get_added_components(comp_table.name)
 
         for index, row in comp_table.df.iterrows():
             row_id = row[comp_table.id_column]
+            if row_id not in added_ids:  # don't attempt to remove IDs if already in the database
+                continue
+
             comp_entry.remove_unsaved_id(row_id)
+
+
+def import_references(record_id):
+    """
+    Import record references.
+    """
+    # Define query parameters
+    ref_table = settings.reference_lookup
+    columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings', 'IsParentChild']
+    filters = ('{COL1} = ? OR {COL2} = ?'.format(COL1='DocNo', COL2='RefNo'), (record_id, record_id))
+
+    # Import reference entries related to record_id
+    import_df = user.query(ref_table, columns=columns, filter_rules=filters, prog_db=True)
+
+    return import_df
+

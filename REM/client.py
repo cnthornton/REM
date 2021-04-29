@@ -1,0 +1,1467 @@
+"""
+REM configuration settings.
+"""
+
+from bson import json_util
+import datetime
+import dateutil
+import gettext
+import hashlib
+#import io
+#import json
+import locale
+import logging
+import logging.handlers as handlers
+import os
+import pandas as pd
+import PySimpleGUI as sg
+from random import randint
+import socket
+import struct
+import sys
+import textwrap
+import time
+import yaml
+
+import REM.constants as mod_const
+
+
+class SQLStatementError(Exception):
+    """A simple exception that is raised when an SQL statement is formatted incorrectly.
+    """
+
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args)
+
+
+class ServerConnection:
+    def __init__(self, sock, addr):
+        self.sock = sock
+        self.addr = addr
+
+        # Dynamic attributes
+        self.request = None
+        self._recv_buffer = b""
+        self._send_buffer = b""
+        self._request_queued = False
+        self._ready_to_read = False
+        self._header_len = None
+        self.action = None
+        self.header = None
+        self.response = None
+
+    def _reset(self):
+        """
+        Reset dynamic attributes.
+        """
+        self._recv_buffer = b""
+        self._send_buffer = b""
+        self._ready_to_read = False
+        self._request_queued = False
+        self._header_len = None
+        self.action = None
+        self.request = None
+        self.header = None
+        self.response = None
+
+    def _reset_connection(self):
+        """
+        Reset a lost connection to the server.
+        """
+        try:
+            self.sock.connect(self.addr)
+        except BlockingIOError:
+            # Resource temporarily unavailable (errno EWOULDBLOCK)
+            pass
+        except socket.error as e:
+            msg = 'connection to server {ADDR} failed on error {ERR}'.format(ADDR=self.addr, ERR=e)
+            popup_error(msg)
+            logger.error(msg)
+        else:
+            msg = 'connection accepted from server {ADDR}'.format(ADDR=self.addr)
+            logger.info(msg)
+
+    def _read(self):
+        try:
+            # Should be ready to read
+            data = self.sock.recv(4096)
+        except BlockingIOError:
+            # Resource temporarily unavailable (errno EWOULDBLOCK)
+            pass
+        except ConnectionResetError:
+            msg = 'connection to {ADDR} was closed for unknown reason ... attempting to reconnect' \
+                .format(ADDR=self.addr)
+            logger.error(msg)
+            self._reset_connection()
+        else:
+            if data:  # 0 indicates a closed connection
+                self._recv_buffer += data
+            else:
+                raise RuntimeError("Peer connection closed")
+
+    def _write(self):
+        if self._send_buffer:
+            try:  # should be ready to write
+                sent = self.sock.send(self._send_buffer)
+            except BlockingIOError:  # resource temporarily unavailable (errno EWOULDBLOCK)
+                pass
+            except ConnectionResetError:
+                msg = 'connection to {ADDR} was closed for unknown reason ... attempting to reconnect'\
+                    .format(ADDR=self.addr)
+                logger.error(msg)
+                self._reset_connection()
+            else:
+                # Remove the sent portion of the message from the buffer
+                self._send_buffer = self._send_buffer[sent:]
+
+    def _encode(self, obj, encoding):
+#        return json.dumps(obj, ensure_ascii=False).encode(encoding)
+        return json_util.dumps(obj, ensure_ascii=False).encode(encoding)
+
+    def _decode(self, json_bytes, encoding):
+#        tiow = io.TextIOWrapper(
+#            io.BytesIO(json_bytes), encoding=encoding, newline=""
+#        )
+#        obj = json.load(tiow)
+#        tiow.close()
+        obj = json_util.loads(json_bytes.decode(encoding))
+
+        return obj
+
+    def _create_message(self, *, content_bytes, content_encoding):
+        jsonheader = {
+            "byteorder": sys.byteorder,
+            "content-encoding": content_encoding,
+            "content-length": len(content_bytes),
+        }
+        jsonheader_bytes = self._encode(jsonheader, "utf-8")
+        message_hdr = struct.pack(">H", len(jsonheader_bytes))
+        message = message_hdr + jsonheader_bytes + content_bytes
+
+        return message
+
+    def process_request(self, request, timeout: int = 20):
+        self.request = request
+        try:
+            self.action = request['content']['action']
+        except KeyError:
+            msg = 'the request made to {} was formatted improperly'.format(settings.host)
+            return {'success': False, 'value': msg}
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
+
+            if self.response is not None:
+                logger.debug('server process completed')
+                result = self.response
+                sg.popup_animated(image_source=None)
+                break
+            else:
+                if self._ready_to_read:
+                    try:
+                        self.read()
+                    except Exception as e:
+                        msg = 'server request failed - {ERR}'.format(ERR=e)
+                        result = {'success': False, 'value': msg}
+                        sg.popup_animated(image_source=None)
+                        break
+                else:
+                    try:
+                        self.write()
+                    except Exception as e:
+                        msg = 'server request failed - {ERR}'.format(ERR=e)
+                        result = {'success': False, 'value': msg}
+                        sg.popup_animated(image_source=None)
+                        logger.error(msg)
+                        break
+        else:
+            msg = 'server failed to respond to request after {} seconds'.format(timeout)
+            sg.popup_animated(image_source=None)
+            result = {'success': False, 'value': msg}
+            logger.error(msg)
+
+        # Reset attributes for next event
+        self._reset()
+
+        return result
+
+    def read(self):
+        # Continuously read until no more data is received
+        self._read()
+
+        if self._header_len is None:
+            # Check for header length within the first several bytes of the server response
+            self.process_protoheader()
+
+        if self._header_len is not None:
+            if self.header is None:
+                # Process the header once the length of the header is known
+                self.process_header()
+
+        if self.header:
+            if self.response is None:
+                self.process_response()
+
+    def write(self):
+        if not self._request_queued:
+            # Queue the request for sending to the server
+            self.queue_request()
+            logger.info('sending request "{REQ}" to {ADDR}'.format(REQ=self.action, ADDR=self.addr))
+#            logger.debug('request sent: {}'.format(self.request))
+
+        # Continuously send the request until the send buffer is empty
+        self._write()
+
+        # Indicate that writing has finished once the send buffer is empty
+        if self._request_queued:
+            if not self._send_buffer:
+                self._ready_to_read = True
+
+    def close(self):
+        logger.info("closing connection to {ADDR}".format(ADDR=self.addr))
+
+        try:
+            self.sock.close()
+        except OSError as e:
+            msg = 'unable to close socket connected to {ADDR} - {ERR}'.format(ADDR=self.addr, ERR=e)
+            logger.error(msg)
+        finally:
+            # Delete reference to socket object for garbage collection
+            self.sock = None
+
+    def queue_request(self):
+        content = self.request["content"]
+        content_encoding = self.request["encoding"]
+        req = {
+            "content_bytes": self._encode(content, content_encoding),
+            "content_encoding": content_encoding,
+        }
+        message = self._create_message(**req)
+        self._send_buffer += message
+        self._request_queued = True
+
+    def process_protoheader(self):
+        hdrlen = 2
+
+        if len(self._recv_buffer) >= hdrlen:
+            self._header_len = struct.unpack(">H", self._recv_buffer[:hdrlen])[0]
+            self._recv_buffer = self._recv_buffer[hdrlen:]
+
+    def process_header(self):
+        hdrlen = self._header_len
+
+        if len(self._recv_buffer) >= hdrlen:
+            self.header = self._decode(self._recv_buffer[:hdrlen], "utf-8")
+            self._recv_buffer = self._recv_buffer[hdrlen:]
+            for reqhdr in ("byteorder", "content-length", "content-encoding"):
+                if reqhdr not in self.header:
+                    raise ValueError('missing required header component {COMP}'.format(COMP=reqhdr))
+
+    def process_response(self):
+        content_len = self.header["content-length"]
+
+        if len(self._recv_buffer) >= content_len:
+            data = self._recv_buffer[:content_len]
+            self._recv_buffer = self._recv_buffer[content_len:]
+
+            encoding = self.header["content-encoding"]
+            self.response = self._decode(data, encoding)
+            logger.info('receiving response to request "{REQ}" from {ADDR}'.format(REQ=self.action, ADDR=self.addr))
+#            logger.debug('response received: {}'.format(self.response))
+
+
+class SettingsManager:
+    """
+    Class to store and manage user-specific configuration settings.
+
+    Arguments:
+
+        cnfg: Parsed YAML file
+
+    Attributes:
+
+        language (str): Display language. Default: EN.
+    """
+
+    def __init__(self, cnfg, dirname):
+        self.dirname = dirname
+        self.icons_dir = os.path.join(self.dirname, 'docs', 'images', 'icons')
+        self.instance_id = randint(0, 1000000000)
+
+        # Supported locales
+        #        self._locales = ['en_US', 'en_UK', 'th_TH']
+        self._locales = {'English': 'en', 'Thai': 'th'}
+
+        # User parameters
+        try:
+            self.username = cnfg['user']['username']
+        except KeyError:
+            self.username = 'username'
+
+        # Localization parameters
+        try:
+            self.language = cnfg['localization']['language']
+        except KeyError:
+            self.language = 'en'
+        try:
+            cnfg_locale = cnfg['localization']['locale']
+        except KeyError:
+            cnfg_locale = 'English'
+        #        self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
+        self.locale = cnfg_locale if cnfg_locale in self._locales else 'English'
+        try:
+            logger.info('settings locale to {}'.format(self.locale))
+            locale.setlocale(locale.LC_ALL, self.locale)
+        except Exception as e:
+            msg = 'unable to set locale - {ERR}'.format(ERR=e)
+            logger.warning(msg)
+            popup_error(msg)
+            sys.exit(1)
+        else:
+            logger.info('dates will be offset by {} years'.format(self.get_date_offset()))
+
+        locale_conv = locale.localeconv()
+        self.decimal_sep = locale_conv['decimal_point']
+        self.thousands_sep = locale_conv['thousands_sep']
+        self.currency = locale_conv['int_curr_symbol']
+        self.currency_symbol = locale_conv['currency_symbol']
+
+        self.localedir = os.path.join(dirname, 'locale')
+        self.domain = 'base'
+
+        try:
+            self.display_date_format = cnfg['localization']['display_date']
+        except KeyError:
+            self.display_date_format = 'YYYY-MM-DD'
+
+        self.translation = self.change_locale()
+        self.translation.install('base')  # bind gettext to _() in __builtins__ namespace
+
+        # Display parameters
+        try:
+            icon_name = cnfg['display']['icon']
+        except KeyError:
+            icon_file = os.path.join(dirname, 'docs', 'images', 'icon.ico')
+        else:
+            if not icon_name:
+                icon_file = os.path.join(dirname, 'docs', 'images', 'icon.ico')
+            else:
+                icon_file = os.path.join(dirname, 'docs', 'images', icon_name)
+
+        try:
+            fh = open(icon_file, 'r', encoding='utf-8')
+        except FileNotFoundError:
+            self.icon = None
+        else:
+            self.icon = icon_file
+            fh.close()
+
+        try:
+            logo_name = cnfg['display']['logo']
+        except KeyError:
+            logo_file = os.path.join(dirname, 'docs', 'images', 'logo.png')
+        else:
+            if not logo_name:
+                logo_file = os.path.join(dirname, 'docs', 'images', 'logo.png')
+            else:
+                logo_file = os.path.join(dirname, 'docs', 'images', logo_name)
+
+        try:
+            fh = open(logo_file, 'r', encoding='utf-8')
+        except FileNotFoundError:
+            self.logo = None
+        else:
+            self.logo = logo_file
+            fh.close()
+
+        try:
+            logo_icon = cnfg['display']['logo_icon']
+        except KeyError:
+            logo_file = os.path.join(dirname, 'docs', 'images', 'icons', 'logo_icon.png')
+        else:
+            if not logo_icon:
+                logo_file = os.path.join(dirname, 'docs', 'images', 'icons', 'logo_icon.png')
+            else:
+                logo_file = os.path.join(dirname, 'docs', 'images', logo_icon)
+
+        try:
+            fh = open(logo_file, 'r', encoding='utf-8')
+        except FileNotFoundError:
+            self.logo_icon = None
+        else:
+            self.logo_icon = logo_file
+            fh.close()
+
+        try:
+            report_template = cnfg['display']['report_template']
+        except KeyError:
+            self.report_template = os.path.join(dirname, 'templates', 'report.html')
+        else:
+            if not report_template:
+                self.report_template = os.path.join(dirname, 'templates', 'report.html')
+            else:
+                self.report_template = report_template
+
+        try:
+            report_style = cnfg['display']['report_stylesheet']
+        except KeyError:
+            self.report_css = os.path.join(dirname, 'static', 'css', 'report.css')
+        else:
+            if not report_style:
+                self.report_css = os.path.join(dirname, 'static', 'css', 'report.css')
+            else:
+                self.report_css = report_style
+
+        # Dependencies
+        try:
+            wkhtmltopdf = cnfg['dependencies']['wkhtmltopdf']
+        except KeyError:
+            self.wkhtmltopdf = os.path.join(dirname, 'data', 'wkhtmltopdf', 'bin', 'wkhtmltopdf.exe')
+        else:
+            if not wkhtmltopdf:
+                self.wkhtmltopdf = os.path.join(dirname, 'data', 'wkhtmltopdf', 'bin', 'wkhtmltopdf.exe')
+            else:
+                self.wkhtmltopdf = wkhtmltopdf
+
+        # Server parameters
+        try:
+            self.host = cnfg['server']['host']
+        except KeyError:
+            self.host = '127.0.0.1'  # localhost
+        try:
+            self.port = int(cnfg['server']['port'])
+        except KeyError:
+            self.port = 65432
+        except ValueError:
+            logger.warning('unsupported value {} provided to server configuration parameter "port" ... setting to '
+                           'default "65432"'.format(cnfg["server"]["port"]))
+            self.port = 65432
+
+        # Logging
+        try:
+            self.log_file = cnfg['log']['log_file']
+        except KeyError:
+            self.log_file = os.path.join(dirname, 'REM.log')  # localhost
+        try:
+            log_level = cnfg['log']['log_level'].upper()
+        except (KeyError, AttributeError):
+            self.log_level = logging.WARNING
+        else:
+            if log_level == 'WARNING':
+                self.log_level = logging.WARNING
+            elif log_level == 'ERROR':
+                self.log_level = logging.ERROR
+            elif log_level == 'INFO':
+                self.log_level = logging.INFO
+            elif log_level == 'DEBUG':
+                self.log_level = logging.DEBUG
+            else:
+                self.log_level = logging.WARNING
+        try:
+            self.log_size = int(cnfg['log']['log_size'])
+        except (KeyError, ValueError):  # default 1 MB
+            self.log_size = 1000000
+        try:
+            self.log_n = int(cnfg['log']['log_backups'])
+        except (KeyError, ValueError):  # default 5 backup files
+            self.log_n = 5
+        try:
+            self.log_fmt = cnfg['log']['log_fmt']
+        except KeyError:
+            self.log_fmt = '%(asctime)s: %(filename)s: %(levelname)s: %(message)s'
+
+        # Configuration data
+        self.audit_rules = None
+        self.bank_rules = None
+        self.cash_rules = None
+        self.record_rules = None
+
+        try:
+            self.dbname = cnfg['database']['default_database']
+        except KeyError:
+            self.dbname = None
+        self.prog_db = None
+        self.alt_dbs = None
+        self.date_format = None
+
+        self.creator_code = None
+        self.creation_date = None
+        self.editor_code = None
+        self.edit_date = None
+        self.delete_field = None
+        self.id_field = None
+        self.date_field = None
+        self.notes_field = None
+        self.warnings_field = None
+        self.reference_lookup = None
+        self.bank_lookup = None
+
+    def translate(self):
+        """
+        Translate text using language defined in settings.
+        """
+        pass
+
+    def edit_attribute(self, attr, value):
+        """
+        Modify a settings attribute.
+        """
+        if attr == 'language':
+            self.language = value
+        elif attr == 'locale':
+            self.locale = value
+        elif attr == 'template':
+            self.report_template = value
+        elif attr == 'css':
+            self.report_css = value
+        elif attr == 'port':
+            self.port = value
+        elif attr == 'host':
+            self.host = value
+        elif attr == 'dbname':
+            self.dbname = value
+
+    def load_constants(self, connection):
+        """
+        Load configuration constants.
+        """
+        # Prepare the request to the server
+        content = {'action': 'constants', 'value': None}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = connection.process_request(request)
+        success = response['success']
+        if success is False:
+            msg = 'failed to load configuration constants from server - {}'.format(response['value'])
+            logger.error(msg)
+            popup_error(msg)
+            conf_const = {}
+        else:
+            conf_const = response['value']
+
+        self.audit_rules = conf_const.get('audit_rules', None)
+        self.cash_rules = conf_const.get('cash_rules', None)
+        self.bank_rules = conf_const.get('bank_rules', None)
+        self.record_rules = conf_const.get('records', None)
+
+        database_attrs = conf_const.get('database', {})
+        self.prog_db = database_attrs.get('program_database', 'REM')
+        self.alt_dbs = database_attrs.get('databases', [])
+        if not self.dbname or self.dbname not in self.alt_dbs:
+            self.dbname = database_attrs.get('default_database', 'REM')
+        self.date_format = database_attrs.get('db_date_format', self.format_date_str('YYYY-MM-DD HH:MI:SS'))
+
+        table_field_attrs = conf_const.get('table_fields', {})
+        self.creator_code = table_field_attrs.get('creator_code', 'CreatorName')
+        self.creation_date = table_field_attrs.get('creation_time', 'CreationTime')
+        self.editor_code = table_field_attrs.get('editor_code', 'EditorName')
+        self.edit_date = table_field_attrs.get('edit_time', 'EditTime')
+        self.id_field = table_field_attrs.get('id_field', 'DocID')
+        self.date_field = table_field_attrs.get('date_field', 'DocDate')
+        self.notes_field = table_field_attrs.get('notes_field', 'Notes')
+        self.warnings_field = table_field_attrs.get('warnings_field', 'Warnings')
+        self.delete_field = table_field_attrs.get('delete_field', 'IsDeleted')
+        self.reference_lookup = table_field_attrs.get('reference_table', 'RecordReferences')
+        self.bank_lookup = table_field_attrs.get('bank_table', 'Bank')
+
+        self.records = None
+
+        return success
+
+    def layout(self):
+        """
+        Generate GUI layout for the settings window.
+        """
+        width = 800
+
+        # Window and element size parameters
+        main_font = mod_const.MAIN_FONT
+
+        pad_el = mod_const.ELEM_PAD
+        pad_v = mod_const.VERT_PAD
+        pad_frame = mod_const.FRAME_PAD
+        in_size = 18
+        spacer = (12, 1)
+        dd_size = 8
+
+        bg_col = mod_const.ACTION_COL
+        in_col = mod_const.INPUT_COL
+
+        bwidth = 0.5
+        select_col = mod_const.SELECT_TEXT_COL
+
+        layout = [
+            [sg.Frame('Localization', [
+                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+                [sg.Text('Language:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                         background_color=bg_col),
+                 sg.Combo(list(self._locales.values()), key='-LANGUAGE-', size=(dd_size, 1), pad=(pad_el, pad_el),
+                          default_value=self.language, auto_size_text=False, background_color=in_col)],
+                [sg.Text('Locale:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                         background_color=bg_col),
+                 sg.Combo(list(self._locales), key='-LOCALE-', size=(dd_size, 1), pad=(pad_el, pad_el),
+                          default_value=self.locale, auto_size_text=False, background_color=in_col)],
+                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                      title_color=select_col, relief='groove')],
+            [sg.Frame('Display', [
+                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+                [sg.Text('Report template:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                         font=main_font, background_color=bg_col),
+                 sg.Input(self.report_template, key='-TEMPLATE-', size=(60, 1),
+                          pad=(pad_el, pad_el), font=main_font, background_color=in_col),
+                 sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
+                [sg.Text('Report stylesheet:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                         font=main_font, background_color=bg_col),
+                 sg.Input(self.report_css, key='-CSS-', size=(60, 1), pad=(pad_el, pad_el),
+                          font=main_font, background_color=in_col),
+                 sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
+                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                      title_color=select_col, relief='groove')],
+            [sg.Frame('Database', [
+                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+                [sg.Text('Database:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                         background_color=bg_col),
+                 sg.Combo(self.alt_dbs, default_value=self.dbname, key='-DATABASE-', size=(in_size - 1, 1),
+                          pad=((pad_el, pad_frame), pad_el), font=main_font, background_color=in_col)],
+                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                      title_color=select_col, relief='groove')],
+            [sg.Frame('Server', [
+                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
+                [sg.Text('Server Port:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                         font=main_font, background_color=bg_col),
+                 sg.Input(self.port, key='-PORT-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                          font=main_font, background_color=in_col),
+                 sg.Text('', size=spacer, background_color=bg_col),
+                 sg.Text('Server Host:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                         background_color=bg_col),
+                 sg.Input(self.host, key='-SERVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
+                          font=main_font, background_color=in_col)],
+                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
+                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
+                      title_color=select_col, relief='groove')]]
+
+        return layout
+
+    def change_locale(self):
+        """
+        Translate application text based on supplied locale.
+        """
+        language = self.language
+        localdir = self.localedir
+        domain = self.domain
+
+        #        if language not in [i.split('_')[0] for i in self._locales]:
+        #            raise NameError
+        if language not in self._locales.values():
+            raise NameError
+
+        try:
+            trans = gettext.translation(domain, localedir=localdir, languages=[language])
+        except Exception as e:
+            logger.warning('unable to find translations for locale {LANG} - {ERR}'.format(LANG=language, ERR=e))
+            trans = gettext
+
+        return trans
+
+    def format_display_date(self, dt):
+        """
+        Format a datetime object for displaying based on configured date format.
+
+        Arguments:
+            dt (datetime): datetime instance.
+        """
+        date = self.apply_date_offset(dt)
+        date_str = self.format_date_str(date_str=self.display_date_format)
+
+        date_formatted = date.strftime(date_str)
+
+        return date_formatted
+
+    def format_date_str(self, date_str: str = None):
+        """
+        Format a date string for use as input to datetime method.
+
+        Arguments:
+            date_str (str): date string.
+        """
+        separators = set(':/- ')
+        date_fmts = {'YYYY': '%Y', 'YY': '%y',
+                     'MMMM': '%B', 'MMM': '%b', 'MM': '%m', 'M': '%-m',
+                     'DD': '%d', 'D': '%-d',
+                     'HH': '%H', 'MI': '%M', 'SS': '%S'}
+
+        date_str = date_str if date_str else self.date_format
+
+        strfmt = []
+
+        last_char = date_str[0]
+        buff = [last_char]
+        for char in date_str[1:]:
+            if char not in separators:
+                if last_char != char:
+                    # Check if char is first in a potential series
+                    if last_char in separators:
+                        buff.append(char)
+                        last_char = char
+                        continue
+
+                    # Check if component is minute
+                    if ''.join(buff + [char]) == 'MI':
+                        strfmt.append(date_fmts['MI'])
+                        buff = []
+                        last_char = char
+                        continue
+
+                    # Add characters in buffer to format string and reset buffer
+                    component = ''.join(buff)
+                    strfmt.append(date_fmts[component])
+                    buff = [char]
+                else:
+                    buff.append(char)
+            else:
+                component = ''.join(buff)
+                try:
+                    strfmt.append(date_fmts[component])
+                except KeyError:
+                    if component:
+                        raise TypeError('unknown component {} provided to date string {}.'.format(component, date_str))
+
+                strfmt.append(char)
+                buff = []
+
+            last_char = char
+
+        try:  # format final component remaining in buffer
+            strfmt.append(date_fmts[''.join(buff)])
+        except KeyError:
+            raise TypeError('unsupported characters {} found in date string {}'.format(''.join(buff), date_str))
+
+        return ''.join(strfmt)
+
+    def get_date_offset(self):
+        """
+        Find date offset for calendar systems other than the gregorian calendar
+        """
+        current_locale = self.locale
+
+        if current_locale == 'Thai':
+            offset = 543
+        else:
+            offset = 0
+
+        return offset
+
+    def apply_date_offset(self, dt):
+        """
+        Apply date offset to a datetime object.
+
+        Arguments:
+            dt (datetime.datetime): datetime instance.
+        """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+
+        offset = self.get_date_offset()
+        try:
+            dt_mod = dt + relativedelta(years=+offset)
+        except Exception as e:
+            logging.debug('encountered warning when attempting to apply offset to date - {ERR}'.format(ERR=e))
+            dt_mod = strptime(dt.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S') + relativedelta(years=+offset)
+
+        return dt_mod
+
+    def get_icon_path(self, icon):
+        """
+        Return the path of an icon, if exists.
+        """
+        icon = "{}.png".format(icon)
+        icon_path = os.path.join(self.icons_dir, icon)
+        if not os.path.exists(icon_path):
+            logger.warning('unable to open icon PNG {ICON}'.format(ICON=icon))
+            icon_path = None
+
+        return icon_path
+
+
+class AccountManager:
+    """
+    Basic user account manager object.
+
+    Attributes:
+        uid (str): existing account username.
+
+        pwd (str): hash value for associated account password.
+
+        admin (bool): existing account is an admin account.
+
+        logged_in (bool): user is logged in
+    """
+
+    def __init__(self):
+        self.uid = None
+        self.pwd = None
+        self.group = None
+        self.logged_in = False
+        self.admin = False
+
+    def _prepare_conn_str(self, database: str = None):
+        """
+        Prepare the connection string.
+        """
+        db = database if database is not None else settings.prog_db
+
+        return {'UID': self.uid, 'PWD': self.pwd, 'Database': db}
+
+    def login(self, uid, pwd, timeout: int = 10):
+        """
+        Verify username and password exists in the database accounts table and obtain user permissions.
+
+        Args:
+            uid (str): existing account username.
+
+            pwd (str): password associated with the existing account.
+
+            timeout (int): server connection timeout.
+        """
+        self.uid = uid
+        self.pwd = pwd
+
+        # Prepare query statement and parameters
+        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
+        params = (uid, )
+
+        # Prepare the server request
+        value = {'connection_string': self._prepare_conn_str(), 'transaction_type': 'read', 'statement': query_str,
+                 'parameters': params}
+        content = {'action': 'db_transact', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request, timeout=timeout)
+        if response['success'] is False:
+            msg = 'login failure for user {USER} - {ERR}'.format(USER=uid, ERR=response['value'])
+            logger.error(msg)
+            raise IOError(msg)
+        else:
+            try:
+                series = pd.DataFrame(response['value']).iloc[0]
+            except Exception as e:
+                msg = 'failed to read the results of the database query - {ERR}'.format(ERR=e)
+                logger.error(msg)
+                raise IOError(msg)
+            else:
+                ugroup = series['UserGroup']
+
+#        conn = self.db_connect(database=self.dbname, timeout=timeout)
+#        cursor = conn.cursor()
+
+        # Privileges
+#        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
+#        cursor.execute(query_str, (uid,))
+
+#        ugroup = None
+#        results = cursor.fetchall()
+#        for row in results:
+#            username, user_group = row
+#            if username == uid:
+#                ugroup = user_group
+#                break
+
+#        cursor.close()
+#        conn.close()
+
+        if not ugroup:
+            self.uid = None
+            self.pwd = None
+            return False
+
+        self.uid = uid
+        self.pwd = pwd
+        self.group = ugroup
+        self.logged_in = True
+
+        if ugroup == 'admin':
+            self.admin = True
+
+        return True
+
+    def logout(self):
+        """
+        Reset class attributes.
+        """
+        self.uid = None
+        self.pwd = None
+        self.group = None
+        self.logged_in = False
+        self.admin = False
+        success = True
+
+        return success
+
+    def access_permissions(self):
+        """
+        Return escalated privileges for a given user group.
+        """
+        ugroup = self.group
+
+        if ugroup == 'admin':
+            return ['admin', 'user']
+        else:
+            return ['user']
+
+    def database_tables(self, database, timeout: int = 5):
+        """
+        Get database schema information.
+        """
+        # Prepare the server request
+        value = {'connection_string': self._prepare_conn_str(), 'table': None, 'database': database}
+        content = {'action': 'db_schema', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request, timeout=timeout)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            results = []
+        else:
+            results = response['value']
+
+        return results
+
+    def table_schema(self, database, table, timeout: int = 5):
+        """
+        Get table schema information.
+        """
+        # Prepare the server request
+        value = {'connection_string': self._prepare_conn_str(), 'table': table, 'database': database}
+        content = {'action': 'db_schema', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request, timeout=timeout)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            results = []
+        else:
+            results = response['value']
+
+        return results
+
+    def query(self, tables, columns='*', filter_rules=None, order=None, prog_db: bool = False, distinct: bool = False):
+        """
+        Query an ODBC database.
+
+        Arguments:
+
+            tables (str): primary table ID.
+
+            columns: list or string containing the column(s) to select from the database table.
+
+            filter_rules: tuple or list of tuples containing where clause and value tuple for a given filter rule.
+
+            order: string or list of strings containing columns to sort results by.
+
+            prog_db (bool): query from program database.
+
+            distinct (bool): add the distinct clause to the statement to return only unique entries.
+        """
+        # Define sorting component of query statement
+        if type(order) in (type(list()), type(tuple())):
+            if len(order) > 0:
+                order_by = ' ORDER BY {}'.format(', '.join(order))
+            else:
+                order_by = ''
+        elif isinstance(order, str):
+            order_by = ' ORDER BY {}'.format(order)
+        else:
+            order_by = ''
+
+        # Define column component of query statement
+        colnames = ', '.join(columns) if type(columns) in (type(list()), type(tuple())) else columns
+
+        # Construct filtering rules
+        try:
+            where_clause, params = construct_where_clause(filter_rules)
+        except SQLStatementError as e:
+            msg = 'failed to generate the query statement - {}'.format(e)
+            logger.error(msg)
+            return pd.DataFrame()
+
+        # Prepare the database transaction statement
+        if not distinct:
+            query_str = 'SELECT {COLS} FROM {TABLE} {WHERE} {SORT};'.format(COLS=colnames, TABLE=tables,
+                                                                            WHERE=where_clause, SORT=order_by)
+        else:
+            query_str = 'SELECT DISTINCT {COLS} FROM {TABLE} {WHERE} {SORT};'.format(COLS=colnames, TABLE=tables,
+                                                                                     WHERE=where_clause, SORT=order_by)
+
+        logger.debug('query string is "{STR}" with parameters "{PARAMS}"'.format(STR=query_str, PARAMS=params))
+
+        # Prepare the server request
+        db = settings.prog_db if prog_db is True else settings.dbname
+        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'read',
+                 'statement': query_str, 'parameters': params}
+        content = {'action': 'db_transact', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            df = pd.DataFrame()
+        else:
+            try:
+                df = pd.DataFrame(response['value'])
+            except Exception as e:
+                msg = 'failed to read the results of the database query - {ERR}'.format(ERR=e)
+                logger.error(msg)
+
+                df = pd.DataFrame()
+
+        return df
+
+    def insert(self, table, columns, values):
+        """
+        Insert data into the daily summary table.
+        """
+        values = convert_datatypes(values)
+
+        # Format parameters
+        if isinstance(values, list):
+            if any(isinstance(i, list) for i in values):
+                if not all([len(columns) == len(i) for i in values]):
+                    msg = 'failed to generate insertion statement - columns size is not equal to values size'
+                    logger.error(msg)
+                    return False
+
+                params = tuple([i for sublist in values for i in sublist])
+                marker_list = []
+                for value_set in values:
+                    marker_list.append('({})'.format(','.join(['?' for _ in value_set])))
+                markers = ','.join(marker_list)
+            else:
+                if len(columns) != len(values):
+                    msg = 'failed to generate insertion statement - header size is not equal to values size'
+                    logger.error(msg)
+                    return False
+
+                params = tuple(values)
+                markers = '({})'.format(','.join(['?' for _ in params]))
+        elif isinstance(values, tuple):
+            if len(columns) != len(values):
+                msg = 'failed to generate insertion statement - header size is not equal to values size'
+                logger.error(msg)
+                return False
+
+            params = values
+            markers = '({})'.format(','.join(['?' for _ in params]))
+        elif isinstance(values, str):
+            if not isinstance(columns, str):
+                msg = 'failed to generate insertion statement - header size is not equal to values size'
+                logger.error(msg)
+                return False
+
+            params = (values,)
+            markers = '({})'.format(','.join(['?' for _ in params]))
+        else:
+            msg = 'failed to generate insertion statement - unknown values type {}'.format(type(values))
+            logger.error(msg)
+            return False
+
+        # Prepare the database transaction statement
+        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES {VALS}' \
+            .format(TABLE=table, COLS=','.join(columns), VALS=markers)
+        logger.debug('insertion string is "{STR}" with parameters "{PARAMS}"'.format(STR=insert_str, PARAMS=params))
+
+        # Prepare the server request
+        db = settings.prog_db
+        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'write',
+                 'statement': insert_str, 'parameters': params}
+        content = {'action': 'db_transact', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            status = False
+        else:
+            status = True
+
+        return status
+
+    def update(self, table, columns, values, filters):
+        """
+        Insert data into the daily summary table.
+        """
+        values = convert_datatypes(values)
+
+        # Format parameters
+        if isinstance(values, list):
+            if len(columns) != len(values):
+                msg = 'failed to generate update statement - header size is not equal to values size'
+                logger.error(msg)
+                return False
+
+            params = tuple(values)
+        elif isinstance(values, tuple):
+            if len(columns) != len(values):
+                msg = 'failed to generate update statement - header size is not equal to values size'
+                logger.error(msg)
+                return False
+
+            params = values
+        elif isinstance(values, str):
+            if not isinstance(columns, str):
+                msg = 'failed to generate update statement - header size is not equal to values size'
+                logger.error(msg)
+                return False
+
+            params = (values,)
+        else:
+            msg = 'failed to generate update statement - unknown values type {}'.format(type(values))
+            logger.error(msg)
+            return False
+
+        pair_list = ['{}=?'.format(colname) for colname in columns]
+
+        where_clause, filter_params = construct_where_clause(filters)
+        if filter_params is not None:  # filter parameters go at end of parameter list
+            params = params + filter_params
+
+        # Prepare the database transaction statement
+        update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}' \
+            .format(TABLE=table, PAIRS=','.join(pair_list), CLAUSE=where_clause)
+        logger.debug('update string is "{STR}" with parameters "{PARAMS}"'.format(STR=update_str, PARAMS=params))
+
+        # Prepare the server request
+        db = settings.prog_db
+        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'write',
+                 'statement': update_str, 'parameters': params}
+        content = {'action': 'db_transact', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            status = False
+        else:
+            status = True
+
+        return status
+
+    def delete(self, table, columns, values):
+        """
+        Delete data from a summary table.
+        """
+        values = convert_datatypes(values)
+
+        # Format parameters
+        if isinstance(values, list):
+            params = tuple(values)
+
+            if len(columns) != len(values):
+                msg = 'failed to generate deletion statement - columns size is not equal to values size'
+                logger.error(msg)
+                return False
+        elif isinstance(values, tuple):
+            params = values
+
+            if len(columns) != len(values):
+                msg = 'failed to generate deletion statement - columns size is not equal to values size'
+                logger.error(msg)
+                return False
+        elif isinstance(values, str):
+            params = (values,)
+
+            if not isinstance(columns, str):
+                msg = 'failed to generate deletion statement - columns size is not equal to values size'
+                logger.error(msg)
+                return False
+        else:
+            msg = 'failed to generate deletion statement - unknown values type {}'.format(type(values))
+            logger.error(msg)
+            return False
+
+        pairs = {}
+        for colname in columns:
+            if colname in pairs:
+                pairs[colname].append('?')
+            else:
+                pairs[colname] = ['?']
+
+        pair_list = []
+        for colname in pairs:
+            col_params = pairs[colname]
+            if len(col_params) > 1:
+                pair_list.append('{COL} IN ({VALS})'.format(COL=colname, VALS=', '.join(col_params)))
+            elif len(col_params) == 1:
+                pair_list.append('{COL}=?'.format(COL=colname))
+            else:
+                logger.warning('failed to generate deletion statement - column {} has no associated parameters'
+                               .format(colname))
+                continue
+
+        # Prepare the database transaction statement
+        delete_str = 'DELETE FROM {TABLE} WHERE {PAIRS}'.format(TABLE=table, PAIRS=' AND '.join(pair_list))
+        logger.debug('deletion string is "{STR}" with parameters "{PARAMS}"'.format(STR=delete_str, PARAMS=params))
+
+        # Prepare the server request
+        db = settings.prog_db
+        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'write',
+                 'statement': delete_str, 'parameters': params}
+        content = {'action': 'db_transact', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            status = False
+        else:
+            status = True
+
+        return status
+
+
+# Functions
+def hash_password(password):
+    """
+    Obtain a password's hash-code.
+    """
+    password_utf = password.encode('utf-8')
+
+    md5hash = hashlib.md5()
+    md5hash.update(password_utf)
+
+    password_hash = md5hash.hexdigest()
+
+    return password_hash
+
+
+def construct_where_clause(filter_rules):
+    """
+    Construct an SQL statement where clause for querying and updating database tables.
+    """
+    if filter_rules is None or len(filter_rules) == 0:  # no filtering rules
+        return ('', None)
+
+    # Construct filtering rules
+    if isinstance(filter_rules, list):  # multiple filter parameters
+        all_params = []
+        for rule in filter_rules:
+            try:
+                statement, params = rule
+            except ValueError:
+                msg = 'incorrect data type for filter rule {}'.format(rule)
+                raise SQLStatementError(msg)
+
+            if type(params) in (type(tuple()), type(list())):
+                # Unpack parameters
+                for param_value in params:
+                    all_params.append(param_value)
+            elif type(params) in (type(str()), type(int()), type(float())):
+                all_params.append(params)
+            else:
+                msg = 'unknown parameter type {} in rule {}'.format(params, rule)
+                raise SQLStatementError(msg)
+
+        params = tuple(all_params)
+        where = 'WHERE {}'.format(' AND '.join([i[0] for i in filter_rules]))
+
+    elif isinstance(filter_rules, tuple):  # single filter parameter
+        statement, params = filter_rules
+        where = 'WHERE {COND}'.format(COND=statement)
+
+    else:  # unaccepted data type provided
+        msg = 'unaccepted data type {} provided in rule {}'.format(type(filter_rules), filter_rules)
+        raise SQLStatementError(msg)
+
+    return (where, params)
+
+
+def convert_datatypes(values):
+    """
+    Convert values with numpy data-types to native data-types.
+    """
+    strptime = datetime.datetime.strptime
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_integer_dtype = pd.api.types.is_integer_dtype
+    is_bool_dtype = pd.api.types.is_bool_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    date_fmt = settings.date_format
+
+    converted_values = []
+    for value in values:
+        if is_float_dtype(type(value)) is True or isinstance(value, float):
+            converted_value = float(value)
+        elif is_integer_dtype(type(value)) is True or isinstance(value, int):
+            converted_value = int(value)
+        elif is_bool_dtype(type(value)) is True or isinstance(value, bool):
+            converted_value = bool(value)
+        elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):
+            converted_value = strptime(value.strftime(date_fmt), date_fmt)
+        else:
+            converted_value = str(value)
+
+        converted_values.append(converted_value)
+
+    return converted_values
+
+
+def popup_error(msg):
+    """
+    Display popup notifying user that there is a fatal program error.
+    """
+    font = mod_const.MID_FONT
+    return sg.popup_error(textwrap.fill(msg, width=40), font=font, title='')
+
+
+def load_config(cnfg_file):
+    """
+    Load the contents of the configuration file into a python dictionary.
+    """
+    try:
+        fh = open(cnfg_file, 'r', encoding='utf-8')
+    except FileNotFoundError:
+        msg = 'Unable to load user settings file at {PATH}. Please verify that the file path is correct.'\
+            .format(PATH=CNF_FILE)
+        popup_error(msg)
+        sys.exit(1)
+    else:
+        cnfg = yaml.safe_load(fh)
+        fh.close()
+
+    return cnfg
+
+
+def configure_handler(dirname, cnfg):
+    """
+    Configure the rotating file handler for logging.
+    """
+    try:
+        log_file = cnfg['log']['log_file']
+    except KeyError:
+        log_file = os.path.join(dirname, 'REM.log')
+    try:
+        level = cnfg['log']['log_level'].upper()
+    except (KeyError, AttributeError):
+        log_level = logging.WARNING
+    else:
+        if level == 'WARNING':
+            log_level = logging.WARNING
+        elif level == 'ERROR':
+            log_level = logging.ERROR
+        elif level == 'INFO':
+            log_level = logging.INFO
+        elif level == 'DEBUG':
+            log_level = logging.DEBUG
+        else:
+            log_level = logging.WARNING
+    try:
+        nbytes = int(cnfg['log']['log_size'])
+    except (KeyError, ValueError):  # default 1 MB
+        nbytes = 1000000
+    try:
+        backups = int(cnfg['log']['log_backups'])
+    except (KeyError, ValueError):  # default 5 backup files
+        backups = 5
+    try:
+        formatter = logging.Formatter(cnfg['log']['log_fmt'])
+    except (KeyError, ValueError):
+        formatter = logging.Formatter('%(asctime)s: %(filename)s: %(levelname)s: %(message)s')
+
+    log_handler = handlers.RotatingFileHandler(log_file, maxBytes=nbytes, backupCount=backups, encoding='utf-8',
+                                               mode='a')
+    log_handler.setLevel(log_level)
+    log_handler.setFormatter(formatter)
+
+    return log_handler
+
+
+# Determine if application is a script file or frozen exe
+if getattr(sys, 'frozen', False):
+    DIRNAME = os.path.dirname(sys.executable)
+elif __file__:
+    DIRNAME = os.path.dirname(__file__)
+else:
+    msg = 'Unable to determine file type of the program. Please verify proper program installation.'
+    popup_error(msg)
+    sys.exit(1)
+
+# Load user-defined configuration settings
+CNF_FILE = os.path.join(DIRNAME, 'settings.yaml')
+CNFG = load_config(CNF_FILE)
+
+# Create the logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+#log_handler = handlers.RotatingFileHandler(settings.log_file, maxBytes=settings.log_size, backupCount=settings.log_n,
+#                                           encoding='utf-8', mode='a')
+#log_handler.setLevel(settings.log_level)
+#log_handler.setFormatter(logging.Formatter(settings.log_fmt))
+#
+#logger.addHandler(log_handler)
+logger.addHandler(configure_handler(DIRNAME, CNFG))
+
+#logger.debug('writing program logs to {LOG}'.format(LOG=settings.log_file))
+
+# Initialize manager objects
+settings = SettingsManager(CNFG, DIRNAME)
+user = AccountManager()
+
+# Open a connection to the odbc_server
+logger.info('opening a socket to connect to the server')
+try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    logger.info('socket successfully created')
+except socket.error as e:
+    msg = 'socket creation failed on error {ERR}'.format(ERR=e)
+    logger.error('{MSG}'.format(MSG=msg))
+    popup_error(msg)
+    sys.exit(1)
+else:
+    sock.setblocking(False)
+    addr = (settings.host, settings.port)
+
+logger.info('initializing connection to server {ADDR} on port {PORT}'.format(ADDR=settings.host, PORT=settings.port))
+while True:
+    try:
+        sock.connect(addr)
+    except BlockingIOError:
+        break
+    except socket.error as e:
+        msg = 'connection to server {ADDR} failed - {ERR}'.format(ADDR=settings.host, ERR=e)
+        popup_error(msg)
+        logger.error('{MSG}'.format(MSG=msg))
+        sys.exit(1)
+    else:
+        logger.info('connection accepted from server {ADDR}'.format(ADDR=settings.host))
+        break
+
+server_conn = ServerConnection(sock, addr)
+
+# Load the configuration constants
+logger.info('loading program configuration from the server')
+if not settings.load_constants(server_conn):
+    logger.error('failed to load configuration from the server')
+    sys.exit(1)

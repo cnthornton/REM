@@ -982,7 +982,7 @@ class Config:
             self.reference_lookup = 'RecordReferences'
 
         try:
-            self.bank_lookup = cnfg['tables']['bank']
+            self.bank_lookup = cnfg['tables']['mod_bank']
         except KeyError:
             self.bank_lookup = 'BankAccounts'
 
@@ -1002,7 +1002,7 @@ class Config:
 
     def connect(self, timeout=5000):
         """
-        Connect to the NoSQL database using the pymongo driver.
+        Connect to the NoSQL database using the pymongo odbc_driver.
         """
         print('Info: connecting to the configuration database')
         connection_info = {'username': self.mongod_user, 'password': self.mongod_pwd,
@@ -1087,7 +1087,6 @@ class Config:
             self.bank_rules = collection.find_one({'name': 'bank_rules'})
             self.startup_msgs = collection.find_one({'name': 'startup_messages'})
             self.records = RecordsConfiguration(collection.find_one({'name': 'records'}))
-            self.ids = collection.find_one({'name': 'ids'})
 
 
 class ProgramAccount:
@@ -1338,7 +1337,7 @@ else:
     sys.exit(1)
 
 # Load global configuration settings
-_prog_cnfg_name = 'configuration.yaml'
+_prog_cnfg_name = 'cnfg.yaml'
 _prog_cnfg_file = os.path.join(_dirname, _prog_cnfg_name)
 
 try:

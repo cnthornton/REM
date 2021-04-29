@@ -237,11 +237,11 @@ class UserSettings:
             self.report_template = value
         elif attr == 'css':
             self.report_css = value
-        elif attr == 'port':
+        elif attr == 'odbc_port':
             self.port = value
-        elif attr == 'server':
+        elif attr == 'odbc_server':
             self.server = value
-        elif attr == 'driver':
+        elif attr == 'odbc_driver':
             self.driver = value
         elif attr == 'dbname':
             self.dbname = value
@@ -298,16 +298,16 @@ class UserSettings:
                             title_color=select_col, relief='groove')],
                   [sg.Frame('Database', [
                       [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
-                      [sg.Text('ODBC port:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                      [sg.Text('ODBC odbc_port:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
                                font=main_font, background_color=bg_col),
                        sg.Input(self.port, key='-PORT-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
                                 font=main_font, background_color=in_col),
                        sg.Text('', size=spacer, background_color=bg_col),
-                       sg.Text('ODBC server:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
+                       sg.Text('ODBC odbc_server:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
                                background_color=bg_col),
                        sg.Input(self.server, key='-SERVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
                                 font=main_font, background_color=in_col)],
-                      [sg.Text('ODBC driver:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
+                      [sg.Text('ODBC odbc_driver:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
                                font=main_font, background_color=bg_col),
                        sg.Input(self.driver, key='-DRIVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
                                 font=main_font, background_color=in_col),
@@ -711,7 +711,12 @@ class UserAccount:
             df = pd.DataFrame()
         else:
             try:
-                df = pd.read_sql(statement, conn, params=params)
+                if params:
+                    print('Info: query statement supplied is {} with parameters {}'.format(statement, params))
+                    df = pd.read_sql(statement, conn, params=params)
+                else:
+                    print('Info: query statement supplied is {} with no parameters'.format(statement))
+                    df = pd.read_sql(statement, conn)
             except sql.DatabaseError as ex:
                 print('Query Error: {}'.format(ex))
                 df = pd.DataFrame()

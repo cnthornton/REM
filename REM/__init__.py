@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 """Software library for automating the reconciliation of revenue and expenses 
-reports with bank statements, generate statistical summaries and reports on 
+reports with mod_bank statements, generate statistical summaries and reports on
 financial data, and perform daily transaction audits.
 
 Copyright:

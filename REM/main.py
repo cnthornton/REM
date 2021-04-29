@@ -3,22 +3,23 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '2.1.20'
+__version__ = '3.1.0'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
 import sys
 import tkinter as tk
 
-import REM.audit as audit
-import REM.bank as bank
-import REM.cash as cash
-from REM.config import configuration
+import REM.audit as mod_audit
+import REM.bank as mod_bank
+import REM.cash as mod_cash
 import REM.constants as mod_const
 import REM.elements as mod_elem
 import REM.layouts as mod_lo
+import REM.records as mod_records
 import REM.secondary as mod_win2
-from REM.settings import user, settings
+#from REM.settings import user, settings
+from REM.client import logger, server_conn, settings, user
 
 
 # Classes
@@ -27,7 +28,7 @@ class ToolBar:
     Toolbar object.
     """
 
-    def __init__(self, account_methods):
+    def __init__(self, account_methods, records):
         """
         Initialize toolbar parameters.
         """
@@ -51,15 +52,16 @@ class ToolBar:
 
         # Program records menu items
         acct_records = {}
-        record_rules = configuration.records.rules
+        record_rules = records.rules
         for record_entry in record_rules:
             record_type = record_entry.group
             record_title = record_entry.menu_title
             try:
                 record_group = record_map[record_type]
             except KeyError:
-                print('Configuration Error: record type {TYPE} not an accepted program record type'
-                      .format(TYPE=record_type))
+                msg = 'record type {TYPE} not an accepted program record type'.format(TYPE=record_type)
+                logger.error(msg)
+                print('Warning: {}'.format(msg))
                 continue
             try:
                 acct_records[record_group].append(record_title)
@@ -81,6 +83,8 @@ class ToolBar:
         self.menu_menu = {'name': '&Menu',
                           'items': [('!', '&Settings'), ('', 'Debu&g'), ('', '---'), ('', '&Help'),
                                     ('', 'Ab&out'), ('', '---'), ('', '&Quit')]}
+
+        self.records_title = records.title
 
     def key_lookup(self, element):
         """
@@ -123,12 +127,12 @@ class ToolBar:
         text_col = mod_const.TEXT_COL
 
         toolbar = [[sg.Canvas(key='-CANVAS_WIDTH-', size=(width, 0), visible=True)],
-                   [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip=_('Run Audits'),
+                   [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip='Run Audits',
                                            button_color=(text_col, header_col), pad=(padding, padding), border_width=0),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
                                            button_color=(text_col, header_col), border_width=0,
-                                           tooltip=configuration.records.title, pad=(padding, padding)),
-                             sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip=_('Modify Database'),
+                                           tooltip=self.records_title, pad=(padding, padding)),
+                             sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip='Modify Database',
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
                                        disabled=True)]],
                            justification='l', background_color=header_col, expand_x=True),
@@ -136,10 +140,10 @@ class ToolBar:
                            justification='c', background_color=header_col, expand_x=True),
                     sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', pad=(padding, padding), image_data=user_ico,
                                            button_color=(text_col, header_col), border_width=0,
-                                           tooltip=_('User Settings')),
+                                           tooltip='User Settings'),
                              sg.ButtonMenu('', menu_menu, key='-MMENU-', pad=(padding, padding), image_data=menu_ico,
                                            button_color=(text_col, header_col), border_width=0,
-                                           tooltip=_('Help and program settings'))]],
+                                           tooltip='Help and program settings')]],
                            justification='r', background_color=header_col)]]
 
         layout = [sg.Frame('', toolbar, key='-TOOLBAR-', relief='groove', pad=(0, 0), background_color=header_col)]
@@ -224,7 +228,9 @@ class ToolBar:
             try:
                 menu_object = menus[menu_item.lower()]
             except KeyError:
-                print('Error: selected menu {} not list of available menus'.format(menu_item))
+                msg = 'selected menu {} not list of available menus'.format(menu_item)
+                logger.error(msg)
+                print('Error: {}'.format(msg))
                 return None
         else:
             menu_object = menu
@@ -259,7 +265,9 @@ class ToolBar:
         try:
             select_menu = menus[menu.lower()]
         except KeyError:
-            print('Error: selected menu {} not list of available menus'.format(menu))
+            msg = 'selected menu {} not list of available menus'.format(menu)
+            logger.error(msg)
+            print('Error: {}'.format(msg))
             return False
 
         status = '' if value == 'enable' else '!'
@@ -330,8 +338,9 @@ def get_panels(account_methods, win_size: tuple = None):
     # Add Audit rule with summary panel
     for account_method in account_methods:
         for rule in account_method.rules:
-            print('Info: creating layout for accounting method {ACCT}, rule {RULE}'
-                  .format(ACCT=account_method.name, RULE=rule.name))
+            msg = 'creating the layout for accounting method {ACCT}, rule {RULE}'\
+                .format(ACCT=account_method.name, RULE=rule.name)
+            logger.debug(msg)
             panels.append(rule.layout(win_size=win_size))
 
     # Layout
@@ -357,7 +366,9 @@ def resize_elements(window, rules):
         try:
             rule.resize_elements(window)
         except Exception as e:
-            print('Error: {}'.format(e))
+            msg = 'failed to resize window - {}'.format(e)
+            logger.error(msg)
+            print('Error: {}'.format(msg))
             continue
 
 
@@ -383,6 +394,15 @@ def format_date_element(date_str):
     return ''.join(buff)
 
 
+def remove_unsaved_ids(entries):
+    """
+    Remove all record IDs associated with any instance of a record entry object
+    """
+    logger.info('removing all unsaved record IDs associated with the program instance')
+    for entry in entries:
+        entry.remove_unsaved_id(entry.get_unsaved_ids(internal_only=True))
+
+
 def main():
     """
     Main function.
@@ -403,6 +423,7 @@ def main():
                    button_color=(text_col, default_col), tooltip_font=(mod_const.TOOLTIP_FONT))
 
     # Original window size
+    logger.debug('determining screen size')
     root = tk.Tk()
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
@@ -420,17 +441,18 @@ def main():
         current_h = screen_h
 
     # Load the program configuration
-    audit_rules = audit.AuditRules(configuration)
-    cash_rules = cash.CashRules(configuration)
-    bank_rules = bank.BankRules(configuration)
-    record_rules = configuration.records
-    startup_msgs = configuration.startup_msgs
+    record_rules = mod_records.RecordsConfiguration(settings.record_rules)
+    settings.records = record_rules
+
+    audit_rules = mod_audit.AuditRules(settings.audit_rules)
+    cash_rules = mod_cash.CashRules(settings.cash_rules)
+    bank_rules = mod_bank.BankRules(settings.bank_rules)
 
     acct_methods = [audit_rules, bank_rules]
     all_rules = [audit_rules, cash_rules, bank_rules, record_rules]
 
     # Configure GUI layout
-    toolbar = ToolBar([audit_rules, cash_rules, bank_rules])
+    toolbar = ToolBar([audit_rules, cash_rules, bank_rules], record_rules)
     layout = [toolbar.layout(win_size=(current_w, current_h)),
               get_panels(acct_methods, win_size=(current_w, current_h))]
 
@@ -449,10 +471,10 @@ def main():
                        return_keyboard_events=True)
     window.finalize()
     window.maximize()
-    print('Info: starting up')
+    logger.info('starting the program')
 
     screen_w, screen_h = window.get_screen_dimensions()
-    print('Info: screen size is {W} x {H}'.format(W=screen_w, H=screen_h))
+    logger.debug('screen size is {W} x {H}'.format(W=screen_w, H=screen_h))
 
     user_image = tk.PhotoImage(data=mod_const.USER_ICON)
     userin_image = tk.PhotoImage(data=mod_const.USERIN_ICON)
@@ -491,7 +513,7 @@ def main():
         # Get window dimensions
         win_w, win_h = window.size
         if win_w != current_w or win_h != current_h:
-            print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
+            logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
             resize_elements(window, acct_rules)
@@ -503,10 +525,11 @@ def main():
 
         # User login
         if values['-UMENU-'] == 'Sign In':  # user logs on
-            print('Info: displaying user login screen')
+            logger.debug('displaying user login screen')
             mod_win2.login_window()
 
             if user.logged_in is True:  # logged on successfully
+                logger.info('user signed in as "{}"'.format(user.uid))
                 # Disable sign-in and enable sign-off
                 toolbar.toggle_menu(window, 'umenu', 'sign in', value='disable')
                 toolbar.toggle_menu(window, 'umenu', 'sign out', value='enable')
@@ -520,7 +543,7 @@ def main():
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
             else:
-                print('Error: unable to login to the program')
+                logger.warning('failed to login to the program as user {}'.format(user.uid))
 
             continue
 
@@ -563,7 +586,11 @@ def main():
                 window['-HOME-'].update(visible=True)
                 current_panel = '-HOME-'
 
+            # Remove all unsaved record IDs associated with the program instance
+            remove_unsaved_ids(settings.records.rules)
+
             # Reset User attributes
+            logger.info('signing out as user {}'.format(user.uid))
             user.logout()
 
             # Switch user icon
@@ -593,30 +620,14 @@ def main():
             mod_win2.database_importer_window(win_size=window.get_screen_size())
             continue
 
-        # Display debugger window
-        if not debug_win and values['-MMENU-'] == 'Debug':
-            debug_win = mod_win2.debugger()
-            debug_win.finalize()
-
-            print('Info: starting debugger')
-            continue
-        elif debug_win:
-            debug_event, debug_value = debug_win.read(timeout=1000)
-
-            if debug_event == sg.WIN_CLOSED:
-                debug_win.close()
-                debug_win = None
-            else:
-                debug_win['-DEBUG-'].expand(expand_x=True, expand_y=True)
-
         # Pull up an existing database record
         if event == '-RMENU-':
             # Get Record Type selection
             record_type = values['-RMENU-']
-            print('Info: displaying selection window for {TYPE} records'.format(TYPE=record_type))
+            logger.info('displaying selection window for {TYPE} records'.format(TYPE=record_type))
 
             # Get record entry
-            record_entry = configuration.records.fetch_rule(record_type, by_title=True)
+            record_entry = settings.records.fetch_rule(record_type, by_title=True)
 
             # Display the import record window
             table_entry = record_entry.import_table
@@ -626,9 +637,9 @@ def main():
             try:
                 mod_win2.record_import_window(import_table, enable_new=False)
             except Exception as e:
-                msg = 'Record importing failed - {ERR}'.format(ERR=e)
+                msg = 'record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
-                print('Error: {MSG}'.format(MSG=msg))
+                logger.error(msg)
                 raise
 
             continue
@@ -651,7 +662,7 @@ def main():
             # Disable toolbar
             toolbar.disable(window, all_rules)
 
-            print('Info: panel in view is {NAME}'.format(NAME=current_rule.name))
+            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
             continue
 
         elif selected_action in cash_names:
@@ -660,29 +671,27 @@ def main():
 
             # Get the record entry
             record_type = current_rule.record_type
-            record_entry = configuration.records.fetch_rule(record_type)
+            record_entry = settings.records.fetch_rule(record_type)
             if not record_entry:
-                print('Error: unable to find a configured record type with name {NAME}'.format(NAME=record_type))
+                msg = 'unable to find a configured record type with name {NAME}'.format(NAME=record_type)
+                logger.error(msg)
+                print('Warning: {}'.format(msg))
                 continue
             else:
-                print('Info: the record type selected is {TYPE}'.format(TYPE=record_type))
-
-            # Import all records of relevant type from the database
-#            import_df = record_entry.import_records(user)
+                logger.debug('the record type selected is {TYPE}'.format(TYPE=record_type))
 
             # Display the import record window
             table_entry = current_rule.import_table_entry
             table_entry['RecordType'] = record_type
             import_table = mod_elem.TableElement(current_rule.name, table_entry)
-#            import_table.df = import_table.append(import_df)
 
             try:
                 mod_win2.record_import_window(import_table, enable_new=True,
                                               record_layout=current_rule.record_layout_entry)
             except Exception as e:
-                msg = 'Record importing failed - {ERR}'.format(ERR=e)
+                msg = 'record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
-                print('Error: {}'.format(msg))
+                logger.error(msg)
 
             continue
 
@@ -702,7 +711,7 @@ def main():
 
             # Collapse the filter frame of the first tab
             tg_key = current_rule.key_lookup('MainTG')
-            print('collapsing the filter frame of the first tab with key {}'.format(tg_key))
+            logger.debug('collapsing the filter frame of the first tab with key {}'.format(tg_key))
             tab_key = window[tg_key].Get()
             tab = current_rule.fetch_tab(tab_key, by_key=True)
             filter_key = tab.table.key_lookup('FilterFrame')
@@ -712,19 +721,19 @@ def main():
             # Disable toolbar
             toolbar.disable(window, all_rules)
 
-            print('Info: panel in view is {NAME}'.format(NAME=current_rule.name))
+            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
             continue
 
         # Action events
         if current_rule and event in current_rule.elements:
-            print('Info: running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
+            logger.info('running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
             try:
                 current_rule_name = current_rule.run_event(window, event, values)
             except Exception as e:
                 msg = 'failed to run window event {EVENT} of rule {RULE} - {ERR}'\
                     .format(EVENT=event, RULE=current_rule.name, ERR=e)
                 mod_win2.popup_error(msg)
-                print('Error: {MSG}'.format(MSG=msg))
+                logger.error(msg)
                 raise
 
             if current_rule_name is None:
@@ -745,8 +754,23 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        mod_win2.popup_error('Error: fatal program error - {}'.format(e))
-        raise
+        logger.exception('fatal program error')
+        mod_win2.popup_error('fatal program error - {}'.format(e))
+
+        # Remove all unsaved record IDs associated with the program instance
+        remove_unsaved_ids(settings.records.rules)
+
+        # Close the connection to the server
+        server_conn.close()
+
+        # Exit gracefully
         sys.exit(1)
     else:
+        # Remove all unsaved record IDs associated with the program instance
+        remove_unsaved_ids(settings.records.rules)
+
+        # Close the connection to the server
+        server_conn.close()
+
+        # Exit gracefully
         sys.exit(0)

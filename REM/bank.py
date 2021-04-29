@@ -1,5 +1,5 @@
 """
-REM bank reconciliation configuration classes and objects.
+REM mod_bank reconciliation configuration classes and objects.
 """
 
 import datetime
@@ -8,14 +8,14 @@ import PySimpleGUI as sg
 from random import randint
 import sys
 
-from REM.config import configuration
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.layouts as mod_layout
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
-from REM.settings import user
+#from REM.settings import settings, user
+from REM.client import user, settings
 
 
 class BankRules:
@@ -24,17 +24,14 @@ class BankRules:
 
     Arguments:
 
-        cnfg (Config): program configuration class.
+        cnfg (ConfigManager): program configuration class.
 
     Attributes:
 
         rules (list): List of BankRule objects.
     """
 
-    def __init__(self, cnfg):
-
-        # Audit parameters
-        bank_param = cnfg.bank_rules
+    def __init__(self, bank_param):
 
         self.rules = []
         if bank_param is not None:
@@ -62,7 +59,7 @@ class BankRules:
 
     def print_rules(self, title=True):
         """
-        Return name of all bank rules defined in configuration file.
+        Return name of all mod_bank rules defined in configuration file.
         """
         if title is True:
             return [i.menu_title for i in self.rules]
@@ -77,7 +74,7 @@ class BankRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('BankRules {NAME}, Rule {RULE} not in list of configured bank reconciliation rules. Available rules '
+            print('BankRules {NAME}, Rule {RULE} not in list of configured mod_bank reconciliation rules. Available rules '
                   'are {ALL}'.format(NAME=self.name, RULE=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
@@ -88,15 +85,15 @@ class BankRules:
 
 class BankRule:
     """
-    Class to store and manage a configured bank reconciliation rule.
+    Class to store and manage a configured mod_bank reconciliation rule.
 
     Attributes:
 
-        name (str): bank reconciliation rule name.
+        name (str): mod_bank reconciliation rule name.
 
         id (int): rule element number.
 
-        menu_title (str): bank reconciliation rule title.
+        menu_title (str): mod_bank reconciliation rule title.
 
         element_key (str): panel element key.
 
@@ -109,9 +106,9 @@ class BankRule:
         """
         Arguments:
 
-            name (str): bank reconciliation rule name.
+            name (str): mod_bank reconciliation rule name.
 
-            entry (dict): dictionary of optional and required bank rule arguments.
+            entry (dict): dictionary of optional and required mod_bank rule arguments.
         """
 
         self.name = name
@@ -128,7 +125,7 @@ class BankRule:
 
         try:
             self.permissions = entry['AccessPermissions']
-        except KeyError:  # default permission for a cash rule is 'user'
+        except KeyError:  # default permission for a mod_cash rule is 'user'
             self.permissions = 'user'
 
         self.parameters = []
@@ -247,7 +244,7 @@ class BankRule:
             try:
                 index = names.index(fetch_key)
             except ValueError:
-                print('Error: BankRule {RULE}: {TAB} not found in list of bank record tabs'
+                print('Error: BankRule {RULE}: {TAB} not found in list of mod_bank record tabs'
                       .format(RULE=self.name, TAB=fetch_key))
             else:
                 tab_item = tabs[index]
@@ -256,7 +253,7 @@ class BankRule:
 
     def summary_layout(self, win_size: tuple = None):
         """
-        Generate a GUI layout for the bank reconciliation summary.
+        Generate a GUI layout for the mod_bank reconciliation summary.
         """
         if win_size:
             width, height = win_size
@@ -339,7 +336,7 @@ class BankRule:
 
     def layout(self, win_size: tuple = None):
         """
-        Generate a GUI layout for the bank reconciliation rule.
+        Generate a GUI layout for the mod_bank reconciliation rule.
         """
         if win_size:
             width, height = win_size
@@ -396,7 +393,7 @@ class BankRule:
         start_layout = [[mod_layout.B2('Start', key=start_key, pad=(0, 0), disabled=False,
                                        button_color=(bttn_text_col, bttn_bg_col),
                                        disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                       tooltip='Start bank reconciliation', use_ttk_buttons=True)]]
+                                       tooltip='Start mod_bank reconciliation', use_ttk_buttons=True)]]
 
         param_layout = [sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
                                vertical_alignment='t', expand_x=True),
@@ -509,7 +506,7 @@ class BankRule:
 
     def run_event(self, window, event, values):
         """
-        Run a bank reconciliation event.
+        Run a mod_bank reconciliation event.
         """
         current_rule = self.name
 
@@ -650,10 +647,10 @@ class BankRule:
                 for tab in self.tabs:
                     initialized.append(tab.load_data(self.parameters))
 
-                # Show that a bank reconciliation is in progress
+                # Show that a mod_bank reconciliation is in progress
                 if all(initialized) is True:
                     self.in_progress = True
-                    print('Info: BankRule {NAME}: bank reconciliation in progress with parameters {PARAMS}'
+                    print('Info: BankRule {NAME}: mod_bank reconciliation in progress with parameters {PARAMS}'
                           .format(NAME=self.name, PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
                     # Enable/Disable control buttons and parameter elements
@@ -682,7 +679,7 @@ class BankRule:
         elif event == main_tg_key:
             tab_key = window[main_tg_key].Get()
             tab = self.fetch_tab(tab_key, by_key=True)
-            print('Info: BankRule {NAME}: moving to bank record tab {TAB}'.format(NAME=self.name, TAB=tab.name))
+            print('Info: BankRule {NAME}: moving to mod_bank record tab {TAB}'.format(NAME=self.name, TAB=tab.name))
 
             # Collapse the filter frame of current tab
             filter_key = tab.table.key_lookup('FilterFrame')
@@ -902,7 +899,7 @@ class BankRecordTab:
         """
         Arguments:
 
-            name (str): configuration entry name for the bank record tab.
+            name (str): configuration entry name for the mod_bank record tab.
 
             entry (dict): dictionary of optional and required entry arguments.
 
@@ -1036,7 +1033,7 @@ class BankRecordTab:
 
     def reset(self, window):
         """
-        Reset the elements and attributes of the bank record tab.
+        Reset the elements and attributes of the mod_bank record tab.
         """
 
         # Reset the data tables
@@ -1061,7 +1058,7 @@ class BankRecordTab:
 
     def layout(self, size):
         """
-        GUI layout for the bank record tab.
+        GUI layout for the mod_bank record tab.
         """
         width, height = size
 
@@ -1084,7 +1081,7 @@ class BankRecordTab:
                        [sg.Col([[mod_layout.B1('Find Associations', key=reconcile_key, disabled=True,
                                                button_color=(bttn_text_col, bttn_bg_col),
                                                disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                               tooltip='Reconcile the selected bank records', use_ttk_buttons=True)]],
+                                               tooltip='Reconcile the selected mod_bank records', use_ttk_buttons=True)]],
                                pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
                                expand_x=True)]]
 
@@ -1095,7 +1092,7 @@ class BankRecordTab:
 
     def resize_elements(self, window, size):
         """
-        Resize the bank record tab.
+        Resize the mod_bank record tab.
         """
         width, height = size
 
@@ -1115,7 +1112,7 @@ class BankRecordTab:
 
     def run_event(self, window, event, values):
         """
-        Run a bank record tab event.
+        Run a mod_bank record tab event.
         """
         table_keys = self.table.elements
         association_keys = [i for j in self.associations for i in j.elements]
@@ -1207,7 +1204,7 @@ class BankRecordTab:
 
         ref_filters += [('RefNo = ?', (record_id,)), ('IsDeleted = ?', (0,))]
         try:
-            reference = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
+            reference = user.query(settings.reference_lookup, filter_rules=ref_filters, prog_db=True)
         except Exception as e:
             mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))
@@ -1231,7 +1228,7 @@ class BankRecordTab:
         table_statement = mod_db.format_tables(import_rules)
         columns = mod_db.format_import_columns(import_rules)
 
-        # Import primary bank data from database
+        # Import primary mod_bank data from database
         try:
             df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
         except Exception as e:
@@ -1239,7 +1236,7 @@ class BankRecordTab:
                                  .format(NAME=self.name, ERR=e))
             data_loaded = False
         else:
-            print('Info: BankRecordTab {NAME}: loaded data for bank reconciliation {RULE}'
+            print('Info: BankRecordTab {NAME}: loaded data for mod_bank reconciliation {RULE}'
                   .format(NAME=self.name, RULE=self.parent))
             data_loaded = True
 
@@ -1256,7 +1253,7 @@ class BankRecordTab:
                 ref_filters += [('RefNo IN ({})'.format(','.join(['?' for _ in record_ids])), record_ids),
                                 ('IsDeleted = ?', (0,))]
                 try:
-                    ref_df = user.query(configuration.reference_lookup, filter_rules=ref_filters, prog_db=True)
+                    ref_df = user.query(settings.reference_lookup, filter_rules=ref_filters, prog_db=True)
                 except Exception as e:
                     mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
                                          .format(NAME=self.name, ERR=e))
@@ -1291,7 +1288,7 @@ class BankRecordTab:
         associations = self.associations
         table = self.table
         df = table.df
-        ref_table = configuration.reference_lookup
+        ref_table = settings.reference_lookup
 
         # Define the fields that will be included in the merged association table
         core_cols = []
@@ -1385,7 +1382,7 @@ class BankRecordTab:
 
                     # Create an entry in the reference table for the match
                     ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings',
-                                         configuration.creator_code, configuration.creation_date]
+                                         settings.creator_code, settings.creation_date]
                     ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
                                  warning, user.uid, datetime.datetime.now()]
 
@@ -1412,7 +1409,7 @@ class BankRecordTab:
 
                 # Create an entry in the reference table for the match
                 ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
-                                     configuration.creator_code, configuration.creation_date]
+                                     settings.creator_code, settings.creation_date]
                 ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
                              user.uid, datetime.datetime.now()]
 
@@ -1438,7 +1435,7 @@ class BankRecordTab:
 
                 # Create an entry in the reference table for the match
                 ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
-                                     configuration.creator_code, configuration.creation_date]
+                                     settings.creator_code, settings.creation_date]
                 ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
                              user.uid, datetime.datetime.now()]
 
@@ -1458,7 +1455,7 @@ class BankAssociationTab:
     """
     Bank Reconciliation income source / expense destination.
 
-        name (str): bank reconciliation rule association name.
+        name (str): mod_bank reconciliation rule association name.
 
         id (int): association element number.
 
@@ -1543,7 +1540,7 @@ class BankAssociationTab:
 
     def layout(self, width, height):
         """
-        Generate a GUI layout for the bank reconciliation association tab.
+        Generate a GUI layout for the mod_bank reconciliation association tab.
         """
         title = self.title
 
@@ -1589,7 +1586,7 @@ class BankAssociationTab:
         rule_params = parameters  # to filter data tables
         filters += [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in rule_params]
 
-        # Import primary bank data from database
+        # Import primary mod_bank data from database
         try:
             df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
         except Exception as e:
