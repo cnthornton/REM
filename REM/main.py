@@ -61,7 +61,6 @@ class ToolBar:
             except KeyError:
                 msg = 'record type {TYPE} not an accepted program record type'.format(TYPE=record_type)
                 logger.error(msg)
-                print('Warning: {}'.format(msg))
                 continue
             try:
                 acct_records[record_group].append(record_title)
@@ -81,7 +80,7 @@ class ToolBar:
                           'items': [('!', 'Manage &Users'), ('!', '&Messages'), ('', '---'), ('', 'Sign &In'),
                                     ('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
-                          'items': [('!', '&Settings'), ('', 'Debu&g'), ('', '---'), ('', '&Help'),
+                          'items': [('!', '&Settings'), ('', '---'), ('', '&Help'),
                                     ('', 'Ab&out'), ('', '---'), ('', '&Quit')]}
 
         self.records_title = records.title
@@ -230,7 +229,6 @@ class ToolBar:
             except KeyError:
                 msg = 'selected menu {} not list of available menus'.format(menu_item)
                 logger.error(msg)
-                print('Error: {}'.format(msg))
                 return None
         else:
             menu_object = menu
@@ -267,7 +265,6 @@ class ToolBar:
         except KeyError:
             msg = 'selected menu {} not list of available menus'.format(menu)
             logger.error(msg)
-            print('Error: {}'.format(msg))
             return False
 
         status = '' if value == 'enable' else '!'
