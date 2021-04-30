@@ -151,7 +151,6 @@ class DataParameter:
             msg = 'DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements'\
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
-            print('Warning: {}'.format(msg))
             key = None
 
         return key
@@ -195,7 +194,7 @@ class DataParameter:
                 except ValueError:  # date is incorrectly formatted
                     msg = '{} is not a valid date format'.format(''.join(new_value))
                     mod_win2.popup_notice(msg)
-                    print('Warning: DataParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.warning('DataParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     display_value = self.format_date(''.join(current_value))
                 else:
@@ -484,8 +483,8 @@ class DataParameterInput(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
-                  .format(NAME=self.name))
+            logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                           .format(NAME=self.name))
             return self.value
         else:
             if input_value is None:
@@ -498,8 +497,8 @@ class DataParameterInput(DataParameter):
                 try:
                     value_fmt = float(input_value.replace(group_sep, ''))
                 except (ValueError, TypeError, AttributeError):
-                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
+                    logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
+                                   .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('int', 'integer', 'bit'):
             try:
@@ -508,8 +507,8 @@ class DataParameterInput(DataParameter):
                 try:
                     value_fmt = input_value.replace(',', '')
                 except (ValueError, TypeError):
-                    print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
+                    logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
+                                   .format(PARAM=self.name, VAL=input_value))
                     return None
         elif dtype in ('bool', 'boolean'):
             if isinstance(input_value, bool):
@@ -691,8 +690,8 @@ class DataParameterCombo(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Info: DataParameter {NAME}: unable to find window values for parameter to update'
-                  .format(NAME=self.name))
+            logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                           .format(NAME=self.name))
             return self.value
 
         aliases = {j: i for i, j in self.aliases.items()}
@@ -804,7 +803,7 @@ class DataParameterDate(DataParameter):
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
-            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
+            logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
                   .format(NAME=self.name))
             return self.value
 
@@ -815,14 +814,14 @@ class DataParameterDate(DataParameter):
             try:
                 value_fmt = strptime(input_value, '%Y-%m-%d')
             except (ValueError, TypeError):
-                print('Warning: DataParameter {NAME}: unable to parse date {VAL}'
-                      .format(NAME=self.name, VAL=input_value))
+                logger.warning('DataParameter {NAME}: unable to parse date {VAL}'
+                               .format(NAME=self.name, VAL=input_value))
                 value_fmt = None
         elif isinstance(input_value, datetime.datetime):
             value_fmt = input_value
         else:
-            print('Warning: DataParameter {NAME}: unknown object type for {VAL}'
-                  .format(NAME=self.name, VAL=input_value))
+            logger.warning('DataParameter {NAME}: unknown object type for {VAL}'
+                           .format(NAME=self.name, VAL=input_value))
             value_fmt = None
 
         return value_fmt
@@ -836,14 +835,14 @@ class DataParameterDate(DataParameter):
             return ''
 
         if isinstance(value, str):
-            print('Warning: DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
-                  .format(NAME=self.name, TYPE=type(value), VAL=value))
+            logger.warning('DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
+                           .format(NAME=self.name, TYPE=type(value), VAL=value))
             value_fmt = value
         elif isinstance(value, datetime.datetime):
             value_fmt = settings.format_display_date(value)
         else:
-            print('Warning: DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
-                  .format(NAME=self.name, TYPE=type(value), VAL=value))
+            logger.warning('DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
+                           .format(NAME=self.name, TYPE=type(value), VAL=value))
             value_fmt = None
 
         return value_fmt
@@ -986,8 +985,8 @@ class DataParameterDateRange(DataParameter):
         try:
             input_values = (values[self.key_lookup('Element')], values[self.key_lookup('Element2')])
         except KeyError:
-            print('Warning: DataParameter {NAME}: unable to find window values for parameter to update'
-                  .format(NAME=self.name))
+            logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                           .format(NAME=self.name))
             return self.value
 
         formatted_values = []
@@ -1000,14 +999,14 @@ class DataParameterDateRange(DataParameter):
                 try:
                     value_fmt = strptime(input_value, '%Y-%m-%d')
                 except (ValueError, TypeError):
-                    print('Warning: DataParameter {PARAM}: unable to parse date {VAL}'
-                          .format(PARAM=self.name, VAL=input_value))
+                    logger.warning('DataParameter {PARAM}: unable to parse date {VAL}'
+                                   .format(PARAM=self.name, VAL=input_value))
                     value_fmt = None
             elif isinstance(input_value, datetime.datetime):
                 value_fmt = input_value
             else:
-                print('Warning: DataParameter {PARAM}: unknown object type for {VAL}'
-                      .format(PARAM=self.name, VAL=input_value))
+                logger.warning('DataParameter {PARAM}: unknown object type for {VAL}'
+                               .format(PARAM=self.name, VAL=input_value))
                 value_fmt = None
 
             formatted_values.append(value_fmt)
@@ -1033,8 +1032,8 @@ class DataParameterDateRange(DataParameter):
             elif isinstance(value, datetime.datetime):
                 value_fmt = value.strftime('%Y-%m-%d')
             else:
-                print('Warning: DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                      .format(PARAM=self.name, VAL=value))
+                logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
+                               .format(PARAM=self.name, VAL=value))
                 value_fmt = ''
 
             formatted_values.append(value_fmt)
@@ -1189,7 +1188,6 @@ class DataParameterCheckbox(DataParameter):
         except KeyError:
             msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
             logger.warning(msg)
-            print('Warning: {}'.format(msg))
             return self.value
 
         try:

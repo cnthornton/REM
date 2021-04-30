@@ -3,12 +3,12 @@
 REM server.
 """
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
 from multiprocessing import freeze_support
 import logging
 import logging.handlers as handlers
-import io
+#import io
 import os
 import selectors
 import socket
@@ -16,7 +16,7 @@ import struct
 import sys
 
 from bson import json_util
-import json
+#import json
 import pandas as pd
 from pandas.io import sql
 import pyodbc
@@ -982,10 +982,18 @@ class DBTransactManager:
             status = False
             value = str(e)
         else:
+            if isinstance(params, list):
+                if all([isinstance(i, tuple) for i in params]):
+                    cursor_func = cursor.executemany
+                else:
+                    cursor_func = cursor.execute
+            else:
+                cursor_func = cursor.execute
+
             logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
                          .format(TSQL=statement, PARAMS=params))
             try:
-                cursor.execute(statement, params)
+                cursor_func(statement, params)
             except pyodbc.Error as e:  # possible duplicate entries
                 logger.error('failed to write to database - {ERR}'.format(ERR=e))
                 status = False

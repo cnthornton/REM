@@ -31,7 +31,7 @@ class AuditRules:
 
     Arguments:
 
-        cnfg: parsed YAML file.
+        audit_param (dict): configuration for the audit rules.
 
     Attributes:
 
@@ -1756,14 +1756,14 @@ class AuditSummary:
         """
         tabs = self.tabs
 
-        print('Info: AuditRuleSummary {NAME}: verifying that all required fields have input'.format(NAME=self.name))
+        logger.debug('AuditRuleSummary {NAME}: verifying that all required fields have input'.format(NAME=self.name))
         for tab in tabs:
             # Verify that all required fields for tab record have values
             for param in tab.record.parameters:
                 if param.required is True and param.value_set() is False:
-                    msg = 'Record {ID}: no value provided for the required field {FIELD}' \
+                    msg = 'record {ID} is missing values for required field {FIELD}' \
                         .format(ID=tab.record.record_id(), FIELD=param.description)
-                    print('Warning: {MSG}'.format(MSG=msg))
+                    logger.warning('AuditRuleSummary {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
                     return False
@@ -1775,7 +1775,9 @@ class AuditSummary:
                 required_columns = component_table.required_columns
                 for required_column in required_columns:
                     has_na = comp_df[required_column].isnull().any()
-                    print('Info: required column {COL} has NA values: {HAS}'.format(COL=required_column, HAS=has_na))
+                    logger.debug('AuditRuleSummary {NAME}: required column {COL} in component table {TBL} has NA '
+                                 'values: {HAS}'.format(NAME=self.name, COL=required_column, TBL=component_table.name,
+                                                        HAS=has_na))
                     if has_na:
                         display_map = {j: i for i, j in component_table.display_columns.items()}
                         try:
@@ -1783,13 +1785,14 @@ class AuditSummary:
                         except KeyError:
                             display_column = required_column
 
-                        msg = 'missing values for required column {COL}'.format(COL=display_column)
-                        print('Warning: {MSG}'.format(MSG=msg))
+                        msg = 'missing values for required column {COL} in component table {TBL}'\
+                            .format(COL=display_column, TBL=component_table.name)
+                        logger.warning('AuditRuleSummary {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         mod_win2.popup_error(msg)
 
                         return False
 
-        print('Info: AuditRuleSummary {NAME}: saving audit records and their components'.format(NAME=self.name))
+        logger.info('AuditRuleSummary {NAME}: saving audit records and their components'.format(NAME=self.name))
         success = []
         for tab in tabs:
             # Save audit tab record
@@ -1820,12 +1823,12 @@ class AuditRecordTab:
             self.merge = bool(int(entry['MergeTransactions']))
         except KeyError:
             msg = 'missing required configuration parameter "MergeTransactions"'
-            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            logger.error('TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
             sys.exit(1)
         except ValueError:
             msg = 'unsupported value provided to configuration parameter "MergeTransactions". Supported values are 0 ' \
                   '(False) or 1 (True)'
-            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            logger.error('TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
             sys.exit(1)
 
         try:
@@ -1847,14 +1850,14 @@ class AuditRecordTab:
             self.summary_mapping = entry['SummaryMapping']
         except KeyError:
             msg = 'missing required configuration parameter "SummaryMapping"'
-            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            logger.error('TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
             sys.exit(1)
 
         try:
             self.record_mapping = entry['RecordMapping']
         except KeyError:
             msg = 'missing required configuration parameter "RecordMapping"'
-            print('Error: TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+            logger.error('TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
             sys.exit(1)
 
         try:
@@ -1871,8 +1874,8 @@ class AuditRecordTab:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: AuditRecordTab {NAME}: component {COMP} not found in list of components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('AuditRecordTab {NAME}: component {COMP} not found in list of components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -1924,7 +1927,6 @@ class AuditRecordTab:
                 msg = 'AuditSummaryTab {NAME}: an audit record already exists for the chosen parameters'\
                     .format(NAME=self.name)
                 logger.info(msg)
-                print('Warning: {}'.format(msg))
                 return True
             else:  # audit has not been performed yet
                 logger.info('AuditSummaryTab {NAME}: no existing audit record for the supplied parameters ... '
@@ -1980,15 +1982,15 @@ class AuditRecordTab:
         account_df = account_table.df
         account_header = account_df.columns.tolist()
         if 'Account' not in account_header:
-            print('Warning: AuditRecordTab {NAME}: required column "Account" not found in the account table header'
-                  .format(NAME=self.name))
+            logger.warning('AuditRecordTab {NAME}: required column "Account" not found in the account table header'
+                           .format(NAME=self.name))
             return all(success)
 
         record_entry = settings.records.fetch_rule(self.deposit_type)
         if not record_entry:
-            print('Warning: AuditRecordTab {NAME}: a deposit record type was not configured for the audit record. No '
-                  'deposit records will be automatically created for the account records.'
-                  .format(NAME=self.name))
+            logger.warning('AuditRecordTab {NAME}: a deposit record type was not configured for the audit record. No '
+                           'deposit records will be automatically created for the account records.'
+                           .format(NAME=self.name))
             return all(success)
         else:
             record_type = record_entry.name
@@ -2014,7 +2016,7 @@ class AuditRecordTab:
             if not deposit_id:
                 msg = 'failed to create a {TYPE} record associated with the {RTYPE} record {ID}'\
                     .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type, ID=account_id)
-                print('Error: {MSG}'.format(MSG=msg))
+                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
 
                 continue
@@ -2025,14 +2027,14 @@ class AuditRecordTab:
                 payment_date = row['PaymentDate']
             except KeyError:
                 msg = 'missing deposit date for new deposit record {ID}'.format(ID=deposit_id)
-                print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
                 if payment_date:
                     deposit_data['DepositDate'] = payment_date
                 else:
                     msg = 'no deposit date set for new deposit record {ID}'.format(ID=deposit_id)
-                    print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
             # Add the deposit amount
@@ -2040,14 +2042,14 @@ class AuditRecordTab:
                 deposit_amount = row['CorrectedAmount']
             except KeyError:
                 msg = 'missing deposit amount for new deposit record {ID}'.format(ID=deposit_id)
-                print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
                 if deposit_amount is not None:
                     deposit_data['DepositAmount'] = deposit_amount
                 else:
                     msg = 'no deposit amount set for new deposit record {ID}'.format(ID=deposit_id)
-                    print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
             deposit_record = mod_records.DepositRecord(record_entry)
@@ -2072,7 +2074,7 @@ class AuditRecordTab:
             if entry_saved is False:
                 msg = 'failed to save record {ID} reference to {REF} to database table {TBL}' \
                     .format(ID=deposit_id, REF=account_id, TBL=ref_table)
-                print('Error: {MSG}'.format(MSG=msg))
+                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
 
             success.append(entry_saved)
@@ -2089,7 +2091,7 @@ class AuditRecordTab:
             if entry_saved is False:
                 msg = 'failed to save record {ID} reference to {REF} to database table {TBL}' \
                     .format(ID=deposit_id, REF=account_id, TBL=ref_table)
-                print('Error: {MSG}'.format(MSG=msg))
+                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
 
             success.append(entry_saved)
@@ -2106,8 +2108,8 @@ class AuditRecordTab:
         totals = self.record.fetch_element('Totals')
         df = totals.df.copy()
 
-        print('Info: AuditRuleTab {NAME}: mapping transaction summaries to audit totals'
-              .format(NAME=self.name))
+        logger.debug('AuditRuleTab {NAME}: mapping transaction summaries to audit totals'
+                     .format(NAME=self.name))
 
         # Store transaction table summaries for mapping
         summary_map = {}
@@ -2124,8 +2126,8 @@ class AuditRecordTab:
             try:
                 mapper = mapping_columns[column]
             except KeyError:
-                print('Info: AuditSummaryTab {NAME}: column {COL} not found in list of mapping columns ... '
-                      'setting value to zero'.format(NAME=name, COL=column))
+                logger.debug('AuditSummaryTab {NAME}: column {COL} not found in list of mapping columns ... '
+                             'setting value to zero'.format(NAME=name, COL=column))
                 summary_total = 0
             else:
                 # Add audit tab summaries to totals table
@@ -2141,8 +2143,8 @@ class AuditRecordTab:
                         if component in summary_map:
                             rule_values.append(summary_map[component])
                         else:
-                            print('Error: AuditSummaryTab {NAME}: column {COL} not found in transaction table summaries'
-                                  .format(NAME=name, COL=component))
+                            logger.error('AuditSummaryTab {NAME}: column {COL} not found in transaction table summaries'
+                                         .format(NAME=name, COL=component))
                             rule_values.append(0)
 
                     else:
@@ -2151,12 +2153,12 @@ class AuditRecordTab:
                 try:
                     summary_total = eval(' '.join([str(i) for i in rule_values]))
                 except Exception as e:
-                    print('Error: AuditSummaryTab {NAME}: {ERR}'
-                          .format(NAME=self.name, ERR=e))
+                    logger.warning('AuditSummaryTab {NAME}: failed to evaluate summary totals - {ERR}'
+                                   .format(NAME=self.name, ERR=e))
                     summary_total = 0
 
-            print('Info: AuditSummaryTab {NAME}: adding {SUMM} to column {COL}'
-                  .format(NAME=name, SUMM=summary_total, COL=column))
+            logger.debug('AuditSummaryTab {NAME}: adding {SUMM} to column {COL}'
+                         .format(NAME=name, SUMM=summary_total, COL=column))
 
             df.at[0, column] = summary_total
             df[column] = pd.to_numeric(df[column], downcast='float')
@@ -2169,8 +2171,8 @@ class AuditRecordTab:
         """
         tab_names = [i.name for i in rule_tabs]
 
-        print('Info: AuditRuleTab {NAME}: mapping records from the transaction tables to the audit record'
-              .format(NAME=self.name))
+        logger.debug('AuditRuleTab {NAME}: mapping records from the transaction tables to the audit record'
+                     .format(NAME=self.name))
 
         component_table = self.record.fetch_component('account')
         header = component_table.df.columns.tolist()
@@ -2191,39 +2193,38 @@ class AuditRecordTab:
                 try:
                     subset_rule = table_rule['Subset']
                 except KeyError:
-                    print('Warning: AuditRuleTab {NAME}: record mapping payment type {TYPE}, table {TBL} is missing '
-                          'the required parameter "Subset"'.format(NAME=self.name, TYPE=payment_type, TBL=table))
+                    logger.warning('AuditRuleTab {NAME}: record mapping payment type {TYPE}, table {TBL} is missing '
+                                   'required parameter "Subset"'.format(NAME=self.name, TYPE=payment_type, TBL=table))
                     continue
 
                 try:
                     column_map = table_rule['ColumnMapping']
                 except KeyError:
-                    print('Warning: AuditRuleTab {NAME}: record mapping payment type {TYPE}, table {TBL} is missing '
-                          'the required parameter "ColumnMapping"'.format(NAME=self.name, TYPE=payment_type, TBL=table))
+                    logger.warning('AuditRuleTab {NAME}: record mapping payment type {TYPE}, table {TBL} is missing '
+                                   'required parameter "ColumnMapping"'
+                                   .format(NAME=self.name, TYPE=payment_type, TBL=table))
                     continue
 
                 if table not in tab_names:
-                    print('Warning: AuditRuleTab {NAME}: unknown transaction table {TBL} provided to record_mapping '
-                          '{TYPE}'.format(NAME=self.name, TBL=table, TYPE=payment_type))
+                    logger.warning('AuditRuleTab {NAME}: unknown transaction table {TBL} provided to record_mapping '
+                                   '{TYPE}'.format(NAME=self.name, TBL=table, TYPE=payment_type))
                     continue
                 else:
                     tab = rule_tabs[tab_names.index(table)]
 
                 # Subset tab item dataframe using subset rules defined in the ReferenceTable parameter
-                print('Info: AuditRuleTab {NAME}: sub-setting reference table {REF} based on defined payment {TYPE} '
-                      'rule {RULE}'.format(NAME=self.name, REF=table, TYPE=payment_type, RULE=subset_rule))
+                logger.debug('AuditRuleTab {NAME}: sub-setting reference table {REF} based on defined payment {TYPE} '
+                             'rule {RULE}'.format(NAME=self.name, REF=table, TYPE=payment_type, RULE=subset_rule))
                 try:
                     subset_df = tab.table.subset(subset_rule)
                 except Exception as e:
-                    print('Warning: AuditRuleTab {NAME}: sub-setting table {REF} - {ERR}'
-                          .format(NAME=self.name, REF=table, ERR=e))
+                    logger.warning('AuditRuleTab {NAME}: unable to subset reference table {REF} - {ERR}'
+                                   .format(NAME=self.name, REF=table, ERR=e))
                     continue
-                pd.set_option('display.max_columns', None)
-                print(subset_df.head(n=5))
 
                 if subset_df.empty:
-                    print('Info: AuditRuleTab {NAME}: no data from reference table {REF} to add to the audit record'
-                          .format(NAME=self.name, REF=table))
+                    logger.debug('AuditRuleTab {NAME}: no data from reference table {REF} to add to the audit record'
+                                 .format(NAME=self.name, REF=table))
                     continue
 
                 for index, row in subset_df.iterrows():
@@ -2245,8 +2246,8 @@ class AuditRecordTab:
                     # Map row values to the account record elements
                     for column in column_map:
                         if column not in header:
-                            print('Warning: AuditRecordTab {NAME}: mapped column {COL} not found in record elements'
-                                  .format(COL=column, NAME=self.name))
+                            logger.warning('AuditRecordTab {NAME}: mapped column {COL} not found in record elements'
+                                           .format(COL=column, NAME=self.name))
                             continue
 
                         reference = column_map[column]
@@ -2254,7 +2255,7 @@ class AuditRecordTab:
                             ref_val = mod_dm.evaluate_rule(row, reference, as_list=True)[0]
                         except Exception as e:
                             msg = 'failed to add mapped column {COL} - {ERR}'.format(COL=column, ERR=e)
-                            print('Warning: AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         else:
                             record_data[column] = ref_val
 
@@ -2266,7 +2267,7 @@ class AuditRecordTab:
 
         if self.merge is True:  # transaction records should be merged into one (typical for mod_cash transactions)
             merge_on = [i for i in append_df.columns.tolist() if i not in self.merge_columns]
-            print('Info: AuditRecordTab {NAME}: merging rows on columns {COLS}'.format(NAME=self.name, COLS=merge_on))
+            logger.debug('AuditRecordTab {NAME}: merging rows on columns {COLS}'.format(NAME=self.name, COLS=merge_on))
             final_df = append_df.groupby(merge_on).sum().reset_index()
         else:  # create individual records for each transaction
             final_df = append_df
@@ -2277,13 +2278,13 @@ class AuditRecordTab:
             record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
             if not record_id:
                 msg = 'failed to create a record ID for transaction {TRANS}'.format(TRANS=row)
-                print('Error: {MSG}'.format(MSG=msg))
+                logger.error('Error: {MSG}'.format(MSG=msg))
                 mod_win2.popup_error(msg)
 
                 continue
 
-            print('Info: AuditRecordTab {NAME}: adding transaction record {ID} to the audit record accounts table'
-                  .format(NAME=self.name, ID=record_id))
+            logger.info('AuditRecordTab {NAME}: adding transaction record {ID} to the audit record accounts table'
+                        .format(NAME=self.name, ID=record_id))
             final_df.at[index, 'RecordID'] = record_id
 
         component_table.df = component_table.append(final_df)

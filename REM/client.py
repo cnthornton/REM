@@ -150,7 +150,10 @@ class ServerConnection:
 
         start_time = time.time()
         while time.time() - start_time < timeout:
-            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
+            try:
+                sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
+            except Exception:
+                logger.exception('unknown popup animation error')
 
             if self.response is not None:
                 logger.debug('server process completed')
@@ -589,7 +592,7 @@ class SettingsManager:
         bg_col = mod_const.ACTION_COL
         in_col = mod_const.INPUT_COL
 
-        bwidth = 0.5
+        bwidth = 1
         select_col = mod_const.SELECT_TEXT_COL
 
         layout = [
@@ -1035,53 +1038,52 @@ class AccountManager:
         """
         Insert data into the daily summary table.
         """
-        values = convert_datatypes(values)
+        if isinstance(columns, str):
+            columns = [columns]
 
         # Format parameters
-        if isinstance(values, list):
-            if any(isinstance(i, list) for i in values):
-                if not all([len(columns) == len(i) for i in values]):
-                    msg = 'failed to generate insertion statement - columns size is not equal to values size'
-                    logger.error(msg)
-                    return False
+        if isinstance(values, list):  # multiple insertions requested
+            if not all([isinstance(i, tuple) for i in values]):
+                msg = 'failed to generate insertion statement - individual transactions must be formatted as tuple'
+                logger.error(msg)
+                return False
 
-                params = tuple([i for sublist in values for i in sublist])
-                marker_list = []
-                for value_set in values:
-                    marker_list.append('({})'.format(','.join(['?' for _ in value_set])))
-                markers = ','.join(marker_list)
-            else:
-                if len(columns) != len(values):
-                    msg = 'failed to generate insertion statement - header size is not equal to values size'
-                    logger.error(msg)
-                    return False
+            if not all([len(columns) == len(i) for i in values]):
+                msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
+                      'of provided parameters for all transactions requested'
+                logger.error(msg)
+                return False
 
-                params = tuple(values)
-                markers = '({})'.format(','.join(['?' for _ in params]))
-        elif isinstance(values, tuple):
+            params = []
+            for param_tup in values:
+                params.append(tuple([convert_datatypes(i) for i in param_tup]))
+
+        elif isinstance(values, tuple):  # single insertion
             if len(columns) != len(values):
-                msg = 'failed to generate insertion statement - header size is not equal to values size'
+                msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
+                      'of parameters for the transaction'
                 logger.error(msg)
                 return False
 
-            params = values
-            markers = '({})'.format(','.join(['?' for _ in params]))
-        elif isinstance(values, str):
-            if not isinstance(columns, str):
-                msg = 'failed to generate insertion statement - header size is not equal to values size'
+            params = tuple([convert_datatypes(i) for i in values])
+
+        elif isinstance(values, str):  # single insertion for single column
+            if len(columns) > 1:
+                msg = 'failed to generate insertion statement - the number of columns is not equal to the number of ' \
+                      'parameters for the transaction'
                 logger.error(msg)
                 return False
 
-            params = (values,)
-            markers = '({})'.format(','.join(['?' for _ in params]))
+            params = (convert_datatypes(values),)
         else:
             msg = 'failed to generate insertion statement - unknown values type {}'.format(type(values))
             logger.error(msg)
             return False
 
         # Prepare the database transaction statement
-        insert_str = 'INSERT INTO {TABLE} ({COLS}) VALUES {VALS}' \
-            .format(TABLE=table, COLS=','.join(columns), VALS=markers)
+        markers = '({})'.format(','.join(['?' for _ in columns]))
+        insert_str = 'INSERT INTO {TABLE} {COLS} VALUES {VALS}' \
+            .format(TABLE=table, COLS='({})'.format(','.join(columns)), VALS=markers)
         logger.debug('insertion string is "{STR}" with parameters "{PARAMS}"'.format(STR=insert_str, PARAMS=params))
 
         # Prepare the server request
@@ -1103,34 +1105,64 @@ class AccountManager:
 
         return status
 
-    def update(self, table, columns, values, filters):
+    def update(self, table, columns, values, where_clause, filter_values):
         """
         Insert data into the daily summary table.
         """
-        values = convert_datatypes(values)
-
         # Format parameters
-        if isinstance(values, list):
-            if len(columns) != len(values):
-                msg = 'failed to generate update statement - header size is not equal to values size'
+        if isinstance(values, list):  # multiple updates requested
+            if not all([isinstance(i, tuple) for i in values]):
+                msg = 'failed to generate update statement - individual transactions must be formatted as tuple'
                 logger.error(msg)
                 return False
 
-            params = tuple(values)
-        elif isinstance(values, tuple):
-            if len(columns) != len(values):
-                msg = 'failed to generate update statement - header size is not equal to values size'
+            if not all([len(columns) == len(i) for i in values]):
+                msg = 'failed to generate update statement - the number of columns is not equal to the number ' \
+                      'of provided parameters for all transactions requested'
                 logger.error(msg)
                 return False
 
-            params = values
-        elif isinstance(values, str):
+            if not isinstance(filter_values, list) or len(values) != len(filter_values):
+                msg = 'failed to generate update statement - the number of transactions requested do not match the ' \
+                      'number of filters provided'
+                logger.error(msg)
+                return False
+
+            params = []
+            for index, param_tup in enumerate(values):
+                # Convert parameter types
+                mod_params = [convert_datatypes(i) for i in param_tup]
+
+                # Add filter parameters to the end of the parameter list
+                filter_tup = filter_values[index]
+                mod_filter_params = [convert_datatypes(i) for i in filter_tup]
+                mod_params = mod_params + mod_filter_params
+
+                params.append(tuple(mod_params))
+
+        elif isinstance(values, tuple):  # single update requested
+            if len(columns) != len(values):
+                msg = 'failed to generate update statement - the number of columns is not equal to the number of ' \
+                      'provided parameters for the transaction'
+                logger.error(msg)
+                return False
+
+            if not isinstance(filter_values, tuple):
+                msg = 'failed to generate update statement - the number of transactions requested do not match the ' \
+                      'number of filters provided'
+                logger.error(msg)
+                return False
+
+            params = tuple([convert_datatypes(i) for i in values] + [convert_datatypes(j) for j in filter_values])
+
+        elif isinstance(values, str):  # single update of one column is requested
             if not isinstance(columns, str):
-                msg = 'failed to generate update statement - header size is not equal to values size'
+                msg = 'failed to generate update statement - the number of columns is not equal to the number of ' \
+                      'provided parameters for the transaction'
                 logger.error(msg)
                 return False
 
-            params = (values,)
+            params = tuple([convert_datatypes(values)] + [convert_datatypes(j) for j in filter_values])
         else:
             msg = 'failed to generate update statement - unknown values type {}'.format(type(values))
             logger.error(msg)
@@ -1138,13 +1170,9 @@ class AccountManager:
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
 
-        where_clause, filter_params = construct_where_clause(filters)
-        if filter_params is not None:  # filter parameters go at end of parameter list
-            params = params + filter_params
-
         # Prepare the database transaction statement
-        update_str = 'UPDATE {TABLE} SET {PAIRS} {CLAUSE}' \
-            .format(TABLE=table, PAIRS=','.join(pair_list), CLAUSE=where_clause)
+        update_str = 'UPDATE {TABLE} SET {PAIRS} {WHERE}' \
+            .format(TABLE=table, PAIRS=','.join(pair_list), WHERE=where_clause)
         logger.debug('update string is "{STR}" with parameters "{PARAMS}"'.format(STR=update_str, PARAMS=params))
 
         # Prepare the server request
@@ -1170,18 +1198,9 @@ class AccountManager:
         """
         Delete data from a summary table.
         """
-        values = convert_datatypes(values)
-
         # Format parameters
-        if isinstance(values, list):
-            params = tuple(values)
-
-            if len(columns) != len(values):
-                msg = 'failed to generate deletion statement - columns size is not equal to values size'
-                logger.error(msg)
-                return False
-        elif isinstance(values, tuple):
-            params = values
+        if isinstance(values, list) or isinstance(values, tuple):
+            params = tuple([convert_datatypes(i) for i in values])
 
             if len(columns) != len(values):
                 msg = 'failed to generate deletion statement - columns size is not equal to values size'
@@ -1298,7 +1317,7 @@ def construct_where_clause(filter_rules):
     return (where, params)
 
 
-def convert_datatypes(values):
+def convert_datatypes(value):
     """
     Convert values with numpy data-types to native data-types.
     """
@@ -1309,22 +1328,20 @@ def convert_datatypes(values):
     is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
     date_fmt = settings.date_format
 
-    converted_values = []
-    for value in values:
-        if is_float_dtype(type(value)) is True or isinstance(value, float):
-            converted_value = float(value)
-        elif is_integer_dtype(type(value)) is True or isinstance(value, int):
-            converted_value = int(value)
-        elif is_bool_dtype(type(value)) is True or isinstance(value, bool):
-            converted_value = bool(value)
-        elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):
-            converted_value = strptime(value.strftime(date_fmt), date_fmt)
-        else:
-            converted_value = str(value)
+    if is_float_dtype(type(value)) is True or isinstance(value, float):
+        converted_value = float(value)
+    elif is_integer_dtype(type(value)) is True or isinstance(value, int):
+        converted_value = int(value)
+    elif is_bool_dtype(type(value)) is True or isinstance(value, bool):
+        converted_value = bool(value)
+    elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):
+        converted_value = strptime(value.strftime(date_fmt), date_fmt)
+    elif pd.isna(value):
+        converted_value = None
+    else:
+        converted_value = str(value)
 
-        converted_values.append(converted_value)
-
-    return converted_values
+    return converted_value
 
 
 def popup_error(msg):
