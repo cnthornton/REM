@@ -83,7 +83,6 @@ class WinService:
         # Load the configuration
         logger.info('initializing program managers')
         configuration.load_configuration(cnfg)
-        db_manager.load_configuration(cnfg)
 
         # Start listening for connections
         logger.info('starting the server')
@@ -264,21 +263,45 @@ class ClientConnection:
                 try:
                     transaction_type = value.get('transaction_type')
                     conn_str = value.get('connection_string')
-                    statement = value.get('statement')
-                    params = value.get('parameters')
+                    transaction = value.get('transaction')
                 except TypeError:
                     msg = 'request value formatted incorrectly'
                     logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                     content = {'success': False, 'value': msg}
                 else:
+                    conn_str['Server'] = configuration.odbc_server
+                    conn_str['Port'] = configuration.odbc_port
+                    conn_str['Driver'] = configuration.odbc_driver
+                    db_manager = SQLTransactManager(conn_str)
                     if transaction_type == 'read':
-                        content = db_manager.read_db(conn_str, statement, params)
+                        statement = transaction.get('statement')
+                        params = transaction.get('parameters')
+                        content = db_manager.read_db(statement, params)
                     elif transaction_type == 'write':
-                        content = db_manager.write_db(conn_str, statement, params)
+                        statement = transaction.get('statement')
+                        params = transaction.get('parameters')
+                        content = db_manager.write_db(statement, params)
+                        if content['success']:
+                            db_manager.commit()
+                    elif transaction_type == 'batch_write':
+                        success = True
+                        for statement in transaction:
+                            params = transaction[statement]
+                            results = db_manager.write_db(statement, params)
+                            if not results['success']:
+                                success = False
+                                break
+                        if success:
+                            db_manager.commit()
+                            content = {'success': True, 'value': None}
+                        else:
+                            msg = 'batch write failed on transaction - {}'.format(statement)
+                            content = {'success': False, 'value': msg}
                     else:
                         msg = 'invalid transaction type provided'
                         logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                         content = {'success': False, 'value': msg}
+                    db_manager.disconnect()
             elif action == 'db_schema':
                 try:
                     conn_str = value.get('connection_string')
@@ -289,10 +312,15 @@ class ClientConnection:
                     logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                     content = {'success': False, 'value': msg}
                 else:
+                    conn_str['Server'] = configuration.odbc_server
+                    conn_str['Port'] = configuration.odbc_port
+                    conn_str['Driver'] = configuration.odbc_driver
+                    db_manager = SQLTransactManager(conn_str)
                     if table is None:
-                        content = db_manager.database_tables(conn_str, database)
+                        content = db_manager.database_tables(database)
                     else:
-                        content = db_manager.table_schema(conn_str, table)
+                        content = db_manager.table_schema(table)
+                    db_manager.disconnect()
             elif action == 'constants':
                 content = configuration.format_attrs(value)
             elif action == 'remove_ids':
@@ -465,6 +493,9 @@ class ConfigManager:
         self.mongod_authdb = 'REM'
 
         # Structured database parameters
+        self.odbc_driver = 'SQL Server'
+        self.odbc_server = 'localhost'
+        self.odbc_port = '1433'
         self.prog_db = 'REM'
         self.default_db = 'REM'
         self.dbs = ['REM']
@@ -505,7 +536,7 @@ class ConfigManager:
             self.port = 65432
         except ValueError:
             logger.error(f'unsupported value {cnfg["server"]["port"]} provided to server configuration parameter '
-                          f'"port"')
+                         f'"port"')
             self.port = 65432
 
         try:
@@ -548,6 +579,18 @@ class ConfigManager:
             self.mongod_authdb = 'REM'
 
         # Structured database parameters
+        try:
+            self.odbc_driver = cnfg['database']['odbc_driver']
+        except KeyError:
+            self.odbc_driver = 'SQL Server'
+        try:
+            self.odbc_server = cnfg['database']['odbc_server']
+        except KeyError:
+            self.odbc_server = 'localhost'
+        try:
+            self.odbc_port = cnfg['database']['odbc_port']
+        except KeyError:
+            self.odbc_port = '1433'
         try:
             self.prog_db = cnfg['database']['odbc_database']
         except KeyError:
@@ -616,12 +659,6 @@ class ConfigManager:
             self.bank_lookup = cnfg['tables']['mod_bank']
         except KeyError:
             self.bank_lookup = 'BankAccounts'
-
-#    def _sanitize(self, document):
-#        """
-#        Sanitize data from MongoDB.
-#        """
-#        return json.loads(json_util.dumps(document))
 
     def _connect(self, timeout=5000):
         """
@@ -817,7 +854,7 @@ class ConfigManager:
         return {'success': True, 'value': self._get_unsaved_ids(record_type, instance_id)}
 
 
-class DBTransactManager:
+class SQLTransactManager:
     """
     Program account object.
 
@@ -829,20 +866,18 @@ class DBTransactManager:
         driver (str): ODBC driver details.
     """
 
-    def __init__(self):
-        self.server = 'localhost'
-        self.port = 1433
-        self.driver = 'SQL Server'
+    def __init__(self, conn_obj, timeout: int = 5):
+        self.conn = self._connect(conn_obj, timeout=timeout)
+        self.cursor = self.conn.cursor()
 
     def _connect(self, conn_str, timeout: int = 5):
         """
         Generate a pyODBC Connection object.
         """
-        driver = self.driver
-        server = self.server
-        port = self.port
-
         try:
+            driver = conn_str['Driver']
+            server = conn_str['Server']
+            port = conn_str['Port']
             uid = conn_str['UID']
             pwd = conn_str['PWD']
             dbname = conn_str['Database']
@@ -874,140 +909,108 @@ class DBTransactManager:
 
         return conn
 
-    def load_configuration(self, cnfg):
+    def disconnect(self):
         """
-        Load the configuration information.
+        Close the pyODBC connection.
         """
-        try:
-            self.driver = cnfg['database']['odbc_driver']
-        except KeyError:
-            self.driver = 'SQL Server'
-        try:
-            self.server = cnfg['database']['odbc_server']
-        except KeyError:
-            self.server = 'localhost'
-        try:
-            self.port = cnfg['database']['odbc_port']
-        except KeyError:
-            self.port = '1433'
+        self.cursor.close()
+        self.conn.close()
 
-    def database_tables(self, conn_str, database, timeout: int = 5):
+    def commit(self):
+        """
+        Commit the executed transactions.
+        """
+        self.conn.commit()
+
+    def database_tables(self, database):
         """
         Get database schema information.
         """
+        cursor = self.cursor
+
         try:
-            conn = self._connect(conn_str, timeout=timeout)
-            cursor = conn.cursor()
-        except Exception as e:
+            cursor_val = cursor.tables()
+        except pyodbc.Error as e:
+            logger.error('unable to find tables associated with database {DB} - {ERR}'.format(DB=database, ERR=e))
             status = False
             value = str(e)
         else:
-            try:
-                cursor_val = cursor.tables()
-            except pyodbc.Error as e:
-                logger.error('unable to find tables associated with database {DB} - {ERR}'.format(DB=database, ERR=e))
-                status = False
-                value = str(e)
-            else:
-                status = True
-                value = [i.table_name for i in cursor_val]
+            status = True
+            value = [i.table_name for i in cursor_val]
 
         return {'success': status, 'value': value}
 
-    def table_schema(self, conn_str, table, timeout: int = 5):
+    def table_schema(self, table):
         """
         Get table schema information.
         """
+        cursor = self.cursor
         try:
-            conn = self._connect(conn_str, timeout=timeout)
-            cursor = conn.cursor()
-        except Exception as e:
+            cursor_val = cursor.columns(table=table)
+        except pyodbc.Error as e:
+            logger.error('unable to read the schema for table {TBL} - {ERR}'.format(TBL=table, ERR=e))
             status = False
             value = str(e)
         else:
-            try:
-                cursor_val = cursor.columns(table=table)
-            except pyodbc.Error as e:
-                logger.error('unable to read the schema for table {TBL} - {ERR}'.format(TBL=table, ERR=e))
-                status = False
-                value = str(e)
-            else:
-                status = True
-                value = {i.column_name: (i.type_name, i.column_size) for i in cursor_val}
+            status = True
+            value = {i.column_name: (i.type_name, i.column_size) for i in cursor_val}
 
         return {'success': status, 'value': value}
 
-    def read_db(self, conn_str, statement, params, timeout: int = 5):
+    def read_db(self, statement, params):
         """
         Thread database read function.
         """
         # Connect to database
-        try:
-            conn = self._connect(conn_str, timeout=timeout)
-        except Exception as e:
-            value = str(e)
-            status = False
-        else:
-            try:
-                if params:
-                    logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
-                                 .format(TSQL=statement, PARAMS=params))
-                    df = pd.read_sql(statement, conn, params=params)
-                else:
-                    logger.debug('transaction statement supplied is {TSQL} with no parameters'.format(TSQL=statement))
-                    df = pd.read_sql(statement, conn)
-                value = df.replace({pd.NaT: None}).to_dict()
-            except sql.DatabaseError as e:
-                logger.error('database read failed - {ERR}'.format(ERR=e))
-                status = False
-                value = str(e)
-            else:
-                status = True
-                logger.info('database successfully read')
+        conn = self.conn
 
-            conn.close()
+        try:
+            if params:
+                logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
+                             .format(TSQL=statement, PARAMS=params))
+                df = pd.read_sql(statement, conn, params=params)
+            else:
+                logger.debug('transaction statement supplied is {TSQL} with no parameters'.format(TSQL=statement))
+                df = pd.read_sql(statement, conn)
+            value = df.replace({pd.NaT: None}).to_dict()
+        except sql.DatabaseError as e:
+            logger.error('database read failed - {ERR}'.format(ERR=e))
+            status = False
+            value = str(e)
+        else:
+            status = True
+            logger.info('database successfully read')
 
         # Add return value to the queue
         return {'success': status, 'value': value}
 
-    def write_db(self, conn_str, statement, params, timeout: int = 5):
+    def write_db(self, statement, params):
         """
         Thread database write functions.
         """
-        # Connect to database
+        cursor = self.cursor
+
+        if isinstance(params, list):
+            if all([isinstance(i, tuple) for i in params]):
+                cursor_func = cursor.executemany
+            else:
+                cursor_func = cursor.execute
+        else:
+            cursor_func = cursor.execute
+
+        logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
+                     .format(TSQL=statement, PARAMS=params))
         try:
-            conn = self._connect(conn_str, timeout=timeout)
-            cursor = conn.cursor()
-        except Exception as e:
+            cursor_func(statement, params)
+        except pyodbc.Error as e:  # possible duplicate entries
+            logger.error('failed to write to database - {ERR}'.format(ERR=e))
             status = False
             value = str(e)
         else:
-            if isinstance(params, list):
-                if all([isinstance(i, tuple) for i in params]):
-                    cursor_func = cursor.executemany
-                else:
-                    cursor_func = cursor.execute
-            else:
-                cursor_func = cursor.execute
+            logger.info('database successfully written')
 
-            logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
-                         .format(TSQL=statement, PARAMS=params))
-            try:
-                cursor_func(statement, params)
-            except pyodbc.Error as e:  # possible duplicate entries
-                logger.error('failed to write to database - {ERR}'.format(ERR=e))
-                status = False
-                value = str(e)
-            else:
-                logger.info('database successfully written')
-
-                conn.commit()
-                status = True
-                value = None
-
-            # Close the connection
-            cursor.close()
-            conn.close()
+            status = True
+            value = None
 
         # Add return value to the queue
         return {'success': status, 'value': value}
@@ -1151,7 +1154,6 @@ logger.addHandler(configure_handler(DIR, load_config(CNF_FILE)))
 logger.info('logging successfully configured')
 
 configuration = ConfigManager()
-db_manager = DBTransactManager()
 
 if __name__ == '__main__':
     freeze_support()
