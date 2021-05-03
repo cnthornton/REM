@@ -131,7 +131,10 @@ class TableElement:
         except ValueError:
             raise AttributeError('unknown input provided to required parameter "Columns"')
         else:
-            self.columns = columns
+            if isinstance(columns, dict):
+                self.columns = columns
+            else:
+                self.columns = {i: None for i in columns}
 
         try:
             self.display_columns = entry['DisplayColumns']
@@ -149,8 +152,8 @@ class TableElement:
             self.search_field = None
         else:
             if search_field not in columns:
-                print('Warning: DataTable {NAME}: search field {FIELD} is not found in list of table columns ... '
-                      'setting to None'.format(NAME=name, FIELD=search_field))
+                logger.warning('DataTable {NAME}: search field {FIELD} is not found in list of table columns ... '
+                               'setting to None'.format(NAME=name, FIELD=search_field))
                 self.search_field = None
             else:
                 self.search_field = search_field
@@ -189,16 +192,16 @@ class TableElement:
                 try:
                     param_obj = param_class(param, param_entry)
                 except Exception as e:
-                    print('Configuration Warning: DataTable {NAME}: unable to add parameter to table - {ERR}'
-                          .format(NAME=name, ERR=e))
+                    logger.warning('DataTable {NAME}: unable to add parameter to table - {ERR}'
+                                   .format(NAME=name, ERR=e))
                     continue
                 else:
                     if param_obj.name in self.columns:
                         self.parameters.append(param_obj)
                         self.elements += param_obj.elements
                     else:
-                        print('Configuration Warning: DataTable {NAME}: filter parameters {PARAM} must be listed in '
-                              'the table columns'.format(NAME=name, PARAM=param))
+                        logger.warning('DataTable {NAME}: filter parameters {PARAM} must be listed in '
+                                       'the table columns'.format(NAME=name, PARAM=param))
 
         try:
             edit_columns = entry['EditColumns']
@@ -297,6 +300,13 @@ class TableElement:
             self.date_column = entry['DateColumn']
         except KeyError:
             self.date_column = 'RecordDate'
+
+        try:
+            self.deleted_column = entry['DeletedColumn']
+        except KeyError:
+            self.deleted_column = 'IsDeleted'
+        if self.deleted_column not in self.columns:
+            self.columns[self.deleted_column] = 'bool'
 
         try:
             self.icon = entry['Icon']
@@ -603,6 +613,10 @@ class TableElement:
         # Sort table and update table sorting information
         sort_key = self.key_lookup('Sort')
         display_map = self.display_columns
+        search_field = self.search_field
+
+        # Modify records tables for displaying
+        logger.debug('DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
 
         self.sort(self.sort_on)
 
@@ -623,10 +637,6 @@ class TableElement:
                                                         foreground=text_col, background=def_bg_col)
                     window[sort_key].TKButtonMenu.configure(menu=window[sort_key].TKMenu)
 
-        search_field = self.search_field
-        # Modify records tables for displaying
-        logger.debug('DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
-
         # Filter the table rows, if applicable
         if search_field is not None and window_values is not None:
             search_key = self.key_lookup('Search')
@@ -640,7 +650,7 @@ class TableElement:
         else:
             search_value = None
 
-        if not search_value:
+        if not search_value:  # no search value provided in the search field, try the filter parameters
             df = self.apply_filter()
         else:
             df = self.df.copy()
@@ -650,6 +660,10 @@ class TableElement:
                 msg = 'DataTable {NAME}: search field {COL} not found in list of table columns'\
                     .format(NAME=self.name, COL=search_field)
                 logger.warning(msg)
+
+        # Remove deleted rows from the display table
+        df[self.deleted_column].fillna(False, inplace=True)
+        df = df[~df[self.deleted_column]]
 
         # Edit the index map to reflect what is currently displayed
         self.index_map = {i: j for i, j in enumerate(df.index.tolist())}
@@ -1924,24 +1938,30 @@ class TableElement:
             search_params = None
 
         import_table.sort()
+
+        # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
 
         # Verify that selected records are not already in table
         current_ids = self.df[self.id_column].tolist()
+        select_ids = select_df[self.id_column]
         remove_indices = []
-        for index, record_id in select_df[self.id_column].items():
+        for index, record_id in select_ids.items():
             if record_id in current_ids:
                 remove_indices.append(index)
         logger.debug('DataTable {NAME}: removing selected records at rows {ROWS} already stored in the table'
                      .format(NAME=self.name, ROWS=remove_indices))
         select_df.drop(remove_indices, inplace=True, axis=0, errors='ignore')
 
+        # Change deleted column of existing selected records to False
+        self.df.loc[self.df[self.id_column].isin(select_ids), self.deleted_column] = False
+
         # Append selected rows to the table
         df = self.append(select_df)
 
         # Remove selected rows from the table of available import rows
-        self.import_df = import_df[~import_df[self.id_column].isin(select_df[self.id_column])]
+        self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
 
         return df
 
@@ -2086,17 +2106,20 @@ class TableElement:
         import_df = self.import_df.copy()
 
         # Get record IDs of selected rows
-        record_ids = df.iloc[indices][self.id_column]
+        record_ids = df.iloc[indices][self.id_column].tolist()
         logger.info('DataTable {TBL}: removing records {IDS} from the table'
-                    .format(TBL=self.name, IDS=record_ids.tolist()))
+                    .format(TBL=self.name, IDS=record_ids))
 
         # Add removed rows to the import dataframe
         import_df = import_df.append(df.iloc[indices], ignore_index=True)
         self.import_df = import_df
 
+        # Set deleted rows to True
+        df.loc[df[self.id_column].isin(record_ids), self.deleted_column] = True
+
         # Drop selected rows from the dataframe
-        df.drop(indices, axis=0, inplace=True)
-        df.reset_index(drop=True, inplace=True)
+#        df.drop(indices, axis=0, inplace=True)
+#        df.reset_index(drop=True, inplace=True)
 
         # Remove unsaved ID, if relevant
         record_entry = settings.records.fetch_rule(self.record_type)
