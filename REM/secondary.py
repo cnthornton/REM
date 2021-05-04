@@ -283,8 +283,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
         event, values = window.read()
 
         if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
-            # Remove unsaved IDs associated with the record
-            mod_records.remove_unsaved_keys(record)
             record = None
 
             break
@@ -356,6 +354,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 popup_notice('failed to run event for record {}'.format(record.record_id()))
 
                 continue
+
+    # Remove unsaved IDs associated with the record
+    settings.remove_unsaved_ids()
 
     window.close()
     layout = None
@@ -457,7 +458,7 @@ def database_importer_window(win_size: tuple = None):
                 # Prepare update parameters
                 row_columns = row.index.tolist()
                 row_values = row.values.tolist()
-                entry_saved = user.insert(table, row_columns, row_values)
+                entry_saved = user.write_db(*user.prepare_insert_statement(table, row_columns, row_values))
                 if entry_saved is False:
                     msg = 'failed to save row {ROW} to database table {TBL}' \
                         .format(ROW=index + 1, TBL=table)
@@ -1197,7 +1198,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             break
 
     if record_col is None:
-        print('Error: "RecordID" is a required display column')
+        logger.error('failed to initialize record import window - "RecordID" is a required display column')
         return None
 
     # Window and element size parameters
@@ -1272,7 +1273,8 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     elif record_type == 'audit':
         record_class = mod_records.TAuditRecord
     else:
-        print('Warning: unknown record layout type provided {}'.format(record_type))
+        logger.error('failed to initialize record import window - unknown record layout type provided {}'
+                     .format(record_type))
         return None
 
     # Update display with default filter values
@@ -1293,7 +1295,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
         win_w, win_h = window.size
         if win_w != current_w or win_h != current_h:
-            print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
+            logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
             other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1]
             tbl_h = win_h - other_h if other_h < win_h else 100
 
@@ -1307,9 +1309,9 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
         if event == '-NEW-':  # selected to create a new record
             if table.record_type is None:
-                msg = 'Failed to create a new record - missing required configuration parameter "RecordType"'
+                msg = 'failed to create a new record - missing required configuration parameter "RecordType"'
                 popup_error(msg)
-                print('Warning: {}'.format(msg))
+                logger.warning(msg)
 
                 continue
 
@@ -1317,13 +1319,13 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             record_date = datetime.datetime.now()
             record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
             if not record_id:
-                msg = 'failed to create an ID for the new record'
-                print('Error: {ERR}'.format(ERR=msg))
+                msg = 'failed to create a new record - unable to create an ID for the new record'
+                logger.error(msg)
                 popup_error(msg)
 
                 continue
 
-            print('Info: RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
+            logger.info('RecordEntry {NAME}: creating new record {ID}'.format(NAME=record_entry.name, ID=record_id))
 
             record_data = pd.Series(index=list(table.columns))
             record_data['RecordID'] = record_id
@@ -1333,22 +1335,18 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             try:
                 record.initialize(record_data, new=True)
             except Exception as e:
-                msg = 'Failed to initialize new record {ID}'.format(ID=record_id)
-                print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
+                msg = 'failed to create a new record {ID}'.format(ID=record_id)
+                logger.error('{MSG} - {ERR}'.format(MSG=msg, ERR=e))
                 popup_error(msg)
             else:
                 record = record_window(record)
 
-                # Add record to the import table
-                try:
-                    record_data = record.table_values()
-                except AttributeError:
-                    continue
-                else:
-                    print('Info: adding values for record {ID} to the import table'.format(ID=record_id))
-                    table.df = table.append(record_data)
+                # Reload the display records
+                import_df = record_entry.import_records(params=table.parameters)
 
-                    display_df = table.update_display(window)
+                table.df = pd.DataFrame(columns=list(table.columns))
+                table.df = table.append(import_df)
+                display_df = table.update_display(window)
 
             continue
 
@@ -1363,14 +1361,14 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 try:
                     trans_df = table.df[table.df['RecordID'] == record_id]
                 except KeyError:
-                    msg = 'Missing required column "RecordID"'
+                    msg = 'missing required column "RecordID"'
                     popup_error(msg)
-                    print('Error: Record importing failed - {ERR}'.format(ERR=msg))
+                    logger.error('record importing failed - {ERR}'.format(ERR=msg))
                     continue
                 else:
                     if trans_df.empty:
                         msg = 'Could not find record {ID} in data table'.format(ID=record_id)
-                        print('Error: Record importing failed - {ERR}'.format(ERR=msg))
+                        logger.error('record importing failed - {ERR}'.format(ERR=msg))
                         popup_error(msg)
                         continue
                     else:
@@ -1380,25 +1378,19 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                     try:
                         record.initialize(record_data)
                     except Exception as e:
-                        msg = 'Failed to initialize record {ID}'.format(ID=record_id)
-                        print('Error: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
+                        msg = 'failed to initialize record {ID}'.format(ID=record_id)
+                        logger.error('{MSG} - {ERR}'.format(MSG=msg, ERR=e))
                         popup_error(msg)
                         raise
                     else:
                         record = record_window(record)
 
-                        # Update record values in the import table
-                        try:
-                            record_data = record.table_values()
-                        except AttributeError:
-                            continue
-                        else:
-                            print('Info: updating values for record {ID} in the import table at row {ROW}'
-                                  .format(ID=record_id, ROW=row))
-                            for column, value in record_data.iteritems():
-                                table.df.loc[table.df['RecordID'] == record_id, [column]] = value
+                        # Reload the display records
+                        import_df = record_entry.import_records(params=table.parameters)
 
-                            display_df = table.update_display(window)
+                        table.df = pd.DataFrame(columns=list(table.columns))
+                        table.df = table.append(import_df)
+                        display_df = table.update_display(window)
 
                 continue
 
@@ -1408,6 +1400,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 # Set parameter values from window elements
                 param.value = param.format_value(values)
 
+            # Load the display records
             import_df = record_entry.import_records(params=table.parameters)
 
             table.df = pd.DataFrame(columns=list(table.columns))
@@ -1555,8 +1548,9 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
                     query_filters.append(query_statement)
 
             try:
-                record_df = user.query(table_statement, columns=import_columns, filter_rules=query_filters,
-                                       prog_db=program_database)
+                record_df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
+                                                                       filter_rules=query_filters),
+                                         prog_db=program_database)
             except Exception as e:
                 popup_error('failed to import records matching the defined search parameters from the database - {ERR}'
                             .format(ERR=e))
