@@ -285,6 +285,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
         if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
             record = None
 
+            # Remove unsaved IDs associated with the record
+            settings.remove_unsaved_ids()
+
             break
 
         if event == '-OK-':  # selected to accept record changes
@@ -328,6 +331,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             if saved is False:
                 continue
             else:
+                # Remove unsaved IDs associated with the record
+                settings.remove_unsaved_ids()
+
                 break
 
         if event == '-DELETE-':
@@ -339,6 +345,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 if deleted is False:
                     continue
                 else:
+                    # Remove unsaved IDs associated with the record
+                    settings.remove_unsaved_ids()
+
                     break
             else:
                 continue
@@ -354,9 +363,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 popup_notice('failed to run event for record {}'.format(record.record_id()))
 
                 continue
-
-    # Remove unsaved IDs associated with the record
-    settings.remove_unsaved_ids()
 
     window.close()
     layout = None
@@ -440,8 +446,8 @@ def database_importer_window(win_size: tuple = None):
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             # Delete any unsaved record IDs created in the final step
             if len(record_ids) > 0 and record_entry is not None:
-                print('Info: removing unsaved record IDs')
-                record_entry.remove_ids(record_ids)
+                logger.info('removing unsaved record IDs')
+                record_entry.remove_unsaved_ids(record_ids)
                 record_ids = []
             break
 
@@ -450,35 +456,61 @@ def database_importer_window(win_size: tuple = None):
             if subset_df is None or table is None or record_entry is None:
                 continue
 
+            # Check if any record IDs are already in the database
+
             # Prepare the insertion statement
-            records_saved = []
-            for index, row in subset_df.iterrows():
-                row = row.dropna(inplace=True)
+            try:
+                statements = record_entry.export_table(subset_df, id_field=settings.id_field, id_exists=False)
+            except Exception as e:
+                msg = 'failed to upload entries to the database - {ERR}'.format(ERR=e)
+                logger.error(msg)
+                return False
 
-                # Prepare update parameters
-                row_columns = row.index.tolist()
-                row_values = row.values.tolist()
-                entry_saved = user.write_db(*user.prepare_insert_statement(table, row_columns, row_values))
-                if entry_saved is False:
-                    msg = 'failed to save row {ROW} to database table {TBL}' \
-                        .format(ROW=index + 1, TBL=table)
-                    popup_error(msg)
-                    print('Warning: {}'.format(msg))
-                records_saved.append(entry_saved)
+            sstrings = []
+            psets = []
+            for i, j in statements.items():
+                sstrings.append(i)
+                psets.append(j)
 
-            msg = 'Successfully saved {SUCCESS} rows to the database. Failed to save {FAIL} rows' \
-                .format(SUCCESS=len([i for i in records_saved if i is True]),
-                        FAIL=len([i for i in records_saved if i is False]))
+            success = user.write_db(sstrings, psets)
+
+#            records_saved = []
+#            for index, row in subset_df.iterrows():
+#                row = row.dropna(inplace=True)
+#
+#                # Prepare update parameters
+#                row_columns = row.index.tolist()
+#                row_values = tuple(row.values.tolist())
+#                entry_saved = user.write_db(*user.prepare_insert_statement(table, row_columns, row_values))
+#                if entry_saved is False:
+#                    msg = 'failed to save row {ROW} to database table {TBL}' \
+#                        .format(ROW=index + 1, TBL=table)
+#                    popup_error(msg)
+#                    logger.warning(msg)
+#                records_saved.append(entry_saved)
+#
+#            msg = 'Successfully saved {SUCCESS} rows to the database. Failed to save {FAIL} rows' \
+#                .format(SUCCESS=len([i for i in records_saved if i is True]),
+#                        FAIL=len([i for i in records_saved if i is False]))
+#            popup_notice(msg)
+#            logger.info(msg)
+
+            if success:
+                msg = 'successfully saved {NROW} rows to the database'.format(NROW=len(record_ids))
+            else:
+                msg = 'failed to save {NROW} rows to the database'.format(NROW=len(record_ids))
+
             popup_notice(msg)
-            print('Info: {}'.format(msg))
+            logger.info(msg)
 
             # Delete saved record IDs from list of unsaved IDs
-            print('Info: removing saved records from the list of unsaved IDs')
-            record_entry.remove_ids(record_ids)
+            logger.info('removing saved records from the list of unsaved IDs')
+            record_entry.remove_unsaved_ids(record_ids)
 
             # Export report describing success of import by row
             success_col = 'Successfully saved'
-            subset_df[success_col] = records_saved
+#            subset_df[success_col] = records_saved
+            subset_df[success_col] = success
             outfile = sg.popup_get_file('', title='Save Database import report', save_as=True,
                                         default_extension='xlsx', no_window=True,
                                         file_types=(
@@ -1342,11 +1374,12 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 record = record_window(record)
 
                 # Reload the display records
-                import_df = record_entry.import_records(params=table.parameters)
+                if record:
+                    import_df = record_entry.import_records(params=table.parameters)
 
-                table.df = pd.DataFrame(columns=list(table.columns))
-                table.df = table.append(import_df)
-                display_df = table.update_display(window)
+                    table.df = pd.DataFrame(columns=list(table.columns))
+                    table.df = table.append(import_df)
+                    display_df = table.update_display(window)
 
             continue
 
@@ -1386,11 +1419,12 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                         record = record_window(record)
 
                         # Reload the display records
-                        import_df = record_entry.import_records(params=table.parameters)
+                        if record:
+                            import_df = record_entry.import_records(params=table.parameters)
 
-                        table.df = pd.DataFrame(columns=list(table.columns))
-                        table.df = table.append(import_df)
-                        display_df = table.update_display(window)
+                            table.df = pd.DataFrame(columns=list(table.columns))
+                            table.df = table.append(import_df)
+                            display_df = table.update_display(window)
 
                 continue
 
@@ -1524,7 +1558,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
         win_w, win_h = window.size
         if win_w != current_w or win_h != current_h:
-            print('Info: new window size is {W} x {H}'.format(W=win_w, H=win_h))
+            logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
             other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
@@ -1713,8 +1747,8 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     is_bool_dtype = pd.api.types.is_bool_dtype
 
     if not isinstance(edit_columns, dict) and edit_columns is not None:
-        print('TypeError: argument edit_columns must be a dictionary but has current type {TYPE}'
-              .format(TYPE=type(edit_columns)))
+        logger.error('argument edit_columns must be a dictionary but has current type {TYPE}'
+                     .format(TYPE=type(edit_columns)))
         return row
 
     if edit_columns is None:
@@ -1742,7 +1776,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     if edit_columns is not None:
         for column in edit_columns:
             if column not in display_header:
-                print('Warning: editable column {COL} not found in the display header'.format(COL=column))
+                logger.warning('editable column {COL} not found in the display header'.format(COL=column))
                 continue
 
             element_key = '-{COL}-'.format(COL=column)
@@ -1850,7 +1884,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                         dtype = np.object
 
                 # Set field value based on data type
-                print('Info: the data type of column {COL} is {DTYPE}'.format(COL=header_map[column], DTYPE=dtype))
+                logger.debug(' the data type of column {COL} is {DTYPE}'.format(COL=header_map[column], DTYPE=dtype))
                 msg = 'The value "{VAL}" provided to column "{COL}" is the wrong type'
                 if is_float_dtype(dtype):
                     try:

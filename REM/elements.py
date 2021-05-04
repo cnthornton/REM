@@ -118,8 +118,8 @@ class TableElement:
                 try:
                     action_val = bool(int(self.actions[action]))
                 except ValueError:
-                    print('Warning: DataTable {TBL}: action {ACT} must be either 0 (False) or 1 (True)'
-                          .format(TBL=self.name, ACT=action))
+                    logger.warning('DataTable {TBL}: action {ACT} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, ACT=action))
                     action_val = False
 
                 self.actions[action] = action_val
@@ -266,8 +266,8 @@ class TableElement:
                 if filter_key in columns:
                     self.filter_rules[filter_key] = filter_rules[filter_key]
                 else:
-                    print('Warning: DataTable {NAME}: filter rule key {KEY} not found in table columns'
-                          .format(NAME=self.name, KEY=filter_key))
+                    logger.warning('DataTable {NAME}: filter rule key {KEY} not found in table columns'
+                                   .format(NAME=self.name, KEY=filter_key))
 
         try:
             summary_rules = entry['SummaryRules']
@@ -304,7 +304,7 @@ class TableElement:
         try:
             self.deleted_column = entry['DeletedColumn']
         except KeyError:
-            self.deleted_column = 'IsDeleted'
+            self.deleted_column = 'RowDeleted'
         if self.deleted_column not in self.columns:
             self.columns[self.deleted_column] = 'bool'
 
@@ -328,16 +328,16 @@ class TableElement:
                 if sort_col in self.columns:
                     self.sort_on.append(sort_col)
                 else:
-                    print('Configuration Warning: DataTable {NAME}: sort column {COL} not found in table columns'
-                          .format(NAME=self.name, COL=sort_col))
+                    logger.warning('DataTable {NAME}: sort column {COL} not found in table columns'
+                                   .format(NAME=self.name, COL=sort_col))
 
         try:
             self.nrow = int(entry['Rows'])
         except KeyError:
             self.nrow = None
         except ValueError:
-            print('Warning: DataTable {TBL}: input to the Rows parameter must be an integer value'
-                  .format(TBL=self.name))
+            logger.warning('DataTable {TBL}: input to the Rows parameter must be an integer value'
+                           .format(TBL=self.name))
             self.nrow = None
 
         try:
@@ -346,8 +346,8 @@ class TableElement:
             self.row_color = mod_const.TBL_ALT_COL
         else:
             if not row_color.startswith('#') or not len(row_color) == 7:
-                print('Configuration Error: DataTable {TBL}: row color {COL} is not a valid hexadecimal code'
-                      .format(TBL=self.name, COL=row_color))
+                logger.warning('DataTable {TBL}: row color {COL} is not a valid hexadecimal code'
+                               .format(TBL=self.name, COL=row_color))
                 self.row_color = mod_const.TBL_BG_COL
             else:
                 self.row_color = row_color
@@ -367,8 +367,8 @@ class TableElement:
         except KeyError:
             self.required = False
         except ValueError:
-            print('Configuration Warning: DataElement {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
-                  .format(NAME=name))
+            logger.warning('DataElement {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
+                           .format(NAME=name))
             sys.exit(1)
         else:
             self.required = required
@@ -2603,8 +2603,7 @@ class DataElement:
         except KeyError:
             self.editable = True
         except ValueError:
-            print('Configuration Warning: DataElement {NAME}: "IsEditable" must be either 0 (False) or 1 (True)'
-                  .format(NAME=name))
+            logger.warning('DataElement {NAME}: "IsEditable" must be either 0 (False) or 1 (True)'.format(NAME=name))
             self.editable = False
         else:
             self.editable = editable
@@ -2614,8 +2613,8 @@ class DataElement:
         except KeyError:
             self.hidden = False
         except ValueError:
-            print('Warning: DataElement {NAME}: configuration parameter "IsHidden" must be either 0 (False) or 1 (True)'
-                  .format(NAME=name))
+            logger.warning('DataElement {NAME}: configuration parameter "IsHidden" must be either 0 (False) or 1 (True)'
+                           .format(NAME=name))
             sys.exit(1)
         else:
             self.hidden = hidden
@@ -2625,8 +2624,8 @@ class DataElement:
         except KeyError:
             self.required = False
         except ValueError:
-            print('Warning: DataElement {NAME}: configuration parameter "IsRequired" must be either 0 (False) or 1 '
-                  '(True)'.format(NAME=name))
+            logger.warning('DataElement {NAME}: configuration parameter "IsRequired" must be either 0 (False) or 1 '
+                           '(True)'.format(NAME=name))
             sys.exit(1)
         else:
             self.required = required

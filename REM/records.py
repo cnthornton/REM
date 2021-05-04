@@ -203,7 +203,7 @@ class RecordEntry:
 
         return import_df
 
-    def load_record_data(self, record_ids):
+    def load_record_data(self, record_ids, id_field: str = 'RecordID'):
         """
         Load a record from the database using the record ID.
         """
@@ -216,7 +216,7 @@ class RecordEntry:
         # Add configured import filters
         table_statement = mod_db.format_tables(self.import_rules)
         columns = mod_db.format_import_columns(self.import_rules)
-        id_col = mod_db.get_import_column(self.import_rules, 'RecordID')
+        id_col = mod_db.get_import_column(self.import_rules, id_field)
 
         # Query existing database entries
         import_df = pd.DataFrame()
@@ -261,7 +261,7 @@ class RecordEntry:
             table_entry = import_rules[table]
 
             references = {j: i for i, j in table_entry['Columns'].items()}
-            id_col = references['RecordID']
+            id_col = references[id_field]
 
             # Prepare column value updates
             include_columns = [i for i in columns if i in references]
@@ -296,7 +296,7 @@ class RecordEntry:
 
         return statements
 
-    def delete_record(self, record_ids, statements: dict = {}):
+    def delete_record(self, record_ids, statements: dict = {}, id_field: str = 'RecordID'):
         """
         Delete a record from the database.
         """
@@ -315,7 +315,7 @@ class RecordEntry:
             table_entry = import_rules[table]
 
             references = {j: i for i, j in table_entry['Columns'].items()}
-            id_col = references['RecordID']
+            id_col = references[id_field]
 
             # Remove record from the export table
             for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
@@ -356,14 +356,13 @@ class RecordEntry:
 
         return statements
 
-    def import_record_ids(self, record_date: datetime.datetime = None):
+    def import_record_ids(self, record_date: datetime.datetime = None, id_field: str = 'RecordID'):
         """
         Import existing record IDs.
         """
         # Prepare query parameters
-        colname = 'RecordID'
         table_statement = mod_db.format_tables(self.import_rules)
-        id_col = mod_db.get_import_column(self.import_rules, colname)
+        id_col = mod_db.get_import_column(self.import_rules, id_field)
 
         # Define query statement
 #        params = None
@@ -374,24 +373,17 @@ class RecordEntry:
                 last_day = datetime.datetime(record_date.year + record_date.month // 12, record_date.month % 12 + 1,
                                              1) - datetime.timedelta(1)
             except AttributeError:
-#                query_str = 'SELECT {COL} FROM {TABLE} ORDER BY {COL};' \
-#                    .format(COL=id_column, TABLE=primary_table)
                 filters = None
             else:
-#                query_str = 'SELECT {COL} FROM {TABLE} WHERE {DATE} BETWEEN ? AND ? ORDER BY {COL};' \
-#                    .format(COL=id_column, TABLE=primary_table, DATE=settings.date_field)
                 params = (first_day, last_day)
                 filters = ('{DATE} BETWEEN ? AND ?'.format(DATE=settings.date_field), params)
         else:
-#            query_str = 'SELECT {COL} FROM {TABLE} ORDER BY {COL};'.format(COL=id_column, TABLE=primary_table)
             filters = None
-#        import_rows = db_manager.query(query_str, params=params)
         import_rows = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col, filter_rules=filters,
                                                                  order=id_col), prog_db=True)
 
         # Connect to database
         try:
-#            id_list = import_rows.squeeze().tolist()
             id_list = import_rows.iloc[:, 0]
         except IndexError:
             logger.info('no existing record IDs found')
@@ -400,11 +392,6 @@ class RecordEntry:
             logger.error('failed to import saved record ids - {ERR}'.format(ERR=e))
             logger.error(import_rows)
             raise
-#        id_list = []
-#        for index, row in import_rows.iterrows():
-#            record_id = row[id_column]
-#            if record_id not in id_list:
-#                id_list.append(record_id)
 
         return id_list
 
@@ -667,6 +654,12 @@ class DatabaseRecord:
         """
         approved_record_types = settings.records.get_approved_groups()
 
+        # Reserved fields
+        self.id_field = 'RecordID'
+        self.date_field = 'RecordDate'
+        self.delete_field = 'Deleted'
+
+        # Record properties
         self.record_entry = record_entry
         self.new = False
         self.level = level
@@ -730,10 +723,10 @@ class DatabaseRecord:
                 self.elements += param.elements
 
         header_names = [i.name for i in self.headers]
-        if 'RecordID' not in header_names:
-            raise AttributeError('missing required header "RecordID"')
-        if 'RecordDate' not in header_names:
-            raise AttributeError('missing required header "RecordDate"')
+        if self.id_field not in header_names:
+            raise AttributeError('missing required header "{}"'.format(self.id_field))
+        if self.date_field not in header_names:
+            raise AttributeError('missing required header "{}"'.format(self.date_field))
 
         # Record metadata
         self.metadata = []
@@ -874,14 +867,14 @@ class DatabaseRecord:
         """
         Convenience method for returning the record ID of the record object.
         """
-        param = self.fetch_header('RecordID')
+        param = self.fetch_header(self.id_field)
         return param.value
 
     def record_date(self):
         """
         Convenience method for returning the record date of the record object.
         """
-        param = self.fetch_header('RecordDate')
+        param = self.fetch_header(self.date_field)
         return param.value
 
     def initialize(self, data, new: bool = False, references: pd.DataFrame = None):
@@ -918,10 +911,10 @@ class DatabaseRecord:
         else:
             raise AttributeError('unknown object type provided to record class {TYPE}'.format(TYPE=self.name))
 
-        if 'RecordID' not in record_data:
-            raise AttributeError('input data is missing required column "RecordID"')
-        if 'RecordDate' not in record_data:
-            raise AttributeError('input data is missing required column "RecordDate"')
+        if self.id_field not in record_data:
+            raise AttributeError('input data is missing required column "{}"'.format(self.id_field))
+        if self.date_field not in record_data:
+            raise AttributeError('input data is missing required column "{}"'.format(self.date_field))
 
         logger.info('RecordType {NAME}: initializing record'.format(NAME=self.name))
         logger.debug('RecordType {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
@@ -1067,6 +1060,9 @@ class DatabaseRecord:
                 comp_table = self.fetch_component(comp_type, by_type=True)
                 record_entry = settings.records.fetch_rule(comp_table.record_type)
                 comp_table.df = comp_table.append(record_entry.load_record_data(import_ids))
+                pd.set_option('display.max_columns', None)
+                print(comp_table.name)
+                print(comp_table.df)
 
             self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
 
@@ -1408,7 +1404,6 @@ class DatabaseRecord:
         Save the record and child records to the database.
         """
         ref_table = settings.reference_lookup
-        delete_code = settings.delete_field
 
         record_entry = self.record_entry
         record_id = self.record_id()
@@ -1427,7 +1422,8 @@ class DatabaseRecord:
         id_exists = True
         try:
             record_data = self.table_values().to_frame().transpose()
-            statements = record_entry.export_table(record_data, statements=statements, id_exists=id_exists)
+            statements = record_entry.export_table(record_data, statements=statements, id_field=self.id_field,
+                                                   id_exists=id_exists)
         except Exception as e:
             msg = 'failed to save record {ID} - {ERR}'.format(ID=record_id, ERR=e)
             logger.exception(msg)
@@ -1512,6 +1508,9 @@ class DatabaseRecord:
                                                                       update_filters,
                                                                       filter_params)
                 else:  # new reference
+                    if is_deleted:  # don't add reference for new associations that were removed.
+                        continue
+
                     # Prepare the insert statement for the existing reference entry to the references table
                     comp_columns.extend([settings.creation_date, settings.creator_code])
 
@@ -1530,9 +1529,7 @@ class DatabaseRecord:
 
             # Update the delete field
             if pc:  # removed records should be deleted if parent-child is true
-                comp_df[delete_code] = comp_df[comp_table.deleted_column]
-            else:
-                comp_df[delete_code] = False
+                comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
 
             # Prepare update statements for existing record components
             existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
