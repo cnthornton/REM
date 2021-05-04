@@ -92,7 +92,10 @@ class ServerConnection:
             msg = 'connection to {ADDR} was closed for unknown reason ... attempting to reconnect' \
                 .format(ADDR=self.addr)
             logger.error(msg)
-            self._reset_connection()
+            try:
+                self._reset_connection()
+            except Exception as e:
+                logger.error('connection reset failed - {}'.format(e))
         else:
             if data:  # 0 indicates a closed connection
                 self._recv_buffer += data
@@ -524,6 +527,26 @@ class SettingsManager:
             self.host = value
         elif attr == 'dbname':
             self.dbname = value
+
+    def get_unsaved_ids(self, internal: bool = True):
+        """
+        Get unsaved record IDs for all record entry types.
+        """
+        entries = self.records.rules
+        unsaved_ids = {}
+        for entry in entries:
+            id_list = entry.get_unsaved_ids(internal_only=internal)
+            unsaved_ids[entry.name] = id_list
+
+        return unsaved_ids
+
+    def remove_unsaved_ids(self, internal: bool = True):
+        """
+        Remove unsaved record IDs for all record entry types.
+        """
+        entries = self.records.rules
+        for entry in entries:
+            entry.remove_unsaved_id(entry.get_unsaved_ids(internal_only=internal))
 
     def load_constants(self, connection):
         """
@@ -959,9 +982,9 @@ class AccountManager:
 
         return results
 
-    def query(self, tables, columns='*', filter_rules=None, order=None, prog_db: bool = False, distinct: bool = False):
+    def prepare_query_statement(self, tables, columns='*', filter_rules=None, order=None, distinct: bool = False):
         """
-        Query an ODBC database.
+        Prepare a statement and parameters for querying an ODBC database.
 
         Arguments:
 
@@ -972,8 +995,6 @@ class AccountManager:
             filter_rules: tuple or list of tuples containing where clause and value tuple for a given filter rule.
 
             order: string or list of strings containing columns to sort results by.
-
-            prog_db (bool): query from program database.
 
             distinct (bool): add the distinct clause to the statement to return only unique entries.
         """
@@ -997,7 +1018,7 @@ class AccountManager:
         except SQLStatementError as e:
             msg = 'failed to generate the query statement - {}'.format(e)
             logger.error(msg)
-            return pd.DataFrame()
+            raise SQLStatementError(msg)
 
         # Prepare the database transaction statement
         if not distinct:
@@ -1009,34 +1030,11 @@ class AccountManager:
 
         logger.debug('query string is "{STR}" with parameters "{PARAMS}"'.format(STR=query_str, PARAMS=params))
 
-        # Prepare the server request
-        db = settings.prog_db if prog_db is True else settings.dbname
-        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'read',
-                 'statement': query_str, 'parameters': params}
-        content = {'action': 'db_transact', 'value': value}
-        request = {'content': content, 'encoding': "utf-8"}
+        return (query_str, params)
 
-        # Send the request for data to the server
-        response = server_conn.process_request(request)
-        if response['success'] is False:
-            msg = response['value']
-            logger.error(msg)
-
-            df = pd.DataFrame()
-        else:
-            try:
-                df = pd.DataFrame(response['value'])
-            except Exception as e:
-                msg = 'failed to read the results of the database query - {ERR}'.format(ERR=e)
-                logger.error(msg)
-
-                df = pd.DataFrame()
-
-        return df
-
-    def insert(self, table, columns, values):
+    def prepare_insert_statement(self, table, columns, values):
         """
-        Insert data into the daily summary table.
+        Prepare a statement and parameters for inserting a new entry into an ODBC database.
         """
         if isinstance(columns, str):
             columns = [columns]
@@ -1046,13 +1044,13 @@ class AccountManager:
             if not all([isinstance(i, tuple) for i in values]):
                 msg = 'failed to generate insertion statement - individual transactions must be formatted as tuple'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             if not all([len(columns) == len(i) for i in values]):
                 msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
                       'of provided parameters for all transactions requested'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             params = []
             for param_tup in values:
@@ -1063,7 +1061,7 @@ class AccountManager:
                 msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
                       'of parameters for the transaction'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             params = tuple([convert_datatypes(i) for i in values])
 
@@ -1072,61 +1070,44 @@ class AccountManager:
                 msg = 'failed to generate insertion statement - the number of columns is not equal to the number of ' \
                       'parameters for the transaction'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             params = (convert_datatypes(values),)
         else:
             msg = 'failed to generate insertion statement - unknown values type {}'.format(type(values))
             logger.error(msg)
-            return False
+            raise SQLStatementError(msg)
 
         # Prepare the database transaction statement
         markers = '({})'.format(','.join(['?' for _ in columns]))
-        insert_str = 'INSERT INTO {TABLE} {COLS} VALUES {VALS}' \
+        insert_str = 'INSERT INTO {TABLE} {COLS} VALUES {VALS};' \
             .format(TABLE=table, COLS='({})'.format(','.join(columns)), VALS=markers)
         logger.debug('insertion string is "{STR}" with parameters "{PARAMS}"'.format(STR=insert_str, PARAMS=params))
 
-        # Prepare the server request
-        db = settings.prog_db
-        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'write',
-                 'statement': insert_str, 'parameters': params}
-        content = {'action': 'db_transact', 'value': value}
-        request = {'content': content, 'encoding': "utf-8"}
+        return (insert_str, params)
 
-        # Send the request for data to the server
-        response = server_conn.process_request(request)
-        if response['success'] is False:
-            msg = response['value']
-            logger.error(msg)
-
-            status = False
-        else:
-            status = True
-
-        return status
-
-    def update(self, table, columns, values, where_clause, filter_values):
+    def prepare_update_statement(self, table, columns, values, where_clause, filter_values):
         """
-        Insert data into the daily summary table.
+        Prepare a statement and parameters for updating an existing entry in an ODBC dataabase.
         """
         # Format parameters
         if isinstance(values, list):  # multiple updates requested
             if not all([isinstance(i, tuple) for i in values]):
                 msg = 'failed to generate update statement - individual transactions must be formatted as tuple'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             if not all([len(columns) == len(i) for i in values]):
                 msg = 'failed to generate update statement - the number of columns is not equal to the number ' \
                       'of provided parameters for all transactions requested'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             if not isinstance(filter_values, list) or len(values) != len(filter_values):
                 msg = 'failed to generate update statement - the number of transactions requested do not match the ' \
                       'number of filters provided'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             params = []
             for index, param_tup in enumerate(values):
@@ -1145,58 +1126,41 @@ class AccountManager:
                 msg = 'failed to generate update statement - the number of columns is not equal to the number of ' \
                       'provided parameters for the transaction'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             if not isinstance(filter_values, tuple):
                 msg = 'failed to generate update statement - the number of transactions requested do not match the ' \
                       'number of filters provided'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             params = tuple([convert_datatypes(i) for i in values] + [convert_datatypes(j) for j in filter_values])
 
-        elif isinstance(values, str):  # single update of one column is requested
+        elif isinstance(values, str) or pd.isna(values):  # single update of one column is requested
             if not isinstance(columns, str):
                 msg = 'failed to generate update statement - the number of columns is not equal to the number of ' \
                       'provided parameters for the transaction'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
 
             params = tuple([convert_datatypes(values)] + [convert_datatypes(j) for j in filter_values])
         else:
             msg = 'failed to generate update statement - unknown values type {}'.format(type(values))
             logger.error(msg)
-            return False
+            raise SQLStatementError(msg)
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
 
         # Prepare the database transaction statement
-        update_str = 'UPDATE {TABLE} SET {PAIRS} {WHERE}' \
+        update_str = 'UPDATE {TABLE} SET {PAIRS} WHERE {WHERE};' \
             .format(TABLE=table, PAIRS=','.join(pair_list), WHERE=where_clause)
         logger.debug('update string is "{STR}" with parameters "{PARAMS}"'.format(STR=update_str, PARAMS=params))
 
-        # Prepare the server request
-        db = settings.prog_db
-        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'write',
-                 'statement': update_str, 'parameters': params}
-        content = {'action': 'db_transact', 'value': value}
-        request = {'content': content, 'encoding': "utf-8"}
+        return (update_str, params)
 
-        # Send the request for data to the server
-        response = server_conn.process_request(request)
-        if response['success'] is False:
-            msg = response['value']
-            logger.error(msg)
-
-            status = False
-        else:
-            status = True
-
-        return status
-
-    def delete(self, table, columns, values):
+    def prepare_delete_statement(self, table, columns, values):
         """
-        Delete data from a summary table.
+        Prepare a statement and parameters for deleting an existing entry from an ODBC database.
         """
         # Format parameters
         if isinstance(values, list) or isinstance(values, tuple):
@@ -1205,18 +1169,18 @@ class AccountManager:
             if len(columns) != len(values):
                 msg = 'failed to generate deletion statement - columns size is not equal to values size'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
         elif isinstance(values, str):
             params = (values,)
 
             if not isinstance(columns, str):
                 msg = 'failed to generate deletion statement - columns size is not equal to values size'
                 logger.error(msg)
-                return False
+                raise SQLStatementError(msg)
         else:
             msg = 'failed to generate deletion statement - unknown values type {}'.format(type(values))
             logger.error(msg)
-            return False
+            raise SQLStatementError(msg)
 
         pairs = {}
         for colname in columns:
@@ -1241,10 +1205,45 @@ class AccountManager:
         delete_str = 'DELETE FROM {TABLE} WHERE {PAIRS}'.format(TABLE=table, PAIRS=' AND '.join(pair_list))
         logger.debug('deletion string is "{STR}" with parameters "{PARAMS}"'.format(STR=delete_str, PARAMS=params))
 
+        return (delete_str, params)
+
+    def read_db(self, statement, params, prog_db: bool = False):
+        """
+        Read from an ODBC database.
+        """
+        # Prepare the server request
+        db = settings.prog_db if prog_db is True else settings.dbname
+        value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'read',
+                 'statement': statement, 'parameters': params}
+        content = {'action': 'db_transact', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            df = pd.DataFrame()
+        else:
+            try:
+                df = pd.DataFrame(response['value'])
+            except Exception as e:
+                msg = 'failed to read the results of the database query - {ERR}'.format(ERR=e)
+                logger.error(msg)
+
+                df = pd.DataFrame()
+
+        return df
+
+    def write_db(self, statement, params):
+        """
+        Write to an ODBC database.
+        """
         # Prepare the server request
         db = settings.prog_db
         value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'write',
-                 'statement': delete_str, 'parameters': params}
+                 'statement': statement, 'parameters': params}
         content = {'action': 'db_transact', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
 

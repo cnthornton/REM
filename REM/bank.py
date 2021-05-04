@@ -849,6 +849,9 @@ class BankRule:
         for i, tab in enumerate(self.tabs):
             tab.reset(window)
 
+        # Remove any unsaved IDs created during the reconciliation
+        settings.remove_unsaved_ids()
+
         if current:
             window['-HOME-'].update(visible=False)
             window[panel_key].update(visible=True)
@@ -1204,7 +1207,8 @@ class BankRecordTab:
 
         ref_filters += [('RefNo = ?', (record_id,)), ('IsDeleted = ?', (0,))]
         try:
-            reference = user.query(settings.reference_lookup, filter_rules=ref_filters, prog_db=True)
+            reference = user.read_db(*user.prepare_query_statement(settings.reference_lookup, filter_rules=ref_filters),
+                                     prog_db=True)
         except Exception as e:
             mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))
@@ -1230,7 +1234,8 @@ class BankRecordTab:
 
         # Import primary mod_bank data from database
         try:
-            df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
+            df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+                              prog_db=True)
         except Exception as e:
             mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))
@@ -1253,7 +1258,8 @@ class BankRecordTab:
                 ref_filters += [('RefNo IN ({})'.format(','.join(['?' for _ in record_ids])), record_ids),
                                 ('IsDeleted = ?', (0,))]
                 try:
-                    ref_df = user.query(settings.reference_lookup, filter_rules=ref_filters, prog_db=True)
+                    ref_df = user.read_db(*user.prepare_query_statement(settings.reference_lookup,
+                                                                        filter_rules=ref_filters), prog_db=True)
                 except Exception as e:
                     mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
                                          .format(NAME=self.name, ERR=e))
@@ -1312,6 +1318,7 @@ class BankRecordTab:
         merged_df = pd.DataFrame(columns=rule_fields)
 
         # Add association table data to the merged table
+        statements = {}
         assoc_names = []
         for association in associations:
             assoc_name = association.name
@@ -1383,14 +1390,14 @@ class BankRecordTab:
                     # Create an entry in the reference table for the match
                     ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings',
                                          settings.creator_code, settings.creation_date]
-                    ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
-                                 warning, user.uid, datetime.datetime.now()]
+                    ref_entry = (ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
+                                 warning, user.uid, datetime.datetime.now())
 
-                    entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
-                    if entry_saved is False:
-                        msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
-                            .format(ID=record_id, REF=ref_id, TBL=ref_table)
-                        mod_win2.popup_error(msg)
+                    statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
+                    try:
+                        statements[statement].append(params)
+                    except KeyError:
+                        statements[statement] = [params]
 
                     # Update table with reference information
                     df.at[index, 'ReferenceID'] = ref_id
@@ -1410,14 +1417,14 @@ class BankRecordTab:
                 # Create an entry in the reference table for the match
                 ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
                                      settings.creator_code, settings.creation_date]
-                ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
-                             user.uid, datetime.datetime.now()]
+                ref_entry = (ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
+                             user.uid, datetime.datetime.now())
 
-                entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
-                if entry_saved is False:
-                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
-                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
-                    mod_win2.popup_error(msg)
+                statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
+                try:
+                    statements[statement].append(params)
+                except KeyError:
+                    statements[statement] = [params]
 
                 # Update table with reference information
                 df.at[index, 'ReferenceID'] = ref_id
@@ -1436,19 +1443,28 @@ class BankRecordTab:
                 # Create an entry in the reference table for the match
                 ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
                                      settings.creator_code, settings.creation_date]
-                ref_entry = [ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
-                             user.uid, datetime.datetime.now()]
+                ref_entry = (ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
+                             user.uid, datetime.datetime.now())
 
-                entry_saved = user.insert(ref_table, ref_table_columns, ref_entry)
-                if entry_saved is False:
-                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
-                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
-                    mod_win2.popup_error(msg)
+                statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
+                try:
+                    statements[statement].append(params)
+                except KeyError:
+                    statements[statement] = [params]
 
                 # Update table with reference information
                 df.at[index, 'ReferenceID'] = ref_id
 
-        self.reconciled = True
+        # Insert found matches to the references table
+        sstrings = []
+        psets = []
+        for i, j in statements.items():
+            sstrings.append(i)
+            psets.append(j)
+
+        success = user.write_db(sstrings, psets)
+
+        self.reconciled = success
 
 
 class BankAssociationTab:
@@ -1588,7 +1604,8 @@ class BankAssociationTab:
 
         # Import primary mod_bank data from database
         try:
-            df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
+            df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+                              prog_db=True)
         except Exception as e:
             mod_win2.popup_error('Error: BankRuleAssociation {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))

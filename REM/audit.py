@@ -778,6 +778,9 @@ class AuditRule:
             else:
                 tab.reset(window, first=False)
 
+        # Remove any unsaved IDs created during the audit
+        settings.remove_unsaved_ids()
+
         if current:
             window['-HOME-'].update(visible=False)
             window[panel_key].update(visible=True)
@@ -1064,7 +1067,7 @@ class AuditTransactionTab:
 
         # Import primary mod_bank data from database
         try:
-            df = user.query(table_statement, columns=columns, filter_rules=filters)
+            df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters))
         except Exception as e:
             msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
             mod_win2.popup_error(msg)
@@ -1134,7 +1137,7 @@ class AuditTransactionTab:
             # Find the date of the most recent transaction prior to current date
 #            query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col, TBL=date_table)
 #            dates_df = user.thread_transaction(query_str, (), operation='read')
-            dates_df = user.query(date_table, columns=[date_col], distinct=True)
+            dates_df = user.read_db(*user.prepare_query_statement(date_table, columns=[date_col], distinct=True))
 
             unq_dates = dates_df[date_col].tolist()
             unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
@@ -1161,7 +1164,8 @@ class AuditTransactionTab:
 
                 import_filters = filters + [('{} = ?'.format(date_db_col),
                                              (prev_date.strftime(settings.date_format),))]
-                last_df = user.query(table_statement, columns=import_columns, filter_rules=import_filters)
+                last_df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
+                                                                     filter_rules=import_filters))
                 last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
                 last_id = None
@@ -1231,7 +1235,8 @@ class AuditTransactionTab:
 
             import_filters = filters + [('{} = ?'.format(date_db_col),
                                          (audit_date.strftime(settings.date_format),))]
-            current_df = user.query(table_statement, columns=import_columns, filter_rules=import_filters)
+            current_df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
+                                                                    filter_rules=import_filters))
 
             current_ids = sorted(current_df[pkey].tolist(), reverse=True)
             for current_id in current_ids:
@@ -1263,7 +1268,8 @@ class AuditTransactionTab:
             filters = [(filter_str, tuple(missing_transactions))]
 
             # Drop missing transactions if they don't meet the import parameter requirements
-            missing_df = user.query(table_statement, columns=import_columns, filter_rules=filters, order=pkey_db)
+            missing_df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
+                                                                    filter_rules=filters, order=pkey_db))
         else:
             missing_df = pd.DataFrame(columns=df.columns)
 
@@ -1916,7 +1922,8 @@ class AuditRecordTab:
 
         # Import record from database
         try:
-            import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
+            import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
+                                                                   filter_rules=filters), prog_db=True)
         except Exception as e:
             mod_win2.popup_error('Attempt to import data from the database failed. Use the debug window for more '
                                  'information')
@@ -1968,15 +1975,9 @@ class AuditRecordTab:
         record = self.record
         ref_table = settings.reference_lookup
 
-        # Export audit record
-        success = []
-        saved = record.save()
-        success.append(saved)
+        # Prepare to export associated deposit records for the relevant account records
+        statements = {}
 
-        if saved is False:
-            return False
-
-        # Export associated deposit records for the relevant account records
         account_table = self.record.fetch_component('account')
         ref_type = account_table.record_type
         account_df = account_table.df
@@ -1984,14 +1985,14 @@ class AuditRecordTab:
         if 'Account' not in account_header:
             logger.warning('AuditRecordTab {NAME}: required column "Account" not found in the account table header'
                            .format(NAME=self.name))
-            return all(success)
+            return False
 
         record_entry = settings.records.fetch_rule(self.deposit_type)
         if not record_entry:
             logger.warning('AuditRecordTab {NAME}: a deposit record type was not configured for the audit record. No '
                            'deposit records will be automatically created for the account records.'
                            .format(NAME=self.name))
-            return all(success)
+            return False
         else:
             record_type = record_entry.name
 
@@ -2052,51 +2053,39 @@ class AuditRecordTab:
                     logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
-            deposit_record = mod_records.DepositRecord(record_entry)
-            deposit_record.initialize(deposit_data, new=True)
-
-            # Save the deposit record to the database
-#            success.append(record_entry.export_record(user, record))
-            saved = deposit_record.save()
-            success.append(saved)
-
-            if saved is False:  # don't save reference to failed record
-                continue
+            statements = record_entry.export_table(deposit_data, statements=statements, id_exists=False)
 
             # Save the association to the references database table
             # Save reference to the account record
             ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
                            settings.creation_date, 'IsParentChild']
-            ref_values = [deposit_id, record_type, account_id, ref_type, datetime.datetime.now(), user.uid,
-                          datetime.datetime.now(), True]
+            ref_values = (deposit_id, record_type, account_id, ref_type, datetime.datetime.now(), user.uid,
+                          datetime.datetime.now(), True)
 
-            entry_saved = user.insert(ref_table, ref_columns, ref_values)
-            if entry_saved is False:
-                msg = 'failed to save record {ID} reference to {REF} to database table {TBL}' \
-                    .format(ID=deposit_id, REF=account_id, TBL=ref_table)
-                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
-
-            success.append(entry_saved)
+            statement, params = user.prepare_insert_statement(ref_table, ref_columns, ref_values)
+            try:
+                statements[statement].append(params)
+            except KeyError:
+                statements[statement] = [params]
 
             # Save reference to the audit record
             audit_id = record.record_id()
             audit_record_type = record.name
             ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
                            settings.creation_date, 'IsParentChild']
-            ref_values = [audit_id, audit_record_type, deposit_id, record_type, datetime.datetime.now(), user.uid,
-                          datetime.datetime.now(), True]
+            ref_values = (audit_id, audit_record_type, deposit_id, record_type, datetime.datetime.now(), user.uid,
+                          datetime.datetime.now(), True)
 
-            entry_saved = user.insert(ref_table, ref_columns, ref_values)
-            if entry_saved is False:
-                msg = 'failed to save record {ID} reference to {REF} to database table {TBL}' \
-                    .format(ID=deposit_id, REF=account_id, TBL=ref_table)
-                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
+            statement, params = user.prepare_insert_statement(ref_table, ref_columns, ref_values)
+            try:
+                statements[statement].append(params)
+            except KeyError:
+                statements[statement] = [params]
 
-            success.append(entry_saved)
+        # Export audit record
+        saved = record.save(statements=statements)
 
-        return all(success)
+        return saved
 
     def map_summary(self, rule_tabs):
         """

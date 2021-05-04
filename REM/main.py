@@ -391,15 +391,6 @@ def format_date_element(date_str):
     return ''.join(buff)
 
 
-def remove_unsaved_ids(entries):
-    """
-    Remove all record IDs associated with any instance of a record entry object
-    """
-    logger.info('removing all unsaved record IDs associated with the program instance')
-    for entry in entries:
-        entry.remove_unsaved_id(entry.get_unsaved_ids(internal_only=True))
-
-
 def main():
     """
     Main function.
@@ -557,11 +548,6 @@ def main():
                 selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
-                    # Reset to defaults
-                    # Remove from the list of used IDs any IDs created during the now cancelled audit
-                    for tab in current_rule.summary.tabs:
-                        tab.remove_unsaved_keys()
-
                     # Reset the rule and update the panel
                     current_rule = current_rule.reset_rule(window)
                     current_panel = '-HOME-'
@@ -584,7 +570,7 @@ def main():
                 current_panel = '-HOME-'
 
             # Remove all unsaved record IDs associated with the program instance
-            remove_unsaved_ids(settings.records.rules)
+            settings.remove_unsaved_ids()
 
             # Reset User attributes
             logger.info('signing out as user {}'.format(user.uid))
@@ -755,7 +741,7 @@ if __name__ == "__main__":
         mod_win2.popup_error('fatal program error - {}'.format(e))
 
         # Remove all unsaved record IDs associated with the program instance
-        remove_unsaved_ids(settings.records.rules)
+        settings.remove_unsaved_ids()
 
         # Close the connection to the server
         server_conn.close()
@@ -764,7 +750,7 @@ if __name__ == "__main__":
         sys.exit(1)
     else:
         # Remove all unsaved record IDs associated with the program instance
-        remove_unsaved_ids(settings.records.rules)
+        settings.remove_unsaved_ids()
 
         # Close the connection to the server
         server_conn.close()
