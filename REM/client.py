@@ -579,12 +579,13 @@ class SettingsManager:
             self.dbname = database_attrs.get('default_database', 'REM')
         self.date_format = database_attrs.get('db_date_format', self.format_date_str('YYYY-MM-DD HH:MI:SS'))
 
+        # Reserved tables and table columns
         table_field_attrs = conf_const.get('table_fields', {})
         self.creator_code = table_field_attrs.get('creator_code', 'CreatorName')
         self.creation_date = table_field_attrs.get('creation_time', 'CreationTime')
         self.editor_code = table_field_attrs.get('editor_code', 'EditorName')
         self.edit_date = table_field_attrs.get('edit_time', 'EditTime')
-        self.id_field = table_field_attrs.get('id_field', 'DocID')
+        self.id_field = table_field_attrs.get('id_field', 'DocNo')
         self.date_field = table_field_attrs.get('date_field', 'DocDate')
         self.notes_field = table_field_attrs.get('notes_field', 'Notes')
         self.warnings_field = table_field_attrs.get('warnings_field', 'Warnings')

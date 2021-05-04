@@ -198,52 +198,65 @@ class RecordEntry:
                     filters.append(param_filter)
 
         # Query existing database entries
-        import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
+        import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+                                 prog_db=True)
 
         return import_df
 
-    def load_record_data(self, record_id):
+    def load_record_data(self, record_ids):
         """
         Load a record from the database using the record ID.
         """
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+
+        record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
+        logger.debug('loading records {IDS} of type {TYPE} from the database'.format(IDS=record_ids, TYPE=self.name))
+
         # Add configured import filters
         table_statement = mod_db.format_tables(self.import_rules)
         columns = mod_db.format_import_columns(self.import_rules)
         id_col = mod_db.get_import_column(self.import_rules, 'RecordID')
-        filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
 
         # Query existing database entries
-        import_df = user.query(table_statement, columns=columns, filter_rules=filters, prog_db=True)
-        nrow = import_df.shape[0]
+        import_df = pd.DataFrame()
+        for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+            sub_ids = record_ids[i: i + 1000]
+            filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
+            filters = (filter_clause, tuple(sub_ids))
 
-        if nrow < 1:
-            logger.warning('RecordType {NAME}: record {ID} not found in the database'
-                           .format(NAME=self.name, ID=record_id))
-            record_data = None
-        elif nrow == 1:
-            record_data = import_df.iloc[0]
-        else:
-            logger.warning('RecordType {NAME}: more than one database entry found for record {ID}'
-                           .format(NAME=self.name, ID=record_id))
-            record_data = import_df.iloc[0]
+            if import_df.empty:
+                import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
+                                                                       filter_rules=filters), prog_db=True)
+            else:
+                import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
+                                                                                        columns=columns,
+                                                                                        filter_rules=filters),
+                                                          prog_db=True), ignore_index=True)
 
-        return record_data
+        return import_df
 
-    def export_record(self, record):
-        """
-        Save a record to the database.
-        """
-        ref_table = settings.reference_lookup
-        delete_code = settings.delete_field
+    def export_table(self, df, id_field: str = 'RecordID', id_exists: bool = False, statements: dict = {}):
         import_rules = self.import_rules
 
-        # Check if the record is already in the database and remove from list of unsaved IDs, if applicable
-        record_id = record.record_id()
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError('df must be a DataFrame or Series')
+        else:
+            columns = df.columns.values.tolist()
 
-        id_exists = not self.remove_unsaved_id(record_id)
+        if df.empty:
+            return statements
 
-        # Save record to each export table
-        saved = []
+        if id_exists:  # record already exists in the database
+            # Add edit details to records table
+            df[settings.editor_code] = user.uid
+            df[settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
+        else:  # new record was created
+            # Add record creation details to records table
+            df[settings.creator_code] = user.uid
+            df[settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+
+        # Prepare transaction for each export table containing fields comprising the record
         for table in import_rules:
             table_entry = import_rules[table]
 
@@ -251,255 +264,97 @@ class RecordEntry:
             id_col = references['RecordID']
 
             # Prepare column value updates
-            record_data = record.table_values()
-            if id_exists is True:  # record already exists in the database
-                # Add edit details to record data
-                record_data[settings.editor_code] = user.uid
-                record_data[settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
+            include_columns = [i for i in columns if i in references]
+            export_df = df[include_columns]
+
+            export_columns = [references[i] for i in include_columns]
+            export_values = [tuple(i) for i in export_df.values.tolist()]
+
+            if id_exists:
+                record_ids = df[id_field]
+                if not isinstance(record_ids, pd.Series):
+                    record_ids = [record_ids]
+                else:
+                    record_ids = record_ids.values.tolist()
+                filter_params = [(i,) for i in record_ids]
+                filter_clause = '{COL} = ?'.format(COL=id_col)
+                statement, param = user.prepare_update_statement(table, export_columns, export_values, filter_clause,
+                                                                 filter_params)
             else:
-                # Add record creation details to record data
-                record_data[settings.creator_code] = user.uid
-                record_data[settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+                statement, param = user.prepare_insert_statement(table, export_columns, export_values)
 
-            include_columns = [i for i in record_data.index.tolist() if i in references]
-            try:
-                export_data = record_data[include_columns].dropna()
-            except Exception as e:
-                raise
-            else:
-                export_columns = [references[i] for i in export_data.index.tolist()]
-                export_values = export_data.tolist()
+            if isinstance(param, list):
+                try:
+                    statements[statement].extend(param)
+                except KeyError:
+                    statements[statement] = param
+            elif isinstance(param, tuple):
+                try:
+                    statements[statement].append(param)
+                except KeyError:
+                    statements[statement] = [param]
 
-            # Save the record data
-            if id_exists is True:  # record already exists in the database
-                # Edit an existing record in the database
-                filters = ('{COL} = ?'.format(COL=id_col), (record_id,))
-                logger.info('RecordType {NAME}, Record {ID}: updating existing record in the database'
-                      .format(NAME=self.name, ID=record_id))
-                entry_saved = user.update(table, export_columns, export_values, filters)
-                if entry_saved is False:
-                    msg = 'failed to update record {ID} in database table {TBL}'.format(ID=record_id, TBL=table)
-                    mod_win2.popup_error(msg)
-                    return False
-                else:
-                    saved.append(entry_saved)
+        return statements
 
-            else:  # record does not exist yet, must be inserted
-                # Create new entry for the record in the database
-                logger.debug('RecordType {NAME}, Record {ID}: saving new record to the database'
-                             .format(NAME=self.name, ID=record_id))
-                entry_saved = user.insert(table, export_columns, export_values)
-                if entry_saved is False:
-                    msg = 'failed to save record {ID} to database table {TBL}'.format(ID=record_id, TBL=table)
-                    mod_win2.popup_error(msg)
-
-                    return False
-                else:
-                    saved.append(entry_saved)
-
-        # Handle associated records and references
-        logger.info('RecordType {NAME}, Record {ID}: saving references and components'
-                    .format(NAME=self.name, ID=record_id))
-        import_df = record.ref_df
-
-        # Handle added and removed references
-        for reference in record.references:
-            ref_data = reference.as_table()
-            ref_id = ref_data['DocNo']  # reference record ID
-            if ref_id == record_id:
-                print('Warning: oops ... got the order wrong')
-                return False
-
-            # Determine if reference entry already exists in the database
-            nrow = import_df[
-                (import_df['DocNo'].isin([ref_id, record_id])) & (import_df['RefNo'].isin([ref_id, record_id]))].shape[
-                0]
-            if nrow > 0:  # reference already exists in the database
-                # Update existing reference entry in the references table
-                # If mutually referenced, deleting one entry will also delete its partner
-                comp_columns = ['IsDeleted', settings.editor_code, settings.edit_date]
-                comp_values = [ref_data['IsDeleted']] + [user.uid, datetime.datetime.now()]
-                update_filters = ('(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)',
-                                  (ref_id, record_id, record_id, ref_id))
-
-                logger.info('RecordType {NAME}, Record {ID}: updating reference {REF}'
-                            .format(NAME=self.name, ID=record_id, REF=ref_id))
-                entry_saved = user.update(ref_table, comp_columns, comp_values, update_filters)
-                if entry_saved is False:
-                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
-                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
-                    mod_win2.popup_error(msg)
-
-                saved.append(entry_saved)
-            else:
-                # Add reference entry to the references table
-                comp_columns = ref_data.index.tolist() + [settings.creator_code, settings.creation_date]
-                comp_values = ref_data.tolist() + [user.uid, datetime.datetime.now()]
-
-                logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
-                            .format(NAME=self.name, ID=record_id, REF=ref_id))
-                entry_saved = user.insert(ref_table, comp_columns, comp_values)
-                if entry_saved is False:
-                    msg = 'failed to save record {ID} references to {REF} to database table {TBL}' \
-                        .format(ID=record_id, REF=ref_id, TBL=ref_table)
-                    mod_win2.popup_error(msg)
-
-                saved.append(entry_saved)
-
-        # Handle added and removed record components
-        comp_tables = record.components
-        for comp_table in comp_tables:
-            comp_type = comp_table.record_type
-            if comp_type is None:
-                logger.warning('RecordEntry {NAME}: component table {TBL} has no record type assigned'
-                               .format(NAME=self.name, TBL=comp_table))
-                continue
-
-            try:
-                orig_comps = import_df[(import_df['DocNo'] == record_id) &
-                                       (import_df['RefType'] == comp_type)]['RefNo'].tolist()
-            except Exception as e:
-                logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
-                               '{TBL} - {ERR}'.format(NAME=self.name, TBL=comp_table, ERR=e))
-                continue
-
-            comp_entry = settings.records.fetch_rule(comp_type)
-            current_comps = comp_table.df[comp_table.id_column]
-            deleted_comps = set(orig_comps).difference(set(current_comps))
-
-            # Handle deleted component tables
-            for deleted_id in deleted_comps:
-                # Delete removed records if component records can be created (not just imported)
-                if comp_table.actions['add'] is True:  # delete record and all associations from DB
-                    logger.info('RecordType {NAME}, Record {ID}: deleting component record {REF} from the '
-                                'database'.format(NAME=self.name, ID=record_id, REF=deleted_id))
-                    entry_saved = comp_entry.delete_record(deleted_id)
-                    if entry_saved is False:
-                        msg = 'failed to delete record {ID} component {REF}' \
-                            .format(ID=record_id, REF=deleted_id)
-                        mod_win2.popup_error(msg)
-
-                    saved.append(entry_saved)
-                else:
-                    # Delete only the existing parent-child relationship
-                    comp_filters = [('DocNo = ?', record_id), ('RefNo = ?', deleted_id)]
-                    logger.info('RecordType {NAME}, Record {ID}: removing reference to component {REF}'
-                                .format(NAME=self.name, ID=record_id, REF=deleted_id))
-                    entry_saved = user.update(ref_table, [settings.editor_code, settings.edit_date,
-                                                          delete_code],
-                                              [user.uid, datetime.datetime.now(), 1], comp_filters)
-                    if entry_saved is False:
-                        msg = 'failed to remove record {ID} references to component {REF} in database table ' \
-                              '{TBL}'.format(ID=record_id, REF=deleted_id, TBL=ref_table)
-                        mod_win2.popup_error(msg)
-
-                    saved.append(entry_saved)
-
-            # Handle added component records
-            for row_index, comp_id in current_comps.iteritems():
-                if comp_id in orig_comps:  # update entries for existing records
-                    # Set deleted field to false in case reference previously deleted
-                    import_df.loc[import_df['RefNo'] == comp_id, 'IsDeleted'] = False
-
-                    # Create record object for the component
-                    comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], new_record=False,
-                                                           references=import_df)
-                    logger.info('RecordType {NAME}, Record {ID}: updating component record {REF} in the '
-                                'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
-
-                    # Update component in database
-                    entry_saved = comp_entry.export_record(comp_record)
-                    if entry_saved is False:
-                        msg = 'failed to save record {ID} to database table {TBL}' \
-                            .format(ID=record_id, TBL=ref_table)
-                        mod_win2.popup_error(msg)
-
-                    saved.append(entry_saved)
-
-                    continue
-
-                # Save component record to the database if records can be created (not imported)
-                if comp_table.actions['add'] is True:  # add record to DB
-                    comp_record = comp_table.translate_row(comp_table.df.iloc[row_index], new_record=True)
-                    logger.info('RecordType {NAME}, Record {ID}: adding component record {REF} to the '
-                                'database'.format(NAME=self.name, ID=record_id, REF=comp_id))
-                    entry_saved = comp_entry.export_record(comp_record)
-                    if entry_saved is False:  # don't save reference in references table
-                        msg = 'failed to save record {ID} to database table {TBL}' \
-                            .format(ID=record_id, TBL=ref_table)
-                        mod_win2.popup_error(msg)
-                        saved.append(entry_saved)
-                        continue
-                    else:
-                        saved.append(entry_saved)
-
-                    # Create new parent-child association in the record references table
-                    comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
-                                    settings.creation_date, 'IsParentChild']
-                    comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
-                                   datetime.datetime.now(), True]
-                    logger.info('RecordType {NAME}, Record {ID}: adding reference for component {REF}'
-                                .format(NAME=self.name, ID=record_id, REF=comp_id))
-                    entry_saved = user.insert(ref_table, comp_columns, comp_values)
-                    if entry_saved is False:
-                        msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
-                            .format(ID=record_id, REF=comp_id, TBL=ref_table)
-                        mod_win2.popup_error(msg)
-
-                    saved.append(entry_saved)
-
-                else:
-                    # Create new association in the record references table
-                    comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
-                                    settings.creation_date, 'IsParentChild']
-                    comp_values = [record_id, self.name, comp_id, comp_type, datetime.datetime.now(), user.uid,
-                                   datetime.datetime.now(), False]
-                    logger.info('RecordType {NAME}, Record {ID}: adding reference for component {REF}'
-                                .format(NAME=self.name, ID=record_id, REF=comp_id))
-                    entry_saved = user.insert(ref_table, comp_columns, comp_values)
-                    if entry_saved is False:
-                        msg = 'failed to save record {ID} references to component {REF} to database table {TBL}' \
-                            .format(ID=record_id, REF=comp_id, TBL=ref_table)
-                        mod_win2.popup_error(msg)
-
-                    saved.append(entry_saved)
-
-        return all(saved)
-
-    def delete_record(self, record_id):
+    def delete_record(self, record_ids, statements: dict = {}):
         """
         Delete a record from the database.
         """
         ref_table = settings.reference_lookup
-        delete_code = settings.delete_code
+        delete_code = settings.delete_field
 
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+
+        record_ids = list(set(record_ids))
+
+        # Set record as deleted in the database
         import_rules = self.import_rules
 
-        # Check if the record can be found in the list of unsaved ids
-        id_exists = not self.remove_unsaved_id(record_id)
+        for table in import_rules:
+            table_entry = import_rules[table]
 
-        if id_exists is True:  # record is already saved in the database, must be deleted
-            # Set record as deleted in the database
-            updated = []
-            for table in import_rules:
-                table_entry = import_rules[table]
+            references = {j: i for i, j in table_entry['Columns'].items()}
+            id_col = references['RecordID']
 
-                references = {j: i for i, j in table_entry['Columns'].items()}
-                id_column = references['RecordID']
+            # Remove record from the export table
+            for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+                sub_ids = record_ids[i: i + 1000]
+                filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
+                filters = tuple(sub_ids)
+                statement, param = user.prepare_update_statement(table, [delete_code], (1,), filter_clause, filters)
 
-                # Remove record from the export table
-                filters = [('{} = ?'.format(id_column), (record_id,))]
-                updated.append(user.update(table, [delete_code], [1], filters))
+                if isinstance(param, list):
+                    try:
+                        statements[statement].extend(param)
+                    except KeyError:
+                        statements[statement] = param
+                elif isinstance(param, tuple):
+                    try:
+                        statements[statement].append(param)
+                    except KeyError:
+                        statements[statement] = [param]
 
-            # Remove all record associations
-            ref_filters = [('DocNo = ? OR RefNo = ?', (record_id, record_id))]
-            updated.append(user.update(ref_table, [settings.editor_code, settings.edit_date, delete_code],
-                                       [user.uid, datetime.datetime.now(), 1], ref_filters))
+        # Remove all record associations
+        for record_id in record_ids:
+            filter_clause = 'DocNo=? OR RefNo=?'
+            ref_filters = (record_id, record_id)
+            ref_cols = [settings.editor_code, settings.edit_date, delete_code]
+            ref_params = (user.uid, datetime.datetime.now(), 1)
+            statement, param = user.prepare_update_statement(ref_table, ref_cols, ref_params, filter_clause,
+                                                             ref_filters)
+            if isinstance(param, list):
+                try:
+                    statements[statement].extend(param)
+                except KeyError:
+                    statements[statement] = param
+            elif isinstance(param, tuple):
+                try:
+                    statements[statement].append(param)
+                except KeyError:
+                    statements[statement] = [param]
 
-        else:  # record was never saved, can remove the ID
-            updated = [True]
-
-        return all(updated)
+        return statements
 
     def import_record_ids(self, record_date: datetime.datetime = None):
         """
@@ -531,7 +386,8 @@ class RecordEntry:
 #            query_str = 'SELECT {COL} FROM {TABLE} ORDER BY {COL};'.format(COL=id_column, TABLE=primary_table)
             filters = None
 #        import_rows = db_manager.query(query_str, params=params)
-        import_rows = user.query(table_statement, columns=id_col, filter_rules=filters, order=id_col, prog_db=True)
+        import_rows = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col, filter_rules=filters,
+                                                                 order=id_col), prog_db=True)
 
         # Connect to database
         try:
@@ -1135,9 +991,10 @@ class DatabaseRecord:
         record_id = self.record_id()
         logger.info('RecordType {NAME}: initialized record has ID {ID}'.format(NAME=self.name, ID=record_id))
         if record_id is not None and (references is not None or record_entry is not None):
-            ref_df = references if references is not None else import_references(record_id)
             logger.info('RecordType {NAME}: importing references and components'.format(NAME=self.name))
 
+            component_ids = {}
+            ref_df = references if references is not None else import_references(record_id)
             for index, row in ref_df.iterrows():
                 if row['DocNo'] != record_id and row['RefNo'] != record_id:
                     continue
@@ -1193,12 +1050,23 @@ class DatabaseRecord:
                     ref_id = row['RefNo']
                     logger.debug('RecordType {NAME}: adding component record {ID} with record type {TYPE}'
                                  .format(NAME=self.name, ID=ref_id, TYPE=reftype))
-
                     # Fetch the relevant components table
-                    comp_table = self.fetch_component(reftype, by_type=True)
+                    #                    comp_table = self.fetch_component(reftype, by_type=True)
 
                     # Append record to the components table
-                    comp_table.df = comp_table.import_row(ref_id)
+                    #                    comp_table.df = comp_table.import_row(ref_id)
+
+                    try:
+                        component_ids[reftype].append(ref_id)
+                    except KeyError:
+                        component_ids[reftype] = [ref_id]
+
+            for comp_type in component_ids:
+                import_ids = component_ids[comp_type]
+
+                comp_table = self.fetch_component(comp_type, by_type=True)
+                record_entry = settings.records.fetch_rule(comp_table.record_type)
+                comp_table.df = comp_table.append(record_entry.load_record_data(import_ids))
 
             self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
 
@@ -1441,85 +1309,258 @@ class DatabaseRecord:
 
         return pd.Series(values, index=columns)
 
-    def delete(self):
+    def delete(self, statements: dict = {}):
         """
-        Delete record from the database.
+        Delete the record and child records from the database.
         """
         record_entry = self.record_entry
+        record_type = record_entry.name
         record_id = self.record_id()
         ref_df = self.ref_df
 
-        # Check if record was deleted
-        success = []
+        # Get a list of record IDs that have yet to be saved in the database
+        unsaved_ids = settings.get_unsaved_ids()
 
         # Determine associations to delete as well
+        ref_df['IsParentChild'].fillna(False, inplace=True)
         child_df = ref_df[ref_df['IsParentChild']]
-        nchild = child_df.shape[0]
 
+        logger.info('preparing to delete record {ID} and any child records'.format(ID=record_id))
+
+        # Prepare statements for removal of record and associations
+        nchild = child_df.shape[0]
+        marked = {}
         if nchild > 0:  # Record contains child records
             msg = 'Deleting record {ID} will also delete {N} dependant records as well. Would you like to continue ' \
                   'with record deletion?'.format(ID=record_id, N=nchild)
             user_input = mod_win2.popup_confirm(msg)
             if user_input == 'OK':
-                # Remove record and associations
-                saved = record_entry.delete_record(record_id)
-                success.append(saved)
-                if saved is False:
-                    msg = 'Record {ID}: record deletion failed'.format(ID=record_id)
-                    logger.error(msg)
-                    mod_win2.popup_error(msg)
-                    return False
-
-                # Remove child references
+                # Prepare statement to remove child references
                 for index, row in child_df.iterrows():
                     if record_id != row['DocNo']:  # only remove entries where primary record is the parent
                         continue
 
                     ref_id = row['RefNo']
                     ref_type = row['RefType']
-                    logger.info('Record {ID}: deleting dependant record {REFID} of type {TYPE}'
-                                .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+                    try:
+                        unsaved_ref_ids = unsaved_ids[ref_type]
+                    except KeyError:
+                        logger.debug('Record {ID}: will not delete dependant record {REFID} from database - reference '
+                                     'type "{TYPE}" has no representation in the database of unsaved record IDs'
+                                     .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+                        continue
+
+                    if ref_id in unsaved_ref_ids:
+                        logger.debug(
+                            'Record {ID}: will not delete dependant record {REFID} from database - '
+                            'record does not exist in the database yet'.format(ID=record_id, REFID=ref_id))
+                    else:
+                        logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
+                                     .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+                        try:
+                            marked[ref_type].append(ref_id)
+                        except KeyError:
+                            marked[ref_type] = [ref_id]
+
+                for ref_type in marked:
+                    ref_ids = marked[ref_type]
+
                     ref_entry = settings.records.fetch_rule(ref_type)
                     if ref_entry is None:
-                        msg = 'Record {ID}: failed to delete dependant record {REFID} - invalid record type "{TYPE}"'\
-                            .format(ID=record_id, REFID=ref_id, TYPE=ref_type)
+                        msg = 'Record {ID}: unable to delete dependant records {REFID} - invalid record type "{TYPE}"'\
+                            .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
                         logger.error(msg)
                         mod_win2.popup_error(msg)
                         continue
 
-                    saved = ref_entry.delete_record(ref_id)
-                    success.append(saved)
-                    if saved is False:
-                        msg = 'Record {ID}: attempt to delete dependant record {REFID} failed'\
-                            .format(ID=record_id, REFID=ref_id)
-                        logger.error(msg)
-                        mod_win2.popup_error(msg)
+                    statements = ref_entry.delete_record(ref_ids, statements=statements)
             else:
                 return False
+
+        # Prepare statement for the removal of the record
+        try:
+            unsaved_record_ids = unsaved_ids[record_type]
+        except KeyError:
+            logger.error('Record {ID}: unable to delete record from the database - record of type '
+                         'type "{TYPE}" has no representation in the database of unsaved record IDs'
+                         .format(ID=record_id, TYPE=record_type))
+            return False
+
+        if record_id not in unsaved_record_ids:
+            logger.info('Record {ID}: preparing to delete the record'.format(ID=record_id))
+            statements = record_entry.delete_record(record_id, statements=statements)
         else:
-            # Remove record and associations
-            logger.info('Record {ID}: deleting record'.format(ID=record_id))
-            success.append(record_entry.delete_record(record_id))
+            logger.debug('Record {ID}: will not delete record from database - record does not exist in the database yet'
+                         .format(ID=record_id))
 
-        return all(success)
+        sstrings = []
+        psets = []
+        for i, j in statements.items():
+            sstrings.append(i)
+            psets.append(j)
 
-    def save(self):
+        success = user.write_db(sstrings, psets)
+
+        return success
+
+    def save(self, statements: dict = {}):
         """
-        Save record to the database.
+        Save the record and child records to the database.
         """
+        ref_table = settings.reference_lookup
+        delete_code = settings.delete_field
+
         record_entry = self.record_entry
+        record_id = self.record_id()
+        import_df = self.ref_df
 
         # Verify that required parameters have values
         for param in self.parameters:
             if param.required is True and param.value_set() is False:
                 msg = 'Record {ID}: no value provided for the required field {FIELD}' \
-                    .format(ID=self.record_id(), FIELD=param.description)
+                    .format(ID=record_id, FIELD=param.description)
                 logger.warning(msg)
                 mod_win2.popup_error(msg)
                 return False
 
-        # Save record
-        success = record_entry.export_record(self)
+        # Prepare to save the record
+        id_exists = True
+        try:
+            record_data = self.table_values().to_frame().transpose()
+            statements = record_entry.export_table(record_data, statements=statements, id_exists=id_exists)
+        except Exception as e:
+            msg = 'failed to save record {ID} - {ERR}'.format(ID=record_id, ERR=e)
+            logger.exception(msg)
+            return False
+        else:
+            del record_data
+
+        # Prepare to save record references
+        for reference in self.references:
+            ref_data = reference.as_table()
+            ref_id = ref_data['DocNo']  # reference record ID
+            if ref_id == record_id:
+                logger.warning('RecordType {NAME}, Record {ID}: oops ... got the order wrong'
+                               .format(NAME=self.name, ID=record_id))
+                return False
+
+            # Determine if reference entry already exists in the database
+            nrow = import_df[
+                (import_df['DocNo'].isin([ref_id, record_id])) & (import_df['RefNo'].isin([ref_id, record_id]))].shape[
+                0]
+            comp_columns = ref_data.index.tolist()
+            comp_values = tuple(ref_data.values.tolist() + [user.uid, datetime.datetime.now()])
+            if nrow > 0:  # reference already exists in the database
+                # Prepare the update statement for the existing reference entry in the references table
+                # If mutually referenced, deleting one entry will also delete its partner
+                comp_columns.extend([settings.editor_code, settings.edit_date])
+                update_filters = '(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)'
+                filter_params = (ref_id, record_id, record_id, ref_id)
+
+                logger.info('RecordType {NAME}, Record {ID}: updating reference {REF}'
+                            .format(NAME=self.name, ID=record_id, REF=ref_id))
+                statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values, update_filters,
+                                                                  filter_params)
+            else:
+                # Prepare the insert statement for the existing reference entry to the references table
+                comp_columns.extend([settings.creator_code, settings.creation_date])
+
+                logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
+                            .format(NAME=self.name, ID=record_id, REF=ref_id))
+                statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
+
+            try:
+                statements[statement].append(params)
+            except KeyError:
+                statements[statement] = [params]
+
+        # Prepare to save record components
+        comp_tables = self.components
+        for comp_table in comp_tables:
+            comp_type = comp_table.record_type
+            if comp_type is None:
+                logger.warning('RecordEntry {NAME}: component table {TBL} has no record type assigned'
+                               .format(NAME=self.name, TBL=comp_table))
+                continue
+
+            try:
+                import_ids = import_df[(import_df['DocNo'] == record_id) &
+                                       (import_df['RefType'] == comp_type)]['RefNo'].tolist()
+            except Exception as e:
+                logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
+                               '{TBL} - {ERR}'.format(NAME=self.name, TBL=comp_table, ERR=e))
+                continue
+
+            if comp_table.actions['add']:  # component records can be created and deleted through parent record
+                pc = True  # parent-child relationship
+            else:
+                pc = False
+
+            # Prepare the reference entries for the components
+            comp_df = comp_table.df
+            for index, row in comp_df.iterrows():
+                comp_id = row[comp_table.id_column]
+                is_deleted = row[comp_table.deleted_column]
+                comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild', 'IsDeleted']
+                comp_values = (record_id, self.name, comp_id, comp_type, datetime.datetime.now(), pc, is_deleted,
+                               datetime.datetime.now(), user.uid)
+                if comp_id in import_ids:  # existing reference
+                    comp_columns.extend([settings.edit_date, settings.editor_code])
+                    update_filters = 'DocNo = ? AND RefNo = ?'
+                    filter_params = (record_id, comp_id)
+                    statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values,
+                                                                      update_filters,
+                                                                      filter_params)
+                else:  # new reference
+                    # Prepare the insert statement for the existing reference entry to the references table
+                    comp_columns.extend([settings.creation_date, settings.creator_code])
+
+                    logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
+                                .format(NAME=self.name, ID=record_id, REF=comp_id))
+                    statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
+
+                try:
+                    statements[statement].append(params)
+                except KeyError:
+                    statements[statement] = [params]
+
+            # Prepare the record entries for the components
+            comp_entry = settings.records.fetch_rule(comp_type)
+            unsaved_ids = comp_entry.get_unsaved_ids()
+
+            # Update the delete field
+            if pc:  # removed records should be deleted if parent-child is true
+                comp_df[delete_code] = comp_df[comp_table.deleted_column]
+            else:
+                comp_df[delete_code] = False
+
+            # Prepare update statements for existing record components
+            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
+            try:
+                statements = comp_entry.export_table(existing_comps, statements=statements,
+                                                     id_field=comp_table.id_column, id_exists=True)
+            except Exception as e:
+                msg = 'failed to save record {ID} - {ERR}'.format(ID=record_id, ERR=e)
+                logger.error(msg)
+                return False
+
+            # Prepare insert statements for new record components
+            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
+            try:
+                statements = comp_entry.export_table(new_comps, statements=statements,
+                                                     id_field=comp_table.id_column, id_exists=False)
+            except Exception as e:
+                msg = 'failed to save record {ID} - {ERR}'.format(ID=record_id, ERR=e)
+                logger.error(msg)
+                return False
+
+        sstrings = []
+        psets = []
+        for i, j in statements.items():
+            sstrings.append(i)
+            psets.append(j)
+
+        success = user.write_db(sstrings, psets)
 
         return success
 
@@ -2161,7 +2202,8 @@ def import_references(record_id):
     filters = ('{COL1} = ? OR {COL2} = ?'.format(COL1='DocNo', COL2='RefNo'), (record_id, record_id))
 
     # Import reference entries related to record_id
-    import_df = user.query(ref_table, columns=columns, filter_rules=filters, prog_db=True)
+    import_df = user.read_db(*user.prepare_query_statement(ref_table, columns=columns, filter_rules=filters),
+                             prog_db=True)
 
     return import_df
 

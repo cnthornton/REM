@@ -375,8 +375,8 @@ class TableElement:
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
 
-        self.df = pd.DataFrame(columns=columns)
-        self.import_df = pd.DataFrame(columns=columns)
+        self.df = pd.DataFrame(columns=list(columns))
+        self.import_df = pd.DataFrame(columns=list(columns))
         self.index_map = {}
 
     def key_lookup(self, component):
@@ -663,7 +663,13 @@ class TableElement:
 
         # Remove deleted rows from the display table
         df[self.deleted_column].fillna(False, inplace=True)
-        df = df[~df[self.deleted_column]]
+        if not df.empty:
+            try:
+                df = df[~df[self.deleted_column]]
+            except TypeError:
+                print(df[self.deleted_column])
+            except KeyError:
+                print(df[self.deleted_column])
 
         # Edit the index map to reflect what is currently displayed
         self.index_map = {i: j for i, j in enumerate(df.index.tolist())}
@@ -843,7 +849,7 @@ class TableElement:
 
         operators = set('+-*/')
 
-        df = df if df is not None else self.df
+        df = df if df is not None else self.df.copy()
         summ_rules = self.summary_rules
 
         logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
@@ -877,7 +883,11 @@ class TableElement:
                     continue
 
                 if component in self.columns:  # component is header column
-                    dtype = subset_df.dtypes[component]
+                    try:
+                        dtype = subset_df.dtypes[component]
+                    except KeyError:
+                        print('DataTable {NAME}: {COLS}'.format(NAME=self.name, COLS=subset_df))
+                        raise
                     if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
                         col_summary = subset_df[component].sum()
                     elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
@@ -1902,10 +1912,11 @@ class TableElement:
             # Search for records in record reference table with associations
             ref_table = settings.reference_lookup
             ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (record_type, reftype, 0))
-            references = user.query(ref_table, filter_rules=ref_filter, prog_db=True)
+            references = user.read_db(*user.prepare_query_statement(ref_table, filter_rules=ref_filter), prog_db=True)
 
             try:
-                df = user.query(table_statement, columns=import_columns, filter_rules=import_filters, prog_db=True)
+                df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
+                                                                filter_rules=import_filters), prog_db=True)
             except Exception as e:
                 logger.warning('DataTable {NAME}: failed to import data from the database - {ERR}'
                                .format(NAME=self.name, ERR=e))
@@ -1962,26 +1973,6 @@ class TableElement:
 
         # Remove selected rows from the table of available import rows
         self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
-
-        return df
-
-    def import_row(self, record_id):
-        """
-        Import a record from the database.
-        """
-        df = self.df.copy()
-
-        record_entry = settings.records.fetch_rule(self.record_type)
-        if record_entry is None:
-            msg = 'unable to import record {ID} from the database - no record type was specified for the table' \
-                .format(ID=record_id)
-            mod_win2.popup_error(msg)
-            logger.error('DataTable {TBL}: {MSG}'.format(TBL=self.name, MSG=msg))
-
-            return df
-
-        record_data = record_entry.load_record_data(record_id)
-        df = self.append(record_data)
 
         return df
 
@@ -2365,7 +2356,19 @@ class ReferenceElement:
             self.warnings = None
 
         record_entry = settings.records.fetch_rule(self.record_type)
-        self.record_data = record_entry.load_record_data(self.record_id)
+        record_data = record_entry.load_record_data(self.record_id)
+        nrow = record_data.shape[0]
+
+        if nrow < 1:
+            logger.warning('RecordType {NAME}: record ID {ID} not found in the database'
+                           .format(NAME=self.name, ID=self.record_id))
+            self.record_data = record_data
+        elif nrow == 1:
+            self.record_data = record_data.iloc[0]
+        else:
+            logger.warning('RecordType {NAME}: more than one database entry found for record ID {ID}'
+                           .format(NAME=self.name, ID=self.record_id))
+            self.record_data = record_data.iloc[0]
 
         if record_entry is not None:
             self.title = record_entry.menu_title
