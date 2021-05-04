@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.1.3'
+__version__ = '0.2.1'
 
 from multiprocessing import freeze_support
 import logging
@@ -263,7 +263,8 @@ class ClientConnection:
                 try:
                     transaction_type = value.get('transaction_type')
                     conn_str = value.get('connection_string')
-                    transaction = value.get('transaction')
+                    statement = value.get('statement')
+                    params = value.get('parameters')
                 except TypeError:
                     msg = 'request value formatted incorrectly'
                     logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
@@ -274,28 +275,32 @@ class ClientConnection:
                     conn_str['Driver'] = configuration.odbc_driver
                     db_manager = SQLTransactManager(conn_str)
                     if transaction_type == 'read':
-                        statement = transaction.get('statement')
-                        params = transaction.get('parameters')
                         content = db_manager.read_db(statement, params)
                     elif transaction_type == 'write':
-                        statement = transaction.get('statement')
-                        params = transaction.get('parameters')
-                        content = db_manager.write_db(statement, params)
-                        if content['success']:
-                            db_manager.commit()
-                    elif transaction_type == 'batch_write':
-                        success = True
-                        for statement in transaction:
-                            params = transaction[statement]
-                            results = db_manager.write_db(statement, params)
-                            if not results['success']:
-                                success = False
-                                break
-                        if success:
-                            db_manager.commit()
-                            content = {'success': True, 'value': None}
+                        if isinstance(statement, str):
+                            content = db_manager.write_db(statement, params)
+                            if content['success']:
+                                db_manager.commit()
+                        elif isinstance(statement, list) and isinstance(params, list):
+                            success = True
+                            for i, statement_i in enumerate(statement):
+                                try:
+                                    params_i = params[i]
+                                except IndexError:
+                                    success = False
+                                    break
+                                results = db_manager.write_db(statement_i, params_i)
+                                if not results['success']:
+                                    success = False
+                                    break
+                            if success:
+                                db_manager.commit()
+                                content = {'success': True, 'value': None}
+                            else:
+                                msg = 'batch write failed on transaction - {}'.format(statement)
+                                content = {'success': False, 'value': msg}
                         else:
-                            msg = 'batch write failed on transaction - {}'.format(statement)
+                            msg = 'write failed on transaction - unaccepted combination of statements and parameters'
                             content = {'success': False, 'value': msg}
                     else:
                         msg = 'invalid transaction type provided'
@@ -358,8 +363,8 @@ class ClientConnection:
                 logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                 content = {'success': False, 'value': msg}
         except Exception as e:
-            msg = 'action {ERR} failed - {ERR}'.format(ERR=e)
-            logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
+            msg = 'action {ACTION} failed - {ERR}'.format(ACTION=action, ERR=e)
+            logger.exception('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
             content = {'success': False, 'value': msg}
 
         content_encoding = "utf-8"
@@ -920,6 +925,7 @@ class SQLTransactManager:
         """
         Commit the executed transactions.
         """
+        logger.info('committing database transactions')
         self.conn.commit()
 
     def database_tables(self, database):
@@ -991,7 +997,8 @@ class SQLTransactManager:
         cursor = self.cursor
 
         if isinstance(params, list):
-            if all([isinstance(i, tuple) for i in params]):
+            if all([isinstance(i, tuple) or isinstance(i, list) for i in params]):
+                params = [tuple(i) for i in params]
                 cursor_func = cursor.executemany
             else:
                 cursor_func = cursor.execute
