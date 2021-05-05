@@ -290,8 +290,8 @@ class AuditRule:
 
                 if selection == 'OK':
                     # Remove from the list of used IDs any IDs created during the now cancelled audit
-                    for tab in self.summary.tabs:
-                        mod_records.remove_unsaved_keys(tab.record)
+#                    for tab in self.summary.tabs:
+#                        mod_records.remove_unsaved_keys(tab.record)
 
                     # Reset the rule and update the panel
                     remain_in_panel = True if not values['-AMENU-'] else False
@@ -731,8 +731,6 @@ class AuditRule:
         """
         Reset rule to default.
         """
-        self.in_progress = False
-
         panel_key = self.element_key
         current_key = self.panel_keys[self.current_panel]
 
@@ -779,7 +777,10 @@ class AuditRule:
                 tab.reset(window, first=False)
 
         # Remove any unsaved IDs created during the audit
-        settings.remove_unsaved_ids()
+        if self.in_progress:
+            settings.remove_unsaved_ids()
+
+        self.in_progress = False
 
         if current:
             window['-HOME-'].update(visible=False)

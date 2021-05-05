@@ -2340,12 +2340,15 @@ def remove_unsaved_keys(record):
         # Get a list of added components added to the component table (i.e. not in the database yet)
         added_ids = record.get_added_components(comp_table.name)
 
+        ids_to_remove = []
         for index, row in comp_table.df.iterrows():
             row_id = row[comp_table.id_column]
             if row_id not in added_ids:  # don't attempt to remove IDs if already in the database
                 continue
 
-            comp_entry.remove_unsaved_ids(row_id)
+            ids_to_remove.append(row_id)
+
+        comp_entry.remove_unsaved_ids(ids_to_remove)
 
 
 def import_references(record_id):

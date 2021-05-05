@@ -811,8 +811,6 @@ class BankRule:
         """
         Reset rule to default.
         """
-        self.in_progress = False
-
         panel_key = self.element_key
         current_key = self.panel_keys[self.current_panel]
 
@@ -850,7 +848,10 @@ class BankRule:
             tab.reset(window)
 
         # Remove any unsaved IDs created during the reconciliation
-        settings.remove_unsaved_ids()
+        if self.in_progress:
+            settings.remove_unsaved_ids()
+
+        self.in_progress = False
 
         if current:
             window['-HOME-'].update(visible=False)
