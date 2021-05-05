@@ -61,7 +61,7 @@ def verify_row(self, row_index):
         self.verified.remove(row_index)  # remove row from list of verified
 
     # Get row colors for rows that have been selected
-    print('Selected orders are {}'.format(', '.join([str(i) for i in self.verified])))
+    logger.debug('selected orders are {}'.format(', '.join([str(i) for i in self.verified])))
     selected = [(i, tbl_vfy_col) for i in self.verified]
 
     # Get row colors for rows that have not been selected
@@ -194,7 +194,6 @@ def login_window():
                     login_success = user.login(uname, pwd)
                 except Exception as e:
                     window['-SUCCESS-'].update(value=e)
-                    print(e)
                     logger.error('login failed - {}'.format(e))
                 else:
                     if login_success:
@@ -456,8 +455,6 @@ def database_importer_window(win_size: tuple = None):
             if subset_df is None or table is None or record_entry is None:
                 continue
 
-            # Check if any record IDs are already in the database
-
             # Prepare the insertion statement
             try:
                 statements = record_entry.export_table(subset_df, id_field=settings.id_field, id_exists=False)
@@ -551,19 +548,25 @@ def database_importer_window(win_size: tuple = None):
                     skiptop = int(skiptop)
                     skipbottom = int(skipbottom)
                 except ValueError:
-                    popup_notice('Only integer values allowed when indicating number of rows to skip')
+                    msg = 'only integer values allowed when indicating number of rows to skip'
+                    popup_notice(msg)
+                    logger.warning(msg)
                     continue
 
                 header_row = values['-HROW-']
                 try:
                     header_row = int(header_row)
                 except ValueError:
-                    popup_notice('Header row must be an integer value')
+                    msg = 'header row must be an integer value'
+                    popup_notice(msg)
+                    logger.warning(msg)
                     continue
 
                 thousands_sep = values['-TSEP-']
                 if len(thousands_sep) > 1:
-                    popup_notice('Unsupported character provided as the thousands separator')
+                    msg = 'unsupported character provided as the thousands separator'
+                    popup_notice(msg)
+                    logger.warning(msg)
                     continue
 
             # Populate Preview table with top 10 and bottom 10 values from spreadsheet
@@ -572,9 +575,11 @@ def database_importer_window(win_size: tuple = None):
                 record_type = values['-RECORDTYPE-']
                 if not table:
                     popup_notice('Please select a valid table from the "Table" dropdown')
+                    logger.warning('no database table selected in the "Table" dropdown')
                     continue
                 elif not record_type:
                     popup_notice('Please select a valid record type from the "Record Type" dropdown')
+                    logger.warning('no record type selected in the "Record Type" dropdown')
                     continue
                 else:
                     # Specify the import column data types
@@ -590,8 +595,10 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             coltype = dtype_map[db_type.lower()]
                         except KeyError:
-                            print('Info: database data type {DTYPE} not in list of expected data types'
-                                  .format(DTYPE=db_type))
+                            msg = 'database data type {DTYPE} of row {ROW} not in list of expected data types'\
+                                .format(DTYPE=db_type, ROW=index+1)
+                            logger.warning(msg)
+                            popup_notice(msg)
                             continue
                         else:
                             convert_map[fcolname] = coltype
@@ -611,7 +618,7 @@ def database_importer_window(win_size: tuple = None):
                                               'skip_blank_lines': True, 'dtype': convert_map}
                         reader = pd.read_csv
 
-                    print('Info: formatting import file options: {}'.format(formatting_options))
+                    logger.debug('formatting import file options: {}'.format(formatting_options))
 
                     # Import data from the file into a pandas dataframe
                     import_df = reader(infile, **formatting_options)
@@ -633,6 +640,10 @@ def database_importer_window(win_size: tuple = None):
                         final_df = import_df[all_cols]
                     except KeyError:
                         popup_notice('Please verify that column names are mapped correctly')
+                        for all_col in all_cols:
+                            if all_col not in import_df.columns.values.tolist():
+                                logger.warning('column "{COL}" not a valid database column in table {TBL}'
+                                               .format(COL=all_col, TBL=table))
                         continue
                     else:
                         # Set columns dtypes
@@ -659,10 +670,10 @@ def database_importer_window(win_size: tuple = None):
                                                                         dayfirst=values['-DAYFIRST-'],
                                                                         yearfirst=values['-YEARFIRST-'])
                                 except Exception as e:
-                                    msg = 'Unable to convert values in column {COL} to a datetime format - {ERR}' \
+                                    msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}' \
                                         .format(COL=date_col, ERR=e)
                                     popup_error(msg)
-                                    print('Error: {}'.format(msg))
+                                    logger.error(msg)
 
                     # Subset table based on specified subset rules
                     subset_df = final_df
@@ -674,20 +685,20 @@ def database_importer_window(win_size: tuple = None):
                             continue
 
                         if sub_col not in all_cols.values.tolist():
-                            msg = 'The column {COL} selected in subset rule {RULE} must be one of the required or ' \
+                            msg = 'column "{COL}" used in subset rule "{RULE}" must be one of the required or ' \
                                   'mapping columns chosen for importing'.format(COL=sub_col, RULE=sub_num + 1)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
 
                         # Get dtype of subset column and convert value to the correct dtype
                         try:
                             sub_dtype = columns[sub_col][0]
                         except KeyError:
-                            msg = 'The column {COL} selected for subset rule {RULE} must be a valid table column' \
+                            msg = 'column "{COL}" used in subset rule "{RULE}" must be a valid table column' \
                                 .format(COL=sub_col, RULE=sub_num + 1)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
                         else:
                             sub_obj = dtype_map[sub_dtype]
@@ -695,14 +706,14 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             sub_val_fmt = sub_obj(sub_val)
                         except ValueError:
-                            msg = 'Unable to convert the value {VAL} from subset rule {RULE} to {DTYPE}' \
+                            msg = 'unable to convert the value "{VAL}" from subset rule "{RULE}" to {DTYPE}' \
                                 .format(VAL=sub_val, RULE=sub_num + 1, DTYPE=sub_dtype)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
                         else:
-                            print('Info: sub-setting table column {COL} by value {VAL}'
-                                  .format(COL=sub_col, VAL=sub_val_fmt))
+                            logger.debug('sub-setting table column "{COL}" by value "{VAL}"'
+                                         .format(COL=sub_col, VAL=sub_val_fmt))
 
                         if sub_oper == '<':
                             cond_results = subset_df[sub_col] < sub_val_fmt
@@ -717,43 +728,55 @@ def database_importer_window(win_size: tuple = None):
                         elif sub_oper == '!=':
                             cond_results = subset_df[sub_col] != sub_val_fmt
                         else:
-                            msg = 'The operator {OPER} selected for subset rule {RULE} is not a supported ' \
+                            msg = 'operator "{OPER}" used in subset rule "{RULE}" is not a supported ' \
                                   'subset operator'.format(OPER=sub_oper, RULE=sub_num + 1)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
 
                         try:
                             subset_df = subset_df[cond_results]
                         except Exception as e:
-                            msg = 'failed to subset the dataframe using subset rule {RULE}. See log for more ' \
-                                  'information'.format(RULE=sub_num)
+                            msg = 'failed to subset the dataframe using subset rule "{RULE}" - {ERR}'\
+                                .format(RULE=sub_num, ERR=e)
                             popup_error(msg)
-                            logger.error('')
-                            print('Warning: {MSG} - {ERR}'.format(MSG=msg, ERR=e))
+                            logger.error(msg)
 
                     # Create record IDs for each row in the final import table
                     record_entry = settings.records.fetch_rule(record_type, by_title=True)
+                    try:
+                        date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
+                    except KeyError:
+                        date_list = [datetime.datetime.now()] * subset_df.shape[0]
+                    else:
+                        date_list = date_list.tolist()
 
-                    failed_rows = []
-                    for index, row in subset_df.iterrows():
-                        try:
-                            date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
-                        except KeyError:
-                            record_date = datetime.datetime.now()
-                        else:
-                            record_date = date_list[index]
+                    record_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
+                    if not record_ids:
+                        msg = 'failed to create a record IDs for the table entries'
+                        popup_notice(msg)
+                        logger.error(msg)
+                        continue
 
-                        record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
-                        if not record_id:
-                            msg = 'failed to create a record ID for row {}'.format(row)
-                            popup_notice(msg)
-                            print('Error: {}'.format(msg))
-                            failed_rows.append(index)
-                        else:
-                            record_ids.append(record_id)
-
-                    subset_df = subset_df[~subset_df.index.isin(failed_rows)]
+#                    failed_rows = []
+#                    for index, row in subset_df.iterrows():
+#                        try:
+#                            date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
+#                        except KeyError:
+#                            record_date = datetime.datetime.now()
+#                        else:
+#                            record_date = date_list[index]
+#
+#                        record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
+#                        if not record_id:
+#                            msg = 'failed to create a record ID for record entry at index {ROW}'.format(ROW=index+1)
+#                            popup_notice(msg)
+#                            logger.error(msg)
+#                            failed_rows.append(index)
+#                        else:
+#                            record_ids.append(record_id)
+#
+#                    subset_df = subset_df[~subset_df.index.isin(failed_rows)]
 
                     subset_df[settings.id_field] = record_ids
 
@@ -770,27 +793,27 @@ def database_importer_window(win_size: tuple = None):
                             continue
 
                         if elem_col not in all_cols.values.tolist():
-                            msg = 'Column {COL} selected in modify column rule {RULE} must be one of the required ' \
+                            msg = 'column "{COL}" used in modify rule "{RULE}" must be one of the required ' \
                                   'or mapping columns chosen for importing'.format(COL=elem_col, RULE=elem_num + 1)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
 
                         if elem_oper not in math_operators:
-                            msg = 'The operator {OPER} selected for modify column rule {RULE} is not a supported ' \
+                            msg = 'operator "{OPER}" selected used in modify rule "{RULE}" is not a supported ' \
                                   'math operator'.format(OPER=elem_oper, RULE=elem_num + 1)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
 
                         # Get the datatype of the column to modify
                         try:
                             elem_dtype = columns[elem_col][0]
                         except KeyError:
-                            msg = 'The column {COL} selected for modify column rule {RULE} must be a valid table ' \
-                                  'column'.format(COL=elem_col, RULE=elem_num + 1)
+                            msg = 'column "{COL}" used in modify rule "{RULE}" must be a valid table column'\
+                                .format(COL=elem_col, RULE=elem_num + 1)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
                         else:
                             elem_obj = dtype_map[elem_dtype]
@@ -799,14 +822,14 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             elem_val_fmt = float(elem_val)
                         except ValueError:
-                            msg = 'Unable to convert the value {VAL} from modify column rule {RULE} to numeric' \
+                            msg = 'unable to convert the value "{VAL}" from modify column rule "{RULE}" to numeric' \
                                 .format(VAL=elem_val, RULE=elem_num + 1)
                             popup_error(msg)
-                            print('Warning: {}'.format(msg))
+                            logger.warning(msg)
                             continue
                         else:
-                            print('Info: modifying table column {COL} by value {VAL} based on rule {RULE}'
-                                  .format(COL=elem_col, VAL=elem_val_fmt, RULE=elem_num + 1))
+                            logger.debug('modifying table column "{COL}" by value "{VAL}" on rule "{RULE}"'
+                                         .format(COL=elem_col, VAL=elem_val_fmt, RULE=elem_num + 1))
 
                         # Create the evaluation string
                         if is_numeric_dtype(elem_obj):
@@ -815,51 +838,49 @@ def database_importer_window(win_size: tuple = None):
                             try:
                                 subset_df[elem_col] = eval(eval_str)
                             except SyntaxError:
-                                msg = 'Failed to modify the values of column {COL} using rule {NAME}. Use the debug ' \
-                                      'window for more information'.format(COL=elem_col, NAME=elem_num + 1)
+                                msg = 'failed to modify column "{COL}" values with rule "{NAME}" - invalid syntax in ' \
+                                      'evaluation string {STR}'.format(COL=elem_col, NAME=elem_num + 1, STR=eval_str)
                                 popup_error(msg)
-                                print('Warning: invalid syntax in evaluation string {RULE} for rule {NAME}'
-                                      .format(RULE=eval_str, NAME=elem_num))
+                                logger.warning(msg)
                                 print(subset_df)
                             except NameError:
-                                msg = 'Failed to modify the values of column {COL} using rule {NAME}. Use the debug ' \
-                                      'window for more information'.format(COL=elem_col, NAME=elem_num + 1)
+                                msg = 'failed to modify column "{COL}" values with rule "{NAME}" - unknown column ' \
+                                      'specified in the rule'.format(COL=elem_col, NAME=elem_num + 1)
                                 popup_error(msg)
-                                print('Warning: unknown column {COL} specified in modify rule {NAME}'
-                                      .format(COL=elem_col, NAME=eval_str))
+                                logger.warning(msg)
                                 print(subset_df)
                                 print(subset_df.columns)
                             else:
-                                print('Info: successfully modified column {COL} values based on specified rule {RULE}'
-                                      .format(COL=elem_col, RULE=elem_num + 1))
+                                logger.info('successfully modified column "{COL}" values based on "{RULE}"'
+                                            .format(COL=elem_col, RULE=elem_num + 1))
                         elif is_datetime_dtype(elem_obj):
                             if elem_oper == '+':
                                 offset = relativedelta(days=+elem_val_fmt)
                             elif elem_oper == '-':
                                 offset = relativedelta(days=-elem_val_fmt)
                             else:
-                                msg = 'Unable to modify column {COL} values in rule {RULE} using "{OPER}". Only ' \
-                                      'addition and subtraction is supported for date columns.' \
-                                    .format(COL=elem_col, OPER=oper_map[elem_oper], RULE=elem_num + 1)
+                                msg = 'failed to modify column "{COL}" values with rule "{RULE}" - operator "{OPER}" ' \
+                                      'is not a valid operator. Only addition and subtraction is supported for date ' \
+                                      'columns.'.format(COL=elem_col, OPER=oper_map[elem_oper], RULE=elem_num + 1)
                                 popup_error(msg)
-                                print('Warning: {}'.format(msg))
+                                logger.warning(msg)
                                 continue
 
                             try:
                                 subset_df[elem_col] = subset_df[elem_col].apply(lambda x: x + offset)
                             except Exception as e:
-                                msg = 'Failed to modify the values of column {COL} using rule {RULE} - {ERR}' \
+                                msg = 'failed to modify column "{COL}" values with rule "{RULE}" - {ERR}' \
                                     .format(COL=elem_col, RULE=elem_num + 1, ERR=e)
                                 popup_error(msg)
-                                print('Error: {}'.format(msg))
+                                logger.error(msg)
                             else:
-                                print('Info: successfully modified column {COL} values based on specified rule {RULE}'
-                                      .format(COL=elem_col, RULE=elem_num + 1))
+                                logger.info('successfully modified column "{COL}" values on rule "{RULE}"'
+                                            .format(COL=elem_col, RULE=elem_num + 1))
                         else:
-                            msg = 'Modify column rule {RULE}: Only columns with numeric or date data type ' \
-                                  'can be modified'.format(RULE=elem_num + 1)
+                            msg = 'failed to modify column "{COL}" values with rule "{RULE}" - only columns with the ' \
+                                  'numeric or date data type can be modified'.format(RULE=elem_num + 1, COL=elem_col)
                             popup_error(msg)
-                            print('Error: {}'.format(msg))
+                            logger.error(msg)
                             continue
 
                     print(subset_df)
@@ -926,8 +947,8 @@ def database_importer_window(win_size: tuple = None):
             # Delete created record IDs if current panel is the preview panel
             if current_panel == last_panel:
                 if len(record_ids) > 0 and record_entry is not None:
-                    print('Info: removing unsaved record IDs')
-                    record_entry.remove_ids(record_ids)
+                    logger.info('removing unsaved record IDs')
+                    record_entry.remove_unsaved_ids(record_ids)
                     record_ids = []
 
             # Enable /disable panels
@@ -1112,7 +1133,7 @@ def database_importer_window(win_size: tuple = None):
             window.refresh()
             window['-SUBSET-'].update(visible=True)
 
-            print('Info: adding subset rule {RULE} with key {KEY}'.format(RULE=next_num, KEY=next_key))
+            logger.debug('adding subset rule "{RULE}" with key "{KEY}"'.format(RULE=next_num, KEY=next_key))
             continue
 
         # Delete a subset element
@@ -1144,7 +1165,7 @@ def database_importer_window(win_size: tuple = None):
             window.refresh()
             window['-SUBSET-'].update(visible=True)
 
-            print('Info: deleting subset rule {RULE} with key {KEY}'.format(RULE=subset_num, KEY=subset_key))
+            logger.debug('deleting subset rule "{RULE}" with key "{KEY}"'.format(RULE=subset_num, KEY=subset_key))
             continue
 
         # Add a modify column element
@@ -1169,7 +1190,7 @@ def database_importer_window(win_size: tuple = None):
             window.refresh()
             window['-MODIFY-'].update(visible=True)
 
-            print('Info: adding modify column rule {RULE} with key {KEY}'.format(RULE=next_num, KEY=next_key))
+            logger.debug('adding modify column rule "{RULE}" with key "{KEY}"'.format(RULE=next_num, KEY=next_key))
             continue
 
         # Delete a modify column element
@@ -1201,7 +1222,7 @@ def database_importer_window(win_size: tuple = None):
             window.refresh()
             window['-MODIFY-'].update(visible=True)
 
-            print('Info: deleting modify column rule {RULE} with key {KEY}'.format(RULE=elem_num, KEY=mod_key))
+            logger.debug('deleting modify column rule "{RULE}" with key "{KEY}"'.format(RULE=elem_num, KEY=mod_key))
             continue
 
     window.close()
@@ -1884,13 +1905,13 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                         dtype = np.object
 
                 # Set field value based on data type
-                logger.debug(' the data type of column {COL} is {DTYPE}'.format(COL=header_map[column], DTYPE=dtype))
+                logger.debug('the data type of column {COL} is {DTYPE}'.format(COL=header_map[column], DTYPE=dtype))
                 msg = 'The value "{VAL}" provided to column "{COL}" is the wrong type'
                 if is_float_dtype(dtype):
                     try:
                         field_val = float(input_val)
                     except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        logger.warning(msg.format(VAL=input_val, COL=header_map[column]))
                         popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
                         ready_to_save.append(False)
                         break
@@ -1898,7 +1919,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                     try:
                         field_val = int(input_val)
                     except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        logger.warning(msg.format(VAL=input_val, COL=header_map[column]))
                         popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
                         ready_to_save.append(False)
                         break
@@ -1906,7 +1927,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                     try:
                         field_val = bool(input_val)
                     except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        logger.warning(msg.format(VAL=input_val, COL=header_map[column]))
                         popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
                         ready_to_save.append(False)
                         break
@@ -1914,7 +1935,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                     try:
                         field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
                     except ValueError:
-                        print(msg.format(VAL=input_val, COL=header_map[column]))
+                        logger.warning(msg.format(VAL=input_val, COL=header_map[column]))
                         popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
                         ready_to_save.append(False)
                         break
@@ -1925,9 +1946,10 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                 try:
                     row[column] = field_val
                 except ValueError as e:
-                    msg = 'The value "{VAL}" provided to column "{COL}" is of the wrong type - {ERR}' \
+                    msg = 'the value "{VAL}" provided to column "{COL}" is of the wrong type - {ERR}' \
                         .format(VAL=field_val, COL=header_map[column], ERR=e)
                     popup_notice(msg)
+                    logger.error(msg)
                     ready_to_save.append(False)
                 else:
                     ready_to_save.append(True)
