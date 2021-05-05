@@ -1998,11 +1998,22 @@ class AuditRecordTab:
 
         # Create deposit records
         deposit_header = mod_db.format_record_columns(record_entry.import_rules)
+        deposit_df = pd.DataFrame(columns=deposit_header)
         for index, row in account_df.iterrows():
-            account_id = row['RecordID']
-
             deposit_data = pd.Series(index=deposit_header)
-            account_no = row['Account']
+
+            account_id = row[account_table.id_column]
+            deposit_data['AccountID'] = account_id
+
+            try:
+                account_no = row['Account']
+            except KeyError:
+                msg = 'missing the required column "Account" from the "{TYPE}" table'.format(TYPE=ref_type)
+                logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                mod_win2.popup_error(msg)
+
+                return False
+
             if account_no == 'resting':  # do not create deposit records for account records in the resting account
                 continue
 
@@ -2011,30 +2022,31 @@ class AuditRecordTab:
                 if colname in deposit_header:
                     deposit_data[colname] = row[colname]
 
-            # Create a new record ID for the deposit record
-            deposit_date = row['RecordDate']
-            deposit_id = record_entry.create_id(deposit_date, offset=settings.get_date_offset())
-            if not deposit_id:
-                msg = 'failed to create a {TYPE} record associated with the {RTYPE} record {ID}'\
-                    .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type, ID=account_id)
-                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
-
-                continue
-
-            deposit_data['RecordID'] = deposit_id
+#            # Create a new record ID for the deposit record
+#            deposit_date = row[account_table.date_column]
+#            deposit_id = record_entry.create_id(deposit_date, offset=settings.get_date_offset())
+#            if not deposit_id:
+#                msg = 'failed to create a {TYPE} record associated with the {RTYPE} record {ID}'\
+#                    .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type, ID=account_id)
+#                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+#                mod_win2.popup_error(msg)
+#
+#                continue
+#
+#            deposit_data['RecordID'] = deposit_id
             # Add the deposit date
             try:
                 payment_date = row['PaymentDate']
             except KeyError:
-                msg = 'missing deposit date for new deposit record {ID}'.format(ID=deposit_id)
+                msg = 'missing the column "PaymentDate" from the "{TYPE}" table'.format(TYPE=ref_type)
                 logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
                 if payment_date:
                     deposit_data['DepositDate'] = payment_date
                 else:
-                    msg = 'no deposit date set for new deposit record {ID}'.format(ID=deposit_id)
+                    msg = 'no deposit date set for the new "{TYPE}" record associated with "{RTYPE}" record "{ID}"'\
+                        .format(TYPE=record_type, RTYPE=ref_type, ID=account_id)
                     logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
@@ -2042,20 +2054,51 @@ class AuditRecordTab:
             try:
                 deposit_amount = row['CorrectedAmount']
             except KeyError:
-                msg = 'missing deposit amount for new deposit record {ID}'.format(ID=deposit_id)
+                msg = 'missing deposit amount for new "{TYPE}" record associated with "{RTYPE}" record "{ID}"'\
+                    .format(TYPE=record_type, RTYPE=ref_type, ID=account_id)
                 logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
                 if deposit_amount is not None:
                     deposit_data['DepositAmount'] = deposit_amount
                 else:
-                    msg = 'no deposit amount set for new deposit record {ID}'.format(ID=deposit_id)
+                    msg = 'no deposit amount set for new "{TYPE}" record associated with "{RTYPE}" record "{ID}"'\
+                        .format(TYPE=record_type, RTYPE=ref_type, ID=account_id)
                     logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
-            statements = record_entry.export_table(deposit_data, statements=statements, id_exists=False)
+            deposit_df = deposit_df.append(deposit_data, ignore_index=True)
 
-            # Save the association to the references database table
+        # Create new record IDs for the deposit records
+        try:
+            date_list = pd.to_datetime(deposit_df[account_table.date_column], errors='coerce')
+        except KeyError:
+            msg = 'failed to create "{TYPE}" records associated with "{RTYPE}" records - failed to create IDs for ' \
+                  'the new records'.format(TYPE=record_type, RTYPE=ref_type)
+            logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            mod_win2.popup_error(msg)
+
+            return False
+        else:
+            date_list = date_list.tolist()
+
+        deposit_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
+        if not deposit_ids:
+            msg = 'failed to create {TYPE} records associated with the {RTYPE} record IDs' \
+                .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type)
+            logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            mod_win2.popup_error(msg)
+
+            return False
+
+        deposit_df['RecordID'] = deposit_ids
+        statements = record_entry.export_table(deposit_df, statements=statements, id_field='RecordID', id_exists=False)
+
+        # Save the associations to the references database table
+        for index, row in deposit_df.iterrows():
+            deposit_id = row['RecordID']
+            account_id = row['AccountID']
+
             # Save reference to the account record
             ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
                            settings.creation_date, 'IsParentChild']
@@ -2263,18 +2306,27 @@ class AuditRecordTab:
 
         final_df = component_table.set_datatypes(final_df)
 
-        for index, row in final_df.iterrows():
-            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
-            if not record_id:
-                msg = 'failed to create a record ID for transaction {TRANS}'.format(TRANS=row)
-                logger.error('Error: {MSG}'.format(MSG=msg))
-                mod_win2.popup_error(msg)
+        record_ids = record_entry.create_record_ids([record_date for _ in range(final_df.shape[0])],
+                                                    offset=settings.get_date_offset())
+        if not record_ids:
+            msg = 'failed to create a record IDs for the table entries'
+            logger.error(msg)
+            raise IOError(msg)
+        else:
+            final_df[component_table.id_column] = record_ids
 
-                continue
-
-            logger.info('AuditRecordTab {NAME}: adding transaction record {ID} to the audit record accounts table'
-                        .format(NAME=self.name, ID=record_id))
-            final_df.at[index, 'RecordID'] = record_id
+    #        for index, row in final_df.iterrows():
+    #            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
+#            if not record_id:
+#                msg = 'failed to create a record ID for transaction {TRANS}'.format(TRANS=row)
+#                logger.error('Error: {MSG}'.format(MSG=msg))
+#                mod_win2.popup_error(msg)
+#
+#                continue
+#
+#            logger.info('AuditRecordTab {NAME}: adding transaction record {ID} to the audit record accounts table'
+#                        .format(NAME=self.name, ID=record_id))
+#            final_df.at[index, 'RecordID'] = record_id
 
         component_table.df = component_table.append(final_df)
 

@@ -153,10 +153,7 @@ class ServerConnection:
 
         start_time = time.time()
         while time.time() - start_time < timeout:
-            try:
-                sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
-            except Exception:
-                logger.exception('unknown popup animation error')
+            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
 
             if self.response is not None:
                 logger.debug('server process completed')
@@ -546,7 +543,7 @@ class SettingsManager:
         """
         entries = self.records.rules
         for entry in entries:
-            entry.remove_unsaved_id(entry.get_unsaved_ids(internal_only=internal))
+            entry.remove_unsaved_ids(entry.get_unsaved_ids(internal_only=internal))
 
     def load_constants(self, connection):
         """
