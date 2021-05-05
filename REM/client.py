@@ -543,7 +543,7 @@ class SettingsManager:
         """
         entries = self.records.rules
         for entry in entries:
-            entry.remove_unsaved_ids(entry.get_unsaved_ids(internal_only=internal))
+            entry.remove_unsaved_ids(internal_only=internal)
 
     def load_constants(self, connection):
         """

@@ -2116,7 +2116,7 @@ class TableElement:
         record_entry = settings.records.fetch_rule(self.record_type)
         if record_entry is not None:
             for record_id in record_ids:
-                record_entry.remove_unsaved_ids(record_id)
+                record_entry.remove_unsaved_ids(record_ids=[record_id])
 
         return df
 

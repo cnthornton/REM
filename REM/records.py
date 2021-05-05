@@ -236,7 +236,8 @@ class RecordEntry:
 
         return import_df
 
-    def export_table(self, df, id_field: str = 'RecordID', id_exists: bool = False, statements: dict = {}):
+    def export_table(self, df, id_field: str = 'RecordID', id_exists: bool = False, statements: dict = {},
+                     export_columns: bool = True):
         import_rules = self.import_rules
 
         if not isinstance(df, pd.DataFrame):
@@ -260,8 +261,16 @@ class RecordEntry:
         for table in import_rules:
             table_entry = import_rules[table]
 
-            references = {j: i for i, j in table_entry['Columns'].items()}
-            id_col = references[id_field]
+            if export_columns:
+                references = {j: i for i, j in table_entry['Columns'].items()}
+            else:
+                references = {i: i for i in table_entry['Columns']}
+
+            try:
+                id_col = references[id_field]
+            except KeyError:
+                logger.error('missing ID column {COL} from record import columns {COLS}'
+                             .format(COL=id_field, COLS=list(references.keys())))
 
             # Prepare column value updates
             include_columns = [i for i in columns if i in references]
@@ -643,17 +652,15 @@ class RecordEntry:
 
         return id_name[code_len:]
 
-    def remove_unsaved_ids(self, record_ids):
+    def remove_unsaved_ids(self, record_ids: list = None, internal_only: bool = True):
         """
         Remove a record ID from the database of unsaved IDs associated with the record type.
         """
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
-        elif isinstance(record_ids, type(None)):
+        if not record_ids:
+            record_ids = self.get_unsaved_ids(internal_only=internal_only)
+
+        if not len(record_ids) > 0:
             return True
-        elif isinstance(record_ids, list):
-            if not len(record_ids) > 0:
-                return True
 
         logger.debug('RecordEntry {NAME}: attempting to remove IDs {ID} from the list of unsaved record IDs'
                      .format(NAME=self.name, ID=record_ids))
@@ -2327,7 +2334,7 @@ def remove_unsaved_keys(record):
     """
     # Remove unsaved ID if record is new
     record_entry = record.record_entry
-    record_entry.remove_unsaved_ids(record.record_id())
+    record_entry.remove_unsaved_ids(record_ids=[record.record_id()])
 
     # Remove unsaved components
     for comp_table in record.components:
@@ -2348,7 +2355,7 @@ def remove_unsaved_keys(record):
 
             ids_to_remove.append(row_id)
 
-        comp_entry.remove_unsaved_ids(ids_to_remove)
+        comp_entry.remove_unsaved_ids(record_ids=ids_to_remove)
 
 
 def import_references(record_id):
