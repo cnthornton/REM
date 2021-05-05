@@ -420,7 +420,7 @@ class RecordEntry:
 
         # Search list of unsaved IDs occurring within the current date cycle
         logger.debug('RecordEntry {NAME}: searching for unsaved record IDs with date component {DATE}'
-                    .format(NAME=self.name, DATE=id_date))
+                     .format(NAME=self.name, DATE=id_date))
         prev_ids = []
         for unsaved_id in unsaved_ids:
             prev_date = self._id_date_component(unsaved_id)
@@ -436,7 +436,7 @@ class RecordEntry:
                          .format(NAME=self.name, DATE=id_date))
 
             # Search list of saved IDs occurring within the current date cycle for the last created ID
-            db_ids = self.import_record_ids(record_date=record_date)
+            db_ids = self._import_saved_ids([record_date])
             for db_id in db_ids:
                 prev_date = self._id_date_component(db_id)
                 if prev_date == id_date:
@@ -469,11 +469,165 @@ class RecordEntry:
         logger.info('RecordEntry {NAME}: new record ID is {ID}'.format(NAME=self.name, ID=record_id))
 
         # Add ID to the list of unsaved IDs
-        success = self.add_unsaved_id(record_id)
+        success = self.add_unsaved_ids(record_id)
         if success is False:
             return None
 
         return record_id
+
+    def _import_saved_ids(self, record_dates, id_field: str = 'RecordID'):
+        """
+        Get a list of saved record IDs for records with record date within the provided range of dates.
+        """
+        # Prepare query parameters
+        table_statement = mod_db.format_tables(self.import_rules)
+        id_col = mod_db.get_import_column(self.import_rules, id_field)
+
+        # Prepare the date range
+        record_dates.sort()
+        try:
+            first_date = record_dates[0]
+            last_date = record_dates[-1]
+        except IndexError:
+            logger.error('failed to import saved record IDs - no dates provided to the method')
+            raise
+
+        first_day = first_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_day = datetime.datetime(last_date.year + last_date.month // 12, last_date.month % 12 + 1, 1) - \
+                   datetime.timedelta(1)
+
+        # Connect to database
+        params = (first_day, last_day)
+        filters = ('{DATE} BETWEEN ? AND ?'.format(DATE=settings.date_field), params)
+        import_rows = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col, filter_rules=filters,
+                                                                 order=id_col), prog_db=True)
+
+        try:
+            id_list = import_rows.iloc[:, 0]
+        except IndexError:
+            logger.info('no existing record IDs found')
+            record_ids = []
+        except Exception as e:
+            logger.error('failed to import saved record IDs - {ERR}'.format(ERR=e))
+            print(import_rows)
+            raise
+        else:
+            record_ids = id_list.values.tolist()
+
+        return record_ids
+
+    def create_record_ids(self, record_dates, offset: int = 0):
+        """
+        Create a new set of record IDs.
+        """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+
+        record_type = self.name
+        id_code = self.id_code
+
+        if not isinstance(record_dates, list):
+            logger.error('failed to create IDs for the record entries of type {TYPE} - record_dates must be formatted '
+                         'as a list'.format(TYPE=record_type))
+            return None
+
+        logger.info('creating {N} new record IDs for records of type "{TYPE}"'
+                    .format(N=len(record_dates), TYPE=record_type))
+
+        # Get list of unsaved record IDs of the same record type
+        unsaved_ids = self.get_unsaved_ids(record_type)
+        if unsaved_ids is None:
+            logger.error('failed to create IDs for the record entries of type {TYPE} - unable to obtain a list of '
+                         'unsaved record IDs'.format(TYPE=record_type))
+            return None
+
+        # Get list of saved record IDs of the same record type within the range of provided dates
+        try:
+            saved_ids = self._import_saved_ids(record_dates)
+        except Exception as e:
+            logger.error('failed to create IDs for the record entries of type {TYPE} - {ERR}'
+                         .format(TYPE=record_type, ERR=e))
+            return None
+
+        # Format the date component of the new ID
+        record_ids = []
+        for record_date in record_dates:
+            try:
+                id_date = (record_date + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
+            except Exception as e:
+                logger.debug(e)
+                id_date = (strptime(record_date.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S')
+                           + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
+
+            logger.debug('RecordEntry {NAME}: new ID has date component {COMP}'.format(NAME=record_type, COMP=id_date))
+
+            # Search list of unsaved IDs occurring within the current date cycle
+            logger.debug('RecordEntry {NAME}: searching for unsaved record IDs with date component {DATE}'
+                         .format(NAME=record_type, DATE=id_date))
+            prev_ids = []
+            for unsaved_id in unsaved_ids:
+                prev_date = self._id_date_component(unsaved_id)
+                if prev_date == id_date:
+                    prev_ids.append(unsaved_id)
+
+            logger.debug('RecordEntry {NAME}: found {NUM} unsaved records with date component {DATE}'
+                         .format(NAME=record_type, NUM=len(prev_ids), DATE=id_date))
+
+            # Search list of saved IDs occurring within the current date cycle
+            logger.debug('RecordEntry {NAME}: searching for database record IDs with date component {DATE}'
+                         .format(NAME=record_type, DATE=id_date))
+
+            for saved_id in saved_ids:
+                prev_date = self._id_date_component(saved_id)
+                if prev_date == id_date:
+                    prev_ids.append(saved_id)
+
+            # Get the number of the last ID used in the current date cycle
+            logger.debug('RecordEntry {NAME}: found {NUM} records with date component {DATE}'
+                         .format(NAME=self.name, NUM=len(prev_ids), DATE=id_date))
+
+            if len(prev_ids) > 0:
+                prev_ids.sort()
+                last_id = prev_ids[-1]
+            else:
+                last_id = None
+
+            # Create the new ID
+            if last_id:
+                logger.debug('RecordEntry {NAME}: last ID encountered is {ID}'.format(NAME=record_type, ID=last_id))
+                try:
+                    last_num = int(last_id.split('-')[-1])
+                except ValueError:
+                    msg = 'RecordEntry {NAME}: incorrect formatting for previous ID {ID}' \
+                        .format(NAME=record_type, ID=last_id)
+                    logger.error(msg)
+                    record_ids.append(None)
+                    continue
+            else:
+                logger.debug('RecordEntry {NAME}: no previous IDs found for date {DATE} - starting new iteration at 1'
+                             .format(NAME=record_type, DATE=id_date))
+                last_num = 0
+
+            record_id = '{CODE}{DATE}-{NUM}'.format(CODE=id_code, DATE=id_date, NUM=str(last_num + 1).zfill(4))
+
+            logger.info('RecordEntry {NAME}: new record ID is {ID}'.format(NAME=record_type, ID=record_id))
+            record_ids.append(record_id)
+            unsaved_ids.append(record_id)
+
+        failed_rows = [i + 1 for i, j in enumerate(record_ids) if not j]
+        if len(failed_rows) > 0:
+            msg = 'failed to create record IDs for table entries at rows {ROW}'.format(ROW=failed_rows)
+            logger.error(msg)
+
+            return None
+
+        success = self.add_unsaved_ids(record_ids)
+        if not success:
+            logger.error('failed to create IDs for the record entries of type {TYPE} - unable to add record IDs to '
+                         'the list unsaved record IDs'.format(TYPE=record_type))
+            return None
+
+        return record_ids
 
     def _id_date_component(self, record_id):
         """
@@ -489,7 +643,7 @@ class RecordEntry:
 
         return id_name[code_len:]
 
-    def remove_unsaved_id(self, record_ids):
+    def remove_unsaved_ids(self, record_ids):
         """
         Remove a record ID from the database of unsaved IDs associated with the record type.
         """
@@ -552,14 +706,19 @@ class RecordEntry:
 
         return unsaved_ids
 
-    def add_unsaved_id(self, record_id):
+    def add_unsaved_ids(self, record_ids):
         """
         Add a record ID to the list of unsaved record IDs associated with the record type.
         """
-        logger.debug('RecordEntry {NAME}: attempting to add record ID {ID} to the list of unsaved record IDs '
-                     'associated with the record entry'.format(NAME=self.name, ID=record_id))
+        logger.debug('RecordEntry {NAME}: attempting to add record IDs {ID} to the list of unsaved record IDs '
+                     'associated with the record entry'.format(NAME=self.name, ID=record_ids))
 
-        value = {'ids': [(record_id, settings.instance_id)], 'record_type': self.name}
+        if isinstance(record_ids, str):
+            id_set = [(record_ids, settings.instance_id)]
+        else:
+            id_set = [(i, settings.instance_id) for i in record_ids]
+
+        value = {'ids': id_set, 'record_type': self.name}
         content = {'action': 'add_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)
@@ -567,11 +726,11 @@ class RecordEntry:
         success = response['success']
         if success is False:
             msg = 'failed to add {ID} to the list of unsaved record IDs of type {TYPE} on the server - {ERR}' \
-                .format(NAME=self.name, ID=record_id, TYPE=self.name, ERR=response['value'])
+                .format(NAME=self.name, ID=record_ids, TYPE=self.name, ERR=response['value'])
             logger.error(msg)
         else:
-            logger.debug('RecordEntry {NAME}: successfully added record ID {ID} to the list of unsaved record IDs '
-                         'associated with the record entry'.format(NAME=self.name, ID=record_id))
+            logger.debug('RecordEntry {NAME}: successfully added record IDs {ID} to the list of unsaved record IDs '
+                         'associated with the record entry'.format(NAME=self.name, ID=record_ids))
 
         return success
 
@@ -2168,7 +2327,7 @@ def remove_unsaved_keys(record):
     """
     # Remove unsaved ID if record is new
     record_entry = record.record_entry
-    record_entry.remove_unsaved_id(record.record_id())
+    record_entry.remove_unsaved_ids(record.record_id())
 
     # Remove unsaved components
     for comp_table in record.components:
@@ -2186,7 +2345,7 @@ def remove_unsaved_keys(record):
             if row_id not in added_ids:  # don't attempt to remove IDs if already in the database
                 continue
 
-            comp_entry.remove_unsaved_id(row_id)
+            comp_entry.remove_unsaved_ids(row_id)
 
 
 def import_references(record_id):

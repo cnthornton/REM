@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.2.1'
+__version__ = '0.2.3'
 
 from multiprocessing import freeze_support
 import logging
@@ -782,21 +782,36 @@ class ConfigManager:
         """
         Add record IDs to the dictionary of unsaved record IDs.
         """
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
+        try:
+            success = self._add_unsaved_ids(record_type, record_ids)
+        except Exception as e:
+            value = e
+            success = False
+        else:
+            value = None
 
+        return {'success': success, 'value': value}
+
+    def _add_unsaved_ids(self, record_type, record_ids):
+        """
+        Add record IDs to the dictionary of unsaved record IDs.
+        """
         logger.debug('adding record IDs {IDS} of type {TYPE} to the database of unsaved record IDs'
                      .format(IDS=record_ids, TYPE=record_type))
 
         success = True
-        value = None
-        for id_tup in record_ids:
+        current_ids = self._get_unsaved_ids(record_type)
+        for index, id_tup in enumerate(record_ids):
+            unsaved_id = id_tup[0]
+            if (not unsaved_id) or (unsaved_id in current_ids):
+                continue
+
             try:
                 self.unsaved_ids[record_type].append(id_tup)
             except (KeyError, TypeError):
                 self.unsaved_ids[record_type] = [id_tup]
 
-        return {'success': success, 'value': value}
+        return success
 
     def remove_unsaved_ids(self, record_type, record_ids):
         """
@@ -827,6 +842,8 @@ class ConfigManager:
                     logger.debug('failed to remove record ID {ID} from the list of unsaved record IDs of type {TYPE} - '
                                  '{MSG}'.format(ID=record_id, TYPE=record_type, MSG=msg))
                     failed_ids.append(record_id)
+                else:  # need to also remove from the list of unsaved ids so that indices remain the same
+                    unsaved_ids.pop(index)
 
         if len(failed_ids) > 0:
             success = False
