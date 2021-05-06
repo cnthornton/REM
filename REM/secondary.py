@@ -381,8 +381,10 @@ def database_importer_window(win_size: tuple = None):
 
     dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64, 'time': np.datetime64,
                  'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
-                 'int': int, 'integer': int, 'bit': int, 'bool': bool, 'boolean': bool, 'char': str,
-                 'varchar': str, 'binary': str, 'varbinary': str, 'tinytext': str, 'text': str, 'string': str}
+                 'int': 'Int64', 'integer': 'Int64', 'bit': 'Int64',
+                 'bool': bool, 'boolean': bool,
+                 'char': np.object, 'varchar': np.object, 'binary': np.object, 'varbinary': np.object,
+                 'tinytext': np.object, 'text': np.object, 'string': np.object}
 
     date_types = ['date', 'datetime', 'time', 'timestamp']
 
@@ -457,8 +459,8 @@ def database_importer_window(win_size: tuple = None):
 
             # Prepare the insertion statement
             try:
-                statements = record_entry.export_table(subset_df, id_field=settings.id_field, id_exists=False,
-                                                       export_columns=False)
+                statements = record_entry.export_table(subset_df.replace({np.nan: None}), id_field=settings.id_field,
+                                                       id_exists=False, export_columns=False)
             except Exception as e:
                 msg = 'failed to upload entries to the database - {ERR}'.format(ERR=e)
                 logger.exception(msg)
@@ -472,27 +474,6 @@ def database_importer_window(win_size: tuple = None):
                 psets.append(j)
 
             success = user.write_db(sstrings, psets)
-
-#            records_saved = []
-#            for index, row in subset_df.iterrows():
-#                row = row.dropna(inplace=True)
-#
-#                # Prepare update parameters
-#                row_columns = row.index.tolist()
-#                row_values = tuple(row.values.tolist())
-#                entry_saved = user.write_db(*user.prepare_insert_statement(table, row_columns, row_values))
-#                if entry_saved is False:
-#                    msg = 'failed to save row {ROW} to database table {TBL}' \
-#                        .format(ROW=index + 1, TBL=table)
-#                    popup_error(msg)
-#                    logger.warning(msg)
-#                records_saved.append(entry_saved)
-#
-#            msg = 'Successfully saved {SUCCESS} rows to the database. Failed to save {FAIL} rows' \
-#                .format(SUCCESS=len([i for i in records_saved if i is True]),
-#                        FAIL=len([i for i in records_saved if i is False]))
-#            popup_notice(msg)
-#            logger.info(msg)
 
             if success:
                 msg = 'successfully saved {NROW} rows to the database'.format(NROW=len(record_ids))
@@ -508,7 +489,6 @@ def database_importer_window(win_size: tuple = None):
 
             # Export report describing success of import by row
             success_col = 'Successfully saved'
-#            subset_df[success_col] = records_saved
             subset_df[success_col] = success
             outfile = sg.popup_get_file('', title='Save Database import report', save_as=True,
                                         default_extension='xlsx', no_window=True,
@@ -623,6 +603,7 @@ def database_importer_window(win_size: tuple = None):
                     logger.debug('formatting import file options: {}'.format(formatting_options))
 
                     # Import data from the file into a pandas dataframe
+                    pd.set_option('display.max_columns', None)
                     import_df = reader(infile, **formatting_options)
 
                     # Rename columns based on mapping information
@@ -661,9 +642,12 @@ def database_importer_window(win_size: tuple = None):
                                 try:
                                     dtype = dtype_map[coltype.lower()]
                                 except KeyError:
+                                    logger.warning('unable to get the data type for column "{COL}" ... setting to '
+                                                   'default')
                                     dtype = np.object
                                 dtypes[final_col] = dtype
 
+                        print(dtypes)
                         final_df = final_df.astype(dtypes)
                         if values['-DATES-']:
                             for date_col in date_cols:
@@ -759,26 +743,6 @@ def database_importer_window(win_size: tuple = None):
                         popup_notice(msg)
                         logger.error(msg)
                         continue
-
-#                    failed_rows = []
-#                    for index, row in subset_df.iterrows():
-#                        try:
-#                            date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
-#                        except KeyError:
-#                            record_date = datetime.datetime.now()
-#                        else:
-#                            record_date = date_list[index]
-#
-#                        record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
-#                        if not record_id:
-#                            msg = 'failed to create a record ID for record entry at index {ROW}'.format(ROW=index+1)
-#                            popup_notice(msg)
-#                            logger.error(msg)
-#                            failed_rows.append(index)
-#                        else:
-#                            record_ids.append(record_id)
-#
-#                    subset_df = subset_df[~subset_df.index.isin(failed_rows)]
 
                     subset_df[settings.id_field] = record_ids
 
@@ -885,7 +849,7 @@ def database_importer_window(win_size: tuple = None):
                             logger.error(msg)
                             continue
 
-                    print(subset_df)
+                    print(subset_df.head())
                     print(subset_df.columns)
                     print(subset_df.dtypes)
 
