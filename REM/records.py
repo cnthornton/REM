@@ -2093,11 +2093,10 @@ class DepositRecord(DatabaseRecord):
                              .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Import'):  # import account records
-                    component_table.df = component_table.import_rows(reftype=self.name, program_database=True)
+                    component_table.import_rows(reftype=self.name, program_database=True)
                 elif event == component_table.key_lookup('Add'):  # add account records
                     default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                    component_table.df = component_table.add_row(record_date=self.record_date(),
-                                                                 defaults=default_values)
+                    component_table.add_row(record_date=self.record_date(), defaults=default_values)
                 else:
                     component_table.run_event(window, event, values)
 
@@ -2233,11 +2232,10 @@ class TAuditRecord(DatabaseRecord):
                              .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Import'):  # import account records
-                    component_table.df = component_table.import_rows(reftype=self.name, program_database=True)
+                    component_table.import_rows(reftype=self.name, program_database=True)
                 elif event == component_table.key_lookup('Add'):  # add account records
                     default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
-                    component_table.df = component_table.add_row(record_date=self.record_date(),
-                                                                 defaults=default_values)
+                    component_table.add_row(record_date=self.record_date(), defaults=default_values)
                 else:
                     component_table.run_event(window, event, values)
 

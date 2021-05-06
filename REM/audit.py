@@ -1031,7 +1031,7 @@ class AuditTransactionTab:
                                    .format(NAME=self.name))
 
             elif event == import_key:
-                table.df = table.import_rows(import_rules=self.import_rules)
+                table.import_rows(import_rules=self.import_rules)
                 table.update_display(window, window_values=values)
 
             else:
@@ -1040,7 +1040,7 @@ class AuditTransactionTab:
         # Run a transaction audit
         elif event == audit_key:
             try:
-                self.table.df = self.table.append(self.audit_transactions())
+                self.audit_transactions()
             except Exception as e:
                 msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
                 mod_win2.popup_error(msg)
@@ -1097,6 +1097,7 @@ class AuditTransactionTab:
         pkey = table.id_column
         df = table.data()
         id_list = sorted(table.row_ids(), reverse=False)
+        existing_imports = table.row_ids(imports=True)
 
         # Data importing parameters
         filters = mod_db.format_import_filters(import_rules)
@@ -1212,7 +1213,7 @@ class AuditTransactionTab:
                     nskipped = 0
                     for missing_number in missing_range:
                         missing_id = self.format_id(missing_number, date=first_date_comp)
-                        if missing_id not in id_list:
+                        if (missing_id not in id_list) and (missing_id not in existing_imports):
                             nskipped += 1
                             missing_transactions.append(missing_id)
 
@@ -1240,7 +1241,7 @@ class AuditTransactionTab:
                     missing_range = list(range(prev_number + 1, record_no))
                     for missing_number in missing_range:
                         missing_id = self.format_id(missing_number, date=first_date_comp)
-                        if missing_id not in id_list:
+                        if (missing_id not in id_list) and (missing_id not in existing_imports):
                             missing_transactions.append(missing_id)
                             nskipped += 1
 
@@ -1273,7 +1274,8 @@ class AuditTransactionTab:
                                    .format(NAME=self.name, ID=current_df[current_df[pkey] == current_id]))
                     continue
 
-                if current_id == self.format_id(current_number_comp, date=first_date_comp):
+                if (current_id == self.format_id(current_number_comp, date=first_date_comp)) and \
+                        (current_id not in existing_imports):
                     missing_transactions.append(current_id)
 
         logger.debug('AuditRuleTransactions {NAME}: potentially missing transactions: {MISS}'
@@ -1295,20 +1297,9 @@ class AuditTransactionTab:
             missing_df = pd.DataFrame(columns=df.columns)
 
         # Display import window with potentially missing data
-        if not missing_df.empty:
-            table_layout = {'Columns': table.columns, 'DisplayColumns': table.display_columns, 'Aliases': table.aliases,
-                            'RowColor': table.row_color, 'Widths': table.widths, 'IDColumn': table.id_column,
-                            'RecordType': table.record_type, 'Title': table.title}
-            import_table = mod_elem.TableElement(table.name, table_layout)
-            import_table.df = import_table.append(missing_df)
-            import_df = mod_win2.import_window(import_table, self.import_rules)
-        else:
-            import_df = pd.DataFrame(columns=df.columns)
-
-            logger.info('AuditRuleTransactions {NAME}: adding {NROW} records to the table'
-                        .format(NAME=self.name, NROW=import_df.shape[0]))
-
-        return import_df
+        table.import_df = table.append(missing_df, imports=True)
+        if not table.import_df.empty:
+            table.import_rows(import_rules=self.import_rules, program_database=False)
 
     def update_id_components(self):
         """
@@ -1697,10 +1688,10 @@ class AuditSummary:
                 try:
                     sub_rule = section['Subset']
                 except KeyError:
-                    subset_df = comp_table.df
+                    subset_df = comp_table.data()
                 else:
                     try:
-                        subset_df = comp_table.subset(sub_rule)
+                        subset_df = comp_table.filter_deleted(comp_table.subset(sub_rule))
                     except (NameError, SyntaxError) as e:
                         print('Error: AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
                               '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
@@ -1797,7 +1788,7 @@ class AuditSummary:
 
             # Verify that tab record components have values for their required fields.
             for component_table in tab.record.components:
-                comp_df = component_table.df
+                comp_df = component_table.data()
 
                 required_columns = component_table.required_columns
                 for required_column in required_columns:
@@ -2001,7 +1992,7 @@ class AuditRecordTab:
 
         account_table = self.record.fetch_component('account')
         ref_type = account_table.record_type
-        account_df = account_table.df
+        account_df = account_table.data()
         account_header = account_df.columns.tolist()
         if 'Account' not in account_header:
             logger.warning('AuditRecordTab {NAME}: required column "Account" not found in the account table header'
@@ -2017,7 +2008,7 @@ class AuditRecordTab:
         else:
             record_type = record_entry.name
 
-        # Create deposit records
+        # Create deposit records for current account records
         deposit_header = mod_db.format_record_columns(record_entry.import_rules)
         deposit_df = pd.DataFrame(columns=deposit_header)
         for index, row in account_df.iterrows():

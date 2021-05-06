@@ -1587,12 +1587,9 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
         if event == '-IMPORT-':  # click 'Import' button
             # Get index of selected rows
             selected_rows = values[table.key_lookup('Element')]
-            print(selected_rows)
-            print(display_table)
 
             # Get real index of selected rows
             select_index = [table.index_map[i] for i in selected_rows]
-            print(select_index)
             break
 
         if event in table.elements:

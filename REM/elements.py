@@ -584,7 +584,7 @@ class TableElement:
                 param.run_event(window, event, values)
 
         elif event == add_key:
-            self.df = self.add_row()
+            self.add_row()
 
         elif event == delete_key:
             # Find rows selected by user for deletion
@@ -599,7 +599,7 @@ class TableElement:
                 mod_win2.popup_notice(msg)
                 indices = []
 
-            self.df = self.delete_rows(indices)
+            self.delete_rows(indices)
 
         elif event == export_key:
             export_df = self.update_display(window, values)
@@ -1610,11 +1610,14 @@ class TableElement:
         if self.summary_rules:
             window[swidth_key].set_size(size=(tbl_width, None))
 
-    def append(self, add_df):
+    def append(self, add_df, imports: bool = False):
         """
         Add a new row of data to table.
         """
-        df = self.df.copy()
+        if imports:
+            df = self.import_df.copy()
+        else:
+            df = self.df.copy()
 
         if add_df.empty:
             return df
@@ -1792,12 +1795,15 @@ class TableElement:
 
         return total
 
-    def row_ids(self):
+    def row_ids(self, imports: bool = False):
         """
         Return a list of all current row IDs in the dataframe.
         """
         id_field = self.id_column
-        df = self.filter_deleted(self.df.copy())
+        if imports:
+            df = self.import_df
+        else:
+            df = self.filter_deleted(self.df.copy())
 
         try:
             row_ids = df[id_field].tolist()
@@ -1880,6 +1886,8 @@ class TableElement:
                          .format(NAME=self.name, VALS=record_values))
             df = self.append(record_values)
 
+        self.df = df
+
         return df
 
     def import_rows(self, import_rules: dict = None, reftype: str = None, program_database: bool = False):
@@ -1895,6 +1903,7 @@ class TableElement:
             msg = 'unable to display the record import window - record type was not configured for the table'
             mod_win2.popup_error(msg)
             logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
             return self.df
         elif record_entry is not None and import_rules is None:
             import_rules = record_entry.import_rules
@@ -1946,6 +1955,8 @@ class TableElement:
 
                 # Add import dataframe to data table object
                 import_table.df = import_df.append(df, ignore_index=True)
+        else:
+            import_table.df = import_df
 
         # Add relevant search parameters
         if self.search_field:
@@ -1964,23 +1975,31 @@ class TableElement:
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
+        print(select_df)
 
         # Verify that selected records are not already in table
         current_ids = self.df[self.id_column].tolist()
         select_ids = select_df[self.id_column]
+        print('selected IDs are: {}'.format(select_ids))
         remove_indices = []
         for index, record_id in select_ids.items():
             if record_id in current_ids:
                 remove_indices.append(index)
-        logger.debug('DataTable {NAME}: removing selected records at rows {ROWS} already stored in the table'
+        print(remove_indices)
+        logger.debug('DataTable {NAME}: removing selected records already stored in the table at rows {ROWS}'
                      .format(NAME=self.name, ROWS=remove_indices))
         select_df.drop(remove_indices, inplace=True, axis=0, errors='ignore')
 
         # Change deleted column of existing selected records to False
+        logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
+                     'False'.format(NAME=self.name))
         self.df.loc[self.df[self.id_column].isin(select_ids), self.deleted_column] = False
 
         # Append selected rows to the table
+        logger.debug('DataTable {NAME}: importing {N} records to the table'
+                     .format(NAME=self.name, N=select_df.shape[0]))
         df = self.append(select_df)
+        self.df = df
 
         # Remove selected rows from the table of available import rows
         self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
@@ -2105,7 +2124,6 @@ class TableElement:
         Remove records from the records table.
         """
         df = self.df.copy()
-        import_df = self.import_df.copy()
 
         # Get record IDs of selected rows
         record_ids = df.iloc[indices][self.id_column].tolist()
@@ -2113,11 +2131,11 @@ class TableElement:
                     .format(TBL=self.name, IDS=record_ids))
 
         # Add removed rows to the import dataframe
-        import_df = import_df.append(df.iloc[indices], ignore_index=True)
-        self.import_df = import_df
+        self.import_df = self.append(df.iloc[indices], imports=True)
 
         # Set deleted rows to True
         df.loc[df[self.id_column].isin(record_ids), self.deleted_column] = True
+        self.df = df
 
         # Drop selected rows from the dataframe
 #        df.drop(indices, axis=0, inplace=True)
