@@ -424,6 +424,17 @@ class TableElement:
 
         return parameter
 
+    def data(self, deleted: bool = False):
+        """
+        Return the table dataframe.
+        """
+        if deleted:
+            df = self.df
+        else:
+            df = self.filter_deleted(self.df.copy())
+
+        return df
+
     def run_event(self, window, event, values):
         """
         Perform a table action.
@@ -600,6 +611,38 @@ class TableElement:
 
         return result
 
+    def filter_deleted(self, df):
+        """
+        Filter deleted rows from the table dataframe.
+        """
+        is_bool_dtype = pd.api.types.is_bool_dtype
+
+        column = self.deleted_column
+
+        if df.empty:
+            return df
+
+        if column not in df.columns.values:
+            df[column] = False
+
+        df[column].fillna(False, inplace=True)
+        if not is_bool_dtype(df[column].dtype):
+            logger.debug('DataTable {NAME}: setting datatype of deleted column "{COL}" to boolean'
+                         .format(NAME=self.name, COL=column))
+            try:
+                df = df.astype({column: 'bool'})
+            except ValueError:
+                logger.warning('DataTable {NAME}: unable to set the datatype of delete column "{COL}" to boolean'
+                               .format(NAME=self.name, COL=column))
+                return df
+
+        logger.debug('DataTable {NAME}: filtering deleted rows on deleted column "{COL}"'
+                     .format(NAME=self.name, COL=column))
+
+        df = df[~df[self.deleted_column]]
+
+        return df
+
     def update_display(self, window, window_values: dict = None):
         """
         Format object elements for display.
@@ -662,14 +705,7 @@ class TableElement:
                 logger.warning(msg)
 
         # Remove deleted rows from the display table
-        df[self.deleted_column].fillna(False, inplace=True)
-        if not df.empty:
-            try:
-                df = df[~df[self.deleted_column]]
-            except TypeError:
-                print(df[self.deleted_column])
-            except KeyError:
-                print(df[self.deleted_column])
+        df = self.filter_deleted(df)
 
         # Edit the index map to reflect what is currently displayed
         self.index_map = {i: j for i, j in enumerate(df.index.tolist())}
@@ -849,7 +885,7 @@ class TableElement:
 
         operators = set('+-*/')
 
-        df = df if df is not None else self.df.copy()
+        df = df if df is not None else self.filter_deleted(self.df.copy())
         summ_rules = self.summary_rules
 
         logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
@@ -1731,7 +1767,7 @@ class TableElement:
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
         tally_rule = self.tally_rule
-        df = df if df is not None else self.df
+        df = df if df is not None else self.filter_deleted(self.df)
         logger.debug('DataTable {NAME}: calculating table totals'.format(NAME=self.name))
 
         total = 0
@@ -1758,15 +1794,16 @@ class TableElement:
 
     def row_ids(self):
         """
-        Return a list of all row IDs in the dataframe.
+        Return a list of all current row IDs in the dataframe.
         """
         id_field = self.id_column
+        df = self.filter_deleted(self.df.copy())
 
         try:
-            row_ids = self.df[id_field].tolist()
+            row_ids = df[id_field].tolist()
         except KeyError:  # database probably PostGreSQL
-            logger.warning('DataTable {NAME}: unable to return a list of row IDs from the table - ID column {COL} not '
-                           'found in the data table'.format(NAME=self.name, COL=id_field))
+            logger.warning('DataTable {NAME}: unable to return a list of row IDs from the table - ID column "{COL}" '
+                           'not found in the data table'.format(NAME=self.name, COL=id_field))
             row_ids = []
 
         return row_ids
@@ -1779,32 +1816,6 @@ class TableElement:
             return False
         else:
             return True
-
-    def summarize_columns(self):
-        """
-        Summarize columns based on data type.
-        """
-        is_numeric_dtype = pd.api.types.is_numeric_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-
-        df = self.df
-        columns = df.columns.tolist()
-
-        values = []
-        for column in columns:
-            dtype = df[column].dtype
-            if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
-                col_summary = df[column].sum()
-            elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                col_summary = df[column].nunique()
-            else:  # possibly empty dataframe
-                col_summary = 0
-
-            values.append(col_summary)
-
-        return pd.Series(values, index=columns)
 
     def add_row(self, record_date: datetime.datetime = None, defaults: dict = None):
         """

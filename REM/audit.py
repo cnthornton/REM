@@ -1095,11 +1095,10 @@ class AuditTransactionTab:
         table = self.table
 
         pkey = table.id_column
-        df = table.df
+        df = table.data()
         id_list = sorted(table.row_ids(), reverse=False)
 
         # Data importing parameters
-        main_table = mod_db.get_primary_table(import_rules)
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
         import_columns = mod_db.format_import_columns(import_rules)
@@ -1107,12 +1106,6 @@ class AuditTransactionTab:
         # Audit parameters
         date_param = self.fetch_parameter('date', by_type=True)
         date_db_col = mod_db.get_import_column(import_rules, date_param.name)
-        try:
-            date_table, date_col = date_db_col.split('.')
-        except ValueError:
-            date_col = date_db_col
-            date_table = main_table
-
         audit_date = date_param.value
         audit_date_iso = audit_date.strftime("%Y-%m-%d")
 
@@ -1125,22 +1118,23 @@ class AuditTransactionTab:
         for index, record_id in enumerate(id_list):
             number_comp = int(self.get_id_component(record_id, 'variable'))
             date_comp = self.get_id_component(record_id, 'date')
-            if record_id == self.format_id(number_comp, date=date_comp):
+            if record_id == self.format_id(number_comp, date=date_comp):  # skip ID that don't conform to proper format
                 first_id = record_id
                 first_number_comp = number_comp
                 first_date_comp = date_comp
                 id_list = id_list[index:]
+
                 break
 
         if audit_date and first_id:  # data table not empty
             logger.debug('AuditTransactionTab {NAME}: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
 
             # Find the date of the most recent transaction prior to current date
-#            query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_col, TBL=date_table)
-#            dates_df = user.thread_transaction(query_str, (), operation='read')
-            dates_df = user.read_db(*user.prepare_query_statement(date_table, columns=[date_col], distinct=True))
+            query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_db_col, TBL=table_statement)
+            logger.debug('query string is "{STR}" with parameters {PARAMS}'.format(STR=query_str, PARAMS=None))
+            dates_df = user.read_db(query_str, None)
 
-            unq_dates = dates_df[date_col].tolist()
+            unq_dates = dates_df.iloc[:, 0].tolist()
             unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
 
             unq_dates_iso.sort()
@@ -1160,8 +1154,8 @@ class AuditTransactionTab:
 
             # Query the last transaction from the previous date
             if prev_date:
-                logger.info('AuditTransactionTab {NAME}: searching for most recent transaction created on {DATE}'
-                            .format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
+                logger.info('AuditTransactionTab {NAME}: searching for most recent transaction created on last '
+                            'transaction date {DATE}'.format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 import_filters = filters + [('{} = ?'.format(date_db_col),
                                              (prev_date.strftime(settings.date_format),))]
@@ -1177,10 +1171,10 @@ class AuditTransactionTab:
                     try:
                         prev_number_comp = int(self.get_id_component(prev_id, 'variable'))
                     except ValueError:
-                        msg = 'inconsistent format found in record ID {ID}'.format(ID=prev_id)
+                        msg = 'inconsistent format found in previous record ID {ID}'.format(ID=prev_id)
                         mod_win2.popup_notice(msg)
                         logger.warning('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                        logger.warning('AuditTransactionTab {NAME}: ID with unknown format is {ID}'
+                        logger.warning('AuditTransactionTab {NAME}: record with unknown format is {ID}'
                                        .format(NAME=self.name, ID=last_df[last_df[pkey] == prev_id]))
                         continue
 
@@ -1198,6 +1192,11 @@ class AuditTransactionTab:
                     logger.debug('AuditTransactionTab {NAME}: last transaction ID is {ID} from {DATE}'
                                  .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
 
+                    logger.debug('AuditTransactionTab {NAME}: searching for skipped transactions between last ID '
+                                 '{PREVID} from last transaction date {PREVDATE} and first ID {ID} of current '
+                                 'transaction date {DATE}'
+                                 .format(NAME=self.name, PREVID=last_id, PREVDATE=prev_date.strftime('%Y-%m-%d'),
+                                         ID=first_id, DATE=audit_date_iso))
                     if first_date_comp != prev_date_comp:  # start of new month
                         if first_number_comp != 1:
                             missing_range = list(range(1, first_number_comp))
@@ -1210,24 +1209,45 @@ class AuditTransactionTab:
                         else:
                             missing_range = []
 
+                    nskipped = 0
                     for missing_number in missing_range:
                         missing_id = self.format_id(missing_number, date=first_date_comp)
                         if missing_id not in id_list:
+                            nskipped += 1
                             missing_transactions.append(missing_id)
+
+                    logger.debug('AuditTransactionTab {NAME}: found {N} skipped transactions between last ID '
+                                 '{PREVID} from last transaction date {PREVDATE} and first ID {ID} of current '
+                                 'transaction date {DATE}'
+                                 .format(NAME=self.name, N=nskipped, PREVID=last_id,
+                                         PREVDATE=prev_date.strftime('%Y-%m-%d'), ID=first_id, DATE=audit_date_iso))
 
             # Search for skipped transaction numbers
-            logger.info('AuditTransactionTab {NAME}: searching for skipped transactions'.format(NAME=self.name))
-            prev_number = first_number_comp
+            logger.debug('AuditTransactionTab {NAME}: searching for skipped transactions within the current '
+                         'transaction date {DATE}'.format(NAME=self.name, DATE=audit_date_iso))
+            prev_number = first_number_comp - 1
+            nskipped = 0
             for record_id in id_list:
-                record_number = int(self.get_id_component(record_id, 'variable'))
-                if (prev_number + 1) != record_number:
-                    missing_range = list(range(prev_number + 1, record_number))
+                record_no = int(self.get_id_component(record_id, 'variable'))
+                record_date = self.get_id_component(record_id, 'date')
+
+                if record_id != self.format_id(record_no, date=record_date):  # skip IDs that don't conform to format
+                    msg = 'record ID {ID} does not conform to ID format specifications'.format(ID=record_id)
+                    logger.warning('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    continue
+
+                if (prev_number + 1) != record_no:
+                    missing_range = list(range(prev_number + 1, record_no))
                     for missing_number in missing_range:
                         missing_id = self.format_id(missing_number, date=first_date_comp)
                         if missing_id not in id_list:
                             missing_transactions.append(missing_id)
+                            nskipped += 1
 
-                prev_number = record_number
+                prev_number = record_no
+
+            logger.debug('AuditTransactionTab {NAME}: found {N} skipped transactions from within current '
+                         'transaction date {DATE}'.format(NAME=self.name, N=nskipped, DATE=audit_date_iso))
 
             # Search for missed numbers at end of day
             logger.info('AuditTransactionTab {NAME}: searching for transactions created at the end of the day'
