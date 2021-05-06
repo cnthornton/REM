@@ -328,6 +328,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             # Save the record to the database table
             saved = record.save()
             if saved is False:
+                msg = 'failed to save record {ID} to the database'.format(ID=record.record_id())
+                popup_error(msg)
                 continue
             else:
                 # Remove unsaved IDs associated with the record

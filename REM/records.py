@@ -1582,6 +1582,7 @@ class DatabaseRecord:
                     .format(ID=record_id, FIELD=param.description)
                 logger.warning(msg)
                 mod_win2.popup_error(msg)
+
                 return False
 
         # Prepare to save the record
