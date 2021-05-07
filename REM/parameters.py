@@ -356,19 +356,6 @@ class DataParameter:
 
         return ''.join(buff)
 
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        logger.debug('DataParameter {NAME}: resetting parameter value {VAL} to {DEF}'
-                     .format(NAME=self.name, VAL=self.value, DEF=self.default))
-
-        self.value = None
-
-        # Update the parameter window element
-        if self.hidden is False:
-            window[self.key_lookup('Element')].update(value='')
-
     def toggle_parameter(self, window, value: str = 'enable'):
         """
         Toggle parameter elements on and off.
@@ -420,6 +407,21 @@ class DataParameterInput(DataParameter):
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        if not pd.isna(self.value) and not pd.isna(self.default):
+            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = self.format_value({self.key_lookup('Element'): self.default})
+            display_value = self.format_display()
+
+            window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -619,6 +621,21 @@ class DataParameterCombo(DataParameter):
                      '{DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        if not pd.isna(self.value) and not pd.isna(self.default):
+            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = self.format_value({self.key_lookup('Element'): self.default})
+            display_value = self.format_display()
+
+            window[self.key_lookup('Element')].update(value=display_value)
+
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
         Create a GUI layout for the parameter.
@@ -735,6 +752,21 @@ class DataParameterDate(DataParameter):
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        if not pd.isna(self.value) and not pd.isna(self.default):
+            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = self.format_value({self.key_lookup('Element'): self.default})
+            display_value = self.format_display()
+
+            window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -891,6 +923,27 @@ class DataParameterDateRange(DataParameter):
         logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        try:
+            def_val1, def_val2 = self.default
+        except (ValueError, TypeError):
+            def_val1 = def_val2 = None
+
+        if def_val1 is not None or def_val2 is not None:
+            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.format_value({self.key_lookup('Element'): def_val1, self.key_lookup('Element2'): def_val2})
+            display_val1, display_val2 = self.format_display()
+
+            window[self.key_lookup('Element')].update(value=display_val1)
+            window[self.key_lookup('Element2')].update(value=display_val2)
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """
@@ -1078,25 +1131,6 @@ class DataParameterDateRange(DataParameter):
 
         return statement
 
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        logger.debug('DataParameter {NAME}: resetting parameter value {VAL} to {DEF}'
-                     .format(NAME=self.name, VAL=self.value, DEF=self.default))
-
-        try:
-            def_val1, def_val2 = self.default
-        except (ValueError, TypeError):
-            def_val1 = def_val2 = None
-
-        self.format_value({self.key_lookup('Element'): def_val1, self.key_lookup('Element2'): def_val2})
-        logger.info('DataParameter {NAME}: values reset to {VAL}'.format(NAME=self.name, VAL=self.value))
-
-        # Update the parameter window element
-        window[self.key_lookup('Element')].update(value='')
-        window[self.key_lookup('Element2')].update(value='')
-
     def toggle_parameter(self, window, value: str = 'enable'):
         """
         Toggle parameter elements on and off.
@@ -1132,6 +1166,21 @@ class DataParameterCheckbox(DataParameter):
         logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        if not pd.isna(self.value) and not pd.isna(self.default):
+            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = self.format_value({self.key_lookup('Element'): self.default})
+            display_value = self.format_display()
+
+            window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
         """

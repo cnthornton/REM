@@ -886,12 +886,14 @@ class TableElement:
         operators = set('+-*/')
 
         df = df if df is not None else self.filter_deleted(self.df.copy())
-        summ_rules = self.summary_rules
+        if df.empty:
+            return []
 
         logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
 
         # Calculate totals defined by summary rules
         outputs = []
+        summ_rules = self.summary_rules
         for rule_name in summ_rules:
             summ_rule = summ_rules[rule_name]
 
@@ -1663,6 +1665,9 @@ class TableElement:
         Sort the table on provided column name.
         """
         col_header = self.df.columns.tolist()
+        df = self.df.copy()
+        if df.empty:
+            return df
 
         # Prepare the columns to sort the table on
         sort_keys = []
@@ -1679,12 +1684,16 @@ class TableElement:
         if len(sort_keys) > 0:
             logger.debug('DataTable {NAME}: sorting table on {KEYS}'.format(NAME=self.name, KEYS=sort_keys))
             try:
-                self.df.sort_values(by=sort_keys, inplace=True, ascending=ascending)
+                df.sort_values(by=sort_keys, inplace=True, ascending=ascending)
             except KeyError:  # sort key is not in table header
                 logger.warning('DataTable {NAME}: one or more sort key columns ({COLS}) not find in the table header. '
                                'Values will not be sorted.'.format(NAME=self.name, COLS=', '.join(sort_keys)))
             else:
-                self.df.reset_index(drop=True, inplace=True)
+                df.reset_index(drop=True, inplace=True)
+
+            self.df = df
+
+        return df
 
     def subset(self, subset_rule):
         """
@@ -1693,11 +1702,13 @@ class TableElement:
         operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'IN', 'In', 'in'}
         chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
 
-        logger.debug('DataTable {NAME}: subsetting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
-
         df = self.df.copy()
+        if df.empty:
+            return df
+
         header = df.columns.values.tolist()
 
+        logger.debug('DataTable {NAME}: subsetting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
         rule_list = [i.strip() for i in
                      re.split('({})'.format('|'.join([' {} '.format(i) for i in chain_map])), subset_rule)]
 
@@ -1771,6 +1782,9 @@ class TableElement:
 
         tally_rule = self.tally_rule
         df = df if df is not None else self.filter_deleted(self.df)
+        if df.empty:
+            return 0
+
         logger.debug('DataTable {NAME}: calculating table totals'.format(NAME=self.name))
 
         total = 0
@@ -1975,17 +1989,14 @@ class TableElement:
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
-        print(select_df)
 
         # Verify that selected records are not already in table
         current_ids = self.df[self.id_column].tolist()
         select_ids = select_df[self.id_column]
-        print('selected IDs are: {}'.format(select_ids))
         remove_indices = []
         for index, record_id in select_ids.items():
             if record_id in current_ids:
                 remove_indices.append(index)
-        print(remove_indices)
         logger.debug('DataTable {NAME}: removing selected records already stored in the table at rows {ROWS}'
                      .format(NAME=self.name, ROWS=remove_indices))
         select_df.drop(remove_indices, inplace=True, axis=0, errors='ignore')
@@ -2705,8 +2716,9 @@ class DataElement:
         except (KeyError, TypeError):
             default = self.format_value(None)
 
-        logger.debug('DataElement {NAME}: resetting data element to default {DEF}'
-                     .format(NAME=self.name, DEF=self.default))
+        if not pd.isna(self.default) and not pd.isna(self.value):
+            logger.debug('DataElement {NAME}: resetting data element value "{VAL}" to default "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
         self.value = default
 
