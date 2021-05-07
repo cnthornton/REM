@@ -534,14 +534,14 @@ class DataParameterInput(DataParameter):
 
         dtype = self.dtype
         value = self.value
-        logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display'
-                     .format(NAME=self.name, VAL=value))
 
         if value == '' or pd.isna(value) is True:
             return ''
         else:
             value = str(value)
 
+        logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
+                     .format(NAME=self.name, VAL=value))
         if dtype == 'money':
             if value[0] in ('-', '+'):  # sign of the number
                 numeric_sign = value[0]
