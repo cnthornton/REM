@@ -466,6 +466,9 @@ def main():
     window.bind('<Key-Return>', '-ENTER-')
     window.bind('<Key-Right>', '-RIGHT-')
     window.bind('<Key-Left>', '-LEFT-')
+    window.bind('<Key-a>', '-TBL_ADD-')
+    window.bind('<Key-d>', '-TBL_DEL-')
+    window.bind('<Key-i>', '-TBL_IMP-')
 
     screen_w, screen_h = window.get_screen_dimensions()
     logger.debug('screen size is {W} x {H}'.format(W=screen_w, H=screen_h))

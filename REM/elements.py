@@ -90,10 +90,12 @@ class TableElement:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'Import', 'Add', 'Delete', 'Export', 'Total', 'Search', 'Filter', 'Fill',
-                          'FilterFrame', 'FilterButton', 'SummaryFrame', 'SummaryButton', 'Width', 'CollapseButton',
-                          'CollapseFrame', 'SummaryWidth', 'Options', 'Cancel', 'Sort', 'OptionsFrame', 'OptionsWidth']]
+        self.elements = ['-TBL_ADD-', '-TBL_DEL-', '-TBL_IMP-']
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                              ['Element', 'Import', 'Add', 'Delete', 'Export', 'Total', 'Search', 'Filter', 'Fill',
+                               'FilterFrame', 'FilterButton', 'SummaryFrame', 'SummaryButton', 'Width', 'CollapseButton',
+                               'CollapseFrame', 'SummaryWidth', 'Options', 'Cancel', 'Sort', 'OptionsFrame',
+                               'OptionsWidth']])
         self.etype = 'table'
 
         try:
@@ -449,6 +451,7 @@ class TableElement:
         filter_key = self.key_lookup('Filter')
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
+        import_key = self.key_lookup('Import')
 
         param_elems = [i for param in self.parameters for i in param.elements]
 
@@ -583,10 +586,12 @@ class TableElement:
             else:
                 param.run_event(window, event, values)
 
-        elif event == add_key:
+        elif event == add_key or (event == '-TBL_ADD-' and (not window[add_key].metadata['disabled'] and
+                                                            window[add_key].metadata['visible'])):
             self.add_row()
 
-        elif event == delete_key:
+        elif event == delete_key or (event == '-TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
+                                                               window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
             select_row_indices = values[tbl_key]
 
@@ -600,6 +605,10 @@ class TableElement:
                 indices = []
 
             self.delete_rows(indices)
+
+        elif event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
+                                                               window[import_key].metadata['visible'])):
+            self.import_rows()
 
         elif event == export_key:
             export_df = self.update_display(window, values)
@@ -1323,13 +1332,16 @@ class TableElement:
 
         mod_row = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['import'],
-                             tooltip='Add existing record to the table'),
+                             tooltip='Add existing record to the table', metadata={'visible': self.actions['import'],
+                                                                                   'disabled': disabled}),
                    sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['add'],
-                             tooltip='Add a new row to the table'),
+                             tooltip='Add a new row to the table', metadata={'visible': self.actions['add'],
+                                                                             'disabled': disabled}),
                    sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['delete'],
-                             tooltip='Remove selected row from the table')]
+                             tooltip='Remove selected row from the table',
+                             metadata={'visible': self.actions['delete'], 'disabled': disabled})]
 
         row5.append(sg.Col([mod_row], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
                            background_color=header_col, expand_x=True))
@@ -1440,8 +1452,13 @@ class TableElement:
 
         # Enable table modification buttons
         window[add_key].update(disabled=False)
+        window[add_key].metadata['disabled'] = False
+
         window[delete_key].update(disabled=False)
+        window[delete_key].metadata['disabled'] = False
+
         window[import_key].update(disabled=False)
+        window[import_key].metadata['disabled'] = False
 
     def disable(self, window):
         """
@@ -1464,8 +1481,13 @@ class TableElement:
 
         # Enable table modification buttons
         window[add_key].update(disabled=True)
+        window[add_key].metadata['disabled'] = True
+
         window[delete_key].update(disabled=True)
+        window[delete_key].metadata['disabled'] = True
+
         window[import_key].update(disabled=True)
+        window[import_key].metadata['disabled'] = True
 
     def calc_column_widths(self, width: int = 1200, size: int = 13, pixels: bool = False):
         """

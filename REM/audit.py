@@ -180,11 +180,12 @@ class AuditRule:
             mod_win2.popup_error(msg)
             sys.exit(1)
 
-        for tab_name in tab_entries:
+        for tab_i, tab_name in enumerate(tab_entries):
             tab_rule = AuditTransactionTab(tab_name, tab_entries[tab_name], parent=self.name)
 
             self.tabs.append(tab_rule)
             self.elements += tab_rule.elements
+            self.elements.append('-{NAME}_{ID}_Tab{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=tab_i))
 
         self.current_tab = 0
         self.final_tab = len(self.tabs)
@@ -1006,7 +1007,8 @@ class AuditTransactionTab:
                    sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
                           background_color=bg_col, expand_x=True)]]
 
-        return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col, visible=visible)
+        return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col, visible=visible,
+                      metadata={'visible': visible})
 
     def resize_elements(self, window, size):
         """
