@@ -2429,7 +2429,7 @@ class ReferenceElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            logger.warning('ReferenceElement {NAME}: component {COMP} not found in list of element components'
+            logger.warning('ReferenceElement {NAME}: component "{COMP}" not found in list of element components'
                            .format(NAME=self.name, COMP=component))
             key = None
 
@@ -2626,7 +2626,7 @@ class DataElement:
             raise AttributeError('missing required parameter "ElementType".')
         else:
             if self.etype == 'date':
-                self.elements.append('{NAME}_{ID}_Calendar'.format(NAME=name, ID=self.id))
+                self.elements.append('-{NAME}_{ID}_Calendar-'.format(NAME=name, ID=self.id))
 
         try:
             self.dtype = entry['DataType']
@@ -2701,9 +2701,13 @@ class DataElement:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            logger.warning('DataElement {NAME}: component {COMP} not found in list of element components'
-                           .format(NAME=self.name, COMP=component))
-            key = None
+            msg = 'DataElement {NAME}: component "{COMP}" not found in list of element components'\
+                .format(NAME=self.name, COMP=component)
+            logger.warning(msg)
+            logger.debug('DataElement {NAME}: data element contains components {COMP}'
+                         .format(NAME=self.name, COMP=element_names))
+
+            raise KeyError(msg)
 
         return key
 
@@ -2928,14 +2932,16 @@ class DataElement:
         # Update element display value
         try:
             param_value = window_values[elem_key]
-        except (KeyError, TypeError):
-            logger.warning('DataElement {NAME}: unable to locate values for element key {KEY}'
+        except KeyError:
+            logger.warning('DataElement {NAME}: unable to locate values for element key "{KEY}"'
                            .format(NAME=self.name, KEY=elem_key))
             if self.value:
                 display_value = self.format_display()
                 window[elem_key].update(value=display_value)
             else:
                 display_value = None
+        except TypeError:
+            display_value = None
         else:
             self.value = self.format_value(param_value)
             display_value = self.format_display()
