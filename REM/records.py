@@ -203,19 +203,19 @@ class RecordEntry:
 
         return import_df
 
-    def load_record_data(self, record_ids, id_field: str = 'RecordID'):
+    def confirm_saved(self, record_ids, id_field: str = 'RecordID'):
         """
-        Load a record from the database using the record ID.
+        Check whether or not records have already been saved to the database.
         """
         if isinstance(record_ids, str):
             record_ids = [record_ids]
 
         record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
-        logger.debug('loading records {IDS} of type {TYPE} from the database'.format(IDS=record_ids, TYPE=self.name))
+        logger.debug('verifying whether records {IDS} of type "{TYPE}" have been previously saved to the database'
+                     .format(IDS=record_ids, TYPE=self.name))
 
         # Add configured import filters
         table_statement = mod_db.format_tables(self.import_rules)
-        columns = mod_db.format_import_columns(self.import_rules)
         id_col = mod_db.get_import_column(self.import_rules, id_field)
 
         # Query existing database entries
@@ -226,6 +226,51 @@ class RecordEntry:
             filters = (filter_clause, tuple(sub_ids))
 
             if import_df.empty:
+                import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col,
+                                                                       filter_rules=filters), prog_db=True)
+            else:
+                import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
+                                                                                        columns=id_col,
+                                                                                        filter_rules=filters),
+                                                          prog_db=True), ignore_index=True)
+
+        import_ids = import_df.iloc[:, 0].values.tolist()
+        records_saved = []
+        for record_id in record_ids:
+            if record_id in import_ids:
+                records_saved.append(True)
+            else:
+                records_saved.append(False)
+
+        if len(record_ids) == 1:
+            return records_saved[0]
+        else:
+            return records_saved
+
+    def load_record_data(self, record_ids, id_field: str = 'RecordID'):
+        """
+        Load a record from the database using the record ID.
+        """
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+
+        record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
+        logger.debug('loading records {IDS} of type "{TYPE}" from the database'.format(IDS=record_ids, TYPE=self.name))
+
+        # Add configured import filters
+        filters = mod_db.format_import_filters(self.import_rules)
+        table_statement = mod_db.format_tables(self.import_rules)
+        columns = mod_db.format_import_columns(self.import_rules)
+        id_col = mod_db.get_import_column(self.import_rules, id_field)
+
+        # Query existing database entries
+        import_df = pd.DataFrame()
+        for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+            sub_ids = record_ids[i: i + 1000]
+            filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
+            filters.append((filter_clause, tuple(sub_ids)))
+
+            if import_df.empty:
                 import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
                                                                        filter_rules=filters), prog_db=True)
             else:
@@ -233,6 +278,9 @@ class RecordEntry:
                                                                                         columns=columns,
                                                                                         filter_rules=filters),
                                                           prog_db=True), ignore_index=True)
+
+        logger.debug('{NLOADED} records passed the query filters out of {NTOTAL} requested records'
+                     .format(NLOADED=import_df.shape[0], NTOTAL=len(record_ids)))
 
         return import_df
 
@@ -1586,8 +1634,10 @@ class DatabaseRecord:
                 return False
 
         # Prepare to save the record
-        id_exists = True
+        logger.info('Record {ID}: preparing to save record and record components'.format(ID=record_id))
+
         try:
+            id_exists = record_entry.confirm_saved(record_id, id_field=self.id_field)
             record_data = self.table_values().to_frame().transpose()
             statements = record_entry.export_table(record_data, statements=statements, id_field=self.id_field,
                                                    id_exists=id_exists)
@@ -1642,8 +1692,8 @@ class DatabaseRecord:
         for comp_table in comp_tables:
             comp_type = comp_table.record_type
             if comp_type is None:
-                logger.warning('RecordEntry {NAME}: component table {TBL} has no record type assigned'
-                               .format(NAME=self.name, TBL=comp_table))
+                logger.warning('RecordEntry {NAME}: component table "{TBL}" has no record type assigned'
+                               .format(NAME=self.name, TBL=comp_table.name))
                 continue
 
             try:
@@ -1651,7 +1701,7 @@ class DatabaseRecord:
                                        (import_df['RefType'] == comp_type)]['RefNo'].tolist()
             except Exception as e:
                 logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
-                               '{TBL} - {ERR}'.format(NAME=self.name, TBL=comp_table, ERR=e))
+                               '"{TBL}" - {ERR}'.format(NAME=self.name, TBL=comp_table.name, ERR=e))
                 continue
 
             if comp_table.actions['add']:  # component records can be created and deleted through parent record
@@ -1692,14 +1742,17 @@ class DatabaseRecord:
 
             # Prepare the record entries for the components
             comp_entry = settings.records.fetch_rule(comp_type)
-            unsaved_ids = comp_entry.get_unsaved_ids()
+#            unsaved_ids = comp_entry.get_unsaved_ids()
+            comp_ids = comp_df[comp_table.id_column].values.tolist()
+            saved_records = comp_entry.confirm_saved(comp_ids, id_field=comp_table.id_column)
 
             # Update the delete field
             if pc:  # removed records should be deleted if parent-child is true
                 comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
 
             # Prepare update statements for existing record components
-            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
+#            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
+            existing_comps = comp_df[saved_records]
             try:
                 statements = comp_entry.export_table(existing_comps, statements=statements,
                                                      id_field=comp_table.id_column, id_exists=True)
@@ -1709,7 +1762,8 @@ class DatabaseRecord:
                 return False
 
             # Prepare insert statements for new record components
-            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
+#            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
+            new_comps = comp_df[[not x for x in saved_records]]
             try:
                 statements = comp_entry.export_table(new_comps, statements=statements,
                                                      id_field=comp_table.id_column, id_exists=False)

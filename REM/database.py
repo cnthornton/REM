@@ -45,6 +45,8 @@ def format_import_filters(import_rules):
             else:
                 if len(parameters) == 1:
                     parameters = parameters[0]
+                else:
+                    parameters = tuple(parameters)
 
             if isinstance(parameters, list) or isinstance(parameters, tuple):
                 values = ['?' for _ in parameters]

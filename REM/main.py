@@ -622,8 +622,8 @@ def main():
             except Exception as e:
                 msg = 'record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
-                logger.error(msg)
-                raise
+                logger.exception(msg)
+#                raise
 
             continue
 
@@ -641,11 +641,11 @@ def main():
 
             current_panel = current_rule.element_key
             window[current_panel].update(visible=True)
+            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
 
-            # Disable toolbar
+            # Disable the toolbar
             toolbar.disable(window, all_rules)
 
-            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
             continue
 
         elif selected_action in cash_names:
@@ -658,7 +658,7 @@ def main():
             if not record_entry:
                 msg = 'unable to find a configured record type with name {NAME}'.format(NAME=record_type)
                 logger.error(msg)
-                print('Warning: {}'.format(msg))
+                logger.warning(msg)
                 continue
             else:
                 logger.debug('the record type selected is {TYPE}'.format(TYPE=record_type))
@@ -674,7 +674,7 @@ def main():
             except Exception as e:
                 msg = 'record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
-                logger.error(msg)
+                logger.exception(msg)
 
             continue
 
