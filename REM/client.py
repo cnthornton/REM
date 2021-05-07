@@ -64,22 +64,44 @@ class ServerConnection:
         self.header = None
         self.response = None
 
-    def _reset_connection(self):
+    def _reset_connection(self, timeout: int = 20):
         """
         Reset a lost connection to the server.
         """
         try:
-            self.sock.connect(self.addr)
-        except BlockingIOError:
-            # Resource temporarily unavailable (errno EWOULDBLOCK)
-            pass
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         except socket.error as e:
-            msg = 'connection to server {ADDR} failed on error {ERR}'.format(ADDR=self.addr, ERR=e)
-            popup_error(msg)
-            logger.error(msg)
+            msg = 'socket creation failed - {ERR}'.format(ERR=e)
+            logger.error('{MSG}'.format(MSG=msg))
+            raise
         else:
-            msg = 'connection accepted from server {ADDR}'.format(ADDR=self.addr)
-            logger.info(msg)
+            sock.setblocking(False)
+
+        self.sock = sock
+
+        success = False
+        start_time = time.time()
+        sg.popup_animated(image_source=None)
+        while time.time() - start_time < timeout:
+            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
+
+            try:
+                self.sock.connect(self.addr)
+            except BlockingIOError:
+                # Resource temporarily unavailable (errno EWOULDBLOCK)
+                pass
+            except socket.error:
+                time.sleep(1)
+            else:
+                msg = 'connection accepted from server {ADDR}'.format(ADDR=self.addr)
+                logger.info(msg)
+                success = True
+
+                break
+
+        sg.popup_animated(image_source=None)
+        if not success:
+            raise TimeoutError('failed to reconnect to the server after {} seconds'.format(timeout))
 
     def _read(self):
         try:
@@ -94,8 +116,10 @@ class ServerConnection:
             logger.error(msg)
             try:
                 self._reset_connection()
-            except Exception as e:
-                logger.error('connection reset failed - {}'.format(e))
+            except (socket.error, TimeoutError) as e:
+                msg = 'connection reset failed - {}'.format(e)
+                logger.exception(msg)
+                popup_error(msg)
         else:
             if data:  # 0 indicates a closed connection
                 self._recv_buffer += data
@@ -168,6 +192,7 @@ class ServerConnection:
                         msg = 'server request failed - {ERR}'.format(ERR=e)
                         result = {'success': False, 'value': msg}
                         sg.popup_animated(image_source=None)
+
                         break
                 else:
                     try:
@@ -177,6 +202,7 @@ class ServerConnection:
                         result = {'success': False, 'value': msg}
                         sg.popup_animated(image_source=None)
                         logger.error(msg)
+
                         break
         else:
             msg = 'server failed to respond to request after {} seconds'.format(timeout)
