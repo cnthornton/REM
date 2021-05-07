@@ -114,9 +114,11 @@ class BankRule:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['MainPanel', 'SummaryPanel', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
-                          'FrameHeight', 'PanelWidth', 'PanelHeight', 'Withdrawal', 'Deposit', 'MainTG', 'SummaryTG']]
+        self.elements = ['-ENTER-', '-ESCAPE-', '-LEFT-', '-RIGHT-']
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                              ['MainPanel', 'SummaryPanel', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
+                               'FrameHeight', 'PanelWidth', 'PanelHeight', 'Withdrawal', 'Deposit', 'MainTG',
+                               'SummaryTG']])
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -391,7 +393,7 @@ class BankRule:
 
         start_key = self.key_lookup('Start')
         start_layout = [[mod_layout.B2('Start', key=start_key, pad=(0, 0), disabled=False,
-                                       button_color=(bttn_text_col, bttn_bg_col),
+                                       button_color=(bttn_text_col, bttn_bg_col), metadata={'disabled': False},
                                        disabled_button_color=(disabled_text_col, disabled_bg_col),
                                        tooltip='Start bank reconciliation', use_ttk_buttons=True)]]
 
@@ -442,11 +444,14 @@ class BankRule:
                               ], pad=(0, (pad_v, 0)), justification='l', expand_x=True),
                        sg.Col([
                            [sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                                      pad=((0, pad_el), 0), disabled=True, tooltip='Back'),
+                                      pad=((0, pad_el), 0), disabled=True, tooltip='Back',
+                                      metadata={'disabled': True}),
                             sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                                      pad=(pad_el, 0), disabled=True, tooltip='Next'),
+                                      pad=(pad_el, 0), disabled=True, tooltip='Next',
+                                      metadata={'disabled': True}),
                             sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                                      pad=((pad_el, 0), 0), disabled=True, tooltip='Generate summary report')]
+                                      pad=((pad_el, 0), 0), disabled=True, tooltip='Generate summary report',
+                                      metadata={'disabled': True})]
                                ], pad=(0, (pad_v, 0)), justification='r', element_justification='r')]
 
         fw_key = self.key_lookup('FrameWidth')
@@ -525,7 +530,7 @@ class BankRule:
         param_keys = [i for j in self.parameters for i in j.elements]
 
         # Cancel button pressed
-        if event == cancel_key:
+        if event in (cancel_key, '-ESCAPE-'):
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Bank Reconciliation is currently in progress. Are you sure you would like to quit without ' \
@@ -544,8 +549,8 @@ class BankRule:
             else:
                 current_rule = self.reset_rule(window, current=False)
 
-        # Next button pressed
-        elif event == next_key:  # display summary panel
+        # Next button pressed - display summary panel
+        elif (event == next_key) or (event == '-RIGHT-' and not window[next_key].metadata['disabled']):
             next_subpanel = self.current_panel + 1
 
             # Add any found references to the associations tables
@@ -584,20 +589,28 @@ class BankRule:
 
             # Enable / disable action buttons
             if next_subpanel == self.last_panel:
-                window[self.key_lookup('Next')].update(disabled=True)
-                window[self.key_lookup('Back')].update(disabled=False)
-                window[self.key_lookup('Save')].update(disabled=False)
+                window[next_key].update(disabled=True)
+                window[next_key].metadata['disabled'] = True
+
+                window[back_key].update(disabled=False)
+                window[back_key].metadata['disabled'] = False
+
+                window[save_key].update(disabled=False)
+                window[save_key].metadata['disabled'] = False
 
         # Back button pressed
-        elif event == back_key:
+        elif (event == back_key) or (event == '-LEFT-' and not window[back_key].metadata['disabled']):
             prev_subpanel = self.current_panel - 1
 
             # Return to tab display
             window[self.panel_keys[self.current_panel]].update(visible=False)
             window[self.panel_keys[prev_subpanel]].update(visible=True)
 
-            window[self.key_lookup('Next')].update(disabled=False)
-            window[self.key_lookup('Back')].update(disabled=True)
+            window[next_key].update(disabled=False)
+            window[next_key].metadata['disabled'] = False
+
+            window[back_key].update(disabled=True)
+            window[back_key].metadata['disabled'] = True
 
             # Un-collapse the filter frame of all summary tabs
             for tab in self.tabs:
@@ -615,9 +628,14 @@ class BankRule:
 
             # Enable / disable action buttons
             if prev_subpanel == self.first_panel:
-                window[self.key_lookup('Next')].update(disabled=False)
-                window[self.key_lookup('Back')].update(disabled=True)
-                window[self.key_lookup('Save')].update(disabled=True)
+                window[next_key].update(disabled=False)
+                window[next_key].metadata['disabled'] = False
+
+                window[back_key].update(disabled=True)
+                window[back_key].metadata['disabled'] = True
+
+                window[save_key].update(disabled=True)
+                window[save_key].metadata['disabled'] = True
 
         # Start button pressed
         elif event == start_key:
@@ -824,15 +842,23 @@ class BankRule:
         window['-HOME-'].update(visible=True)
 
         # Reset action elements to default
-        end_key = self.key_lookup('Save')
         next_key = self.key_lookup('Next')
-        back_key = self.key_lookup('Back')
-        start_key = self.key_lookup('Start')
-        reconcile_key = self.key_lookup('Reconcile')
         window[next_key].update(disabled=True)
+        window[next_key].metadata['disabled'] = True
+
+        back_key = self.key_lookup('Back')
         window[back_key].update(disabled=True)
+        window[back_key].metadata['disabled'] = True
+
+        end_key = self.key_lookup('Save')
         window[end_key].update(disabled=True)
+        window[end_key].metadata['disabled'] = True
+
+        start_key = self.key_lookup('Start')
         window[start_key].update(disabled=False)
+        window[start_key].metadata['disabled'] = False
+
+        reconcile_key = self.key_lookup('Reconcile')
         window[reconcile_key].update(disabled=True)
 
         # Switch to first tab in panel

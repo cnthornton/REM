@@ -237,7 +237,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
     # Button layout
-    if savable is True:
+    if savable:
         bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=deletable, tooltip='Delete record'),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
@@ -265,6 +265,12 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True)
     window.finalize()
 
+    # Bind keys to events
+    window.bind('<Key-Escape>', '-ESCAPE-')
+    window.bind('<Key-Return>', '-ENTER-')
+    window.bind('<Key-Delete>', '-DELKEY-')
+    window.bind('<Key-BackSpace>', '-BACKSPACE-')
+
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
     win_w = int(screen_w * 0.45)
@@ -281,13 +287,23 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     while True:
         event, values = window.read()
 
-        if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
+        if event in (sg.WIN_CLOSED, '-ESCAPE-'):  # selected to close window without accepting changes
             record = None
 
             # Remove unsaved IDs associated with the record
             settings.remove_unsaved_ids()
 
             break
+
+        if event == '-ENTER-':
+            if savable:
+                window['-SAVE-'].click()
+            else:
+                window['-OK-'].click()
+
+        if event in ('-BACKSPACE-', '-DELKEY-'):
+            if deletable:
+                window['-DELETE-'].click()
 
         if event == '-OK-':  # selected to accept record changes
             # Update data element values
@@ -414,7 +430,12 @@ def database_importer_window(win_size: tuple = None):
     window = sg.Window('Import to Database', layout, font=main_font, modal=True, return_keyboard_events=True)
     window.finalize()
 
+    # Bind keyboard events
     deletion_keys = ['d', 'Delete', 'BackSpace']
+    window.bind('<Key-Escape>', '-ESCAPE-')
+    window.bind('<Key-Return>', '-ENTER-')
+    window.bind('<Key-Right>', '-RIGHT-')
+    window.bind('<Key-Left>', '-LEFT-')
 
     # Element values
     panel_keys = {0: '-P1-', 1: '-P2-', 2: '-P3-'}
@@ -443,10 +464,11 @@ def database_importer_window(win_size: tuple = None):
     mods_in_view = [0]
 
     # Start event loop
+    ready_to_import = False
     while True:
         event, values = window.read(timeout=1000)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-', '-ESCAPE-'):  # selected close-window or Cancel
             # Delete any unsaved record IDs created in the final step
             if len(record_ids) > 0 and record_entry is not None:
                 logger.info('removing unsaved record IDs')
@@ -455,6 +477,12 @@ def database_importer_window(win_size: tuple = None):
             break
 
         # Import selected data into the database table
+        if event == '-RETURN-':
+            if ready_to_import:
+                window['-IMPORT-'].click()
+            else:
+                continue
+
         if event == '-IMPORT-':
             if subset_df is None or table is None or record_entry is None:
                 continue
@@ -518,7 +546,7 @@ def database_importer_window(win_size: tuple = None):
             window['-NEXT-'].update(disabled=False)
 
         # Move to next panel
-        if event == '-NEXT-':
+        if event in ('-NEXT-', '-RIGHT-'):
             next_panel = current_panel + 1
 
             # Verify that required fields have values
@@ -878,6 +906,7 @@ def database_importer_window(win_size: tuple = None):
 
                     # Enable import button
                     window['-IMPORT-'].update(disabled=False)
+                    ready_to_import = True
 
             # Enable /disable panels
             window[panel_keys[current_panel]].update(visible=False)
@@ -909,7 +938,7 @@ def database_importer_window(win_size: tuple = None):
             window['-FSEP-'].update(disabled=True)
 
         # Move to previous panel
-        if event == '-BACK-':
+        if event in ('-BACK-', '-LEFT-'):
             prev_panel = current_panel - 1
 
             # Delete created record IDs if current panel is the preview panel
@@ -934,6 +963,7 @@ def database_importer_window(win_size: tuple = None):
             # Disable import button if not on last panel
             if prev_panel != last_panel:
                 window['-IMPORT-'].update(disabled=True)
+                ready_to_import = False
 
             # Reset current panel variable
             current_panel = prev_panel
@@ -1263,6 +1293,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     window = sg.Window('', layout, modal=True, resizable=True)
     window.finalize()
 
+    # Bind event keys
+    window.bind('<Key-Return>', '-ENTER-')
+    window.bind('<Key-Escape>', '-ESCAPE-')
+
+    # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
     if win_size:
         win_w, win_h = win_size
@@ -1311,7 +1346,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     while True:
         event, values = window.read(timeout=500)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-', '-ESCAPE-'):  # selected close-window or Cancel
             break
 
         win_w, win_h = window.size
@@ -1418,7 +1453,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 continue
 
         # Run table filter event
-        if event == filter_key:
+        if event in (filter_key, '-ENTER-'):
             for param in table.parameters:
                 # Set parameter values from window elements
                 param.value = param.format_value(values)
@@ -1512,6 +1547,11 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=True)
     window.finalize()
 
+    # Bind keys to events
+    window.bind('<Key-Escape>', '-ESCAPE-')
+    window.bind('<Key-Return>', '-ENTER-')
+
+    # Resize screen
     screen_w, screen_h = window.get_screen_dimensions()
     if win_size:
         win_w, win_h = win_size
@@ -1542,7 +1582,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     while True:
         event, values = window.read(timeout=500)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-', '-ESCAPE-'):  # selected close-window or Cancel
             break
 
         win_w, win_h = window.size
@@ -1561,7 +1601,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
             current_w, current_h = (win_w, win_h)
 
-        if event == '-FIND-':
+        if event == '-FIND-':  # click the find button to query database
             # Set search parameter values
             query_filters = []
             for param in params:
@@ -1584,7 +1624,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
             continue
 
-        if event == '-IMPORT-':  # click 'Import' button
+        if event in ('-IMPORT-', '-ENTER-'):  # click 'Import' button or hit enter on the keyboard
             # Get index of selected rows
             selected_rows = values[table.key_lookup('Element')]
 
@@ -1691,6 +1731,10 @@ def edit_settings(win_size: tuple = None):
     window = sg.Window('Settings', layout, modal=True, resizable=False)
     window.finalize()
 
+    # Bind keys to events
+    window.bind('<Key-Escape>', '-ESCAPE-')
+    window.bind('<Key-Return>', '-ENTER-')
+
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
                     '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname'}
 
@@ -1698,10 +1742,10 @@ def edit_settings(win_size: tuple = None):
     while True:
         event, values = window.read()
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-', '-ESCAPE-'):  # selected close-window or Cancel
             break
 
-        if event == '-SAVE-':
+        if event in ('-SAVE-', '-ENTER-'):
             for element_key in element_keys:
                 attribute = element_keys[element_key]
                 element_value = values[element_key]

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.1.5'
+__version__ = '3.1.10'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -460,6 +460,12 @@ def main():
     window.finalize()
     window.maximize()
     logger.info('starting the program')
+
+    # Bind keyboard events
+    window.bind('<Key-Escape>', '-ESCAPE-')
+    window.bind('<Key-Return>', '-ENTER-')
+    window.bind('<Key-Right>', '-RIGHT-')
+    window.bind('<Key-Left>', '-LEFT-')
 
     screen_w, screen_h = window.get_screen_dimensions()
     logger.debug('screen size is {W} x {H}'.format(W=screen_w, H=screen_h))

@@ -176,8 +176,6 @@ class RecordEntry:
                                  .format(NAME=name))
             sys.exit(1)
 
-#        self.ids = []
-
     def import_records(self, params: list = None):
         """
         Import all records from the database.
@@ -203,12 +201,14 @@ class RecordEntry:
 
         return import_df
 
-    def confirm_saved(self, record_ids, id_field: str = 'RecordID'):
+    def confirm_saved(self, id_list, id_field: str = 'RecordID'):
         """
         Check whether or not records have already been saved to the database.
         """
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
+        if isinstance(id_list, str):
+            record_ids = [id_list]
+        else:
+            record_ids = id_list
 
         record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
         logger.debug('verifying whether records {IDS} of type "{TYPE}" have been previously saved to the database'
@@ -242,17 +242,19 @@ class RecordEntry:
             else:
                 records_saved.append(False)
 
-        if len(record_ids) == 1:
+        if isinstance(id_list, str):
             return records_saved[0]
         else:
             return records_saved
 
-    def load_record_data(self, record_ids, id_field: str = 'RecordID'):
+    def load_record_data(self, id_list, id_field: str = 'RecordID'):
         """
         Load a record from the database using the record ID.
         """
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
+        if isinstance(id_list, str):
+            record_ids = [id_list]
+        else:
+            record_ids = id_list
 
         record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
         logger.debug('loading records {IDS} of type "{TYPE}" from the database'.format(IDS=record_ids, TYPE=self.name))
@@ -1752,6 +1754,7 @@ class DatabaseRecord:
 
             # Prepare update statements for existing record components
 #            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
+            print(saved_records)
             existing_comps = comp_df[saved_records]
             try:
                 statements = comp_entry.export_table(existing_comps, statements=statements,

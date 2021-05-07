@@ -124,9 +124,10 @@ class AuditRule:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
-                          'PanelHeight', 'FrameHeight', 'FrameWidth']]
+        self.elements = ['-ENTER-', '-ESCAPE-', '-LEFT-', '-RIGHT-']
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                              ['Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
+                               'PanelHeight', 'FrameHeight', 'FrameWidth']])
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -282,7 +283,7 @@ class AuditRule:
         summary_keys = self.summary.elements
 
         # Cancel button pressed
-        if event == cancel_key:
+        if event in (cancel_key, '-ESCAPE-'):
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Transaction audit is currently in progress. Are you sure you would like to quit without saving?'
@@ -302,8 +303,8 @@ class AuditRule:
             else:
                 current_rule = self.reset_rule(window, current=False)
 
-        # Next button pressed
-        elif event == next_key:  # display summary panel
+        # Next button pressed - display summary panel
+        elif (event == next_key) or (event == '-RIGHT-' and not window[next_key].metadata['disabled']):
             next_subpanel = self.current_panel + 1
 
             # Prepare audit records
@@ -321,9 +322,14 @@ class AuditRule:
                     tab.update_display(window)
 
                 # Disable / enable action buttons
-                window[self.key_lookup('Next')].update(disabled=True)
-                window[self.key_lookup('Back')].update(disabled=False)
-                window[self.key_lookup('Save')].update(disabled=False)
+                window[next_key].update(disabled=True)
+                window[next_key].metadata['disabled'] = True
+
+                window[back_key].update(disabled=False)
+                window[back_key].metadata['disabled'] = False
+
+                window[save_key].update(disabled=False)
+                window[save_key].metadata['disabled'] = False
 
             # Hide current panel and un-hide the following panel
             window[self.panel_keys[self.current_panel]].update(visible=False)
@@ -333,7 +339,7 @@ class AuditRule:
             self.current_panel = next_subpanel
 
         # Back button pressed
-        elif event == back_key:
+        elif (event == back_key) or (event == '-LEFT-' and not window[back_key].metadata['disabled']):
             current_panel = self.current_panel
 
             # Delete unsaved keys if returning from summary panel
@@ -353,8 +359,11 @@ class AuditRule:
             window[self.panel_keys[current_panel]].update(visible=False)
             window[self.panel_keys[prev_subpanel]].update(visible=True)
 
-            window[self.key_lookup('Next')].update(disabled=False)
-            window[self.key_lookup('Back')].update(disabled=True)
+            window[next_key].update(disabled=False)
+            window[next_key].metadata['disabled'] = False
+
+            window[back_key].update(disabled=True)
+            window[back_key].metadata['disabled'] = True
 
             # Switch to first tab
             tg_key = self.key_lookup('TG')
@@ -365,12 +374,17 @@ class AuditRule:
 
             # Enable / disable action buttons
             if prev_subpanel == self.first_panel:
-                window[self.key_lookup('Next')].update(disabled=False)
-                window[self.key_lookup('Back')].update(disabled=True)
-                window[self.key_lookup('Save')].update(disabled=True)
+                window[next_key].update(disabled=False)
+                window[next_key].metadata['disabled'] = False
+
+                window[back_key].update(disabled=True)
+                window[back_key].metadata['disabled'] = True
+
+                window[save_key].update(disabled=True)
+                window[save_key].metadata['disabled'] = True
 
         # Start button pressed
-        elif event == start_key:
+        elif (event == start_key) or (event == '-ENTER-' and not window[start_key].metadata['disabled']):
             # Check for valid parameter values
             params = self.parameters
             inputs = []
@@ -491,26 +505,27 @@ class AuditRule:
                     # Enable movement to the next tab
                     next_index = current_index + 1
                     if next_index < final_index:
-                        next_key = [i.key_lookup('Tab') for i in self.tabs][next_index]
-                        next_tab = self.fetch_tab(next_key, by_key=True)
+                        next_tab_key = [i.key_lookup('Tab') for i in self.tabs][next_index]
+                        next_tab = self.fetch_tab(next_tab_key, by_key=True)
                         logger.debug('AuditRule {NAME}: enabling next tab {TITLE} with index {IND}'
                                      .format(NAME=self.name, TITLE=next_tab.title, IND=next_index))
 
                         # Enable next tab
-                        window[next_key].update(disabled=False, visible=True)
+                        window[next_tab_key].update(disabled=False, visible=True)
 
                     # Enable the finalize button when an audit has been run on all tabs.
                     if next_index == final_index:
                         logger.info('AuditRule {NAME}: all audits have been performed - preparing audit summary'
                                     .format(NAME=self.name))
-                        window[self.key_lookup('Next')].update(disabled=False)
+                        window[next_key].update(disabled=False)
+                        window[next_key].metadata['disabled'] = False
 
         # Run transaction summary events
         elif event in summary_keys:
             self.summary.run_event(window, event, values)
 
         # Save results of the audit
-        elif event == save_key:
+        elif event == save_key or (event == '-ENTER-' and not window[save_key].metadata['disabled']):
             # Get output file from user
             title = self.summary.title.replace(' ', '_')
             outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
@@ -607,7 +622,7 @@ class AuditRule:
 
         start_key = self.key_lookup('Start')
         start_layout = [[mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False,
-                                   button_color=(bttn_text_col, bttn_bg_col),
+                                   button_color=(bttn_text_col, bttn_bg_col), metadata={'disabled': False},
                                    disabled_button_color=(disabled_text_col, disabled_bg_col),
                                    tooltip='Start transaction audit', use_ttk_buttons=True)]]
 
@@ -661,11 +676,13 @@ class AuditRule:
                    pad=(0, (pad_v, 0)), justification='l', expand_x=True),
             sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
             sg.Col([[sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=((0, pad_el), 0), disabled=True, tooltip='Return to audit'),
+                               pad=((0, pad_el), 0), disabled=True, tooltip='Return to audit',
+                               metadata={'disabled': True}),
                      sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=(pad_el, 0), disabled=True, tooltip='Review audit'),
+                               pad=(pad_el, 0), disabled=True, tooltip='Review audit',
+                               metadata={'disabled': True}),
                      sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=((pad_el, 0), 0), disabled=True,
+                               pad=((pad_el, 0), 0), disabled=True, metadata={'disabled': True},
                                tooltip='Save to database and generate summary report')]],
                    pad=(0, (pad_v, 0)), justification='r')]
 
@@ -744,14 +761,21 @@ class AuditRule:
         window['-HOME-'].update(visible=True)
 
         # Reset "action" elements to default
-        save_key = self.key_lookup('Save')
-        next_key = self.key_lookup('Next')
-        back_key = self.key_lookup('Back')
         start_key = self.key_lookup('Start')
-        window[next_key].update(disabled=True)
-        window[back_key].update(disabled=True)
-        window[save_key].update(disabled=True)
         window[start_key].update(disabled=False)
+        window[start_key].metadata['disabled'] = False
+
+        next_key = self.key_lookup('Next')
+        window[next_key].update(disabled=True)
+        window[next_key].metadata['disabled'] = True
+
+        back_key = self.key_lookup('Back')
+        window[back_key].update(disabled=True)
+        window[back_key].metadata['disabled'] = True
+
+        save_key = self.key_lookup('Save')
+        window[save_key].update(disabled=True)
+        window[save_key].metadata['disabled'] = True
 
         # Switch to first tab in panel
         tg_key = self.key_lookup('TG')
