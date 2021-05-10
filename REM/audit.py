@@ -81,8 +81,8 @@ class AuditRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('Warning: AuditRules: Rule {NAME} not in list of configured audit rules. Available rules are {ALL}'
-                  .format(NAME=name, ALL=', '.join(self.print_rules())))
+            logger.warning('AuditRules: Rule {NAME} not in list of configured audit rules. Available rules are {ALL}'
+                           .format(NAME=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
             rule = self.rules[index]
@@ -143,9 +143,10 @@ class AuditRule:
         try:
             params = entry['RuleParameters']
         except KeyError:
-            msg = 'Configuration Error: AuditRule {RULE}: missing required "Main" parameter "RuleParameters"' \
+            msg = 'AuditRule {RULE}: missing required "Main" parameter "RuleParameters"' \
                 .format(RULE=name)
             mod_win2.popup_error(msg)
+            logger.error(msg)
             sys.exit(1)
 
         for param_name in params:
@@ -163,9 +164,10 @@ class AuditRule:
             elif param_layout == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
             else:
-                msg = 'Configuration Error: AuditRule {NAME}: unknown type {TYPE} provided to RuleParameter {PARAM}' \
+                msg = 'AuditRule {NAME}: unknown type {TYPE} provided to RuleParameter {PARAM}' \
                     .format(NAME=name, TYPE=param_layout, PARAM=param_name)
                 mod_win2.popup_error(msg)
+                logger.error(msg)
                 sys.exit(1)
 
             param = param_class(param_name, param_entry)
@@ -176,8 +178,9 @@ class AuditRule:
         try:
             tab_entries = entry['Tabs']
         except KeyError:
-            msg = 'Configuration Error: AuditRule {NAME}: missing required parameter "Tabs"'.format(NAME=name)
+            msg = 'AuditRule {NAME}: missing required parameter "Tabs"'.format(NAME=name)
             mod_win2.popup_error(msg)
+            logger.error(msg)
             sys.exit(1)
 
         for tab_i, tab_name in enumerate(tab_entries):
@@ -185,7 +188,7 @@ class AuditRule:
 
             self.tabs.append(tab_rule)
             self.elements += tab_rule.elements
-            self.elements.append('-{NAME}_{ID}_Tab{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=tab_i))
+            self.elements.append('-TAB{}-'.format(tab_i+1))
 
         self.current_tab = 0
         self.final_tab = len(self.tabs)
@@ -193,8 +196,9 @@ class AuditRule:
         try:
             summary_entry = entry['Summary']
         except KeyError:
-            msg = 'Configuration Error: AuditRule {NAME}: missing required parameter "Summary"'.format(NAME=name)
+            msg = 'AuditRule {NAME}: missing required parameter "Summary"'.format(NAME=name)
             mod_win2.popup_error(msg)
+            logger.error(msg)
             sys.exit(1)
 
         self.summary = AuditSummary(name, summary_entry)
@@ -216,8 +220,8 @@ class AuditRule:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: AuditRule {NAME}: component {COMP} not found in list of rule components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('AuditRule {NAME}: component {COMP} not found in list of rule components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -238,8 +242,8 @@ class AuditRule:
             try:
                 index = names.index(fetch_key)
             except ValueError:
-                print('Error: AuditRule {RULE}: {TAB} not found in list of audit rule transaction tabs'
-                      .format(RULE=self.name, TAB=fetch_key))
+                logger.warning('AuditRule {RULE}: {TAB} not found in list of audit rule transaction tabs'
+                               .format(RULE=self.name, TAB=fetch_key))
             else:
                 tab_item = tabs[index]
 
@@ -277,6 +281,7 @@ class AuditRule:
         start_key = self.key_lookup('Start')
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TG')
+        tab_bttn_keys = ['-TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
 
         # Rule component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
@@ -291,10 +296,6 @@ class AuditRule:
                 selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
-                    # Remove from the list of used IDs any IDs created during the now cancelled audit
-#                    for tab in self.summary.tabs:
-#                        mod_records.remove_unsaved_keys(tab.record)
-
                     # Reset the rule and update the panel
                     remain_in_panel = True if not values['-AMENU-'] else False
                     if remain_in_panel is True:
@@ -346,11 +347,8 @@ class AuditRule:
             # Delete unsaved keys if returning from summary panel
             if current_panel == self.last_panel:
                 for tab in self.summary.tabs:
-                    # Remove unsaved IDs associated with the record
-                    mod_records.remove_unsaved_keys(tab.record)
-
-                    # Reset audit records
-                    tab.reset(window)
+                    # Reset audit record components
+                    tab.reset_components(window)
 
                     # Update the audit record's display
                     tab.update_display(window)
@@ -442,6 +440,9 @@ class AuditRule:
                     # Update summary panel title with rule parameter values
                     self.summary.update_title(window, self.parameters)
 
+                    for tab in self.summary.tabs:
+                        tab.update_display(window)
+
                     for tab in self.tabs:
                         # Enable table element events
                         tab.table.enable(window)
@@ -463,6 +464,25 @@ class AuditRule:
                     current_rule = self.reset_rule(window, current=True)
 
         # Switch between tabs
+        elif event in tab_bttn_keys:
+            # Determine which panel to act on
+            if self.current_panel == self.last_panel:
+                self.summary.run_event(window, event, values)
+            else:
+                # Get the element key corresponding the the tab number pressed
+                tab_index = int(event[1:-1][-1]) - 1
+
+                try:
+                    next_tab_key = [i.key_lookup('Tab') for i in self.tabs][tab_index]
+                except IndexError:
+                    return current_rule
+
+                if window[next_tab_key].metadata['visible'] and not window[next_tab_key].metadata['disabled']:
+                    # Switch to the selected tab
+                    tg_key = self.key_lookup('TG')
+                    window[tg_key].Widget.select(tab_index)
+                    self.current_tab = tab_index
+
         elif event == tg_key:
             tab_key = window[tg_key].Get()
             tab = self.fetch_tab(tab_key, by_key=True)
@@ -496,7 +516,10 @@ class AuditRule:
                 logger.error('AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
                              .format(NAME=self.name, KEY=event))
             else:
+                # Run the tab event
                 success = tab.run_event(window, event, values)
+
+                # Enable the next tab if an audit event was successful
                 if event == tab.key_lookup('Audit') and success is True:
                     logger.info('AuditRule {NAME}: auditing of transaction {TITLE} was successful'
                                 .format(NAME=self.name, TITLE=tab.title))
@@ -513,6 +536,8 @@ class AuditRule:
 
                         # Enable next tab
                         window[next_tab_key].update(disabled=False, visible=True)
+                        window[next_tab_key].metadata['disabled'] = False
+                        window[next_tab_key].metadata['visible'] = True
 
                     # Enable the finalize button when an audit has been run on all tabs.
                     if next_index == final_index:
@@ -783,10 +808,6 @@ class AuditRule:
         window[tg_key].Widget.select(0)
         self.current_tab = 0
 
-        # Switch to first tab in summary panel
-        tg_key = self.summary.key_lookup('TG')
-        window[tg_key].Widget.select(0)
-
         # Reset rule item attributes and parameters.
         self.reset_parameters(window)
         self.toggle_parameters(window, 'enable')
@@ -1008,7 +1029,7 @@ class AuditTransactionTab:
                           background_color=bg_col, expand_x=True)]]
 
         return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col, visible=visible,
-                      metadata={'visible': visible})
+                      disabled=False, metadata={'visible': visible, 'disabled': False})
 
     def resize_elements(self, window, size):
         """
@@ -1375,8 +1396,8 @@ class AuditTransactionTab:
 
             if comp_name == 'date':  # component is datestr
                 if not date:
-                    print('Warning: AuditTransactionTab {NAME}: no date provided for ID number {NUM} ... reverting to '
-                          'today\'s date'.format(NAME=self.name, NUM=number))
+                    logger.warning('AuditTransactionTab {NAME}: no date provided for ID number {NUM} ... reverting to '
+                                   'today\'s date'.format(NAME=self.name, NUM=number))
                     value = datetime.datetime.now().strftime(comp_value)
                 else:
                     value = date
@@ -1401,8 +1422,8 @@ class AuditTransactionTab:
                 try:
                     comp_value = identifier[comp_index[0]: comp_index[1]]
                 except IndexError:
-                    print('Warning: AuditTransactionTab {NAME}: ID component {COMP} cannot be found in identifier '
-                          '{IDENT}'.format(NAME=self.name, COMP=component, IDENT=identifier))
+                    logger.warning('AuditTransactionTab {NAME}: ID component {COMP} cannot be found in identifier '
+                                   '{IDENT}'.format(NAME=self.name, COMP=component, IDENT=identifier))
 
                 break
 
@@ -1448,11 +1469,12 @@ class AuditSummary:
             sys.exit(1)
         else:
             self.tabs = []
-            for record_type in record_tabs:
+            for tab_i, record_type in enumerate(record_tabs):
                 tab = AuditRecordTab(record_type, record_tabs[record_type])
 
                 self.tabs.append(tab)
                 self.elements += tab.elements
+                self.elements.append('-TAB{}-'.format(tab_i))
 
         try:
             report = entry['Report']
@@ -1489,8 +1511,8 @@ class AuditSummary:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: AuditRuleSummary {NAME}: component {COMP} not found in list of components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('AuditRuleSummary {NAME}: component {COMP} not found in list of components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -1528,6 +1550,11 @@ class AuditSummary:
         """
         self.title = None
 
+        # Switch to first tab in summary panel
+        tg_key = self.key_lookup('TG')
+        window[tg_key].Widget.select(0)
+
+        # Reset summary records
         for tab in self.tabs:
             tab.reset(window)
 
@@ -1536,13 +1563,29 @@ class AuditSummary:
         Run a transaction audit summary event.
         """
         # Run a summary tab event
+        tab_bttn_keys = ['-TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
         tab_keys = [i for j in self.tabs for i in j.elements]
-        if event in tab_keys:
+
+        if event in tab_bttn_keys:
+            # Get the element key corresponding the the tab number pressed
+            tab_index = int(event[1:-1][-1]) - 1
+
+            try:
+                next_tab_key = [i.key_lookup('Tab') for i in self.tabs][tab_index]
+            except IndexError:
+                pass
+            else:
+                if window[next_tab_key].metadata['visible'] and not window[next_tab_key].metadata['disabled']:
+                    # Switch to the selected tab
+                    tg_key = self.key_lookup('TG')
+                    window[tg_key].Widget.select(tab_index)
+
+        elif event in tab_keys:
             try:
                 tab = self.fetch_tab(event, by_key=True)
             except Exception as e:
-                print('Error: AuditRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
-                      .format(NAME=self.name, EVENT=event, ERR=e))
+                logger.error('AuditRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
+                             .format(NAME=self.name, EVENT=event, ERR=e))
             else:
                 tab.run_event(window, event, values)
 
@@ -1591,7 +1634,8 @@ class AuditSummary:
             tab_key = tab.key_lookup('Tab')
             tab_title = tab.title
             tab_layout = tab.record.layout(win_size=(tab_width, tab_height), ugroup=user.access_permissions())
-            record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col))
+            record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col,
+                                      metadata={'visible': True, 'disabled': False}))
 
         tg_key = self.key_lookup('TG')
         tg_layout = [sg.TabGroup([record_tabs], key=tg_key, pad=(0, 0), background_color=bg_col,
@@ -1683,7 +1727,7 @@ class AuditSummary:
 
         report_def = self.report
 
-        print('Info: AuditRule {NAME}: saving summary report to {FILE}'.format(NAME=self.name, FILE=filename))
+        logger.info('AuditRule {NAME}: saving summary report to {FILE}'.format(NAME=self.name, FILE=filename))
 
         tabs = []
         for tab_name in report_def:
@@ -1702,7 +1746,6 @@ class AuditSummary:
 
             # Fetch component accounts table from
             comp_table = reference_tab.record.fetch_component('account')
-            print(comp_table.df.head())
 
             section_def = report_def[tab_name]
             sections = []
@@ -1719,21 +1762,21 @@ class AuditSummary:
                     try:
                         subset_df = comp_table.filter_deleted(comp_table.subset(sub_rule))
                     except (NameError, SyntaxError) as e:
-                        print('Error: AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
-                              '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
+                        logger.error('AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
+                                     '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
                         continue
                     else:
                         if subset_df.empty:
-                            print('Warning: AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule "{SUB}" '
-                                  'removed all records'.format(NAME=self.name, SEC=tab_name, SUB=sub_rule))
+                            logger.warning('AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule "{SUB}" '
+                                           'removed all records'.format(NAME=self.name, SEC=tab_name, SUB=sub_rule))
                             continue
 
                 # Select columns configured
                 try:
                     subset_df = subset_df[section['Columns']]
                 except KeyError as e:
-                    print('Error: AuditRuleSummary {NAME}, Report {SEC}: unknown column provided - {ERR}'
-                          .format(NAME=self.name, SEC=section_name, ERR=e))
+                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: unknown column provided - {ERR}'
+                                   .format(NAME=self.name, SEC=section_name, ERR=e))
                     continue
 
                 # Format table for display
@@ -1765,8 +1808,8 @@ class AuditSummary:
                 try:
                     html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
                 except Exception as e:
-                    print('Warning: AuditRuleSummary {NAME}, Report {SEC}: failed to annotate output - {ERR}'
-                          .format(NAME=self.name, SEC=section_name, ERR=e))
+                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: failed to annotate output - {ERR}'
+                                  .format(NAME=self.name, SEC=section_name, ERR=e))
                     html_out = html_str
 
                 sections.append((title, html_out))
@@ -1786,8 +1829,8 @@ class AuditSummary:
             pdfkit.from_string(html_out, filename, configuration=config, css=css_url,
                                options={'enable-local-file-access': None})
         except Exception as e:
-            print('Error: AuditRuleSummary {NAME}: writing to PDF failed - {ERR}'
-                  .format(NAME=self.name, ERR=e))
+            logger.error('AuditRuleSummary {NAME}: writing to PDF failed - {ERR}'
+                         .format(NAME=self.name, ERR=e))
             status = False
         else:
             status = True
@@ -1909,6 +1952,9 @@ class AuditRecordTab:
         except KeyError:
             self.defaults = {}
 
+        # Dynamic attributes
+        self.record_id = None
+
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -1929,6 +1975,22 @@ class AuditRecordTab:
         Reset Summary tab record.
         """
         self.record.reset(window)
+
+    def reset_components(self, window):
+        """
+        Reset summary tab record components.
+        """
+        for comp_table in self.record.components:
+            comp_type = comp_table.record_type
+            if comp_type is None:
+                continue
+            else:
+                comp_entry = settings.records.fetch_rule(comp_type)
+
+            ids_to_remove = comp_table.df[comp_table.id_column].values.tolist()
+            comp_entry.remove_unsaved_ids(record_ids=ids_to_remove)
+
+            comp_table.reset(window)
 
     def run_event(self, window, event, values):
         """
@@ -1994,10 +2056,12 @@ class AuditRecordTab:
                     element_name = element.name
                     if element_name in param_names:
                         param = params[param_names.index(element_name)]
-                        logger.debug('AuditRuleTab {NAME}: adding value {VAL} from parameter {PARAM} to data element '
-                                     '{ELEM}'.format(NAME=self.name, VAL=param.value, PARAM=param.name,
-                                                     ELEM=element_name))
-                        record_data[param.name] = param.value
+
+                        element_value = param.value
+                        logger.debug('AuditRuleTab {NAME}: adding value "{VAL}" from parameter "{PARAM}" to data '
+                                     'element {ELEM}'.format(NAME=self.name, VAL=element_value, PARAM=param.name,
+                                                             ELEM=element_name))
+                        record_data[param.name] = element_value
                     else:
                         logger.debug('AuditRuleTab {NAME}: no values found for data element {ELEM}'
                                      .format(NAME=self.name, ELEM=element_name))
