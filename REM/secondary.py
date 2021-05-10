@@ -288,10 +288,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
         event, values = window.read()
 
         if event in (sg.WIN_CLOSED, '-ESCAPE-'):  # selected to close window without accepting changes
-            record = None
-
             # Remove unsaved IDs associated with the record
-            settings.remove_unsaved_ids()
+            if savable:
+                record.remove_unsaved_ids()
+
+            record = None
 
             break
 
@@ -349,7 +350,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 continue
             else:
                 # Remove unsaved IDs associated with the record
-                settings.remove_unsaved_ids()
+                record.remove_unsaved_ids()
 
                 break
 
@@ -363,7 +364,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                     continue
                 else:
                     # Remove unsaved IDs associated with the record
-                    settings.remove_unsaved_ids()
+                    record.remove_unsaved_ids()
 
                     break
             else:

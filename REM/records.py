@@ -814,7 +814,7 @@ class CustomRecordEntry:
 
 #        self.ids = []
 
-    def remove_unsaved_id(self, record_id):
+    def remove_unsaved_ids(self, record_id):
         """
         Remove record ID from the list of unsaved IDs
         """
@@ -1309,6 +1309,39 @@ class DatabaseRecord:
 
         self.ref_df = pd.DataFrame(
             columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
+
+    def remove_unsaved_ids(self):
+        """
+        Remove any unsaved IDs associated with the record, including the records own ID.
+        """
+        record_id = self.record_id()
+        record_entry = self.record_entry
+
+        # Remove unsaved ID if record ID is found in the list of unsaved record IDs
+        unsaved_ids = record_entry.get_unsaved_ids()
+        if record_id in unsaved_ids:
+            record_entry.remove_unsaved_ids(record_ids=[record_id])
+
+        # Remove unsaved components
+        for comp_table in self.components:
+            comp_type = comp_table.record_type
+            if comp_type is None:
+                continue
+            else:
+                comp_entry = settings.records.fetch_rule(comp_type)
+
+            # Get a list of components added to the component table (i.e. not in the database yet)
+            unsaved_ids = comp_entry.get_unsaved_ids()
+
+            ids_to_remove = []
+            for index, row in comp_table.df.iterrows():
+                row_id = row[comp_table.id_column]
+                if row_id not in unsaved_ids:  # don't attempt to remove IDs if already in the database
+                    continue
+
+                ids_to_remove.append(row_id)
+
+            comp_entry.remove_unsaved_ids(record_ids=ids_to_remove)
 
     def fetch_header(self, element, by_key: bool = False):
         """
@@ -2382,36 +2415,6 @@ def create_record(record_entry, record_data, level: int = 1):
     record.initialize(record_data, new=True)
 
     return record
-
-
-def remove_unsaved_keys(record):
-    """
-    Remove any unsaved IDs associated with the record, including the records own ID.
-    """
-    # Remove unsaved ID if record is new
-    record_entry = record.record_entry
-    record_entry.remove_unsaved_ids(record_ids=[record.record_id()])
-
-    # Remove unsaved components
-    for comp_table in record.components:
-        comp_type = comp_table.record_type
-        if comp_type is None:
-            continue
-        else:
-            comp_entry = settings.records.fetch_rule(comp_type)
-
-        # Get a list of added components added to the component table (i.e. not in the database yet)
-        added_ids = record.get_added_components(comp_table.name)
-
-        ids_to_remove = []
-        for index, row in comp_table.df.iterrows():
-            row_id = row[comp_table.id_column]
-            if row_id not in added_ids:  # don't attempt to remove IDs if already in the database
-                continue
-
-            ids_to_remove.append(row_id)
-
-        comp_entry.remove_unsaved_ids(record_ids=ids_to_remove)
 
 
 def import_references(record_id):

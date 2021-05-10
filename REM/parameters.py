@@ -836,7 +836,7 @@ class DataParameterDate(DataParameter):
             input_value = values[self.key_lookup('Element')]
         except KeyError:
             logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
-                  .format(NAME=self.name))
+                           .format(NAME=self.name))
             return self.value
 
         if not input_value:
@@ -893,7 +893,7 @@ class DataParameterDate(DataParameter):
         """
         status = False if value == 'enable' else True
 
-        logger.debug('DataParameter {NAME}: updating elements to "disabled={VAL}"'
+        logger.debug('DataParameter {NAME}: setting elements to "disabled={VAL}"'
                      .format(NAME=self.name, VAL=status))
 
         element_key = self.key_lookup('Element')

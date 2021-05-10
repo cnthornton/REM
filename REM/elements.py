@@ -3220,15 +3220,21 @@ class DataElement:
 
         try:
             aliases = {j: i for i, j in options['Aliases'].items()}
-        except KeyError:
+        except (AttributeError, KeyError):
             input_value = input_value
         else:
             try:
                 alias_value = aliases[input_value]
             except KeyError:
+                logger.debug('DataElement {NAME}: failed to find an alias for value "{VAL}"'
+                             .format(NAME=self.name, VAL=input_value))
+                print(aliases)
+                print(input_value)
                 input_value = input_value
             else:
-                logger.debug('DataElement {NAME}: setting value to {VAL} with alias {ALIAS}'
+                print(aliases)
+                print(input_value, alias_value)
+                logger.debug('DataElement {NAME}: setting value to "{VAL}" with alias "{ALIAS}"'
                              .format(NAME=self.name, VAL=input_value, ALIAS=alias_value))
                 input_value = alias_value
 
@@ -3287,7 +3293,7 @@ class DataElement:
         else:
             value_fmt = str(input_value)
 
-        logger.debug('DataElement {NAME}: input value {VAL} formatted as {FMT}'
+        logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
                      .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
 
         return value_fmt
