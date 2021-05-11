@@ -1374,7 +1374,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
             # Create a new record object
             record_date = datetime.datetime.now()
-            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
+            record_id = record_entry.create_record_ids(record_date, offset=settings.get_date_offset())
             if not record_id:
                 msg = 'failed to create a new record - unable to create an ID for the new record'
                 logger.error(msg)

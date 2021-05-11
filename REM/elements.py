@@ -1879,7 +1879,7 @@ class TableElement:
         # Create a new record object
         record_entry = settings.records.fetch_rule(self.record_type)
 
-        record_id = record_entry.create_id(creation_date, offset=settings.get_date_offset())
+        record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
         if not record_id:
             msg = 'unable to create an ID for the new record'
             logger.error('Error: DataTable {NAME}: failed to add new row to the table - {ERR}'
@@ -2175,10 +2175,10 @@ class TableElement:
 #        df.reset_index(drop=True, inplace=True)
 
         # Remove unsaved ID, if relevant
-        record_entry = settings.records.fetch_rule(self.record_type)
-        if record_entry is not None:
-            for record_id in record_ids:
-                record_entry.remove_unsaved_ids(record_ids=[record_id])
+#        record_entry = settings.records.fetch_rule(self.record_type)
+#        if record_entry is not None:
+#            for record_id in record_ids:
+#                record_entry.remove_unsaved_ids(record_ids=[record_id])
 
         return df
 

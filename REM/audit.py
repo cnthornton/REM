@@ -2046,7 +2046,7 @@ class AuditRecordTab:
 
                 # Create new record
                 record_date = params[date_index].value
-                record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
+                record_id = record_entry.create_record_ids(record_date, offset=settings.get_date_offset())
                 if not record_id:
                     raise IOError('failed to create a record ID for the {NAME} audit'.format(NAME=self.name))
 
