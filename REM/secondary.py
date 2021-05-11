@@ -255,12 +255,17 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                                   bind_return_key=True)]]
 
     # Window layout
-    layout = [[sg.Col(title_layout, background_color=header_col, expand_x=True)],
-              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-              [sg.Col(record.layout(win_size=(600, height), view_only=view_only, ugroup=user_priv),
-                      pad=(0, 0), background_color=bg_col, expand_x=True)],
-              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-              [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]]
+    bffr_height = 230
+    height_key = '-HEIGHT-'
+    layout = [[sg.Col([[sg.Canvas(key=height_key, size=(1, height))]]),
+              sg.Col([
+                  [sg.Col(title_layout, background_color=header_col, expand_x=True)],
+                  [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+                  [sg.Col(record.layout(win_size=(600, height - bffr_height), view_only=view_only, ugroup=user_priv),
+                          pad=(0, 0), background_color=bg_col, expand_x=True)],
+                  [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+                  [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
+              ], pad=(0, 0), expand_y=True, expand_x=True)]]
 
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
@@ -273,10 +278,12 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
-    win_w = int(screen_w * 0.45)
-    win_h = int(screen_h * 0.6)
+    wh_ratio = 0.9
+    win_h = int(screen_h * 0.8)
+    win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
 
-    record.resize(window, win_size=(win_w, win_h))
+    record.resize(window, win_size=(win_w, win_h - bffr_height))
+    window.bind("<Configure>", window[height_key].Widget.config(height=int(win_h)))
     window = center_window(window)
     current_w, current_h = window.size
 
@@ -299,10 +306,12 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
         win_w, win_h = window.size
         if win_w != current_w or win_h != current_h:
+            logger.debug('current window size is {W} x {H}'.format(W=current_w, H=current_h))
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            record.resize(window, win_size=(win_w, win_h))
+            window.bind("<Configure>", window[height_key].Widget.config(height=int(win_h)))
+            record.resize(window, win_size=(win_w, win_h - bffr_height))
 
             current_w, current_h = (win_w, win_h)
 
@@ -1288,7 +1297,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                               pad=((0, pad_el), 0), visible=enable_new, tooltip='Create new record')]]
 
     width_key = '-WIDTH-'
-    height_key = 'HEIGHT'
+    height_key = '-HEIGHT-'
     layout = [[sg.Canvas(key=width_key, size=(width, 0))],
               [sg.Col(title_layout, key='-HEADER-', pad=(0, 0), justification='l', background_color=header_col,
                       expand_x=True)],
