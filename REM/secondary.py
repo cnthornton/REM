@@ -262,7 +262,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
               [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
               [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]]
 
-    window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True)
+    window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
 
     # Bind keys to events
@@ -278,6 +278,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     record.resize(window, win_size=(win_w, win_h))
     window = center_window(window)
+    current_w, current_h = window.size
 
     # Update record display
     record.update_display(window)
@@ -296,10 +297,17 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
             break
 
+        win_w, win_h = window.size
+        if win_w != current_w or win_h != current_h:
+            logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
+
+            # Update sizable elements
+            record.resize(window, win_size=(win_w, win_h))
+
+            current_w, current_h = (win_w, win_h)
+
         if event == '-ENTER-':
             if savable:
-                window['-SAVE-'].click()
-            else:
                 window['-OK-'].click()
 
         if event in ('-BACKSPACE-', '-DELKEY-'):
