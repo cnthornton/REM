@@ -271,7 +271,6 @@ class RecordEntry:
         logger.debug('loading records {IDS} of type "{TYPE}" from the database'.format(IDS=record_ids, TYPE=self.name))
 
         # Add configured import filters
-        filters = mod_db.format_import_filters(self.import_rules)
         table_statement = mod_db.format_tables(self.import_rules)
         columns = mod_db.format_import_columns(self.import_rules)
         id_col = mod_db.get_import_column(self.import_rules, id_field)
@@ -281,6 +280,7 @@ class RecordEntry:
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
             filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
+            filters = mod_db.format_import_filters(self.import_rules)
             filters.append((filter_clause, tuple(sub_ids)))
 
             if import_df.empty:
@@ -358,9 +358,6 @@ class RecordEntry:
             else:
                 statement, param = user.prepare_insert_statement(table, export_columns, export_values)
 
-            print(export_columns)
-            print(export_values)
-
             if isinstance(param, list):
                 try:
                     statements[statement].extend(param)
@@ -436,125 +433,6 @@ class RecordEntry:
                     statements[statement] = [param]
 
         return statements
-
-    def import_record_ids(self, record_date: datetime.datetime = None, id_field: str = 'RecordID'):
-        """
-        Import existing record IDs.
-        """
-        # Prepare query parameters
-        table_statement = mod_db.format_tables(self.import_rules)
-        id_col = mod_db.get_import_column(self.import_rules, id_field)
-
-        # Define query statement
-#        params = None
-        if record_date is not None:
-            # Search for database records with date within the same month
-            try:
-                first_day = record_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                last_day = datetime.datetime(record_date.year + record_date.month // 12, record_date.month % 12 + 1,
-                                             1) - datetime.timedelta(1)
-            except AttributeError:
-                filters = None
-            else:
-                params = (first_day, last_day)
-                filters = ('{DATE} BETWEEN ? AND ?'.format(DATE=settings.date_field), params)
-        else:
-            filters = None
-        import_rows = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col, filter_rules=filters,
-                                                                 order=id_col), prog_db=True)
-
-        # Connect to database
-        try:
-            id_list = import_rows.iloc[:, 0]
-        except IndexError:
-            logger.info('no existing record IDs found')
-            id_list = []
-        except Exception as e:
-            logger.error('failed to import saved record ids - {ERR}'.format(ERR=e))
-            logger.error(import_rows)
-            raise
-
-        return id_list
-
-    def create_id(self, record_date, offset: int = 0):
-        """
-        Create a new record ID.
-        """
-        logger.info('creating a new ID for the record')
-        relativedelta = dateutil.relativedelta.relativedelta
-        strptime = datetime.datetime.strptime
-
-        id_code = self.id_code
-        unsaved_ids = self.get_unsaved_ids()
-        if unsaved_ids is None:
-            return None
-
-        # Format the date component of the new ID
-        try:
-            id_date = (record_date + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
-        except Exception as e:
-            logger.debug(e)
-            id_date = (strptime(record_date.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S')
-                       + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
-
-        logger.debug('RecordEntry {NAME}: new ID has date component {COMP}'.format(NAME=self.name, COMP=id_date))
-
-        # Search list of unsaved IDs occurring within the current date cycle
-        logger.debug('RecordEntry {NAME}: searching for unsaved record IDs with date component {DATE}'
-                     .format(NAME=self.name, DATE=id_date))
-        prev_ids = []
-        for unsaved_id in unsaved_ids:
-            prev_date = self._id_date_component(unsaved_id)
-            if prev_date == id_date:
-                prev_ids.append(unsaved_id)
-
-        logger.debug('RecordEntry {NAME}: found {NUM} unsaved records with date component {DATE}'
-                     .format(NAME=self.name, NUM=len(prev_ids), DATE=id_date))
-
-        # Search list of saved IDs occurring within the current date cycle
-        if len(prev_ids) < 1:
-            logger.debug('RecordEntry {NAME}: searching for database record IDs with date component {DATE}'
-                         .format(NAME=self.name, DATE=id_date))
-
-            # Search list of saved IDs occurring within the current date cycle for the last created ID
-            db_ids = self._import_saved_ids([record_date])
-            for db_id in db_ids:
-                prev_date = self._id_date_component(db_id)
-                if prev_date == id_date:
-                    prev_ids.append(db_id)
-
-            logger.debug('RecordEntry {NAME}: found {NUM} database records with date component {DATE}'
-                         .format(NAME=self.name, NUM=len(prev_ids), DATE=id_date))
-
-        # Get the number of the last ID used in the current date cycle
-        if len(prev_ids) > 0:
-            last_id = sorted(prev_ids)[-1]
-        else:
-            last_id = None
-
-        # Create the new ID
-        if last_id:
-            logger.info('RecordEntry {NAME}: last ID encountered is {ID}'.format(NAME=self.name, ID=last_id))
-            try:
-                last_num = int(last_id.split('-')[-1])
-            except ValueError:
-                msg = 'Record {NAME}: incorrect formatting for previous ID {ID}'.format(NAME=self.name, ID=last_id)
-                logger.error(msg)
-                return None
-        else:
-            logger.info('RecordEntry {NAME}: no previous IDs found for date {DATE} - starting new iteration at 1'
-                        .format(NAME=self.name, DATE=id_date))
-            last_num = 0
-        record_id = '{CODE}{DATE}-{NUM}'.format(CODE=id_code, DATE=id_date, NUM=str(last_num + 1).zfill(4))
-
-        logger.info('RecordEntry {NAME}: new record ID is {ID}'.format(NAME=self.name, ID=record_id))
-
-        # Add ID to the list of unsaved IDs
-        success = self.add_unsaved_ids(record_id)
-        if success is False:
-            return None
-
-        return record_id
 
     def _import_saved_ids(self, record_dates, id_field: str = 'RecordID'):
         """
@@ -741,6 +619,8 @@ class RecordEntry:
         """
         if not record_ids:
             record_ids = self.get_unsaved_ids(internal_only=internal_only)
+            if not record_ids:
+                return False
 
         if not len(record_ids) > 0:
             return True

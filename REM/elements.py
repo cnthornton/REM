@@ -1963,7 +1963,7 @@ class TableElement:
             import_filters = mod_db.format_import_filters(import_rules)
             table_statement = mod_db.format_tables(import_rules)
             import_columns = mod_db.format_import_columns(import_rules)
-            id_col = self.id_column
+            id_col = mod_db.get_import_column(import_rules, self.id_column)
 
             # Search for records in record reference table with associations
             ref_table = settings.reference_lookup
