@@ -1351,7 +1351,9 @@ def convert_datatypes(value):
     is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
     date_fmt = settings.date_format
 
-    if is_float_dtype(type(value)) is True or isinstance(value, float):
+    if pd.isna(value):
+        converted_value = None
+    elif is_float_dtype(type(value)) is True or isinstance(value, float):
         converted_value = float(value)
     elif is_integer_dtype(type(value)) is True or isinstance(value, int):
         converted_value = int(value)
@@ -1359,8 +1361,6 @@ def convert_datatypes(value):
         converted_value = bool(value)
     elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):
         converted_value = strptime(value.strftime(date_fmt), date_fmt)
-    elif pd.isna(value):
-        converted_value = None
     else:
         converted_value = str(value)
 
