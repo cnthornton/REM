@@ -210,6 +210,9 @@ class RecordEntry:
         else:
             record_ids = id_list
 
+        if not len(id_list) > 0:
+            return []
+
         record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
         logger.debug('verifying whether records {IDS} of type "{TYPE}" have been previously saved to the database'
                      .format(IDS=record_ids, TYPE=self.name))
@@ -234,7 +237,15 @@ class RecordEntry:
                                                                                         filter_rules=filters),
                                                           prog_db=True), ignore_index=True)
 
-        import_ids = import_df.iloc[:, 0].values.tolist()
+        try:
+            import_ids = import_df.iloc[:, 0].values.tolist()
+        except IndexError as e:
+            msg = 'failed to verify whether records {IDS} of type "{TYPE}" have been previously saved to the ' \
+                  'database - {ERR}'.format(IDS=record_ids, TYPE=self.name, ERR=e)
+            print(import_df)
+            logger.error(msg)
+            raise
+
         records_saved = []
         for record_id in record_ids:
             if record_id in import_ids:
@@ -286,9 +297,12 @@ class RecordEntry:
 
         return import_df
 
-    def export_table(self, df, id_field: str = 'RecordID', id_exists: bool = False, statements: dict = {},
+    def export_table(self, df, id_field: str = 'RecordID', id_exists: bool = False, statements: dict = None,
                      export_columns: bool = True):
         import_rules = self.import_rules
+
+        if not statements:
+            statements = {}
 
         if not isinstance(df, pd.DataFrame):
             raise ValueError('df must be a DataFrame or Series')
@@ -319,8 +333,10 @@ class RecordEntry:
             try:
                 id_col = references[id_field]
             except KeyError:
-                logger.error('missing ID column {COL} from record import columns {COLS}'
-                             .format(COL=id_field, COLS=list(references.keys())))
+                msg = 'missing ID column "{COL}" from record import columns {COLS}'\
+                    .format(COL=id_field, COLS=list(references.keys()))
+                logger.error(msg)
+                raise KeyError(msg)
 
             # Prepare column value updates
             include_columns = [i for i in columns if i in references]
@@ -342,6 +358,9 @@ class RecordEntry:
             else:
                 statement, param = user.prepare_insert_statement(table, export_columns, export_values)
 
+            print(export_columns)
+            print(export_values)
+
             if isinstance(param, list):
                 try:
                     statements[statement].extend(param)
@@ -355,12 +374,15 @@ class RecordEntry:
 
         return statements
 
-    def delete_record(self, record_ids, statements: dict = {}, id_field: str = 'RecordID'):
+    def delete_record(self, record_ids, statements: dict = None, id_field: str = 'RecordID'):
         """
         Delete a record from the database.
         """
         ref_table = settings.reference_lookup
         delete_code = settings.delete_field
+
+        if not statements:
+            statements = {}
 
         if isinstance(record_ids, str):
             record_ids = [record_ids]
@@ -575,19 +597,27 @@ class RecordEntry:
 
         return record_ids
 
-    def create_record_ids(self, record_dates, offset: int = 0):
+    def create_record_ids(self, date_list, offset: int = 0):
         """
         Create a new set of record IDs.
         """
         relativedelta = dateutil.relativedelta.relativedelta
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         strptime = datetime.datetime.strptime
 
         record_type = self.name
         id_code = self.id_code
 
-        if not isinstance(record_dates, list):
-            logger.error('failed to create IDs for the record entries of type {TYPE} - record_dates must be formatted '
-                         'as a list'.format(TYPE=record_type))
+        if isinstance(date_list, str) or is_datetime_dtype(type(date_list)) or isinstance(date_list, datetime.datetime):
+            record_dates = [date_list]
+            single_value = True
+        elif isinstance(date_list, list) or isinstance(date_list, tuple):
+            record_dates = date_list
+            single_value = False
+        else:
+            logger.error('failed to create IDs for the record entries of type "{TYPE}" - record_dates must be '
+                         'formatted as a list, string, or datetime object not {OTYPE}'
+                         .format(TYPE=record_type, OTYPE=type(date_list)))
             return None
 
         logger.info('creating {N} new record IDs for records of type "{TYPE}"'
@@ -682,11 +712,14 @@ class RecordEntry:
 
         success = self.add_unsaved_ids(record_ids)
         if not success:
-            logger.error('failed to create IDs for the record entries of type {TYPE} - unable to add record IDs to '
+            logger.error('failed to create IDs for the record entries of type "{TYPE}" - unable to add record IDs to '
                          'the list unsaved record IDs'.format(TYPE=record_type))
             return None
 
-        return record_ids
+        if single_value:
+            return record_ids[0]
+        else:
+            return record_ids
 
     def _id_date_component(self, record_id):
         """
@@ -1554,7 +1587,7 @@ class DatabaseRecord:
 
         return pd.Series(values, index=columns)
 
-    def delete(self, statements: dict = {}):
+    def delete(self, statements: dict = None):
         """
         Delete the record and child records from the database.
         """
@@ -1563,12 +1596,15 @@ class DatabaseRecord:
         record_id = self.record_id()
         ref_df = self.ref_df
 
+        if not statements:
+            statements = {}
+
         # Get a list of record IDs that have yet to be saved in the database
         unsaved_ids = settings.get_unsaved_ids()
 
         # Determine associations to delete as well
         ref_df['IsParentChild'].fillna(False, inplace=True)
-        child_df = ref_df[ref_df['IsParentChild']]
+        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df['IsDeleted'])]
 
         logger.info('preparing to delete record {ID} and any child records'.format(ID=record_id))
 
@@ -1648,11 +1684,14 @@ class DatabaseRecord:
 
         return success
 
-    def save(self, statements: dict = {}):
+    def save(self, statements: dict = None):
         """
         Save the record and child records to the database.
         """
         ref_table = settings.reference_lookup
+
+        if not statements:
+            statements = {}
 
         record_entry = self.record_entry
         record_id = self.record_id()
@@ -1674,10 +1713,12 @@ class DatabaseRecord:
         try:
             id_exists = record_entry.confirm_saved(record_id, id_field=self.id_field)
             record_data = self.table_values().to_frame().transpose()
+            print(record_data)
             statements = record_entry.export_table(record_data, statements=statements, id_field=self.id_field,
                                                    id_exists=id_exists)
+            print(statements)
         except Exception as e:
-            msg = 'failed to save record {ID} - {ERR}'.format(ID=record_id, ERR=e)
+            msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
             logger.exception(msg)
             return False
         else:
@@ -1725,6 +1766,10 @@ class DatabaseRecord:
         # Prepare to save record components
         comp_tables = self.components
         for comp_table in comp_tables:
+            comp_df = comp_table.df
+            if comp_df.empty:
+                continue
+
             comp_type = comp_table.record_type
             if comp_type is None:
                 logger.warning('RecordEntry {NAME}: component table "{TBL}" has no record type assigned'
@@ -1745,7 +1790,6 @@ class DatabaseRecord:
                 pc = False
 
             # Prepare the reference entries for the components
-            comp_df = comp_table.df
             for index, row in comp_df.iterrows():
                 comp_id = row[comp_table.id_column]
                 is_deleted = row[comp_table.deleted_column]
@@ -1766,7 +1810,7 @@ class DatabaseRecord:
                     # Prepare the insert statement for the existing reference entry to the references table
                     comp_columns.extend([settings.creation_date, settings.creator_code])
 
-                    logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
+                    logger.info('RecordType {NAME}, Record {ID}: saving reference to "{REF}"'
                                 .format(NAME=self.name, ID=record_id, REF=comp_id))
                     statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
 
@@ -1787,14 +1831,14 @@ class DatabaseRecord:
 
             # Prepare update statements for existing record components
 #            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
-            print(saved_records)
             existing_comps = comp_df[saved_records]
             try:
                 statements = comp_entry.export_table(existing_comps, statements=statements,
                                                      id_field=comp_table.id_column, id_exists=True)
             except Exception as e:
-                msg = 'failed to save record {ID} - {ERR}'.format(ID=record_id, ERR=e)
+                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
+
                 return False
 
             # Prepare insert statements for new record components
@@ -1804,8 +1848,9 @@ class DatabaseRecord:
                 statements = comp_entry.export_table(new_comps, statements=statements,
                                                      id_field=comp_table.id_column, id_exists=False)
             except Exception as e:
-                msg = 'failed to save record {ID} - {ERR}'.format(ID=record_id, ERR=e)
+                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
+
                 return False
 
         sstrings = []
