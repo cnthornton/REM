@@ -1604,7 +1604,8 @@ class DatabaseRecord:
 
         # Determine associations to delete as well
         ref_df['IsParentChild'].fillna(False, inplace=True)
-        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df['IsDeleted'])]
+        ref_df[settings.delete_field].fillna(False, inplace=True)
+        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field])]
 
         logger.info('preparing to delete record {ID} and any child records'.format(ID=record_id))
 
@@ -1713,10 +1714,8 @@ class DatabaseRecord:
         try:
             id_exists = record_entry.confirm_saved(record_id, id_field=self.id_field)
             record_data = self.table_values().to_frame().transpose()
-            print(record_data)
             statements = record_entry.export_table(record_data, statements=statements, id_field=self.id_field,
                                                    id_exists=id_exists)
-            print(statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
             logger.exception(msg)

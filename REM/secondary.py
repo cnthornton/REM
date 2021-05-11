@@ -278,7 +278,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
-    wh_ratio = 0.9
+    wh_ratio = 0.95
     win_h = int(screen_h * 0.8)
     win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
 
