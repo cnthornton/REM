@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.2.3'
+__version__ = '0.2.5'
 
 from multiprocessing import freeze_support
 import logging
@@ -283,6 +283,8 @@ class ClientConnection:
                                 db_manager.commit()
                         elif isinstance(statement, list) and isinstance(params, list):
                             success = True
+                            failed_statement = None
+                            failed_reason = None
                             for i, statement_i in enumerate(statement):
                                 try:
                                     params_i = params[i]
@@ -292,12 +294,16 @@ class ClientConnection:
                                 results = db_manager.write_db(statement_i, params_i)
                                 if not results['success']:
                                     success = False
+                                    failed_statement = statement_i
+                                    failed_reason = results['value']
+
                                     break
                             if success:
                                 db_manager.commit()
                                 content = {'success': True, 'value': None}
                             else:
-                                msg = 'batch write failed on transaction - {}'.format(statement)
+                                msg = 'batch write failed on transaction "{STATE}" - {REASON}'\
+                                    .format(STATE=failed_statement, REASON=failed_reason)
                                 content = {'success': False, 'value': msg}
                         else:
                             msg = 'write failed on transaction - unaccepted combination of statements and parameters'
