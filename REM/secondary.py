@@ -296,7 +296,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
         if event in (sg.WIN_CLOSED, '-ESCAPE-'):  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
-            if savable:
+            if savable or record.new:  # unsaved IDs should be removed if record can be saved or if newly created
                 record.remove_unsaved_ids()
 
             record = None
