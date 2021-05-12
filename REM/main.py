@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.1.19'
+__version__ = '3.1.20'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -18,7 +18,6 @@ import REM.elements as mod_elem
 import REM.layouts as mod_lo
 import REM.records as mod_records
 import REM.secondary as mod_win2
-#from REM.settings import user, settings
 from REM.client import logger, server_conn, settings, user
 
 
@@ -365,7 +364,6 @@ def resize_elements(window, rules):
         except Exception as e:
             msg = 'failed to resize window - {}'.format(e)
             logger.error(msg)
-            print('Error: {}'.format(msg))
             continue
 
 

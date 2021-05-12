@@ -7,8 +7,6 @@ import datetime
 import dateutil
 import gettext
 import hashlib
-#import io
-#import json
 import locale
 import logging
 import logging.handlers as handlers

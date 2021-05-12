@@ -17,7 +17,6 @@ import REM.data_manipulation as mod_dm
 import REM.layouts as mod_lo
 from REM.main import __version__
 import REM.records as mod_records
-#from REM.settings import settings, user
 from REM.client import logger, settings, user
 
 
@@ -512,7 +511,6 @@ def database_importer_window(win_size: tuple = None):
             except Exception as e:
                 msg = 'failed to upload entries to the database - {ERR}'.format(ERR=e)
                 logger.exception(msg)
-                print(subset_df)
                 return False
 
             sstrings = []
@@ -695,7 +693,6 @@ def database_importer_window(win_size: tuple = None):
                                     dtype = np.object
                                 dtypes[final_col] = dtype
 
-                        print(dtypes)
                         final_df = final_df.astype(dtypes)
                         if values['-DATES-']:
                             for date_col in date_cols:
@@ -856,14 +853,11 @@ def database_importer_window(win_size: tuple = None):
                                       'evaluation string {STR}'.format(COL=elem_col, NAME=elem_num + 1, STR=eval_str)
                                 popup_error(msg)
                                 logger.warning(msg)
-                                print(subset_df)
                             except NameError:
                                 msg = 'failed to modify column "{COL}" values with rule "{NAME}" - unknown column ' \
                                       'specified in the rule'.format(COL=elem_col, NAME=elem_num + 1)
                                 popup_error(msg)
                                 logger.warning(msg)
-                                print(subset_df)
-                                print(subset_df.columns)
                             else:
                                 logger.info('successfully modified column "{COL}" values based on "{RULE}"'
                                             .format(COL=elem_col, RULE=elem_num + 1))
@@ -896,10 +890,6 @@ def database_importer_window(win_size: tuple = None):
                             popup_error(msg)
                             logger.error(msg)
                             continue
-
-                    print(subset_df.head())
-                    print(subset_df.columns)
-                    print(subset_df.dtypes)
 
                     # Populate preview with table values
                     final_cols = subset_df.columns.values.tolist()

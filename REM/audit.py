@@ -21,7 +21,6 @@ import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
-#from REM.settings import settings, user
 from REM.client import logger, settings, user
 
 

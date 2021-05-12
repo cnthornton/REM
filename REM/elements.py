@@ -18,7 +18,6 @@ import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
-#from REM.settings import settings, user
 from REM.client import logger, settings, user
 
 
@@ -933,7 +932,8 @@ class TableElement:
                     try:
                         dtype = subset_df.dtypes[component]
                     except KeyError:
-                        print('DataTable {NAME}: {COLS}'.format(NAME=self.name, COLS=subset_df))
+                        logger.error('DataTable {NAME}: missing table column "{COL}" from the subsetted dataframe'
+                                     .format(NAME=self.name, COL=component))
                         raise
                     if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
                         col_summary = subset_df[component].sum()
@@ -3232,12 +3232,8 @@ class DataElement:
             except KeyError:
                 logger.debug('DataElement {NAME}: failed to find an alias for value "{VAL}"'
                              .format(NAME=self.name, VAL=input_value))
-                print(aliases)
-                print(input_value)
                 input_value = input_value
             else:
-                print(aliases)
-                print(input_value, alias_value)
                 logger.debug('DataElement {NAME}: setting value to "{VAL}" with alias "{ALIAS}"'
                              .format(NAME=self.name, VAL=input_value, ALIAS=alias_value))
                 input_value = alias_value

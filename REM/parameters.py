@@ -10,7 +10,6 @@ from random import randint
 
 import REM.constants as mod_const
 import REM.secondary as mod_win2
-#from REM.settings import settings, user
 from REM.client import logger, settings
 
 

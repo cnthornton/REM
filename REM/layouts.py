@@ -5,8 +5,7 @@ import PySimpleGUI as sg
 
 import REM.data_manipulation as mod_dm
 import REM.constants as mod_const
-#from REM.settings import settings, user
-from REM.client import user, settings
+from REM.client import logger, settings, user
 
 
 # Schema Layout Classes
@@ -60,8 +59,8 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     # Parameters
     if events and bind:
         bind = False  # only one can be selected at a time
-        print('Warning: both bind_return_key and enable_events have been selected during table creation. '
-              'These parameters are mutually exclusive.')
+        logger.warning('both bind_return_key and enable_events have been selected during table creation. '
+                       'These parameters are mutually exclusive.')
 
     lengths = mod_dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
 

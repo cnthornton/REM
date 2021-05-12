@@ -6,6 +6,7 @@ from random import randint
 import sys
 
 import REM.secondary as mod_win2
+from REM.client import logger
 
 
 class CashRules:
@@ -29,7 +30,9 @@ class CashRules:
             try:
                 cash_name = cash_param['name']
             except KeyError:
-                mod_win2.popup_error('Error: cash_rules: the parameter "name" is a required field')
+                msg = 'CashRules: the parameter "name" is a required field'
+                mod_win2.popup_error(msg)
+                logger.error(msg)
                 sys.exit(1)
             else:
                 self.name = cash_name
@@ -42,7 +45,9 @@ class CashRules:
             try:
                 cash_rules = cash_param['rules']
             except KeyError:
-                mod_win2.popup_error('Error: cash_rules: the parameter "rules" is a required field')
+                msg = 'CashRules {NAME}: the parameter "rules" is a required field'.format(NAME=self.name)
+                mod_win2.popup_error(msg)
+                logger.error(msg)
                 sys.exit(1)
 
             for rule_name in cash_rules:
@@ -65,8 +70,9 @@ class CashRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('Rule {NAME} not in list of configured mod_cash reconciliation rules. Available rules are {ALL}'
-                  .format(NAME=name, ALL=', '.join(self.print_rules())))
+            logger.error('CashRules {NAME}: rule "{RULE}" not in list of configured mod_cash reconciliation rules. '
+                         'Available rules are {ALL}'
+                         .format(NAME=self.name, RULE=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
             rule = self.rules[index]
@@ -121,9 +127,10 @@ class CashRule:
         try:
             self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'Configuration Error: BankRule {RULE}: missing required parameter "RecordType"' \
+            msg = 'CashRule {RULE}: missing required parameter "RecordType"' \
                 .format(RULE=name)
             mod_win2.popup_error(msg)
+            logger.error(msg)
             sys.exit(1)
 
         try:

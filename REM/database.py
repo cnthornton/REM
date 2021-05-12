@@ -2,6 +2,8 @@
 REM database import and export functions.
 """
 
+from REM.client import logger
+
 
 def format_import_filters(import_rules):
     """
@@ -27,20 +29,20 @@ def format_import_filters(import_rules):
             try:
                 operator = filter_entry[0].upper()
             except (IndexError, AttributeError):
-                print('Error: the "Filters" parameter of import table {TBL} is missing the operator'
-                      .format(TBL=import_table))
+                logger.error('the "Filters" parameter of import table {TBL} is missing the operator'
+                             .format(TBL=import_table))
                 continue
             else:
                 if operator not in operators:
-                    print('Error: unknown operator {OPER} supplied the "Filters" parameters of import table {TBL}'
-                          .format(OPER=operator, TBL=import_table))
+                    logger.error('unknown operator {OPER} supplied the "Filters" parameters of import table {TBL}'
+                                 .format(OPER=operator, TBL=import_table))
                     continue
 
             try:
                 parameters = filter_entry[1:]
             except IndexError:
-                print('Error: the "Filters" parameters of import table {TBL} requires one or more import values'
-                      .format(TBL=import_table))
+                logger.error('the "Filters" parameters of import table {TBL} requires one or more import values'
+                             .format(TBL=import_table))
                 continue
             else:
                 if len(parameters) == 1:
@@ -98,14 +100,14 @@ def format_import_columns(import_rules):
                         try:
                             converter, dtype = column_modifier
                         except KeyError:
-                            print('Warning: the "Modifiers" parameter of import table {TBL} requires at minimum a '
-                                  'converter function and data type'.format(TBL=import_table))
+                            logger.warning('the "Modifiers" parameter of import table {TBL} requires at minimum a '
+                                           'converter function and data type'.format(TBL=import_table))
                             converter = dtype = col_size = None
                         else:
                             col_size = None
                     if converter not in converter_functions:
-                        print('Warning: unknown converter function {FUNC} supplied to the "Modifiers parameter of '
-                              'import table {TBL}"'.format(FUNC=converter, TBL=import_table))
+                        logger.warning('unknown converter function {FUNC} supplied to the "Modifiers parameter of '
+                                       'import table {TBL}"'.format(FUNC=converter, TBL=import_table))
                         column = import_column
                     else:
                         if col_size is not None:
@@ -184,18 +186,18 @@ def format_tables(import_rules):
         if join_rule is None and i == 0:
             table_rules.append(import_table)
         elif join_rule is None and i > 0:
-            print('Configuration Error: a join rule is required to join data from import table {TBL}'
-                  .format(TBL=import_table))
+            logger.error('a join rule is required to join data from import table {TBL}'
+                         .format(TBL=import_table))
         else:
             try:
                 join_type, join_on = join_rule[0:2]
             except ValueError:
-                print('Configuration Error: import table {TBL} join rule {RULE} requires three components'
-                      .format(TBL=import_table, RULE=join_rule))
+                logger.error('import table {TBL} join rule {RULE} requires three components'
+                             .format(TBL=import_table, RULE=join_rule))
                 continue
             if join_type not in joins:
-                print('Configuration Error: unknown join type {JOIN} provided for import table {TBL}'
-                      .format(TBL=import_table, JOIN=join_type))
+                logger.error('unknown join type {JOIN} provided for import table {TBL}'
+                             .format(TBL=import_table, JOIN=join_type))
                 continue
 
             opt_filters = ' AND '.join(join_rule[2:])

@@ -14,8 +14,7 @@ import REM.elements as mod_elem
 import REM.layouts as mod_layout
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
-#from REM.settings import settings, user
-from REM.client import user, settings
+from REM.client import logger, settings, user
 
 
 class BankRules:
@@ -38,8 +37,10 @@ class BankRules:
             try:
                 bank_name = bank_param['name']
             except KeyError:
-                mod_win2.popup_error('Error: BankRules: the parameter "name" is a required field')
-                sys.exit(1)
+                msg = 'BankRules: the parameter "name" is a required field'
+                logger.error(msg)
+
+                raise AssertionError(msg)
             else:
                 self.name = bank_name
 
@@ -51,8 +52,10 @@ class BankRules:
             try:
                 bank_rules = bank_param['rules']
             except KeyError:
-                mod_win2.popup_error('Error: BankRules: the parameter "rules" is a required field')
-                sys.exit(1)
+                msg = 'BankRules {NAME}: the parameter "rules" is a required field'.format(NAME=self.name)
+                logger.error(msg)
+
+                raise AssertionError(msg)
 
             for rule_name in bank_rules:
                 self.rules.append(BankRule(rule_name, bank_rules[rule_name]))
@@ -74,8 +77,9 @@ class BankRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            print('BankRules {NAME}, Rule {RULE} not in list of configured bank reconciliation rules. Available rules '
-                  'are {ALL}'.format(NAME=self.name, RULE=name, ALL=', '.join(self.print_rules())))
+            logger.error('BankRules {NAME}: rule "{RULE}" not in list of configured bank reconciliation rules. '
+                         'Available rules are {ALL}'
+                         .format(NAME=self.name, RULE=name, ALL=', '.join(self.print_rules())))
             rule = None
         else:
             rule = self.rules[index]
@@ -134,10 +138,10 @@ class BankRule:
         try:
             params = entry['RuleParameters']
         except KeyError:
-            msg = 'Configuration Error: BankRule {RULE}: missing required "Main" parameter "RuleParameters"' \
-                .format(RULE=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRule {RULE}: missing required "Main" parameter "RuleParameters"'.format(RULE=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
 
         for param in params:
             param_entry = params[param]
@@ -154,9 +158,11 @@ class BankRule:
             elif param_layout == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
             else:
-                msg = 'Configuration Error: BankRule {NAME}: unknown type {TYPE} provided to DataParameter {PARAM}' \
+                msg = 'BankRule {NAME}: unknown type {TYPE} provided to DataParameter {PARAM}' \
                     .format(NAME=name, TYPE=param_layout, PARAM=param)
                 mod_win2.popup_error(msg)
+                logger.error(msg)
+
                 sys.exit(1)
 
             param = param_class(param, param_entry)
@@ -166,9 +172,10 @@ class BankRule:
         try:
             main_entry = entry['Main']
         except KeyError:
-            msg = 'Configuration Error: BankRule {NAME}: missing required parameter "Main"'.format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRule {NAME}: missing required parameter "Main"'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
 
         try:
             self.title = main_entry['Title']
@@ -179,9 +186,10 @@ class BankRule:
         try:
             tab_entries = main_entry['Tabs']
         except KeyError:
-            msg = 'Configuration Error: BankRule {NAME}: missing required "Main" parameter "Tabs"'.format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRule {NAME}: missing required "Main" parameter "Tabs"'.format(NAME=name)
+            logger.error(msg)
+
+            raise AttributeError(msg)
         else:
             for tab_name in tab_entries:
                 tab_rule = BankRecordTab(tab_name, tab_entries[tab_name], parent=self.name)
@@ -205,8 +213,8 @@ class BankRule:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: BankRule {NAME}: component {COMP} not found in list of rule components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('BankRule {NAME}: component {COMP} not found in list of rule components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -232,6 +240,7 @@ class BankRule:
 
     def fetch_tab(self, fetch_key, by_key: bool = False):
         """
+        Fetch bank summary tab object.
         """
         tabs = self.tabs
 
@@ -246,8 +255,8 @@ class BankRule:
             try:
                 index = names.index(fetch_key)
             except ValueError:
-                print('Error: BankRule {RULE}: {TAB} not found in list of bank record tabs'
-                      .format(RULE=self.name, TAB=fetch_key))
+                logger.error('BankRule {RULE}: tab "{TAB}" not found in list of bank record tabs'
+                             .format(RULE=self.name, TAB=fetch_key))
             else:
                 tab_item = tabs[index]
 
@@ -668,8 +677,9 @@ class BankRule:
                 # Show that a bank reconciliation is in progress
                 if all(initialized) is True:
                     self.in_progress = True
-                    print('Info: BankRule {NAME}: bank reconciliation in progress with parameters {PARAMS}'
-                          .format(NAME=self.name, PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
+                    logger.info('BankRule {NAME}: bank reconciliation in progress with parameters {PARAMS}'
+                                .format(NAME=self.name,
+                                        PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
 
                     # Enable/Disable control buttons and parameter elements
                     window[start_key].update(disabled=True)
@@ -697,7 +707,7 @@ class BankRule:
         elif event == main_tg_key:
             tab_key = window[main_tg_key].Get()
             tab = self.fetch_tab(tab_key, by_key=True)
-            print('Info: BankRule {NAME}: moving to bank record tab {TAB}'.format(NAME=self.name, TAB=tab.name))
+            logger.debug('BankRule {NAME}: moving to bank record tab "{TAB}"'.format(NAME=self.name, TAB=tab.name))
 
             # Collapse the filter frame of current tab
             filter_key = tab.table.key_lookup('FilterFrame')
@@ -716,7 +726,7 @@ class BankRule:
         # Switch between summary tabs
         elif event == summary_tg_key:
             summary_tab = window[summary_tg_key].Get()
-            print('Info: BankRule {NAME}: moving to summary tab {TAB}'.format(NAME=self.name, TAB=summary_tab))
+            logger.debug('BankRule {NAME}: moving to summary tab "{TAB}"'.format(NAME=self.name, TAB=summary_tab))
 
             tab = self.fetch_tab(summary_tab, by_key=True)
             tg_key = tab.key_lookup('AssociationTG')
@@ -744,8 +754,8 @@ class BankRule:
             try:
                 tab = self.fetch_tab(event, by_key=True)
             except KeyError:
-                print('Error: AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
-                      .format(NAME=self.name, KEY=event))
+                logger.error('AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
+                             .format(NAME=self.name, KEY=event))
             else:
                 if event == tab.key_lookup('Reconcile'):
                     # Run the primary reconciliation algorithm
@@ -771,8 +781,8 @@ class BankRule:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
-                print('Error: BankRule {NAME}: unable to find parameter associated with event key {KEY}'
-                      .format(NAME=self.name, KEY=event))
+                logger.error('BankRule {NAME}: unable to find parameter associated with event key {KEY}'
+                             .format(NAME=self.name, KEY=event))
             else:
                 param.run_event(window, event, values)
 
@@ -799,8 +809,9 @@ class BankRule:
                     except Exception as e:
                         msg = 'failed to save table {SHEET} to file to {FILE} - {ERR}' \
                             .format(SHEET=sheet_name, FILE=outfile, ERR=e)
-                        print('Error: {MSG}'.format(MSG=msg))
+                        logger.error(msg)
                         mod_win2.popup_error(msg)
+
                         continue
 
                     for association in tab.associations:
@@ -817,8 +828,9 @@ class BankRule:
                         except Exception as e:
                             msg = 'failed to save table {SHEET} to file to {FILE} - {ERR}' \
                                 .format(SHEET=sheet_name, FILE=outfile, ERR=e)
-                            print('Error: {MSG}'.format(MSG=msg))
+                            logger.error(msg)
                             mod_win2.popup_error(msg)
+
                             continue
 
             current_rule = self.reset_rule(window, current=True)
@@ -949,18 +961,18 @@ class BankRecordTab:
         try:
             self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'Configuration Error: BankRecordTab {NAME}: missing required field "RecordType".' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRecordTab {NAME}: missing required field "RecordType".'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
 
         try:
             self.import_rules = entry['ImportRules']
         except KeyError:
-            msg = 'Configuration Error: BankRecordTab {NAME}: missing required field "ImportRules".' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRecordTab {NAME}: missing required field "ImportRules".'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
 
         try:
             self.record_layout = entry['RecordLayout']
@@ -970,24 +982,25 @@ class BankRecordTab:
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
         except KeyError:
-            msg = 'Configuration Error: BankRecordTab {NAME}: missing required parameter "DisplayTable"' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRecordTab {NAME}: missing required parameter "DisplayTable"'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
         except AttributeError as e:
-            msg = 'Configuration Error: BankRecordTab {NAME}: unable to initialize DisplayTable - {ERR}' \
-                .format(NAME=name, ERR=e)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRecordTab {NAME}: unable to initialize DisplayTable - {ERR}'.format(NAME=name, ERR=e)
+            logger.error(msg)
+
+            raise AssertionError(msg)
         else:
             self.elements += self.table.elements
 
         try:
             assoc_entries = entry['Associations']
         except KeyError:
-            msg = 'Configuration Error: BankRule {NAME}: missing required parameter "Associations"'.format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRecordTab {NAME}: missing required parameter "Associations"'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
 
         self.associations = []
         self.reference_types = []
@@ -1002,26 +1015,26 @@ class BankRecordTab:
         try:
             association_rules = entry['AssociationRules']
         except KeyError:
-            msg = 'Configuration Error: BankRecordTab {NAME}: missing required parameter "AssociationRules"' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRecordTab {NAME}: missing required parameter "AssociationRules"'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
         else:
             if 'Columns' in association_rules:
                 self.association_columns = association_rules['Columns']
             else:
-                msg = 'Configuration Error: BankRecordTab {NAME}: missing required "AssociationRules" parameter ' \
-                      '"Columns"'.format(NAME=name)
-                mod_win2.popup_error(msg)
-                sys.exit(1)
+                msg = 'BankRecordTab {NAME}: missing required "AssociationRules" parameter "Columns"'.format(NAME=name)
+                logger.error(msg)
+
+                raise AssertionError(msg)
 
             if 'Tables' in association_rules:
                 self.association_tables = association_rules['Tables']
             else:
-                msg = 'Configuration Error: BankRecordTab {NAME}: missing required "AssociationRules" parameter ' \
-                      '"Tables"'.format(NAME=name)
-                mod_win2.popup_error(msg)
-                sys.exit(1)
+                msg = 'BankRecordTab {NAME}: missing required "AssociationRules" parameter "Tables"'.format(NAME=name)
+                logger.error(msg)
+
+                raise AssertionError(msg)
 
         self.reconciled = False
 
@@ -1034,8 +1047,8 @@ class BankRecordTab:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: BankRecordTab {NAME}: component {COMP} not found in list of elements'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('BankRecordTab {NAME}: component "{COMP}" not found in list of elements'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -1163,7 +1176,7 @@ class BankRecordTab:
                 try:
                     select_row_index = values[event][0]
                 except IndexError:  # user double-clicked too quickly
-                    print('Warning: DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
+                    logger.warning('DataTable {NAME}: table row could not be selected'.format(NAME=self.name))
                 else:
                     # Get the real index of the column
                     try:
@@ -1190,8 +1203,7 @@ class BankRecordTab:
         elif event == tg_key:
             tab_key = window[tg_key].Get()
             tab = self.fetch_association(tab_key, by_key=True)
-            print('Info: BankRecordTab {NAME}: moving to association tab {TAB}'
-                  .format(NAME=self.name, TAB=tab.name))
+            logger.debug('BankRecordTab {NAME}: moving to association tab {TAB}'.format(NAME=self.name, TAB=tab.name))
 
             # Collapse the filter frame of current tab
             filter_key = tab.table.key_lookup('FilterFrame')
@@ -1213,8 +1225,8 @@ class BankRecordTab:
             try:
                 association_table = self.fetch_association(event, by_key=True)
             except KeyError:
-                print('Error: BankRecordTab {NAME}: unable to find association table associated with event key {KEY}'
-                      .format(NAME=self.name, KEY=event))
+                logger.error('BankRecordTab {NAME}: unable to find association table associated with event key {KEY}'
+                             .format(NAME=self.name, KEY=event))
             else:
                 association_table.run_event(window, event, values)
 
@@ -1237,8 +1249,9 @@ class BankRecordTab:
             reference = user.read_db(*user.prepare_query_statement(settings.reference_lookup, filter_rules=ref_filters),
                                      prog_db=True)
         except Exception as e:
-            mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
-                                 .format(NAME=self.name, ERR=e))
+            msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
+            mod_win2.popup_error(msg)
+            logger.error('BankRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             reference = None
         else:
             if reference.empty is True:
@@ -1264,12 +1277,13 @@ class BankRecordTab:
             df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                               prog_db=True)
         except Exception as e:
-            mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
-                                 .format(NAME=self.name, ERR=e))
+            msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
+            logger.error('BankRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            mod_win2.popup_error(msg)
             data_loaded = False
         else:
-            print('Info: BankRecordTab {NAME}: loaded data for bank reconciliation {RULE}'
-                  .format(NAME=self.name, RULE=self.parent))
+            logger.debug('BankRecordTab {NAME}: loaded data for bank reconciliation "{RULE}"'
+                         .format(NAME=self.name, RULE=self.parent))
             data_loaded = True
 
             # Update reference table with reference data
@@ -1288,8 +1302,9 @@ class BankRecordTab:
                     ref_df = user.read_db(*user.prepare_query_statement(settings.reference_lookup,
                                                                         filter_rules=ref_filters), prog_db=True)
                 except Exception as e:
-                    mod_win2.popup_error('Error: BankRecordTab {NAME}: failed to import data from the database - {ERR}'
-                                         .format(NAME=self.name, ERR=e))
+                    msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
+                    logger.error('BankRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
                     data_loaded = False
                 else:
                     ref_df = ref_df[list(ref_map)]
@@ -1354,8 +1369,8 @@ class BankRecordTab:
             try:
                 rule_entry = rule_tables[assoc_name]
             except KeyError:
-                print('Warning: BankRecordTab {NAME}: no association rules configured for association {ASSOC}'
-                      .format(NAME=self.name, ASSOC=assoc_name))
+                logger.warning('BankRecordTab {NAME}: no association rules configured for association {ASSOC}'
+                               .format(NAME=self.name, ASSOC=assoc_name))
                 continue
 
             # Create the column mapping
@@ -1409,8 +1424,8 @@ class BankRecordTab:
                             try:
                                 warning.append('- {}'.format(rule_columns[column]['Description']))
                             except KeyError:
-                                print('Warning: BankRecordTab {NAME}: no description provided for expanded '
-                                      'association rule {COL}'.format(NAME=self.name, COL=column))
+                                logger.warning('BankRecordTab {NAME}: no description provided for expanded '
+                                               'association rule {COL}'.format(NAME=self.name, COL=column))
 
                     warning = '\n'.join(warning)
 
@@ -1431,8 +1446,8 @@ class BankRecordTab:
                     df.at[index, 'ReferenceWarnings'] = warning
 
                 elif nmatch > 1:  # too many matches
-                    print('Info: BankRecordTab {NAME}: found more than one match for record {RECORD}'
-                          .format(NAME=self.name, RECORD=record_id))
+                    logger.debug('BankRecordTab {NAME}: found more than one match for record "{RECORD}"'
+                                 .format(NAME=self.name, RECORD=record_id))
                     continue
 
             elif nmatch == 1:  # found one exact match
@@ -1457,8 +1472,8 @@ class BankRecordTab:
                 df.at[index, 'ReferenceID'] = ref_id
 
             elif nmatch > 1:  # too many matches
-                print('Info: BankRecordTab {NAME}: found more than one match for record {RECORD}'
-                      .format(NAME=self.name, RECORD=record_id))
+                logger.debug('BankRecordTab {NAME}: found more than one match for record "{RECORD}"'
+                             .format(NAME=self.name, RECORD=record_id))
 
                 # Match the first of the exact matches
                 results = matches.iloc[0]
@@ -1525,33 +1540,33 @@ class BankAssociationTab:
         try:
             self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'Configuration Error: BankRecordTab {NAME}: missing required field "RecordType".' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankRecordTab {NAME}: missing required field "RecordType".'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
         except KeyError:
-            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "DisplayTable"' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankAssociationTab {NAME}: missing required parameter "DisplayTable"'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
         except AttributeError as e:
-            msg = 'Configuration Error: BankAssociationTab {NAME}: unable to initialize DisplayTable - {ERR}' \
-                .format(NAME=name, ERR=e)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankAssociationTab {NAME}: unable to initialize DisplayTable - {ERR}'.format(NAME=name, ERR=e)
+            logger.error(msg)
+
+            raise AssertionError(msg)
         else:
             self.elements += self.table.elements
 
         try:
             self.import_rules = entry['ImportRules']
         except KeyError:
-            msg = 'Configuration Error: BankAssociationTab {NAME}: missing required parameter "ImportRules"' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'BankAssociationTab {NAME}: missing required parameter "ImportRules"'.format(NAME=name)
+            logger.error(msg)
+
+            raise AssertionError(msg)
 
     def key_lookup(self, component):
         """
@@ -1562,8 +1577,8 @@ class BankAssociationTab:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            print('Warning: BankAssociationTab {NAME}: component {COMP} not found in list of class components'
-                  .format(NAME=self.name, COMP=component))
+            logger.warning('BankAssociationTab {NAME}: component {COMP} not found in list of class components'
+                           .format(NAME=self.name, COMP=component))
             key = None
 
         return key
@@ -1634,8 +1649,9 @@ class BankAssociationTab:
             df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                               prog_db=True)
         except Exception as e:
-            mod_win2.popup_error('Error: BankRuleAssociation {NAME}: failed to import data from the database - {ERR}'
-                                 .format(NAME=self.name, ERR=e))
+            msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
+            logger.error('BankRuleAssociation {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            mod_win2.popup_error(msg)
             data_loaded = False
         else:
             # Update the record table with imported data

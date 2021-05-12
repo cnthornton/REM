@@ -14,7 +14,6 @@ import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
-#from REM.settings import settings, user
 from REM.client import logger, server_conn, settings, user
 
 
@@ -242,7 +241,6 @@ class RecordEntry:
         except IndexError as e:
             msg = 'failed to verify whether records {IDS} of type "{TYPE}" have been previously saved to the ' \
                   'database - {ERR}'.format(IDS=record_ids, TYPE=self.name, ERR=e)
-            print(import_df)
             logger.error(msg)
             raise
 
@@ -468,7 +466,6 @@ class RecordEntry:
             record_ids = []
         except Exception as e:
             logger.error('failed to import saved record IDs - {ERR}'.format(ERR=e))
-            print(import_rows)
             raise
         else:
             record_ids = id_list.values.tolist()
@@ -1189,9 +1186,9 @@ class DatabaseRecord:
                 comp_table = self.fetch_component(comp_type, by_type=True)
                 record_entry = settings.records.fetch_rule(comp_table.record_type)
                 comp_table.df = comp_table.append(record_entry.load_record_data(import_ids))
-                pd.set_option('display.max_columns', None)
-                print(comp_table.name)
-                print(comp_table.df)
+                #pd.set_option('display.max_columns', None)
+                #print(comp_table.name)
+                #print(comp_table.df)
 
             self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
 
