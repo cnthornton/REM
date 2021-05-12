@@ -281,6 +281,7 @@ class AuditRule:
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TG')
         tab_bttn_keys = ['-TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
+        tbl_bttn_keys = ['-TBL_ADD-', '-TBL_DEL-', '-TBL_IMP-']
 
         # Rule component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
@@ -461,6 +462,23 @@ class AuditRule:
                     logger.error('AuditRule {NAME}: audit initialization failed - {ERR}'
                                  .format(NAME=self.name, ERR=msg))
                     current_rule = self.reset_rule(window, current=True)
+
+        # Run a table key event
+        elif event in tbl_bttn_keys:
+            # Determine which panel to act on
+            if self.current_panel == self.last_panel:
+                self.summary.run_event(window, event, values)
+            else:
+                # Fetch the transaction tab
+                tab_key = window[tg_key].Get()
+                try:
+                    tab = self.fetch_tab(tab_key, by_key=True)
+                except KeyError:
+                    logger.error('AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
+                                 .format(NAME=self.name, KEY=event))
+                else:
+                    # Run the tab event
+                    tab.run_event(window, event, values)
 
         # Switch between tabs
         elif event in tab_bttn_keys:
@@ -1082,7 +1100,8 @@ class AuditTransactionTab:
                     logger.warning('AuditTransactionTab {NAME}: no layout specified for the transaction type'
                                    .format(NAME=self.name))
 
-            elif event == import_key:
+            elif event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
+                                                                   window[import_key].metadata['visible'])):
                 table.import_rows(import_rules=self.import_rules)
                 table.update_display(window, window_values=values)
 
@@ -1568,8 +1587,10 @@ class AuditSummary:
         Run a transaction audit summary event.
         """
         # Run a summary tab event
+        tg_key = self.key_lookup('TG')
         tab_bttn_keys = ['-TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
         tab_keys = [i for j in self.tabs for i in j.elements]
+        tbl_bttn_keys = ['-TBL_ADD-', '-TBL_DEL-', '-TBL_IMP-']
 
         if event in tab_bttn_keys:
             # Get the element key corresponding the the tab number pressed
@@ -1584,6 +1605,19 @@ class AuditSummary:
                     # Switch to the selected tab
                     tg_key = self.key_lookup('TG')
                     window[tg_key].Widget.select(tab_index)
+
+        # Run a table key event
+        elif event in tbl_bttn_keys:
+            # Fetch the transaction tab
+            tab_key = window[tg_key].Get()
+            try:
+                tab = self.fetch_tab(tab_key, by_key=True)
+            except KeyError:
+                logger.error('AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
+                             .format(NAME=self.name, KEY=event))
+            else:
+                # Run the tab event
+                tab.run_event(window, event, values)
 
         elif event in tab_keys:
             try:
@@ -2003,8 +2037,32 @@ class AuditRecordTab:
         """
         record = self.record
         record_keys = record.elements
+        component_elems = [i for component in record.components for i in component.elements]
 
-        if event in record_keys:
+        if event in component_elems:  # component table event
+            # Update data elements
+            for param in record.parameters:
+                param.update_display(window, window_values=values)
+
+            try:
+                component_table = record.fetch_component(event, by_key=True)
+            except KeyError:
+                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
+                             .format(ID=record.record_id(), KEY=event))
+            else:
+                import_key = component_table.key_lookup('Import')
+                if event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
+                                                                     window[import_key].metadata['visible'])):
+                    component_table.import_rows(program_database=True)
+                elif event == component_table.key_lookup('Add'):  # add account records
+                    default_values = {i.name: i.value for i in record.parameters if i.etype != 'table'}
+                    component_table.add_row(record_date=record.record_date(), defaults=default_values)
+                else:
+                    component_table.run_event(window, event, values)
+
+            record.update_display(window, window_values=values)
+
+        elif event in record_keys:
             self.record.run_event(window, event, values)
 
     def load_record(self, params):
