@@ -2187,10 +2187,12 @@ class TableElement:
         Set row defaults.
         """
         dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64,
-                     'time': np.datetime64, 'float': float, 'decimal': float, 'dec': float, 'double': float,
-                     'numeric': float, 'money': float, 'int': int, 'integer': int, 'bit': int, 'bool': bool,
-                     'boolean': bool, 'char': str, 'varchar': str, 'binary': str, 'varbinary': str, 'tinytext': str,
-                     'text': str, 'string': str}
+                     'time': np.datetime64,
+                     'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
+                     'int': 'Int64', 'integer': 'Int64', 'bit': 'Int64',
+                     'bool': bool, 'boolean': bool,
+                     'char': np.object, 'varchar': np.object, 'binary': np.object, 'varbinary': np.object,
+                     'tinytext': np.object, 'text': np.object, 'string': np.object}
 
         logger.debug('DataTable {NAME}: setting column default values'.format(NAME=self.name))
 
@@ -2243,10 +2245,12 @@ class TableElement:
         Update empty table cells with editable column default values.
         """
         dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64,
-                     'time': np.datetime64, 'float': float, 'decimal': float, 'dec': float, 'double': float,
-                     'numeric': float, 'money': float, 'int': int, 'integer': int, 'bit': int, 'bool': bool,
-                     'boolean': bool, 'char': str, 'varchar': str, 'binary': str, 'varbinary': str, 'tinytext': str,
-                     'text': str, 'string': str}
+                     'time': np.datetime64,
+                     'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
+                     'int': 'Int64', 'integer': 'Int64', 'bit': 'Int64',
+                     'bool': bool, 'boolean': bool,
+                     'char': np.object, 'varchar': np.object, 'binary': np.object, 'varbinary': np.object,
+                     'tinytext': np.object, 'text': np.object, 'string': np.object}
 
         logger.debug('DataTable {NAME}: setting column default values'.format(NAME=self.name))
 
@@ -2326,12 +2330,12 @@ class TableElement:
                     df[column] = pd.to_numeric(df[column], errors='coerce')
                 elif dtype in ('bool', 'boolean'):
                     df[column] = df[column].fillna(False).astype(np.bool, errors='raise')
-                elif dtype in ('char', 'varchar', 'binary', 'text'):
+                elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
                     df[column] = df[column].astype(np.object, errors='raise')
                 else:
                     df[column] = df[column].astype(np.object, errors='raise')
             except Exception as e:
-                logger.warning('DataTable {NAME}: unable to set column {COL} to data type {DTYPE} - {ERR}'
+                logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
                                .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
                 logger.debug('DataTable {NAME}: column values are {VALS}'.format(NAME=self.name, VALS=df[column]))
 
