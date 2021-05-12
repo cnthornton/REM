@@ -2193,10 +2193,10 @@ class TableElement:
         dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64,
                      'time': np.datetime64,
                      'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
-                     'int': 'Int64', 'integer': 'Int64', 'bit': 'Int64',
+                     'int': int, 'integer': int, 'bit': int,
                      'bool': bool, 'boolean': bool,
-                     'char': np.object, 'varchar': np.object, 'binary': np.object, 'varbinary': np.object,
-                     'tinytext': np.object, 'text': np.object, 'string': np.object}
+                     'char': str, 'varchar': str, 'binary': str, 'varbinary': str,
+                     'tinytext': str, 'text': str, 'string': str}
 
         logger.debug('DataTable {NAME}: setting column default values'.format(NAME=self.name))
 
@@ -2205,14 +2205,15 @@ class TableElement:
             try:
                 dtype = self.columns[column]
             except KeyError:
-                logger.warning('DataTable {NAME}: default column {COL} not found in table header'
+                logger.warning('DataTable {NAME}: default column "{COL}" not found in table header'
                                .format(NAME=self.name, COL=column))
                 continue
 
             if not pd.isna(row[column]):
                 continue
 
-            logger.debug('DataTable {NAME}: setting default values for column {COL}'.format(NAME=self.name, COL=column))
+            logger.debug('DataTable {NAME}: setting default values for column "{COL}"'
+                         .format(NAME=self.name, COL=column))
 
             entry = columns[column]
             if 'DefaultConditions' in entry:
@@ -2226,21 +2227,26 @@ class TableElement:
                             row[column] = default_value
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(row, entry['DefaultRule'], as_list=True)
-                logger.debug('DataTable {NAME}: assigning values {VAL} to empty cell at column {COL}'
+                logger.debug('DataTable {NAME}: assigning values "{VAL}" to column "{COL}"'
                              .format(NAME=self.name, VAL=default_values, COL=column))
                 for default_value in default_values:
                     row[column] = default_value
             elif 'DefaultValue' in entry:
                 default_value = entry['DefaultValue']
-                logger.debug('DataTable {NAME}: assigning value {VAL} to empty cell at column {COL}'
+                logger.debug('DataTable {NAME}: assigning value "{VAL}" to column "{COL}"'
                              .format(NAME=self.name, VAL=default_value, COL=column))
-                try:
-                    row[column] = dtype_map[dtype](default_value)
-                except KeyError:
-                    continue
+                if pd.isna(default_value):
+                    column_value = None
+                else:
+                    try:
+                        column_value = dtype_map[dtype](default_value)
+                    except KeyError:
+                        column_value = default_value
+
+                row[column] = column_value
             else:
                 logger.warning('DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
-                               'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
+                               'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
 
         return row
 
@@ -2251,10 +2257,10 @@ class TableElement:
         dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64,
                      'time': np.datetime64,
                      'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
-                     'int': 'Int64', 'integer': 'Int64', 'bit': 'Int64',
+                     'int': int, 'integer': int, 'bit': int,
                      'bool': bool, 'boolean': bool,
-                     'char': np.object, 'varchar': np.object, 'binary': np.object, 'varbinary': np.object,
-                     'tinytext': np.object, 'text': np.object, 'string': np.object}
+                     'char': str, 'varchar': str, 'binary': str, 'varbinary': str,
+                     'tinytext': str, 'text': str, 'string': str}
 
         logger.debug('DataTable {NAME}: setting column default values'.format(NAME=self.name))
 
@@ -2286,22 +2292,29 @@ class TableElement:
                             df.at[index, column] = default_value
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=True)
-                logger.debug('DataTable {NAME}: assigning values {VAL} to empty cells in column {COL}'
+                logger.debug('DataTable {NAME}: assigning values "{VAL}" to empty cells in column "{COL}"'
                              .format(NAME=self.name, VAL=default_values, COL=column))
                 for index, default_value in enumerate(default_values):
                     if pd.isna(df.at[index, column]):
                         df.at[index, column] = default_value
             elif 'DefaultValue' in entry:
                 default_value = entry['DefaultValue']
-                logger.debug('DataTable {NAME}: assigning value {VAL} to empty cells in column {COL}'
+                logger.debug('DataTable {NAME}: assigning value "{VAL}" to empty cells in column "{COL}"'
                              .format(NAME=self.name, VAL=default_value, COL=column))
-                try:
-                    df[column].fillna(dtype_map[dtype](default_value), inplace=True)
-                except KeyError:
-                    df[column].fillna(default_value, inplace=True)
+                if pd.isna(default_value):
+                    column_value = None
+                else:
+                    try:
+                        column_value = dtype_map[dtype](default_value)
+                    except KeyError:
+                        column_value = default_value
+
+                df[column].fillna(column_value, inplace=True)
             else:
                 logger.warning('DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
-                               'provided to column defaults entry {COL}'.format(NAME=self.name, COL=column))
+                               'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
+
+        df = self.set_datatypes(df)
 
         return df
 
@@ -2315,7 +2328,7 @@ class TableElement:
         logger.debug('DataTable {NAME}: setting column data types to configured data types'.format(NAME=self.name))
 
         if not isinstance(dtype_map, dict):
-            logger.warning('Warning: DataTable {NAME}: unable to set column datatype. Columns must be configured '
+            logger.warning('DataTable {NAME}: unable to set column datatype. Columns must be configured '
                            'as an object in order to use this feature'.format(NAME=self.name))
             return df
 
