@@ -475,10 +475,12 @@ class TableElement:
                 except KeyError:
                     index = select_row_index
 
+                logger.debug('DataTable {NAME}: opening record at real index {IND}'.format(NAME=self.name, IND=index))
+                print(self.df)
                 if self.actions['open'] is True:
                     self.df = self.export_row(index)
                 elif self.actions['open'] is False and self.actions['edit'] is True:
-                    self.df = self.edit_row(index)
+                    self.edit_row(index)
 
         elif event == self.key_lookup('CollapseButton'):
             self.collapse_expand(window)
@@ -2049,9 +2051,9 @@ class TableElement:
         df = self.df.copy()
 
         try:
-            row = df.iloc[index]
+            row = df.loc[index]
         except IndexError:
-            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
+            msg = 'no record found at table index "{IND}" to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
             logger.error('DataTable {NAME}: failed to edit record at row {IND} - {MSG}'
                          .format(NAME=self.name, MSG=msg, IND=index + 1))
@@ -2063,7 +2065,8 @@ class TableElement:
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
 
         # Update record table values
-        df.iloc[index] = mod_row
+        df.loc[index] = mod_row
+        self.df = df
 
         return df
 
@@ -2104,7 +2107,7 @@ class TableElement:
         df = self.df.copy()
 
         try:
-            row = df.iloc[index]
+            row = df.loc[index]
         except IndexError:
             msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
@@ -2157,14 +2160,15 @@ class TableElement:
         Remove records from the records table.
         """
         df = self.df.copy()
+        select_df = df.iloc[indices]
 
         # Get record IDs of selected rows
-        record_ids = df.iloc[indices][self.id_column].tolist()
+        record_ids = select_df[self.id_column].tolist()
         logger.info('DataTable {TBL}: removing records {IDS} from the table'
                     .format(TBL=self.name, IDS=record_ids))
 
         # Add removed rows to the import dataframe
-        self.import_df = self.append(df.iloc[indices], imports=True)
+        self.import_df = self.append(select_df, imports=True)
 
         # Set deleted rows to True
         df.loc[df[self.id_column].isin(record_ids), self.deleted_column] = True

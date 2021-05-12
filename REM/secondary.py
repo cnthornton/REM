@@ -315,8 +315,10 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             current_w, current_h = (win_w, win_h)
 
         if event == '-ENTER-':
-            if savable:
+            if not savable:
                 window['-OK-'].click()
+            else:
+                window['-SAVE-'].click()
 
         if event in ('-BACKSPACE-', '-DELKEY-'):
             if deletable:
@@ -1649,7 +1651,12 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     window = None
     gc.collect()
 
-    return table.df.iloc[select_index]
+    try:
+        return table.df.loc[select_index]
+    except KeyError:
+        print(table.df)
+        print(select_index)
+        raise KeyError('one or more selected index {} is missing from the import table dataframe'.format(select_index))
 
 
 def about():

@@ -1066,11 +1066,17 @@ class AuditTransactionTab:
                 if self.record_layout is not None:
                     # Find index of row
                     try:
-                        row_index = values[event][0]
+                        select_row_index = values[event][0]
                     except IndexError:  # user double-clicked too quickly
                         logger.warning('AuditTransactionTab {NAME}: no row selected for exporting'
                                        .format(NAME=self.name))
                     else:
+                        # Get the real index of the column
+                        try:
+                            row_index = table.index_map[select_row_index]
+                        except KeyError:
+                            row_index = select_row_index
+
                         table.export_row(row_index, layout=self.record_layout, custom=True)
                 else:
                     logger.warning('AuditTransactionTab {NAME}: no layout specified for the transaction type'
