@@ -779,6 +779,7 @@ class DatabaseRecord:
             level (int): depth at which record was opened [Default: 0].
         """
         approved_record_types = settings.records.get_approved_groups()
+        available_modifiers = ['ImportUnsavedReferences']
 
         # Reserved fields
         self.id_field = 'RecordID'
@@ -975,6 +976,32 @@ class DatabaseRecord:
         self.ref_df = pd.DataFrame(
             columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
 
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {}
+        else:
+            self.modifiers = {}
+            for modifier in modifiers:
+                if modifier not in available_modifiers:
+                    logger.warning('RecordEntry {NAME}: unknown modifier "{MOD}" set in the configuration'
+                                   .format(NAME=self.name, MOD=modifier))
+                    continue
+                try:
+                    mod_val = bool(int(modifiers[modifier]))
+                except ValueError:
+                    msg = 'the value provided to modifier "{MOD}" must be either 0 (False) or 1 (True) ... setting ' \
+                          'to default "False"'.format(MOD=modifier)
+                    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    mod_val = False
+
+                self.modifiers[modifier] = mod_val
+
+        for modifier in available_modifiers:
+            if modifier not in self.modifiers:
+                self.modifiers[modifier] = False
+
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -1029,13 +1056,13 @@ class DatabaseRecord:
             record_data = data
         elif isinstance(data, pd.DataFrame):
             if data.shape[0] > 1:
-                raise AttributeError('more than one record provided to record class {TYPE}'.format(TYPE=self.name))
+                raise AttributeError('more than one record provided to record class "{TYPE}"'.format(TYPE=self.name))
             elif data.shape[0] < 1:
-                raise AttributeError('empty dataframe provided to record class {TYPE}'.format(TYPE=self.name))
+                raise AttributeError('empty dataframe provided to record class "{TYPE}"'.format(TYPE=self.name))
             else:
                 record_data = data.iloc[0]
         else:
-            raise AttributeError('unknown object type provided to record class {TYPE}'.format(TYPE=self.name))
+            raise AttributeError('unknown object type provided to record class "{TYPE}"'.format(TYPE=self.name))
 
         if self.id_field not in record_data:
             raise AttributeError('input data is missing required column "{}"'.format(self.id_field))
@@ -1052,10 +1079,10 @@ class DatabaseRecord:
             try:
                 value = record_data[header_name]
             except KeyError:
-                logger.warning('RecordType {NAME}: input data is missing a value for header {COL}'
+                logger.warning('RecordType {NAME}: input data is missing a value for header "{COL}"'
                                .format(NAME=self.name, COL=header_name))
             else:
-                logger.debug('RecordType {NAME}: initializing header {PARAM} with value {VAL}'
+                logger.debug('RecordType {NAME}: initializing header "{PARAM}" with value "{VAL}"'
                              .format(NAME=self.name, PARAM=header_name, VAL=value))
                 header.value = header.format_value({header.key_lookup('Element'): value})
 
@@ -1069,10 +1096,10 @@ class DatabaseRecord:
                 try:
                     value = record_data[modifier_name]
                 except KeyError:
-                    logger.warning('RecordType {NAME}: input data is missing a value for modifier {COL}'
+                    logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
                                    .format(NAME=self.name, COL=modifier_name))
                 else:
-                    logger.debug('RecordType {NAME}: initializing modifier {PARAM} with value {VAL}'
+                    logger.debug('RecordType {NAME}: initializing metadata field "{PARAM}" with value "{VAL}"'
                                  .format(NAME=self.name, PARAM=modifier_name, VAL=value))
                     modifier.value = modifier.format_value({modifier.key_lookup('Element'): value})
 
@@ -1095,15 +1122,15 @@ class DatabaseRecord:
                 try:
                     value = record_data[param_name]
                 except KeyError:
-                    logger.warning('RecordType {NAME}: input data is missing a value for data element {PARAM}'
+                    logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
                                    .format(NAME=self.name, PARAM=param_name))
                 else:
                     if not pd.isna(value):
-                        logger.debug('RecordType {NAME}: initializing data element {PARAM} with value {VAL}'
+                        logger.debug('RecordType {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
                                      .format(NAME=self.name, PARAM=param_name, VAL=value))
                         param.value = param.format_value(value)
                     else:
-                        logger.debug('RecordType {NAME}: no value set for parameter {PARAM}'
+                        logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
                                      .format(NAME=self.name, PARAM=param_name))
 
         # Import components and references for existing records
@@ -1134,7 +1161,7 @@ class DatabaseRecord:
                     ref_id = row['DocNo']
                     if ref_id == record_id:
                         continue
-                    logger.debug('RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
+                    logger.debug('RecordType {NAME}: adding reference record {ID} with record type "{TYPE}"'
                                  .format(NAME=self.name, ID=ref_id, TYPE=doctype))
 
                     try:
@@ -1151,7 +1178,7 @@ class DatabaseRecord:
                     ref_id = row['RefNo']
                     if ref_id == record_id:
                         continue
-                    logger.debug('RecordType {NAME}: adding reference record {ID} with record type {TYPE}'
+                    logger.debug('RecordType {NAME}: adding reference record {ID} with record type "{TYPE}"'
                                  .format(NAME=self.name, ID=ref_id, TYPE=reftype))
 
                     try:
@@ -1167,7 +1194,7 @@ class DatabaseRecord:
                 # Store imported components as table rows
                 elif doctype == self.name and reftype in comp_types:
                     ref_id = row['RefNo']
-                    logger.debug('RecordType {NAME}: adding component record {ID} with record type {TYPE}'
+                    logger.debug('RecordType {NAME}: adding component record {ID} with record type "{TYPE}"'
                                  .format(NAME=self.name, ID=ref_id, TYPE=reftype))
                     # Fetch the relevant components table
                     #                    comp_table = self.fetch_component(reftype, by_type=True)
@@ -2010,7 +2037,16 @@ class StandardRecord(DatabaseRecord):
                 logger.error('RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
                              .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
-                component_table.run_event(window, event, values)
+                if event == component_table.key_lookup('Import'):  # import account records
+                    if self.modifiers['ImportUnsavedReferences']:
+                        component_table.import_rows(reftype=self.name, program_database=True)
+                    else:
+                        component_table.import_rows(program_database=True)
+                elif event == component_table.key_lookup('Add'):  # add account records
+                    default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
+                    component_table.add_row(record_date=self.record_date(), defaults=default_values)
+                else:
+                    component_table.run_event(window, event, values)
 
         # Run a reference-box event
         elif event in reference_elems:
@@ -2104,7 +2140,10 @@ class DepositRecord(DatabaseRecord):
                              .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Import'):  # import account records
-                    component_table.import_rows(reftype=self.name, program_database=True)
+                    if self.modifiers['ImportUnsavedReferences']:
+                        component_table.import_rows(reftype=self.name, program_database=True)
+                    else:
+                        component_table.import_rows(program_database=True)
                 elif event == component_table.key_lookup('Add'):  # add account records
                     default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
@@ -2243,7 +2282,10 @@ class TAuditRecord(DatabaseRecord):
                              .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Import'):  # import account records
-                    component_table.import_rows(reftype=self.name, program_database=True)
+                    if self.modifiers['ImportUnsavedReferences']:
+                        component_table.import_rows(reftype=self.name, program_database=True)
+                    else:
+                        component_table.import_rows(program_database=True)
                 elif event == component_table.key_lookup('Add'):  # add account records
                     default_values = {i.name: i.value for i in self.parameters if i.etype != 'table'}
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)

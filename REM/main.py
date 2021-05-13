@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.1.21'
+__version__ = '3.1.22'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -733,6 +733,7 @@ def main():
                     .format(EVENT=event, RULE=current_rule.name, ERR=e)
                 mod_win2.popup_error(msg)
                 logger.error(msg)
+
                 raise
 
             if current_rule_name is None:

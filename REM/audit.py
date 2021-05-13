@@ -2037,33 +2037,36 @@ class AuditRecordTab:
         """
         record = self.record
         record_keys = record.elements
-        component_elems = [i for component in record.components for i in component.elements]
 
-        if event in component_elems:  # component table event
-            # Update data elements
-            for param in record.parameters:
-                param.update_display(window, window_values=values)
-
-            try:
-                component_table = record.fetch_component(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
-                             .format(ID=record.record_id(), KEY=event))
-            else:
-                import_key = component_table.key_lookup('Import')
-                if event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
-                                                                     window[import_key].metadata['visible'])):
-                    component_table.import_rows(program_database=True)
-                elif event == component_table.key_lookup('Add'):  # add account records
-                    default_values = {i.name: i.value for i in record.parameters if i.etype != 'table'}
-                    component_table.add_row(record_date=record.record_date(), defaults=default_values)
-                else:
-                    component_table.run_event(window, event, values)
-
-            record.update_display(window, window_values=values)
-
-        elif event in record_keys:
+        if event in record_keys:
             self.record.run_event(window, event, values)
+#        component_elems = [i for component in record.components for i in component.elements]
+#
+#        if event in component_elems:  # component table event
+#            # Update data elements
+#            for param in record.parameters:
+#                param.update_display(window, window_values=values)
+#
+#            try:
+#                component_table = record.fetch_component(event, by_key=True)
+#            except KeyError:
+#                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
+#                             .format(ID=record.record_id(), KEY=event))
+#            else:
+#                import_key = component_table.key_lookup('Import')
+#                if event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
+#                                                                     window[import_key].metadata['visible'])):
+#                    component_table.import_rows(program_database=True)
+#                elif event == component_table.key_lookup('Add'):  # add account records
+#                    default_values = {i.name: i.value for i in record.parameters if i.etype != 'table'}
+#                    component_table.add_row(record_date=record.record_date(), defaults=default_values)
+#                else:
+#                    component_table.run_event(window, event, values)
+#
+#            record.update_display(window, window_values=values)
+#
+#        elif event in record_keys:
+#            self.record.run_event(window, event, values)
 
     def load_record(self, params):
         """

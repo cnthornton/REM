@@ -1935,6 +1935,7 @@ class TableElement:
         import_df = self.import_df.copy()
         import_rules = import_rules if import_rules is None else self.import_rules
         record_type = self.record_type
+        id_col = self.id_column
 
         record_entry = settings.records.fetch_rule(record_type)
         if import_rules is None and record_entry is None:
@@ -1965,7 +1966,6 @@ class TableElement:
             import_filters = mod_db.format_import_filters(import_rules)
             table_statement = mod_db.format_tables(import_rules)
             import_columns = mod_db.format_import_columns(import_rules)
-            id_col = mod_db.get_import_column(import_rules, self.id_column)
 
             # Search for records in record reference table with associations
             ref_table = settings.reference_lookup
@@ -1984,11 +1984,11 @@ class TableElement:
                 df.drop(df[df[id_col].isin(ids_with_reference)].index, inplace=True)
 
                 # Drop records that are already in the import table
-                import_ids = import_df[self.id_column].tolist()
+                import_ids = import_df[id_col].tolist()
                 df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
 
                 # Drop records that are already in the table
-                current_ids = self.df[self.id_column].tolist()
+                current_ids = self.df[id_col].tolist()
                 df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
 
                 # Add import dataframe to data table object
@@ -2015,8 +2015,8 @@ class TableElement:
                                            params=search_params)
 
         # Verify that selected records are not already in table
-        current_ids = self.df[self.id_column].tolist()
-        select_ids = select_df[self.id_column]
+        current_ids = self.df[id_col].tolist()
+        select_ids = select_df[id_col]
         remove_indices = []
         for index, record_id in select_ids.items():
             if record_id in current_ids:
@@ -2028,7 +2028,7 @@ class TableElement:
         # Change deleted column of existing selected records to False
         logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
                      'False'.format(NAME=self.name))
-        self.df.loc[self.df[self.id_column].isin(select_ids), self.deleted_column] = False
+        self.df.loc[self.df[id_col].isin(select_ids), self.deleted_column] = False
 
         # Append selected rows to the table
         logger.debug('DataTable {NAME}: importing {N} records to the table'

@@ -40,7 +40,7 @@ class BankRules:
                 msg = 'BankRules: the parameter "name" is a required field'
                 logger.error(msg)
 
-                raise AssertionError(msg)
+                raise AttributeError(msg)
             else:
                 self.name = bank_name
 
@@ -55,7 +55,7 @@ class BankRules:
                 msg = 'BankRules {NAME}: the parameter "rules" is a required field'.format(NAME=self.name)
                 logger.error(msg)
 
-                raise AssertionError(msg)
+                raise AttributeError(msg)
 
             for rule_name in bank_rules:
                 self.rules.append(BankRule(rule_name, bank_rules[rule_name]))
@@ -141,7 +141,7 @@ class BankRule:
             msg = 'BankRule {RULE}: missing required "Main" parameter "RuleParameters"'.format(RULE=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
 
         for param in params:
             param_entry = params[param]
@@ -175,7 +175,7 @@ class BankRule:
             msg = 'BankRule {NAME}: missing required parameter "Main"'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
 
         try:
             self.title = main_entry['Title']
@@ -964,7 +964,7 @@ class BankRecordTab:
             msg = 'BankRecordTab {NAME}: missing required field "RecordType".'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
 
         try:
             self.import_rules = entry['ImportRules']
@@ -972,7 +972,7 @@ class BankRecordTab:
             msg = 'BankRecordTab {NAME}: missing required field "ImportRules".'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
 
         try:
             self.record_layout = entry['RecordLayout']
@@ -985,12 +985,12 @@ class BankRecordTab:
             msg = 'BankRecordTab {NAME}: missing required parameter "DisplayTable"'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
         except AttributeError as e:
             msg = 'BankRecordTab {NAME}: unable to initialize DisplayTable - {ERR}'.format(NAME=name, ERR=e)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
         else:
             self.elements += self.table.elements
 
@@ -1000,7 +1000,7 @@ class BankRecordTab:
             msg = 'BankRecordTab {NAME}: missing required parameter "Associations"'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
 
         self.associations = []
         self.reference_types = []
@@ -1018,7 +1018,7 @@ class BankRecordTab:
             msg = 'BankRecordTab {NAME}: missing required parameter "AssociationRules"'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
         else:
             if 'Columns' in association_rules:
                 self.association_columns = association_rules['Columns']
@@ -1026,7 +1026,7 @@ class BankRecordTab:
                 msg = 'BankRecordTab {NAME}: missing required "AssociationRules" parameter "Columns"'.format(NAME=name)
                 logger.error(msg)
 
-                raise AssertionError(msg)
+                raise AttributeError(msg)
 
             if 'Tables' in association_rules:
                 self.association_tables = association_rules['Tables']
@@ -1034,7 +1034,7 @@ class BankRecordTab:
                 msg = 'BankRecordTab {NAME}: missing required "AssociationRules" parameter "Tables"'.format(NAME=name)
                 logger.error(msg)
 
-                raise AssertionError(msg)
+                raise AttributeError(msg)
 
         self.reconciled = False
 
@@ -1336,6 +1336,7 @@ class BankRecordTab:
         associations = self.associations
         table = self.table
         df = table.df
+        record_type = table.record_type
         ref_table = settings.reference_lookup
 
         # Define the fields that will be included in the merged association table
@@ -1397,6 +1398,21 @@ class BankRecordTab:
             # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)
 
+        # Import existing references of the table records
+        record_ids = df[table.id_column].values.tolist()
+        import_df = pd.DataFrame()
+        for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+            sub_ids = record_ids[i: i + 1000]
+            filter_clause = '{COL} IN ({VALS})'.format(COL='RefNo', VALS=','.join(['?' for _ in sub_ids]))
+            filters = (filter_clause, tuple(sub_ids))
+
+            if import_df.empty:
+                import_df = user.read_db(*user.prepare_query_statement(ref_table, filter_rules=filters), prog_db=True)
+            else:
+                import_df = import_df.append(user.read_db(*user.prepare_query_statement(ref_table,
+                                                                                        filter_rules=filters),
+                                                          prog_db=True), ignore_index=True)
+
         # Iterate over record rows, attempting to find matches in the merged table
         for index, row in df.drop(df[~df['ReferenceID'].isna()].index).iterrows():
             record_id = row[table.id_column]
@@ -1416,6 +1432,7 @@ class BankRecordTab:
                     results = matches.iloc[0]
                     merged_df.drop(matches.index.tolist()[0], inplace=True)
                     ref_id = results['RecordID']
+                    ref_type = results['RecordType']
 
                     # Determine appropriate warning for the expanded search
                     warning = ["Potential false positive: the association is the result of an expanded search"]
@@ -1430,12 +1447,22 @@ class BankRecordTab:
                     warning = '\n'.join(warning)
 
                     # Create an entry in the reference table for the match
-                    ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings',
-                                         settings.creator_code, settings.creation_date]
-                    ref_entry = (ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
-                                 warning, user.uid, datetime.datetime.now())
+                    ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings', 'IsDeleted',
+                                         'IsParentChild']
+                    ref_entry = (ref_id, record_id, datetime.datetime.now(), ref_type, record_type,
+                                 warning, 0, 0, user.uid, datetime.datetime.now())
 
-                    statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
+                    if ref_exists:
+                        # Prepare the update statement for the existing reference entry in the references table
+                        ref_table_columns.extend([settings.editor_code, settings.edit_date])
+                        update_filters = '(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)'
+                        filter_params = (ref_id, record_id, record_id, ref_id)
+                        statement, params = user.prepare_update_statement(ref_table, ref_table_columns, ref_entry,
+                                                                          update_filters, filter_params)
+                    else:
+                        # Prepare the insert statement for the existing reference entry to the references table
+                        ref_table_columns.extend([settings.creator_code, settings.creation_date])
+                        statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
                     try:
                         statements[statement].append(params)
                     except KeyError:
@@ -1455,14 +1482,24 @@ class BankRecordTab:
 
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
                 ref_id = results['RecordID']
+                ref_type = results['RecordType']
 
                 # Create an entry in the reference table for the match
-                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
-                                     settings.creator_code, settings.creation_date]
-                ref_entry = (ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
-                             user.uid, datetime.datetime.now())
+                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild']
+                ref_entry = (ref_id, record_id, datetime.datetime.now(), ref_type, record_type,
+                             0, 0, user.uid, datetime.datetime.now())
 
-                statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
+                if ref_exists:
+                    # Prepare the update statement for the existing reference entry in the references table
+                    ref_table_columns.extend([settings.editor_code, settings.edit_date])
+                    update_filters = '(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)'
+                    filter_params = (ref_id, record_id, record_id, ref_id)
+                    statement, params = user.prepare_update_statement(ref_table, ref_table_columns, ref_entry,
+                                                                      update_filters, filter_params)
+                else:
+                    # Prepare the insert statement for the existing reference entry to the references table
+                    ref_table_columns.extend([settings.creator_code, settings.creation_date])
+                    statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
                 try:
                     statements[statement].append(params)
                 except KeyError:
@@ -1478,17 +1515,27 @@ class BankRecordTab:
                 # Match the first of the exact matches
                 results = matches.iloc[0]
                 ref_id = results['RecordID']
+                ref_type = results['RecordType']
 
                 # Remove match from list of unmatched association records
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Create an entry in the reference table for the match
-                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType',
-                                     settings.creator_code, settings.creation_date]
-                ref_entry = (ref_id, record_id, datetime.datetime.now(), results['RecordType'], table.record_type,
-                             user.uid, datetime.datetime.now())
+                ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild']
+                ref_entry = (ref_id, record_id, datetime.datetime.now(), ref_type, record_type,
+                             0, 0, user.uid, datetime.datetime.now())
 
-                statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
+                if ref_exists:
+                    # Prepare the update statement for the existing reference entry in the references table
+                    ref_table_columns.extend([settings.editor_code, settings.edit_date])
+                    update_filters = '(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)'
+                    filter_params = (ref_id, record_id, record_id, ref_id)
+                    statement, params = user.prepare_update_statement(ref_table, ref_table_columns, ref_entry,
+                                                                      update_filters, filter_params)
+                else:
+                    # Prepare the insert statement for the existing reference entry to the references table
+                    ref_table_columns.extend([settings.creator_code, settings.creation_date])
+                    statement, params = user.prepare_insert_statement(ref_table, ref_table_columns, ref_entry)
                 try:
                     statements[statement].append(params)
                 except KeyError:
@@ -1543,7 +1590,7 @@ class BankAssociationTab:
             msg = 'BankRecordTab {NAME}: missing required field "RecordType".'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
@@ -1551,12 +1598,12 @@ class BankAssociationTab:
             msg = 'BankAssociationTab {NAME}: missing required parameter "DisplayTable"'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
         except AttributeError as e:
             msg = 'BankAssociationTab {NAME}: unable to initialize DisplayTable - {ERR}'.format(NAME=name, ERR=e)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
         else:
             self.elements += self.table.elements
 
@@ -1566,7 +1613,7 @@ class BankAssociationTab:
             msg = 'BankAssociationTab {NAME}: missing required parameter "ImportRules"'.format(NAME=name)
             logger.error(msg)
 
-            raise AssertionError(msg)
+            raise AttributeError(msg)
 
     def key_lookup(self, component):
         """
