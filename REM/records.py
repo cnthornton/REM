@@ -1637,9 +1637,8 @@ class DatabaseRecord:
                 return False
 
             # Determine if reference entry already exists in the database
-            nrow = import_df[
-                (import_df['DocNo'].isin([ref_id, record_id])) & (import_df['RefNo'].isin([ref_id, record_id]))].shape[
-                0]
+            nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) &
+                             (import_df['RefNo'].isin([ref_id, record_id]))].shape[0]
             comp_columns = ref_data.index.tolist()
             comp_values = tuple(ref_data.values.tolist() + [user.uid, datetime.datetime.now()])
             if nrow > 0:  # reference already exists in the database

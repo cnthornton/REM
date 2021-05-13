@@ -1446,6 +1446,14 @@ class BankRecordTab:
 
                     warning = '\n'.join(warning)
 
+                    # Check if the reference already exists in the reference table
+                    nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) &
+                                     (import_df['RefNo'].isin([ref_id, record_id]))].shape[0]
+                    if nrow > 0:
+                        ref_exists = True
+                    else:
+                        ref_exists = False
+
                     # Create an entry in the reference table for the match
                     ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'Warnings', 'IsDeleted',
                                          'IsParentChild']
@@ -1484,6 +1492,14 @@ class BankRecordTab:
                 ref_id = results['RecordID']
                 ref_type = results['RecordType']
 
+                # Check if the reference already exists in the reference table
+                nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) &
+                                 (import_df['RefNo'].isin([ref_id, record_id]))].shape[0]
+                if nrow > 0:
+                    ref_exists = True
+                else:
+                    ref_exists = False
+
                 # Create an entry in the reference table for the match
                 ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild']
                 ref_entry = (ref_id, record_id, datetime.datetime.now(), ref_type, record_type,
@@ -1519,6 +1535,14 @@ class BankRecordTab:
 
                 # Remove match from list of unmatched association records
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                # Check if the reference already exists in the reference table
+                nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) &
+                                 (import_df['RefNo'].isin([ref_id, record_id]))].shape[0]
+                if nrow > 0:
+                    ref_exists = True
+                else:
+                    ref_exists = False
 
                 # Create an entry in the reference table for the match
                 ref_table_columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild']

@@ -1040,6 +1040,7 @@ class AccountManager:
         except SQLStatementError as e:
             msg = 'failed to generate the query statement - {}'.format(e)
             logger.error(msg)
+
             raise SQLStatementError(msg)
 
         # Prepare the database transaction statement
@@ -1066,12 +1067,14 @@ class AccountManager:
             if not all([isinstance(i, tuple) for i in values]):
                 msg = 'failed to generate insertion statement - individual transactions must be formatted as tuple'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             if not all([len(columns) == len(i) for i in values]):
                 msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
                       'of provided parameters for all transactions requested'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             params = []
@@ -1083,6 +1086,7 @@ class AccountManager:
                 msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
                       'of parameters for the transaction'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             params = tuple([convert_datatypes(i) for i in values])
@@ -1092,12 +1096,14 @@ class AccountManager:
                 msg = 'failed to generate insertion statement - the number of columns is not equal to the number of ' \
                       'parameters for the transaction'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             params = (convert_datatypes(values),)
         else:
             msg = 'failed to generate insertion statement - unknown values type {}'.format(type(values))
             logger.error(msg)
+
             raise SQLStatementError(msg)
 
         # Prepare the database transaction statement
@@ -1117,18 +1123,21 @@ class AccountManager:
             if not all([isinstance(i, tuple) for i in values]):
                 msg = 'failed to generate update statement - individual transactions must be formatted as tuple'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             if not all([len(columns) == len(i) for i in values]):
                 msg = 'failed to generate update statement - the number of columns is not equal to the number ' \
                       'of provided parameters for all transactions requested'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             if not isinstance(filter_values, list) or len(values) != len(filter_values):
                 msg = 'failed to generate update statement - the number of transactions requested do not match the ' \
                       'number of filters provided'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             params = []
@@ -1148,12 +1157,14 @@ class AccountManager:
                 msg = 'failed to generate update statement - the number of columns is not equal to the number of ' \
                       'provided parameters for the transaction'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             if not isinstance(filter_values, tuple):
                 msg = 'failed to generate update statement - the number of transactions requested do not match the ' \
                       'number of filters provided'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             params = tuple([convert_datatypes(i) for i in values] + [convert_datatypes(j) for j in filter_values])
@@ -1163,12 +1174,14 @@ class AccountManager:
                 msg = 'failed to generate update statement - the number of columns is not equal to the number of ' \
                       'provided parameters for the transaction'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
 
             params = tuple([convert_datatypes(values)] + [convert_datatypes(j) for j in filter_values])
         else:
             msg = 'failed to generate update statement - unknown values type {}'.format(type(values))
             logger.error(msg)
+
             raise SQLStatementError(msg)
 
         pair_list = ['{}=?'.format(colname) for colname in columns]
@@ -1184,24 +1197,52 @@ class AccountManager:
         """
         Prepare a statement and parameters for deleting an existing entry from an ODBC database.
         """
+        if isinstance(columns, str):
+            columns = [columns]
+
         # Format parameters
-        if isinstance(values, list) or isinstance(values, tuple):
+        if isinstance(values, list):
+            if not all([isinstance(i, tuple) for i in values]):
+                msg = 'failed to generate insertion statement - individual transactions must be formatted as tuple'
+                logger.error(msg)
+
+                raise SQLStatementError(msg)
+
+            if not all([len(columns) == len(i) for i in values]):
+                msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
+                      'of provided parameters for all transactions requested'
+                logger.error(msg)
+
+                raise SQLStatementError(msg)
+
+            params = []
+            for param_tup in values:
+                params.append(tuple([convert_datatypes(i) for i in param_tup]))
+
+        elif isinstance(values, tuple):  # single insertion
+            if len(columns) != len(values):
+                msg = 'failed to generate insertion statement - the number of columns is not equal to the number ' \
+                      'of parameters for the transaction'
+                logger.error(msg)
+
+                raise SQLStatementError(msg)
+
             params = tuple([convert_datatypes(i) for i in values])
 
-            if len(columns) != len(values):
-                msg = 'failed to generate deletion statement - columns size is not equal to values size'
-                logger.error(msg)
-                raise SQLStatementError(msg)
         elif isinstance(values, str):
-            params = (values,)
-
-            if not isinstance(columns, str):
-                msg = 'failed to generate deletion statement - columns size is not equal to values size'
+            if len(columns) > 1:
+                msg = 'failed to generate deletion statement - the number of columns is not equal to the number of ' \
+                      'parameters for the transaction'
                 logger.error(msg)
+
                 raise SQLStatementError(msg)
+
+            params = (convert_datatypes(values),)
+
         else:
             msg = 'failed to generate deletion statement - unknown values type {}'.format(type(values))
             logger.error(msg)
+
             raise SQLStatementError(msg)
 
         pairs = {}
@@ -1219,7 +1260,7 @@ class AccountManager:
             elif len(col_params) == 1:
                 pair_list.append('{COL}=?'.format(COL=colname))
             else:
-                logger.warning('failed to generate deletion statement - column {} has no associated parameters'
+                logger.warning('failed to generate deletion statement - column "{}" has no associated parameters'
                                .format(colname))
                 continue
 
