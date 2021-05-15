@@ -744,10 +744,12 @@ class TableElement:
             tbl_total = 0
 
         if is_float_dtype(type(tbl_total)):
-            logger.debug('DataTable {NAME}: table totals are formatted as float'.format(NAME=self.name))
+            logger.debug('DataTable {NAME}: table totals "{TOT}" are formatted as float'
+                         .format(NAME=self.name, TOT=tbl_total))
             tbl_total = '{:,.2f}'.format(tbl_total)
         else:
-            logger.debug('DataTable {NAME}: table totals are formatted as a string'.format(NAME=self.name))
+            logger.debug('DataTable {NAME}: table totals "{TOT}" are formatted as a string'
+                         .format(NAME=self.name, TOT=tbl_total))
             tbl_total = str(tbl_total)
 
         total_key = self.key_lookup('Total')
@@ -896,8 +898,6 @@ class TableElement:
         operators = set('+-*/')
 
         df = df if df is not None else self.filter_deleted(self.df.copy())
-        if df.empty:
-            return []
 
         logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
 

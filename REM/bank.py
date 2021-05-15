@@ -547,8 +547,6 @@ class BankRule:
                 selection = mod_win2.popup_confirm(msg)
 
                 if selection == 'OK':
-                    self.in_progress = False
-
                     # Reset rule and update the panel
                     remain_in_panel = True if not values['-AMENU-'] else False
                     if remain_in_panel is True:

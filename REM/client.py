@@ -467,23 +467,9 @@ class SettingsManager:
 
         # Logging
         try:
-            self.log_file = cnfg['log']['log_file']
-        except KeyError:
-            self.log_file = os.path.join(dirname, 'REM.log')  # localhost
-
-        try:
             self.log_level = cnfg['log']['log_level'].upper()
         except (KeyError, AttributeError):
             self.log_level = 'WARNING'
-
-        try:
-            self.log_size = int(cnfg['log']['log_size'])
-        except (KeyError, ValueError):  # default 1 MB
-            self.log_size = 1000000
-        try:
-            self.log_n = int(cnfg['log']['log_backups'])
-        except (KeyError, ValueError):  # default 5 backup files
-            self.log_n = 5
         try:
             self.log_fmt = cnfg['log']['log_fmt']
         except KeyError:
@@ -1439,11 +1425,6 @@ def configure_handler(dirname, cnfg, stream=sys.stdout, log_level: str = None):
     """
     Configure the rotating file handler for logging.
     """
-    try:
-        log_file = cnfg['log']['log_file']
-    except KeyError:
-        log_file = os.path.join(dirname, 'REM.log')
-
     if log_level:
         level = log_level
     else:
@@ -1466,20 +1447,10 @@ def configure_handler(dirname, cnfg, stream=sys.stdout, log_level: str = None):
         log_level = logging.WARNING
 
     try:
-        nbytes = int(cnfg['log']['log_size'])
-    except (KeyError, ValueError):  # default 1 MB
-        nbytes = 1000000
-    try:
-        backups = int(cnfg['log']['log_backups'])
-    except (KeyError, ValueError):  # default 5 backup files
-        backups = 5
-    try:
         formatter = logging.Formatter(cnfg['log']['log_fmt'])
     except (KeyError, ValueError):
         formatter = logging.Formatter('%(asctime)s: %(filename)s: %(levelname)s: %(message)s')
 
-#    log_handler = handlers.RotatingFileHandler(log_file, maxBytes=nbytes, backupCount=backups, encoding='utf-8',
-#                                               mode='a')
     log_handler = logging.StreamHandler(stream=stream)
     log_handler.setLevel(log_level)
     log_handler.setFormatter(formatter)
@@ -1505,15 +1476,7 @@ CNFG = load_config(CNF_FILE)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-#log_handler = handlers.RotatingFileHandler(settings.log_file, maxBytes=settings.log_size, backupCount=settings.log_n,
-#                                           encoding='utf-8', mode='a')
-#log_handler.setLevel(settings.log_level)
-#log_handler.setFormatter(logging.Formatter(settings.log_fmt))
-#
-#logger.addHandler(log_handler)
 logger.addHandler(configure_handler(DIRNAME, CNFG))
-
-#logger.debug('writing program logs to {LOG}'.format(LOG=settings.log_file))
 
 # Initialize manager objects
 settings = SettingsManager(CNFG, DIRNAME)

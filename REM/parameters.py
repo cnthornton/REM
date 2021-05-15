@@ -938,8 +938,10 @@ class DataParameterDateRange(DataParameter):
 
         # Update the parameter window element
         if self.hidden is False:
-            self.format_value({self.key_lookup('Element'): def_val1, self.key_lookup('Element2'): def_val2})
+            self.value = self.format_value({self.key_lookup('Element'): def_val1,
+                                            self.key_lookup('Element2'): def_val2})
             display_val1, display_val2 = self.format_display()
+            print('resetting parameter {} to {} and {}'.format(self.name, display_val1, display_val2))
 
             window[self.key_lookup('Element')].update(value=display_val1)
             window[self.key_lookup('Element2')].update(value=display_val2)
