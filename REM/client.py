@@ -470,21 +470,12 @@ class SettingsManager:
             self.log_file = cnfg['log']['log_file']
         except KeyError:
             self.log_file = os.path.join(dirname, 'REM.log')  # localhost
+
         try:
-            log_level = cnfg['log']['log_level'].upper()
+            self.log_level = cnfg['log']['log_level'].upper()
         except (KeyError, AttributeError):
-            self.log_level = logging.WARNING
-        else:
-            if log_level == 'WARNING':
-                self.log_level = logging.WARNING
-            elif log_level == 'ERROR':
-                self.log_level = logging.ERROR
-            elif log_level == 'INFO':
-                self.log_level = logging.INFO
-            elif log_level == 'DEBUG':
-                self.log_level = logging.DEBUG
-            else:
-                self.log_level = logging.WARNING
+            self.log_level = 'WARNING'
+
         try:
             self.log_size = int(cnfg['log']['log_size'])
         except (KeyError, ValueError):  # default 1 MB
@@ -834,6 +825,18 @@ class SettingsManager:
             icon_path = None
 
         return icon_path
+
+    def reload_logger(self, stream, log_level: str = None):
+        """
+        Reload the log configuration
+        """
+        if log_level:
+            self.log_level = log_level
+
+        for handler in logger.handlers[:]:  # removes existing file handlers
+            logger.removeHandler(handler)
+
+        logger.addHandler(configure_handler(self.dirname, CNFG, stream=stream, log_level=log_level))
 
 
 class AccountManager:
@@ -1432,7 +1435,7 @@ def load_config(cnfg_file):
     return cnfg
 
 
-def configure_handler(dirname, cnfg):
+def configure_handler(dirname, cnfg, stream=sys.stdout, log_level: str = None):
     """
     Configure the rotating file handler for logging.
     """
@@ -1440,21 +1443,28 @@ def configure_handler(dirname, cnfg):
         log_file = cnfg['log']['log_file']
     except KeyError:
         log_file = os.path.join(dirname, 'REM.log')
-    try:
-        level = cnfg['log']['log_level'].upper()
-    except (KeyError, AttributeError):
-        log_level = logging.WARNING
+
+    if log_level:
+        level = log_level
     else:
-        if level == 'WARNING':
-            log_level = logging.WARNING
-        elif level == 'ERROR':
-            log_level = logging.ERROR
-        elif level == 'INFO':
-            log_level = logging.INFO
-        elif level == 'DEBUG':
-            log_level = logging.DEBUG
-        else:
-            log_level = logging.WARNING
+        try:
+            level = cnfg['log']['log_level'].upper()
+        except (KeyError, AttributeError):
+            level = 'WARNING'
+
+    if level == 'WARNING':
+        log_level = logging.WARNING
+    elif level == 'ERROR':
+        log_level = logging.ERROR
+    elif level == 'INFO':
+        log_level = logging.INFO
+    elif level == 'DEBUG':
+        log_level = logging.DEBUG
+    elif level == 'CRITICAL':
+        log_level = logging.CRITICAL
+    else:
+        log_level = logging.WARNING
+
     try:
         nbytes = int(cnfg['log']['log_size'])
     except (KeyError, ValueError):  # default 1 MB
@@ -1468,8 +1478,9 @@ def configure_handler(dirname, cnfg):
     except (KeyError, ValueError):
         formatter = logging.Formatter('%(asctime)s: %(filename)s: %(levelname)s: %(message)s')
 
-    log_handler = handlers.RotatingFileHandler(log_file, maxBytes=nbytes, backupCount=backups, encoding='utf-8',
-                                               mode='a')
+#    log_handler = handlers.RotatingFileHandler(log_file, maxBytes=nbytes, backupCount=backups, encoding='utf-8',
+#                                               mode='a')
+    log_handler = logging.StreamHandler(stream=stream)
     log_handler.setLevel(log_level)
     log_handler.setFormatter(formatter)
 

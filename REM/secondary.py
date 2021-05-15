@@ -204,6 +204,43 @@ def login_window():
     gc.collect()
 
 
+def debug_window():
+    """
+    Display the debug window.
+    """
+    # Layout options
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
+    font = mod_const.MID_FONT
+    bold_font = mod_const.BOLD_FONT
+    bg_col = mod_const.ACTION_COL
+    def_col = mod_const.DEFAULT_COL
+
+    # Layout
+    log_levels = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
+
+    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), tooltip='Stop debugging'),
+                    sg.Button('', key='-CLEAR-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+                              bind_return_key=True, pad=(pad_el, 0), tooltip='Clear debug output')]]
+
+    debug_layout = [[sg.Text('Log level:', pad=((pad_frame, pad_el), (pad_frame, pad_v)), font=bold_font,
+                             background_color=bg_col),
+                     sg.Combo(log_levels, key='-LEVEL-', default_value=settings.log_level, enable_events=True,
+                              background_color=bg_col, pad=((0, pad_frame), (pad_frame, pad_v)), font=font)],
+                    [sg.Output(size=(40, 10), key='-OUTPUT-', pad=(pad_frame, 0), background_color=bg_col,
+                               echo_stdout_stderr=True)]]
+
+    layout = [[sg.Col(debug_layout, pad=(0, 0), background_color=bg_col, expand_y=True, expand_x=True)],
+              [sg.Col(bttn_layout, justification='c', element_justification='c',
+                      pad=(0, (pad_v, pad_frame)), background_color=def_col, expand_x=True)]]
+
+    window = sg.Window('Debug Program', layout, modal=False, keep_on_top=False, resizable=True)
+
+    return window
+
+
 def record_window(record, win_size: tuple = None, view_only: bool = False):
     """
     Display the record window.

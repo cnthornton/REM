@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.1.22'
+__version__ = '3.2.0'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -79,7 +79,7 @@ class ToolBar:
                           'items': [('!', 'Manage &Users'), ('!', '&Messages'), ('', '---'), ('', 'Sign &In'),
                                     ('!', 'Sign &Out')]}
         self.menu_menu = {'name': '&Menu',
-                          'items': [('!', '&Settings'), ('', '---'), ('', '&Help'),
+                          'items': [('!', '&Settings'), ('', '&Debug'), ('', '---'), ('', '&Help'),
                                     ('', 'Ab&out'), ('', '---'), ('', '&Quit')]}
 
         self.records_title = records.title
@@ -603,6 +603,36 @@ def main():
             toolbar.disable(window, all_rules)
 
             continue
+
+        # Display the debug window
+        if not debug_win and values['-MMENU-'] == 'Debug':
+            debug_win = mod_win2.debug_window()
+            debug_win.finalize()
+
+            # Reload logger with new log stream
+            settings.reload_logger(debug_win['-OUTPUT-'].TKOut)
+            logger.info('setting log output stream to the debug window')
+
+            continue
+        elif debug_win:
+            debug_event, debug_value = debug_win.read(timeout=1000)
+
+            if debug_event in (sg.WIN_CLOSED, '-CANCEL-'):
+                debug_win.close()
+                debug_win = None
+
+                # Reset logging stream to stdout
+                logger.info('resetting log output stream to system output')
+                settings.reload_logger(sys.stdout)
+            elif debug_event == '-CLEAR-':
+                debug_win['-OUTPUT-'].update('')
+            elif debug_event == '-LEVEL-':
+                # Reload logger with new log level
+                log_level = debug_value['-LEVEL-']
+                logger.info('resetting logging level to {}'.format(log_level))
+                settings.reload_logger(debug_win['-OUTPUT-'].TKOut, log_level=log_level)
+            else:
+                debug_win['-OUTPUT-'].expand(expand_x=True, expand_y=True, expand_row=True)
 
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
