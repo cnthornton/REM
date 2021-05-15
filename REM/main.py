@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.2.0'
+__version__ = '3.2.1'
 
 from multiprocessing import freeze_support
 import PySimpleGUI as sg
@@ -494,6 +494,12 @@ def main():
 
         # Quit program
         if event == sg.WIN_CLOSED or values['-MMENU-'] == 'Quit':
+            logger.info('exiting the program')
+
+            if debug_win:
+                debug_win.close()
+                settings.reload_logger(sys.stdout)
+
             break
 
         # Resize screen
@@ -515,7 +521,11 @@ def main():
 
         # Resize screen
         # Get window dimensions
-        win_w, win_h = window.size
+        try:
+            win_w, win_h = window.size
+        except Exception:
+            continue
+
         if win_w != current_w or win_h != current_h:
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
