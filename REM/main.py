@@ -616,12 +616,16 @@ def main():
 
         # Display the debug window
         if not debug_win and values['-MMENU-'] == 'Debug':
-            debug_win = mod_win2.debug_window()
-            debug_win.finalize()
+            if settings.log_file:
+                mod_win2.popup_notice('The debug window is deactivated when logging to a file. Program logs are '
+                                      'being sent to {}'.format(settings.log_file))
+            else:
+                debug_win = mod_win2.debug_window()
+                debug_win.finalize()
 
-            # Reload logger with new log stream
-            settings.reload_logger(debug_win['-OUTPUT-'].TKOut)
-            logger.info('setting log output stream to the debug window')
+                # Reload logger with new log stream
+                settings.reload_logger(debug_win['-OUTPUT-'].TKOut)
+                logger.info('setting log output stream to the debug window')
 
             continue
         elif debug_win:
