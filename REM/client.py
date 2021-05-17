@@ -467,6 +467,10 @@ class SettingsManager:
 
         # Logging
         try:
+            self.log_file = cnfg['log']['log_file']
+        except KeyError:
+            self.log_file = None
+        try:
             self.log_level = cnfg['log']['log_level'].upper()
         except (KeyError, AttributeError):
             self.log_level = 'WARNING'
@@ -1425,6 +1429,11 @@ def configure_handler(dirname, cnfg, stream=sys.stdout, log_level: str = None):
     """
     Configure the rotating file handler for logging.
     """
+    try:
+        log_file = logging.Formatter(cnfg['log']['log_file'])
+    except (KeyError, ValueError):
+        log_file = None
+
     if log_level:
         level = log_level
     else:
@@ -1447,11 +1456,26 @@ def configure_handler(dirname, cnfg, stream=sys.stdout, log_level: str = None):
         log_level = logging.WARNING
 
     try:
+        nbytes = int(cnfg['log']['log_size'])
+    except (KeyError, ValueError):  # default 1 MB
+        nbytes = 1000000
+
+    try:
+        backups = int(cnfg['log']['log_backups'])
+    except (KeyError, ValueError):  # default 5 backup files
+        backups = 5
+
+    try:
         formatter = logging.Formatter(cnfg['log']['log_fmt'])
     except (KeyError, ValueError):
         formatter = logging.Formatter('%(asctime)s: %(filename)s: %(levelname)s: %(message)s')
 
-    log_handler = logging.StreamHandler(stream=stream)
+    if log_file:
+        log_handler = handlers.RotatingFileHandler(log_file, maxBytes=nbytes, backupCount=backups, encoding='utf-8',
+                                                   mode='a')
+    else:
+        log_handler = logging.StreamHandler(stream=stream)
+
     log_handler.setLevel(log_level)
     log_handler.setFormatter(formatter)
 
