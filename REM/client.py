@@ -826,7 +826,7 @@ class SettingsManager:
         for handler in logger.handlers[:]:  # removes existing file handlers
             logger.removeHandler(handler)
 
-        logger.addHandler(configure_handler(self.dirname, CNFG, stream=stream, log_level=log_level))
+        logger.addHandler(configure_handler(CNFG, stream=stream, log_level=log_level))
 
 
 class AccountManager:
@@ -1425,14 +1425,15 @@ def load_config(cnfg_file):
     return cnfg
 
 
-def configure_handler(dirname, cnfg, stream=sys.stdout, log_level: str = None):
+def configure_handler(cnfg, stream=sys.stdout, log_level: str = None):
     """
     Configure the rotating file handler for logging.
     """
     try:
-        log_file = logging.Formatter(cnfg['log']['log_file'])
+        log_file = cnfg['log']['log_file']
     except (KeyError, ValueError):
         log_file = None
+    print('printing to {}'.format(log_file))
 
     if log_level:
         level = log_level
@@ -1500,7 +1501,7 @@ CNFG = load_config(CNF_FILE)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-logger.addHandler(configure_handler(DIRNAME, CNFG))
+logger.addHandler(configure_handler(CNFG))
 
 # Initialize manager objects
 settings = SettingsManager(CNFG, DIRNAME)
