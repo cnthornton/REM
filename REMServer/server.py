@@ -5,26 +5,26 @@ REM server.
 
 __version__ = '0.2.5'
 
-from multiprocessing import freeze_support
 import logging
 import logging.handlers as handlers
-#import io
+# import io
 import os
 import selectors
 import socket
 import struct
 import sys
+from multiprocessing import freeze_support
 
-from bson import json_util
-#import json
+# import json
 import pandas as pd
-from pandas.io import sql
 import pyodbc
-import yaml
-from pymongo import MongoClient, errors
-import win32serviceutil
-import win32service
 import servicemanager
+import win32service
+import win32serviceutil
+import yaml
+from bson import json_util
+from pandas.io import sql
+from pymongo import MongoClient, errors
 
 
 class WinServiceManager(win32serviceutil.ServiceFramework):

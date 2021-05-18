@@ -3,17 +3,18 @@ REM standard GUI element classes such as tables and information boxes.
 """
 
 import datetime
+import re
+import sys
+from random import randint
+
+import PySimpleGUI as sg
 import dateutil
 import numpy as np
 import pandas as pd
-import PySimpleGUI as sg
-from random import randint
-import re
-import sys
 
 import REM.constants as mod_const
-import REM.database as mod_db
 import REM.data_manipulation as mod_dm
+import REM.database as mod_db
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records

@@ -2,9 +2,10 @@
 REM function for manipulating data.
 """
 
+import re
+
 import numpy as np
 import pandas as pd
-import re
 
 from REM.client import logger
 

@@ -2,24 +2,25 @@
 REM configuration settings.
 """
 
-from bson import json_util
 import datetime
-import dateutil
 import gettext
 import hashlib
 import locale
 import logging
 import logging.handlers as handlers
 import os
-import pandas as pd
-import PySimpleGUI as sg
-from random import randint
 import socket
 import struct
 import sys
 import textwrap
 import time
+from random import randint
+
+import PySimpleGUI as sg
+import dateutil
+import pandas as pd
 import yaml
+from bson import json_util
 
 import REM.constants as mod_const
 

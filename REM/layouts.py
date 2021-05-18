@@ -3,8 +3,8 @@ REM Layout classes and functions.
 """
 import PySimpleGUI as sg
 
-import REM.data_manipulation as mod_dm
 import REM.constants as mod_const
+import REM.data_manipulation as mod_dm
 from REM.client import logger, settings, user
 
 

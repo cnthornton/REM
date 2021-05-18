@@ -5,10 +5,11 @@ REM main program. Includes primary display.
 
 __version__ = '3.2.4'
 
-from multiprocessing import freeze_support
-import PySimpleGUI as sg
 import sys
 import tkinter as tk
+from multiprocessing import freeze_support
+
+import PySimpleGUI as sg
 
 import REM.audit as mod_audit
 import REM.bank as mod_bank

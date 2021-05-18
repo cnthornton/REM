@@ -3,10 +3,11 @@ REM bank reconciliation configuration classes and objects.
 """
 
 import datetime
-import pandas as pd
-import PySimpleGUI as sg
-from random import randint
 import sys
+from random import randint
+
+import PySimpleGUI as sg
+import pandas as pd
 
 import REM.constants as mod_const
 import REM.database as mod_db

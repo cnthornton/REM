@@ -3,11 +3,12 @@ REM records classes and functions. Includes audit records and account records.
 """
 
 import datetime
+import sys
+from random import randint
+
+import PySimpleGUI as sg
 import dateutil
 import pandas as pd
-import PySimpleGUI as sg
-from random import randint
-import sys
 
 import REM.constants as mod_const
 import REM.database as mod_db

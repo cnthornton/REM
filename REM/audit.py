@@ -2,20 +2,20 @@
 REM transaction audit configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
 """
 import datetime
-import dateutil
 import os
 import re
 import sys
-
-from jinja2 import Environment, FileSystemLoader
-import pandas as pd
-import PySimpleGUI as sg
-import pdfkit
 from random import randint
 
+import PySimpleGUI as sg
+import dateutil
+import pandas as pd
+import pdfkit
+from jinja2 import Environment, FileSystemLoader
+
 import REM.constants as mod_const
-import REM.database as mod_db
 import REM.data_manipulation as mod_dm
+import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.layouts as mod_lo
 import REM.parameters as mod_param

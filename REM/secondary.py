@@ -3,21 +3,22 @@ REM secondary window functions, including popups, a window for importing
 missing data, the debugger, and the login window.
 """
 
-import dateutil
 import datetime
 import gc
-import numpy as np
-import pandas as pd
-import PySimpleGUI as sg
 import textwrap
 
+import PySimpleGUI as sg
+import dateutil
+import numpy as np
+import pandas as pd
+
 import REM.constants as mod_const
-import REM.database as mod_db
 import REM.data_manipulation as mod_dm
+import REM.database as mod_db
 import REM.layouts as mod_lo
-from REM.main import __version__
 import REM.records as mod_records
 from REM.client import logger, settings, user
+from REM.main import __version__
 
 
 # Popups

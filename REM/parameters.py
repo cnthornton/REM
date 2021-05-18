@@ -1,12 +1,12 @@
 """
 REM parameter element classes.
 """
-import sys
-
 import datetime
-import pandas as pd
-import PySimpleGUI as sg
+import sys
 from random import randint
+
+import PySimpleGUI as sg
+import pandas as pd
 
 import REM.constants as mod_const
 import REM.secondary as mod_win2

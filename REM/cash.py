@@ -2,8 +2,8 @@
 REM mod_cash reconciliation configuration classes and objects.
 """
 
-from random import randint
 import sys
+from random import randint
 
 import REM.secondary as mod_win2
 from REM.client import logger
