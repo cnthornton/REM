@@ -1434,7 +1434,6 @@ def configure_handler(cnfg, stream=sys.stdout, log_level: str = None):
         log_file = cnfg['log']['log_file']
     except (KeyError, ValueError):
         log_file = None
-    print('printing to {}'.format(log_file))
 
     if log_level:
         level = log_level

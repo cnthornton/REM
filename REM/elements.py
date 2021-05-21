@@ -202,7 +202,7 @@ class TableElement:
                         self.parameters.append(param_obj)
                         self.elements += param_obj.elements
                     else:
-                        logger.warning('DataTable {NAME}: filter parameters {PARAM} must be listed in '
+                        logger.warning('DataTable {NAME}: filter parameters "{PARAM}" must be listed in '
                                        'the table columns'.format(NAME=name, PARAM=param))
 
         try:
@@ -1797,7 +1797,7 @@ class TableElement:
 
     def calculate_total(self, df: pd.DataFrame = None):
         """
-        Calculate the record total using the configured tally rule.
+        Calculate the data table total using the configured tally rule.
         """
         is_float_dtype = pd.api.types.is_float_dtype
         is_integer_dtype = pd.api.types.is_integer_dtype
@@ -2049,6 +2049,7 @@ class TableElement:
         edit_columns = self.edit_columns
         if not edit_columns:
             logger.warning('DataTable {TBL}: no columns have been configured to be editable'.format(TBL=self.name))
+
         df = self.df.copy()
 
         try:

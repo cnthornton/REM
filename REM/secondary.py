@@ -1830,7 +1830,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     is_bool_dtype = pd.api.types.is_bool_dtype
 
     if not isinstance(edit_columns, dict) and edit_columns is not None:
-        logger.error('argument edit_columns must be a dictionary but has current type {TYPE}'
+        logger.error('argument edit_columns must be a dictionary but has current type "{TYPE}"'
                      .format(TYPE=type(edit_columns)))
         return row
 
@@ -1856,14 +1856,13 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
             continue
 
     edit_keys = {}
-    if edit_columns is not None:
-        for column in edit_columns:
-            if column not in display_header:
-                logger.warning('editable column {COL} not found in the display header'.format(COL=column))
-                continue
+    for column in edit_columns:
+        if column not in display_header:
+            logger.warning('editable column "{COL}" not found in the display header'.format(COL=column))
+            continue
 
-            element_key = '-{COL}-'.format(COL=column)
-            edit_keys[column] = element_key
+        element_key = '-{COL}-'.format(COL=column)
+        edit_keys[column] = element_key
 
     # Window and element size parameters
     main_font = mod_const.MAIN_FONT
@@ -1886,7 +1885,9 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     # Table
     lengths = mod_dm.calc_column_widths(display_header, width=width, font_size=font_size, pixels=False)
 
+    # Define the layout for each field of the row that will be displayed
     tbl_layout = []
+    dtype_map = {}
     for i, display_column in enumerate(display_header):
         display_name = header_map[display_column]
 
@@ -1896,19 +1897,55 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                                   tooltip=display_name)]]
 
         field_val = row[display_column]
+
+        # Determine the element and data types of the column
         if display_column in edit_keys:
             element_key = edit_keys[display_column]
             readonly = False
             try:
-                column_type = edit_columns[display_column]['ElementType']
-            except KeyError:
-                column_type = 'string'
+                etype = edit_columns[display_column]['ElementType'].lower()
+            except (KeyError, AttributeError):
+                etype = 'input'
+                logger.warning('unable to obtain the element type of editable column "{COL}" ... setting to default '
+                               '"input"'.format(COL=display_column))
+            else:
+                logger.debug('column "{COL}" is editable and has element type "{TYPE}"'
+                             .format(COL=display_column, TYPE=etype))
+            try:
+                dtype = edit_columns[display_column]['DataType'].lower()
+            except (KeyError, AttributeError):
+                dtype = 'string'
+                logger.warning('unable to obtain the data type of editable column "{COL}" ... setting to default '
+                               '"string"'.format(COL=display_column))
+            else:
+                logger.debug('column "{COL}" is editable and has data type "{TYPE}"'
+                             .format(COL=display_column, TYPE=dtype))
+
         else:
+            logger.debug('column "{COL}" is marked as readonly'.format(COL=display_column))
             element_key = '-{COL}-'.format(COL=display_column)
             readonly = True
-            column_type = 'string'
+            etype = 'input'
+            dtype = 'string'
 
-        if column_type == 'dropdown':
+        # Add the column data type to the dtype mapper
+        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+            dtype_obj = np.datetime64
+        elif dtype == 'dropdown':
+            dtype_obj = np.object
+        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+            dtype_obj = float
+        elif dtype in ('int', 'integer', 'bit'):
+            dtype_obj = int
+        elif dtype in ('bool', 'boolean'):
+            dtype_obj = bool
+        else:
+            dtype_obj = np.object
+
+        dtype_map[display_column] = dtype_obj
+
+        # Create the layout for the field based on the element type
+        if etype == 'dropdown':
             try:
                 values = edit_columns[display_column]['Values']
             except KeyError:
@@ -1923,6 +1960,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
 
         tbl_layout.append(sg.Col(column_layout, pad=(0, 0), expand_x=True))
 
+    # create the window layout
     layout = [[sg.Frame('', [tbl_layout], relief='sunken', border_width=1, pad=(pad_frame, (pad_frame, 0)))],
               [sg.Col(bttn_layout, justification='c', pad=(pad_frame, (pad_v, pad_frame)))]]
 
@@ -1949,25 +1987,30 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
 
                 # Get data type of column
                 try:
-                    dtype = edit_columns[column]['ElementType'].lower()
-                except (KeyError, TypeError):
+#                    dtype = edit_columns[column]['ElementType'].lower()
+                    dtype = dtype_map[column]
+                except KeyError:
+                    logger.warning('unable to obtain the data type of column "{COL}" from the dictionary of editable '
+                                   'columns ... obtaining data type from row data types'.format(COL=column))
                     dtype = row[column].dtype
-                else:
-                    if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                        dtype = np.datetime64
-                    elif dtype == 'dropdown':
-                        dtype = np.object
-                    elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-                        dtype = float
-                    elif dtype in ('int', 'integer', 'bit'):
-                        dtype = int
-                    elif dtype in ('bool', 'boolean'):
-                        dtype = bool
-                    else:
-                        dtype = np.object
+#                else:
+#                    logger.debug('the data type of column "{COL}" is "{DTYPE}"'
+#                                 .format(COL=header_map[column], DTYPE=dtype))
+
+#                    if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+#                        dtype = np.datetime64
+#                    elif dtype == 'dropdown':
+#                        dtype = np.object
+#                    elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+#                        dtype = float
+#                    elif dtype in ('int', 'integer', 'bit'):
+#                        dtype = int
+#                    elif dtype in ('bool', 'boolean'):
+#                        dtype = bool
+#                    else:
+#                        dtype = np.object
 
                 # Set field value based on data type
-                logger.debug('the data type of column {COL} is {DTYPE}'.format(COL=header_map[column], DTYPE=dtype))
                 msg = 'The value "{VAL}" provided to column "{COL}" is the wrong type'
                 if is_float_dtype(dtype):
                     try:

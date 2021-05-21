@@ -936,17 +936,19 @@ class DatabaseRecord:
         try:
             ref_entry = entry['References']
         except KeyError:
-            logger.warning('no reference record types configured for {NAME}'.format(NAME=self.name))
+            logger.info('RecordEntry {NAME}: no reference record types configured'.format(NAME=self.name))
         else:
             try:
                 ref_elements = ref_entry['Elements']
             except KeyError:
-                logger.warning('missing required References parameter "Elements"'.format(NAME=self.name))
+                logger.warning('RecordEntry {NAME}: unable to add references - missing required parameter "Elements"'
+                               .format(NAME=self.name))
             else:
                 for ref_element in ref_elements:
                     if ref_element not in [i.name for i in settings.records.rules]:
-                        logger.warning('RecordEntry {NAME}: reference {TYPE} must be a pre-configured '
-                                       'record type'.format(NAME=self.name, TYPE=ref_element))
+                        logger.warning('RecordEntry {NAME}: unable to add references of type "{TYPE}" - reference type '
+                                       '"{TYPE}" must be a pre-configured record type'
+                                       .format(NAME=self.name, TYPE=ref_element))
                     else:
                         self.reference_types.append(ref_element)
 
@@ -955,18 +957,19 @@ class DatabaseRecord:
         try:
             comp_entry = entry['Components']
         except KeyError:
-            logger.warning('RecordEntry: no component record types configured'.format(NAME=self.name))
+            logger.info('RecordEntry: no component record types configured'.format(NAME=self.name))
         else:
             try:
                 comp_elements = comp_entry['Elements']
             except KeyError:
-                logger.warning('RecordEntry {NAME}: missing required configuration References parameter "Elements"'
+                logger.warning('RecordEntry {NAME}: unable to add components - missing required parameter "Elements"'
                                .format(NAME=self.name))
             else:
                 for comp_element in comp_elements:
                     if comp_element not in approved_record_types:
-                        logger.warning('RecordEntry {NAME}: component table {TBL} must be an acceptable '
-                                       'record type'.format(NAME=self.name, TBL=comp_element))
+                        logger.warning('RecordEntry {NAME}: unable to add component of type "{TYPE}" - component '
+                                       '"{TYPE}" must be an acceptable record type'
+                                       .format(NAME=self.name, TYPE=comp_element))
                         continue
                     table_entry = comp_elements[comp_element]
                     comp_table = mod_elem.TableElement(comp_element, table_entry, parent=self.name)
