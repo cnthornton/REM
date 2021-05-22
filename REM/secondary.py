@@ -1987,31 +1987,14 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
 
                 # Get data type of column
                 try:
-#                    dtype = edit_columns[column]['ElementType'].lower()
                     dtype = dtype_map[column]
                 except KeyError:
                     logger.warning('unable to obtain the data type of column "{COL}" from the dictionary of editable '
                                    'columns ... obtaining data type from row data types'.format(COL=column))
                     dtype = row[column].dtype
-#                else:
-#                    logger.debug('the data type of column "{COL}" is "{DTYPE}"'
-#                                 .format(COL=header_map[column], DTYPE=dtype))
-
-#                    if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-#                        dtype = np.datetime64
-#                    elif dtype == 'dropdown':
-#                        dtype = np.object
-#                    elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-#                        dtype = float
-#                    elif dtype in ('int', 'integer', 'bit'):
-#                        dtype = int
-#                    elif dtype in ('bool', 'boolean'):
-#                        dtype = bool
-#                    else:
-#                        dtype = np.object
 
                 # Set field value based on data type
-                msg = 'The value "{VAL}" provided to column "{COL}" is the wrong type'
+                msg = 'the value "{VAL}" provided to column "{COL}" is the wrong type'
                 if is_float_dtype(dtype):
                     try:
                         field_val = float(input_val)
