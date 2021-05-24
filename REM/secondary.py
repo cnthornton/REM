@@ -1876,6 +1876,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     in_col = mod_const.INPUT_COL
 
     # GUI layout
+
     # Buttons
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
                               pad=(pad_el, 0), tooltip='Cancel edit'),

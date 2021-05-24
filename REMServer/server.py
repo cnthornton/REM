@@ -3,11 +3,10 @@
 REM server.
 """
 
-__version__ = '0.2.5'
+__version__ = '0.3.0'
 
 import logging
 import logging.handlers as handlers
-# import io
 import os
 import selectors
 import socket
@@ -15,7 +14,6 @@ import struct
 import sys
 from multiprocessing import freeze_support
 
-# import json
 import pandas as pd
 import pyodbc
 import servicemanager
@@ -23,6 +21,7 @@ import win32service
 import win32serviceutil
 import yaml
 from bson import json_util
+from cryptography.fernet import Fernet
 from pandas.io import sql
 from pymongo import MongoClient, errors
 
@@ -120,7 +119,7 @@ class WinService:
                                              .format(ADDR=message.addr))
                             message.close()
         except Exception:
-            logger.exception('server {HOST} no longer monitoring connections on port {PORT}'
+            logger.exception('server "{HOST}" no longer monitoring connections on port {PORT}'
                              .format(HOST=configuration.host, PORT=configuration.port))
         finally:
             sel.close()
@@ -219,20 +218,12 @@ class ClientConnection:
             else:
                 self._send_buffer = self._send_buffer[sent:]
 
-    def _encode(self, obj, encoding):
-#        try:
-#            response_fmt = json.dumps(obj, ensure_ascii=False).encode(encoding)
-#        except TypeError:
-#            logging.error('unable to serialize the response "{}" for sending'.format(obj))
-#            raise
-#
-#        return response_fmt
-        return json_util.dumps(obj).encode(encoding)
+    def _encode(self, msg, encoding):
+        encoded_msg = json_util.dumps(msg).encode(encoding)
+
+        return encoded_msg
 
     def _decode(self, json_bytes, encoding):
-#        tiow = io.TextIOWrapper(io.BytesIO(json_bytes), encoding=encoding, newline="")
-#        obj = json.load(tiow)
-#        tiow.close()
         obj = json_util.loads(json_bytes.decode(encoding))
 
         return obj
@@ -375,7 +366,7 @@ class ClientConnection:
 
         content_encoding = "utf-8"
         response = {
-            "content_bytes": self._encode(content, content_encoding),
+            "content_bytes": cipher.encrypt(self._encode(content, content_encoding)),
             "content_encoding": content_encoding,
         }
 
@@ -404,7 +395,7 @@ class ClientConnection:
                 self.process_request()
 
         if self.request:
-            logger.info('receiving request "{REQ}" from {ADDR}'.format(REQ=self.action, ADDR=self.addr))
+            logger.info('receiving request "{REQ}" from address {ADDR}'.format(REQ=self.action, ADDR=self.addr))
 #            logger.debug('request received: {}'.format(self.request))
 
             # Set selector to listen for write events, we're done reading.
@@ -418,7 +409,8 @@ class ClientConnection:
         if self.request:  # request was previously sent by client
             if not self.response_created:  # first time calling after processing query / request
                 self.create_response()
-                logger.info('sending response to request "{REQ}" to {ADDR}'.format(REQ=self.action, ADDR=self.addr))
+                logger.info('sending response to request "{REQ}" to address {ADDR}'
+                            .format(REQ=self.action, ADDR=self.addr))
 #                logger.debug('response to be sent: {}'.format(self._send_buffer))
 
         self._write()  # call until send buffer is empty
@@ -444,20 +436,20 @@ class ClientConnection:
 
             for reqhdr in ("byteorder", "content-length", "content-encoding"):
                 if reqhdr not in self.header:
-                    raise ValueError('missing required header component {COMP}'.format(COMP=reqhdr))
+                    raise ValueError('missing required header component "{COMP}"'.format(COMP=reqhdr))
 
     def process_request(self):
         content_len = self.header["content-length"]
 
         if len(self._recv_buffer) >= content_len:
-            data = self._recv_buffer[:content_len]
+            data = cipher.decrypt(self._recv_buffer[:content_len])
             self._recv_buffer = self._recv_buffer[content_len:]
             encoding = self.header["content-encoding"]
             self.request = self._decode(data, encoding)
             try:
                 self.action = self.request.get('action', None)
             except TypeError:
-                logger.error('an improperly formatted request was received from {ADDR}'.format(ADDR=self.addr))
+                logger.error('an improperly formatted request was received from address {ADDR}'.format(ADDR=self.addr))
 
     def create_response(self):
         response = self._create_response()
@@ -1155,6 +1147,9 @@ def configure_handler(dirname, cnfg):
 
     return log_handler
 
+
+# Static (global) variables
+
 # Determine if application is a script file or frozen exe
 if getattr(sys, 'frozen', False):
     DIR = os.path.dirname(sys.executable)
@@ -1164,27 +1159,33 @@ else:
     print('failed to determine program running directory', file=sys.stderr)
     sys.exit(1)
 
+# Load the configuration file
 CNF_FILE = os.path.join(DIR, 'cnfg.yaml')
 
-#LOG_FILE = os.path.join(DIR, 'server.log')
-#LOG_FMT = '%(asctime)s: %(filename)s: %(levelname)s: %(message)s'
-#LOG_LEVEL = logging.INFO
-#LOG_SIZE = 5000000
-#LOG_N = 5
-
+# Define the default logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-#log_handler = handlers.RotatingFileHandler(LOG_FILE, maxBytes=LOG_SIZE, backupCount=LOG_N, encoding='utf-8', mode='a')
-#log_handler.setLevel(LOG_LEVEL)
-#log_handler.setFormatter(logging.Formatter(LOG_FMT))
-
-#logger.addHandler(log_handler)
 logger.addHandler(configure_handler(DIR, load_config(CNF_FILE)))
 logger.info('logging successfully configured')
 
 configuration = ConfigManager()
 
+# Load the encryption key
+ENCRYPT_FILE = 'REM.aes'
+ENCRYPT_PATH = os.path.join(DIR, ENCRYPT_FILE)
+if os.path.isfile(ENCRYPT_PATH) and os.access(ENCRYPT_PATH, os.R_OK):  # encryption key file exists and is readable
+    with open(ENCRYPT_PATH, 'rb') as encrypt_h:
+        encrypt_key = encrypt_h.read()
+else:  # encryption key file has not yet been generated
+    encrypt_key = Fernet.generate_key()
+    with open(ENCRYPT_PATH, 'wb') as encrypt_h:
+        encrypt_h.write(encrypt_key)
+
+cipher = Fernet(encrypt_key)
+del encrypt_key
+
+# Main
 if __name__ == '__main__':
     freeze_support()
     # Initialize or start the service

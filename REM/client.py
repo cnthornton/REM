@@ -21,6 +21,7 @@ import dateutil
 import pandas as pd
 import yaml
 from bson import json_util
+from cryptography.fernet import Fernet
 
 import REM.constants as mod_const
 
@@ -167,12 +168,13 @@ class ServerConnection:
         return message
 
     def process_request(self, request, timeout: int = 20):
-        self.request = request
         try:
             self.action = request['content']['action']
         except KeyError:
             msg = 'the request made to {} was formatted improperly'.format(settings.host)
             return {'success': False, 'value': msg}
+
+        self.request = request
 
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -262,7 +264,7 @@ class ServerConnection:
         content = self.request["content"]
         content_encoding = self.request["encoding"]
         req = {
-            "content_bytes": self._encode(content, content_encoding),
+            "content_bytes": cipher.encrypt(self._encode(content, content_encoding)),
             "content_encoding": content_encoding,
         }
         message = self._create_message(**req)
@@ -290,7 +292,7 @@ class ServerConnection:
         content_len = self.header["content-length"]
 
         if len(self._recv_buffer) >= content_len:
-            data = self._recv_buffer[:content_len]
+            data = cipher.decrypt(self._recv_buffer[:content_len])
             self._recv_buffer = self._recv_buffer[content_len:]
 
             encoding = self.header["content-encoding"]
@@ -1493,6 +1495,21 @@ else:
     popup_error(msg)
     sys.exit(1)
 
+# Load the encryption key and create the cipher
+ENCRYPT_FILE = 'REM.aes'
+ENCRYPT_PATH = os.path.join(DIRNAME, ENCRYPT_FILE)
+if os.path.isfile(ENCRYPT_PATH) and os.access(ENCRYPT_PATH, os.R_OK):  # encryption key file exists and is readable
+    with open(ENCRYPT_PATH, 'rb') as encrypt_h:
+        encrypt_key = encrypt_h.read()
+else:  # encryption key file has not yet been added to the client
+    msg = 'Unable to start the program. Please download the encryption key file from the server to the program base ' \
+          'directory before using.'
+    popup_error(msg)
+    sys.exit(1)
+
+cipher = Fernet(encrypt_key)
+del encrypt_key
+
 # Load user-defined configuration settings
 CNF_FILE = os.path.join(DIRNAME, 'settings.yaml')
 CNFG = load_config(CNF_FILE)
@@ -1513,7 +1530,7 @@ try:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     logger.info('socket successfully created')
 except socket.error as e:
-    msg = 'socket creation failed on error {ERR}'.format(ERR=e)
+    msg = 'socket creation failed - {ERR}'.format(ERR=e)
     logger.error('{MSG}'.format(MSG=msg))
     popup_error(msg)
     sys.exit(1)
@@ -1521,19 +1538,19 @@ else:
     sock.setblocking(False)
     addr = (settings.host, settings.port)
 
-logger.info('initializing connection to server {ADDR} on port {PORT}'.format(ADDR=settings.host, PORT=settings.port))
+logger.info('initializing connection to server "{ADDR}" on port {PORT}'.format(ADDR=settings.host, PORT=settings.port))
 while True:
     try:
         sock.connect(addr)
     except BlockingIOError:
         break
     except socket.error as e:
-        msg = 'connection to server {ADDR} failed - {ERR}'.format(ADDR=settings.host, ERR=e)
+        msg = 'connection to server "{ADDR}" failed - {ERR}'.format(ADDR=settings.host, ERR=e)
         popup_error(msg)
         logger.error('{MSG}'.format(MSG=msg))
         sys.exit(1)
     else:
-        logger.info('connection accepted from server {ADDR}'.format(ADDR=settings.host))
+        logger.info('connection accepted from server "{ADDR}"'.format(ADDR=settings.host))
         break
 
 server_conn = ServerConnection(sock, addr)
