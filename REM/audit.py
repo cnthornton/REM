@@ -1918,11 +1918,26 @@ class AuditSummary:
 
                         return False
 
-        logger.info('AuditRuleSummary {NAME}: saving audit records and their components'.format(NAME=self.name))
-        success = []
+#        success = []
+        statements = {}
         for tab in tabs:
-            # Save audit tab record
-            success.append(tab.save_record())
+#            # Save audit tab record
+#            success.append(tab.save_record())
+            try:
+                statements = tab.save_record(statements=statements)
+            except Exception as e:
+                mod_win2.popup_error(e)
+
+                return False
+
+        logger.info('AuditRuleSummary {NAME}: saving audit records and their components'.format(NAME=self.name))
+        sstrings = []
+        psets = []
+        for i, j in statements.items():
+            sstrings.append(i)
+            psets.append(j)
+
+        success = user.write_db(sstrings, psets)
 
         return all(success)
 
@@ -2136,7 +2151,7 @@ class AuditRecordTab:
 
                 return False
 
-    def save_record(self):
+    def save_record(self, statements: dict = None):
         """
         Save audit record to the program database defined in the configuration file.
         """
@@ -2144,23 +2159,26 @@ class AuditRecordTab:
         ref_table = settings.reference_lookup
 
         # Prepare to export associated deposit records for the relevant account records
-        statements = {}
+        if not statements:
+            statements = {}
 
         account_table = self.record.fetch_component('account')
         ref_type = account_table.record_type
         account_df = account_table.data()
         account_header = account_df.columns.tolist()
         if 'Account' not in account_header:
-            logger.warning('AuditRecordTab {NAME}: required column "Account" not found in the account table header'
-                           .format(NAME=self.name))
-            return False
+            msg = 'required column "Account" not found in the account table header'
+            logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
 
         record_entry = settings.records.fetch_rule(self.deposit_type)
         if not record_entry:
-            logger.warning('AuditRecordTab {NAME}: a deposit record type was not configured for the audit record. No '
-                           'deposit records will be automatically created for the account records.'
-                           .format(NAME=self.name))
-            return False
+            msg = 'a deposit record type was not configured for the audit record. No deposit records will be ' \
+                  'automatically created for the account records.'
+            logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise TypeError(msg)
         else:
             record_type = record_entry.name
 
@@ -2178,9 +2196,8 @@ class AuditRecordTab:
             except KeyError:
                 msg = 'missing the required column "Account" from the "{TYPE}" table'.format(TYPE=ref_type)
                 logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
 
-                return False
+                raise KeyError(msg)
 
             if account_no == 'resting':  # do not create deposit records for account records in the resting account
                 continue
@@ -2190,19 +2207,6 @@ class AuditRecordTab:
                 if colname in deposit_header:
                     deposit_data[colname] = row[colname]
 
-#            # Create a new record ID for the deposit record
-#            deposit_date = row[account_table.date_column]
-#            deposit_id = record_entry.create_id(deposit_date, offset=settings.get_date_offset())
-#            if not deposit_id:
-#                msg = 'failed to create a {TYPE} record associated with the {RTYPE} record {ID}'\
-#                    .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type, ID=account_id)
-#                logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-#                mod_win2.popup_error(msg)
-#
-#                continue
-#
-#            deposit_data['RecordID'] = deposit_id
-            # Add the deposit date
             try:
                 payment_date = row['PaymentDate']
             except KeyError:
@@ -2241,23 +2245,22 @@ class AuditRecordTab:
         try:
             date_list = pd.to_datetime(deposit_df[account_table.date_column], errors='coerce')
         except KeyError:
-            msg = 'failed to create "{TYPE}" records associated with "{RTYPE}" records - failed to create IDs for ' \
-                  'the new records'.format(TYPE=record_type, RTYPE=ref_type)
+            msg = 'failed to create IDs for the new records - failed to create "{TYPE}" records associated with ' \
+                  '"{RTYPE}" records'.format(TYPE=record_type, RTYPE=ref_type)
             logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            mod_win2.popup_error(msg)
 
-            return False
+            raise KeyError(msg)
         else:
             date_list = date_list.tolist()
 
         deposit_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
         if not deposit_ids:
-            msg = 'failed to create {TYPE} records associated with the {RTYPE} record IDs' \
+            msg = 'failed to create "{TYPE}" records associated with the "{RTYPE}" record IDs' \
                 .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type)
             logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             mod_win2.popup_error(msg)
 
-            return False
+            raise AssertionError(msg)
 
         deposit_df['RecordID'] = deposit_ids
         statements = record_entry.export_table(deposit_df, statements=statements, id_field='RecordID', id_exists=False)
@@ -2294,9 +2297,11 @@ class AuditRecordTab:
                 statements[statement] = [params]
 
         # Export audit record
-        saved = record.save(statements=statements)
-
-        return saved
+        statements = record.prepare_save_statements(statements)
+#        saved = record.save(statements=statements)
+#
+#        return saved
+        return statements
 
     def map_summary(self, rule_tabs):
         """

@@ -1495,9 +1495,9 @@ class DatabaseRecord:
 
         return pd.Series(values, index=columns)
 
-    def delete(self, statements: dict = None):
+    def prepare_delete_statements(self, statements: dict = None):
         """
-        Delete the record and child records from the database.
+        Prepare statements for deleting the record and child records from the database.
         """
         record_entry = self.record_entry
         record_type = record_entry.name
@@ -1507,74 +1507,65 @@ class DatabaseRecord:
         if not statements:
             statements = {}
 
+        logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
+
         # Get a list of record IDs that have yet to be saved in the database
         unsaved_ids = settings.get_unsaved_ids()
 
-        # Determine associations to delete as well
+        # Determine any records associations to delete as well
         ref_df['IsParentChild'].fillna(False, inplace=True)
         ref_df[settings.delete_field].fillna(False, inplace=True)
         child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field])]
 
-        logger.info('preparing to delete record {ID} and any child records'.format(ID=record_id))
-
-        # Prepare statements for removal of record and associations
-        nchild = child_df.shape[0]
+        # Prepare statements to remove any child references
         marked = {}
-        if nchild > 0:  # Record contains child records
-            msg = 'Deleting record {ID} will also delete {N} dependant records as well. Would you like to continue ' \
-                  'with record deletion?'.format(ID=record_id, N=nchild)
-            user_input = mod_win2.popup_confirm(msg)
-            if user_input == 'OK':
-                # Prepare statement to remove child references
-                for index, row in child_df.iterrows():
-                    if record_id != row['DocNo']:  # only remove entries where primary record is the parent
-                        continue
+        for index, row in child_df.iterrows():
+            if record_id != row['DocNo']:  # only remove entries where primary record is the parent
+                continue
 
-                    ref_id = row['RefNo']
-                    ref_type = row['RefType']
-                    try:
-                        unsaved_ref_ids = unsaved_ids[ref_type]
-                    except KeyError:
-                        logger.debug('Record {ID}: will not delete dependant record {REFID} from database - reference '
-                                     'type "{TYPE}" has no representation in the database of unsaved record IDs'
-                                     .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
-                        continue
+            ref_id = row['RefNo']
+            ref_type = row['RefType']
+            try:
+                unsaved_ref_ids = unsaved_ids[ref_type]
+            except KeyError:
+                logger.debug('Record {ID}: will not delete dependant record {REFID} from database - reference '
+                             'type "{TYPE}" has no representation in the database of unsaved record IDs'
+                             .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+                continue
 
-                    if ref_id in unsaved_ref_ids:
-                        logger.debug(
-                            'Record {ID}: will not delete dependant record {REFID} from database - '
-                            'record does not exist in the database yet'.format(ID=record_id, REFID=ref_id))
-                    else:
-                        logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
-                                     .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
-                        try:
-                            marked[ref_type].append(ref_id)
-                        except KeyError:
-                            marked[ref_type] = [ref_id]
-
-                for ref_type in marked:
-                    ref_ids = marked[ref_type]
-
-                    ref_entry = settings.records.fetch_rule(ref_type)
-                    if ref_entry is None:
-                        msg = 'Record {ID}: unable to delete dependant records {REFID} - invalid record type "{TYPE}"'\
-                            .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
-                        logger.error(msg)
-                        mod_win2.popup_error(msg)
-                        continue
-
-                    statements = ref_entry.delete_record(ref_ids, statements=statements)
+            if ref_id in unsaved_ref_ids:
+                logger.debug('Record {ID}: will not delete dependant record {REFID} from database - '
+                             'record does not exist in the database yet'.format(ID=record_id, REFID=ref_id))
             else:
-                return False
+                logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
+                             .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+                try:
+                    marked[ref_type].append(ref_id)
+                except KeyError:
+                    marked[ref_type] = [ref_id]
+
+        for ref_type in marked:
+            ref_ids = marked[ref_type]
+
+            ref_entry = settings.records.fetch_rule(ref_type)
+            if ref_entry is None:
+                msg = 'unable to delete record {ID} dependant records {REFID} - invalid record type "{TYPE}"' \
+                    .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
+                logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+
+                raise AttributeError(msg)
+
+            statements = ref_entry.delete_record(ref_ids, statements=statements)
 
         # Prepare statement for the removal of the record
         try:
             unsaved_record_ids = unsaved_ids[record_type]
         except KeyError:
-            logger.error('Record {ID}: unable to delete record from the database - record of type '
-                         'type "{TYPE}" has no representation in the database of unsaved record IDs'
-                         .format(ID=record_id, TYPE=record_type))
-            return False
+            msg = 'unable to delete record {ID} from the database - record of type type "{TYPE}" has no ' \
+                  'representation in the database of unsaved record IDs'.format(ID=record_id, TYPE=record_type)
+            logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+
+            raise KeyError(msg)
 
         if record_id not in unsaved_record_ids:
             logger.info('Record {ID}: preparing to delete the record'.format(ID=record_id))
@@ -1583,6 +1574,41 @@ class DatabaseRecord:
             logger.debug('Record {ID}: will not delete record from database - record does not exist in the database yet'
                          .format(ID=record_id))
 
+        return statements
+
+    def delete(self, statements: dict = None):
+        """
+        Delete the record and child records from the database.
+        """
+        ref_df = self.ref_df
+        record_id = self.record_id()
+
+        # Check if the record contains any child references
+        ref_df['IsParentChild'].fillna(False, inplace=True)
+        ref_df[settings.delete_field].fillna(False, inplace=True)
+        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field])]
+
+        nchild = child_df.shape[0]
+        if nchild > 0:  # Record contains child records
+            msg = 'Deleting record {ID} will also delete {N} dependant records as well. Would you like to continue ' \
+                  'with record deletion?'.format(ID=record_id, N=nchild)
+            user_input = mod_win2.popup_confirm(msg)
+            if user_input != 'OK':
+                return False
+
+        # Prepare deletion statements for the record and any child records
+        try:
+            statements = self.prepare_delete_statements(statements=statements)
+        except Exception as e:
+            mod_win2.popup_error(e)
+        else:
+            if len(statements) < 1:
+                logger.debug('Record {ID}: no records needed deleting from the database'.format(ID=record_id))
+
+                return True
+
+        # Write record to the database
+        logger.info('preparing to delete record {ID} and any child records'.format(ID=record_id))
         sstrings = []
         psets = []
         for i, j in statements.items():
@@ -1593,9 +1619,9 @@ class DatabaseRecord:
 
         return success
 
-    def save(self, statements: dict = None):
+    def prepare_save_statements(self, statements: dict = None):
         """
-        Save the record and child records to the database.
+        Prepare to the statements for saving the record to the database.
         """
         ref_table = settings.reference_lookup
 
@@ -1609,16 +1635,13 @@ class DatabaseRecord:
         # Verify that required parameters have values
         for param in self.parameters:
             if param.required is True and param.value_set() is False:
-                msg = 'Record {ID}: no value provided for the required field {FIELD}' \
-                    .format(ID=record_id, FIELD=param.description)
-                logger.warning(msg)
-                mod_win2.popup_error(msg)
+                msg = 'no value provided for the required field {FIELD}'.format(FIELD=param.description)
+                logger.warning('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
 
-                return False
+                raise AttributeError(msg)
 
         # Prepare to save the record
-        logger.info('Record {ID}: preparing to save record and record components'.format(ID=record_id))
-
+        logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
             id_exists = record_entry.confirm_saved(record_id, id_field=self.id_field)
             record_data = self.table_values().to_frame().transpose()
@@ -1627,7 +1650,8 @@ class DatabaseRecord:
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
             logger.exception(msg)
-            return False
+
+            raise
         else:
             del record_data
 
@@ -1636,9 +1660,10 @@ class DatabaseRecord:
             ref_data = reference.as_table()
             ref_id = ref_data['DocNo']  # reference record ID
             if ref_id == record_id:
-                logger.warning('RecordType {NAME}, Record {ID}: oops ... got the order wrong'
-                               .format(NAME=self.name, ID=record_id))
-                return False
+                logger.error('RecordType {NAME}, Record {ID}: oops ... got the order wrong'
+                             .format(NAME=self.name, ID=record_id))
+
+                raise AssertionError('reference IDs were found in the wrong order')
 
             # Determine if reference entry already exists in the database
             nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) &
@@ -1727,7 +1752,7 @@ class DatabaseRecord:
 
             # Prepare the record entries for the components
             comp_entry = settings.records.fetch_rule(comp_type)
-#            unsaved_ids = comp_entry.get_unsaved_ids()
+            #            unsaved_ids = comp_entry.get_unsaved_ids()
             comp_ids = comp_df[comp_table.id_column].values.tolist()
             saved_records = comp_entry.confirm_saved(comp_ids, id_field=comp_table.id_column)
 
@@ -1736,7 +1761,7 @@ class DatabaseRecord:
                 comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
 
             # Prepare update statements for existing record components
-#            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
+            #            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
             existing_comps = comp_df[saved_records]
             try:
                 statements = comp_entry.export_table(existing_comps, statements=statements,
@@ -1745,10 +1770,10 @@ class DatabaseRecord:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
 
-                return False
+                raise
 
             # Prepare insert statements for new record components
-#            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
+            #            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
             new_comps = comp_df[[not x for x in saved_records]]
             try:
                 statements = comp_entry.export_table(new_comps, statements=statements,
@@ -1757,8 +1782,29 @@ class DatabaseRecord:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
 
+                raise
+
+        return statements
+
+    def save(self, statements: dict = None):
+        """
+        Save the record and child records to the database.
+        """
+        record_id = self.record_id()
+
+        try:
+            statements = self.prepare_save_statements(statements=statements)
+        except Exception as e:
+            mod_win2.popup_error(e)
+
+            return False
+        else:
+            if len(statements) < 1:
+                logger.error('Record {ID}: failed to create transaction statements'.format(record_id))
+
                 return False
 
+        logger.info('Record {ID}: preparing to save record and record components'.format(ID=record_id))
         sstrings = []
         psets = []
         for i, j in statements.items():
