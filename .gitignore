@@ -12,6 +12,7 @@ logo.png
 
 # Configuration file
 REM/REM.log
+REM/REM.aes
 REM/settings.yaml
 REMServer/cnfg.yaml
 

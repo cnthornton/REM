@@ -545,13 +545,27 @@ class SettingsManager:
 
         return unsaved_ids
 
-    def remove_unsaved_ids(self, internal: bool = True):
+    def remove_unsaved_ids(self):
         """
         Remove unsaved record IDs for all record entry types.
         """
-        entries = self.records.rules
-        for entry in entries:
-            entry.remove_unsaved_ids(internal_only=internal)
+        value = {'ids': [], 'record_type': None, 'instance': self.instance_id}
+        content = {'action': 'remove_ids', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+        response = server_conn.process_request(request)
+
+        success = response['success']
+        if success is False:
+            msg = 'failed to remove IDs created during the program instance from the list of unsaved record IDs - ' \
+                  '{ERR}'.format(ERR=response['value'])
+            logger.error(msg)
+        else:
+            msg = 'successfully removed IDs created during the program instance from the list of unsaved record IDs'
+            logger.debug(msg)
+
+#        entries = self.records.rules
+#        for entry in entries:
+#            entry.remove_unsaved_ids(internal_only=internal)
 
     def load_constants(self, connection):
         """

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.3.2'
+__version__ = '3.3.3'
 
 import sys
 import tkinter as tk
@@ -365,6 +365,7 @@ def resize_elements(window, rules):
         except Exception as e:
             msg = 'failed to resize window - {}'.format(e)
             logger.error(msg)
+
             continue
 
 

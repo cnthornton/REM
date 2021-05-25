@@ -1938,7 +1938,7 @@ class AuditSummary:
 
         success = user.write_db(sstrings, psets)
 
-        return all(success)
+        return success
 
 
 class AuditRecordTab:

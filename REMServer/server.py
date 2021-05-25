@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 import logging
 import logging.handlers as handlers
@@ -329,12 +329,13 @@ class ClientConnection:
                 try:
                     record_type = value.get('record_type')
                     ids = value.get('ids')
+                    instance = value.get('instance')
                 except TypeError:
                     msg = 'request value formatted incorrectly'
                     logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                     content = {'success': False, 'value': msg}
                 else:
-                    content = configuration.remove_unsaved_ids(record_type, ids)
+                    content = configuration.remove_unsaved_ids(record_ids=ids, rt=record_type, instance_id=instance)
             elif action == 'add_ids':
                 try:
                     record_type = value.get('record_type')
@@ -811,45 +812,62 @@ class ConfigManager:
 
         return success
 
-    def remove_unsaved_ids(self, record_type, record_ids):
+    def remove_unsaved_ids(self, record_ids: list = None, rt: str = None, instance_id: int = None):
         """
         Remove record IDs from the dictionary of unsaved record IDs.
         """
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
+        if instance_id is not None and record_ids is None and rt is None:
+            logger.debug('attempting to remove all unsaved record IDs associated with program instance "{ID}"'
+                         .format(ID=instance_id))
 
-        logger.debug('attempting to remove record IDs {ID} of type {TYPE} from the database of unsaved record IDs'
-                     .format(ID=record_ids, TYPE=record_type))
+            record_ids = []
+            internal = True
+        elif record_ids is None and rt is not None and instance_id is not None:
+            logger.debug('attempting to remove all unsaved record IDs of type "{TYPE}" associated with program '
+                         'instance "{ID}"'.format(TYPE=rt, ID=instance_id))
+            internal = True
+        elif record_ids is not None and rt is not None:
+            if isinstance(record_ids, str):
+                record_ids = [record_ids]
 
-        unsaved_ids = self._get_unsaved_ids(record_type)
-        failed_ids = []
-        for record_id in record_ids:
-            try:
-                index = unsaved_ids.index(record_id)
-            except IndexError:
-                msg = 'ID {ID} not found in list of unsaved record IDs of type {TYPE}'\
-                    .format(ID=record_id, TYPE=record_type)
-                logger.debug('failed to remove record ID {ID} from the list of unsaved record IDs of type {TYPE} - '
-                             '{MSG}'.format(ID=record_id, TYPE=record_type, MSG=msg))
-                failed_ids.append(record_id)
-            else:
-                try:
-                    self.unsaved_ids[record_type].pop(index)
-                except KeyError:
-                    msg = 'no unsaved record IDs found of type {TYPE}'.format(TYPE=record_type)
-                    logger.debug('failed to remove record ID {ID} from the list of unsaved record IDs of type {TYPE} - '
-                                 '{MSG}'.format(ID=record_id, TYPE=record_type, MSG=msg))
-                    failed_ids.append(record_id)
-                else:  # need to also remove from the list of unsaved ids so that indices remain the same
-                    unsaved_ids.pop(index)
+            logger.debug('attempting to remove record IDs {ID} of type "{TYPE}" from the database of unsaved record IDs'
+                         .format(ID=record_ids, TYPE=rt))
 
-        if len(failed_ids) > 0:
-            success = False
-            value = 'failed to remove IDs {ID} from the list of unsaved record IDs of type {TYPE}'\
-                .format(ID=failed_ids, TYPE=record_type)
+            internal = False
         else:
-            success = True
-            value = None
+            msg = 'unable to remove unsaved record IDs - must specify either a program instance or record IDs and ' \
+                  'record type'
+            logger.debug(msg)
+
+            return {'success': False, 'value': msg}
+
+        success = True
+        value = None
+        for record_type in self.unsaved_ids:
+            if rt and rt != record_type:
+                continue
+
+            if internal:
+                record_ids = self._get_unsaved_ids(record_type, instance_id=instance_id)
+
+            failed_ids = []
+            for record_id in record_ids:
+                try:
+                    self.unsaved_ids[record_type].remove(record_id)
+                except ValueError:
+                    msg = 'record ID {ID} not found in list of unsaved record IDs of type "{TYPE}"'\
+                        .format(ID=record_id, TYPE=record_type)
+                    logger.debug('failed to remove record ID {ID} from the list of unsaved record IDs of type "{TYPE}" '
+                                 '- {MSG}'.format(ID=record_id, TYPE=record_type, MSG=msg))
+                    failed_ids.append(record_id)
+
+            if len(failed_ids) > 0:
+                success = False
+                value = 'failed to remove IDs {ID} from the list of unsaved record IDs of type "{TYPE}"'\
+                    .format(ID=failed_ids, TYPE=record_type)
+            else:
+                logger.debug('successfully removed all of record IDs {ID} of type "{TYPE}" from the database of '
+                             'unsaved record IDs'.format(ID=record_ids, TYPE=record_type))
 
         return {'success': success, 'value': value}
 
