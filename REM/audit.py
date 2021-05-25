@@ -989,8 +989,7 @@ class AuditTransactionTab:
         """
 
         # Reset the data table
-        self.table.df = pd.DataFrame(columns=list(self.table.columns))
-        self.table.update_display(window)
+        self.table.reset(window)
 
         # Disable table element events
         self.table.disable(window)
