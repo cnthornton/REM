@@ -178,7 +178,8 @@ class ServerConnection:
 
         start_time = time.time()
         while time.time() - start_time < timeout:
-            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
+            if time.time() - start_time > 2:
+                sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
 
             if self.response is not None:
                 logger.debug('server process completed')
