@@ -1550,7 +1550,6 @@ except socket.error as e:
     popup_error(msg)
     sys.exit(1)
 else:
-    sock.setblocking(False)
     addr = (settings.host, settings.port)
 
 logger.info('initializing connection to server "{ADDR}" on port {PORT}'.format(ADDR=settings.host, PORT=settings.port))
@@ -1558,14 +1557,17 @@ while True:
     try:
         sock.connect(addr)
     except BlockingIOError:
-        break
+        logger.warning('encountered blocking error')
     except socket.error as e:
         msg = 'connection to server "{ADDR}" failed - {ERR}'.format(ADDR=settings.host, ERR=e)
         popup_error(msg)
         logger.error('{MSG}'.format(MSG=msg))
+
         sys.exit(1)
     else:
         logger.info('connection accepted from server "{ADDR}"'.format(ADDR=settings.host))
+        sock.setblocking(False)
+
         break
 
 server_conn = ServerConnection(sock, addr)
