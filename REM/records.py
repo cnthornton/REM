@@ -488,6 +488,9 @@ class RecordEntry:
             record_dates = [date_list]
             single_value = True
         elif isinstance(date_list, list) or isinstance(date_list, tuple):
+            if len(date_list) < 1:
+                return []
+
             record_dates = date_list
             single_value = False
         else:

@@ -2253,13 +2253,16 @@ class AuditRecordTab:
             date_list = date_list.tolist()
 
         deposit_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
-        if not deposit_ids:
+        if deposit_ids is None:
             msg = 'failed to create "{TYPE}" records associated with the "{RTYPE}" record IDs' \
                 .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type)
             logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             mod_win2.popup_error(msg)
 
             raise AssertionError(msg)
+        elif len(deposit_ids) < 1:
+            msg = 'no records of type "{TYPE}" records will be created'.format(NAME=self.name, TYPE=record_type)
+            logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         deposit_df['RecordID'] = deposit_ids
         statements = record_entry.export_table(deposit_df, statements=statements, id_field='RecordID', id_exists=False)
