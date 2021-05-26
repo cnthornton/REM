@@ -626,7 +626,7 @@ class RecordEntry:
         logger.debug('RecordEntry {NAME}: attempting to remove IDs {ID} from the list of unsaved record IDs'
                      .format(NAME=self.name, ID=record_ids))
 
-        value = {'ids': record_ids, 'record_type': self.name, 'internal': internal_only}
+        value = {'ids': record_ids, 'record_type': self.name}
         content = {'action': 'remove_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)

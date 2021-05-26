@@ -550,7 +550,7 @@ class SettingsManager:
         """
         Remove unsaved record IDs for all record entry types.
         """
-        value = {'ids': [], 'record_type': None, 'instance': self.instance_id}
+        value = {'ids': None, 'record_type': None, 'instance': self.instance_id}
         content = {'action': 'remove_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)

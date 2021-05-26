@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 
 import logging
 import logging.handlers as handlers
@@ -851,15 +851,19 @@ class ConfigManager:
                 record_ids = self._get_unsaved_ids(record_type, instance_id=instance_id)
 
             failed_ids = []
+            all_unsaved_ids = self._get_unsaved_ids(record_type)
             for record_id in record_ids:
                 try:
-                    self.unsaved_ids[record_type].remove(record_id)
-                except ValueError:
+                    record_index = all_unsaved_ids.index(record_id)
+                except IndexError:
                     msg = 'record ID {ID} not found in list of unsaved record IDs of type "{TYPE}"'\
                         .format(ID=record_id, TYPE=record_type)
                     logger.debug('failed to remove record ID {ID} from the list of unsaved record IDs of type "{TYPE}" '
                                  '- {MSG}'.format(ID=record_id, TYPE=record_type, MSG=msg))
                     failed_ids.append(record_id)
+                else:
+                    self.unsaved_ids[record_type].pop(record_index)
+                    all_unsaved_ids.pop(record_index)
 
             if len(failed_ids) > 0:
                 success = False
