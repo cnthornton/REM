@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 import logging
 import logging.handlers as handlers
@@ -795,7 +795,7 @@ class ConfigManager:
         """
         Add record IDs to the dictionary of unsaved record IDs.
         """
-        logger.debug('adding record IDs {IDS} of type {TYPE} to the database of unsaved record IDs'
+        logger.debug('adding record IDs {IDS} of type "{TYPE}" to the database of unsaved record IDs'
                      .format(IDS=record_ids, TYPE=record_type))
 
         success = True
@@ -807,8 +807,11 @@ class ConfigManager:
 
             try:
                 self.unsaved_ids[record_type].append(id_tup)
-            except (KeyError, TypeError):
+            except KeyError:
                 self.unsaved_ids[record_type] = [id_tup]
+
+        logger.debug('current unsaved IDs with record type "{TYPE}" from all instances are: {IDS}'
+                     .format(IDS=self.unsaved_ids[record_type], TYPE=record_type))
 
         return success
 
@@ -880,9 +883,15 @@ class ConfigManager:
         if id_tups:
             if instance_id is not None:
                 unsaved_ids = [i[0] for i in id_tups if i[1] == instance_id]
+                logger.debug('current unsaved IDs with record type "{TYPE}" from instance "{ID}" are: {IDS}'
+                             .format(TYPE=record_type, ID=instance_id, IDS=unsaved_ids))
             else:
                 unsaved_ids = [i[0] for i in id_tups]
+                logger.debug('current unsaved IDs with record type "{TYPE}" from all instances are: {IDS}'
+                             .format(IDS=unsaved_ids, TYPE=record_type))
         else:
+            logger.debug('there are no unsaved IDs with record type "{TYPE}" from any instance'
+                         .format(TYPE=record_type))
             unsaved_ids = []
 
         return unsaved_ids
@@ -891,7 +900,7 @@ class ConfigManager:
         """
         Return a list of record IDs from the dictionary of unsaved record IDs by record type.
         """
-        logger.debug('retrieving list of IDs of type {TYPE} from the database of unsaved record IDs'
+        logger.debug('retrieving list of IDs of type "{TYPE}" from the database of unsaved record IDs'
                      .format(TYPE=record_type))
         return {'success': True, 'value': self._get_unsaved_ids(record_type, instance_id)}
 

@@ -500,9 +500,9 @@ class RecordEntry:
                     .format(N=len(record_dates), TYPE=record_type))
 
         # Get list of unsaved record IDs of the same record type
-        unsaved_ids = self.get_unsaved_ids(record_type)
+        unsaved_ids = self.get_unsaved_ids(internal_only=False)
         if unsaved_ids is None:
-            logger.error('failed to create IDs for the record entries of type {TYPE} - unable to obtain a list of '
+            logger.error('failed to create IDs for the record entries of type "{TYPE}" - unable to obtain a list of '
                          'unsaved record IDs'.format(TYPE=record_type))
             return None
 
@@ -646,7 +646,7 @@ class RecordEntry:
         """
         Retrieve a list of unsaved record IDs from the database of unsaved record IDs associated with the record type.
         """
-        if internal_only:
+        if internal_only is True:
             instance = settings.instance_id
             logger.debug('RecordEntry {NAME}: attempting to obtain an instance-specific list of unsaved record IDs '
                          'associated with the record entry'.format(NAME=self.name))
