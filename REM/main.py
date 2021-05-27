@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.3.6'
+__version__ = '3.3.7'
 
 import sys
 import tkinter as tk
@@ -780,7 +780,8 @@ def main():
                 mod_win2.popup_error(msg)
                 logger.error(msg)
 
-                raise
+#                raise
+                continue
 
             if current_rule_name is None:
                 # Enable toolbar

@@ -873,7 +873,7 @@ class ConfigManager:
                 value = 'failed to remove IDs {ID} from the list of unsaved record IDs of type "{TYPE}"'\
                     .format(ID=failed_ids, TYPE=record_type)
             else:
-                logger.debug('successfully removed all of record IDs {ID} of type "{TYPE}" from the database of '
+                logger.debug('successfully removed all record IDs {ID} of type "{TYPE}" from the database of '
                              'unsaved record IDs'.format(ID=record_ids, TYPE=record_type))
 
         return {'success': success, 'value': value}

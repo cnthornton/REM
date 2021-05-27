@@ -1189,7 +1189,7 @@ class AuditTransactionTab:
         for index, record_id in enumerate(id_list):
             number_comp = int(self.get_id_component(record_id, 'variable'))
             date_comp = self.get_id_component(record_id, 'date')
-            if record_id == self.format_id(number_comp, date=date_comp):  # skip ID that don't conform to proper format
+            if record_id == self.format_id(number_comp, date=date_comp):  # skip IDs that dont conform to defined format
                 first_id = record_id
                 first_number_comp = number_comp
                 first_date_comp = date_comp
