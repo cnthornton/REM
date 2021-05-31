@@ -477,7 +477,6 @@ class TableElement:
                     index = select_row_index
 
                 logger.debug('DataTable {NAME}: opening record at real index {IND}'.format(NAME=self.name, IND=index))
-                print(self.df)
                 if self.actions['open'] is True:
                     self.df = self.export_row(index)
                 elif self.actions['open'] is False and self.actions['edit'] is True:
@@ -1839,7 +1838,7 @@ class TableElement:
         if imports:
             df = self.import_df
         else:
-            df = self.data()
+            df = self.data()  # don't include deleted IDs
 
         try:
             row_ids = df[id_field].tolist()

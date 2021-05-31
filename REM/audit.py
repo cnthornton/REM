@@ -2495,9 +2495,10 @@ class AuditRecordTab:
 
         record_ids = record_entry.create_record_ids([record_date for _ in range(final_df.shape[0])],
                                                     offset=settings.get_date_offset())
-        if not record_ids:
-            msg = 'failed to create a record IDs for the table entries'
+        if record_ids is None:
+            msg = 'failed to create record IDs for the table entries'
             logger.error(msg)
+
             raise IOError(msg)
         else:
             final_df[component_table.id_column] = record_ids
