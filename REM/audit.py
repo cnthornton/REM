@@ -1115,6 +1115,7 @@ class AuditTransactionTab:
                 msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
                 mod_win2.popup_error(msg)
                 logger.error('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                raise
 
                 success = False
             else:
@@ -1299,12 +1300,22 @@ class AuditTransactionTab:
             prev_number = first_number_comp - 1
             nskipped = 0
             for record_id in id_list:
-                record_no = int(self.get_id_component(record_id, 'variable'))
+                try:
+                    record_no = int(self.get_id_component(record_id, 'variable'))
+                except ValueError:
+                    msg = 'inconsistent format found in record ID {ID}'.format(ID=record_id)
+                    mod_win2.popup_notice(msg)
+                    logger.warning('AuditTransactionTab {NAME}: ID with unknown format is {ID}'
+                                   .format(NAME=self.name, ID=record_id))
+
+                    continue
+
                 record_date = self.get_id_component(record_id, 'date')
 
                 if record_id != self.format_id(record_no, date=record_date):  # skip IDs that don't conform to format
                     msg = 'record ID {ID} does not conform to ID format specifications'.format(ID=record_id)
                     logger.warning('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
                     continue
 
                 if (prev_number + 1) != record_no:
@@ -1342,6 +1353,7 @@ class AuditTransactionTab:
                     mod_win2.popup_notice(msg)
                     logger.warning('AuditTransactionTab {NAME}: ID with unknown format is {ID}'
                                    .format(NAME=self.name, ID=current_df[current_df[pkey] == current_id]))
+
                     continue
 
                 if (current_id == self.format_id(current_number_comp, date=first_date_comp)) and \
@@ -1798,7 +1810,7 @@ class AuditSummary:
                     subset_df = comp_table.data()
                 else:
                     try:
-                        subset_df = comp_table.filter_deleted(comp_table.subset(sub_rule))
+                        subset_df = comp_table.subset(sub_rule)
                     except (NameError, SyntaxError) as e:
                         logger.error('AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
                                      '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
@@ -2420,7 +2432,7 @@ class AuditRecordTab:
                     tab = rule_tabs[tab_names.index(table)]
 
                 # Subset tab item dataframe using subset rules defined in the ReferenceTable parameter
-                logger.debug('AuditRuleTab {NAME}: sub-setting reference table {REF} based on defined payment {TYPE} '
+                logger.debug('AuditRuleTab {NAME}: sub-setting reference table {REF} based on defined payment "{TYPE}" '
                              'rule {RULE}'.format(NAME=self.name, REF=table, TYPE=payment_type, RULE=subset_rule))
                 try:
                     subset_df = tab.table.subset(subset_rule)

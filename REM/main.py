@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.3.7'
+__version__ = '3.3.8'
 
 import sys
 import tkinter as tk
@@ -778,9 +778,9 @@ def main():
                 msg = 'failed to run window event {EVENT} of rule {RULE} - {ERR}'\
                     .format(EVENT=event, RULE=current_rule.name, ERR=e)
                 mod_win2.popup_error(msg)
-                logger.error(msg)
+                logger.exception(msg)
 
-#                raise
+                raise
                 continue
 
             if current_rule_name is None:
