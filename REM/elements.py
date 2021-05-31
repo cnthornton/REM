@@ -431,9 +431,9 @@ class TableElement:
         Return the table dataframe.
         """
         if deleted:
-            df = self.df
+            df = self.df.copy()
         else:
-            df = self.filter_deleted(self.df.copy())
+            df = self._filter_deleted(self.df.copy())
 
         return df
 
@@ -519,7 +519,7 @@ class TableElement:
                 new_width = tbl_width - frame_w - 2 if tbl_width - frame_w - 2 > 0 else 0
                 logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                              'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
-                lengths = self.calc_column_widths(width=new_width, pixels=True)
+                lengths = self._calc_column_widths(width=new_width, pixels=True)
                 for col_index, col_name in enumerate(header):
                     col_width = lengths[col_index]
                     window[tbl_key].Widget.column(col_name, width=col_width)
@@ -622,7 +622,7 @@ class TableElement:
 
         return result
 
-    def filter_deleted(self, df):
+    def _filter_deleted(self, df):
         """
         Filter deleted rows from the table dataframe.
         """
@@ -705,18 +705,15 @@ class TableElement:
             search_value = None
 
         if not search_value:  # no search value provided in the search field, try the filter parameters
-            df = self.apply_filter()
+            df = self._apply_filter()
         else:
-            df = self.df.copy()
+            df = self.data()
             try:
                 df = df[df[search_field] == search_value]
             except KeyError:
                 msg = 'DataTable {NAME}: search field {COL} not found in list of table columns'\
                     .format(NAME=self.name, COL=search_field)
                 logger.warning(msg)
-
-        # Remove deleted rows from the display table
-        df = self.filter_deleted(df)
 
         # Edit the index map to reflect what is currently displayed
         self.index_map = {i: j for i, j in enumerate(df.index.tolist())}
@@ -898,7 +895,7 @@ class TableElement:
 
         operators = set('+-*/')
 
-        df = df if df is not None else self.filter_deleted(self.df.copy())
+        df = df if df is not None else self.data()
 
         logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
 
@@ -962,12 +959,12 @@ class TableElement:
 
         return outputs
 
-    def apply_filter(self):
+    def _apply_filter(self):
         """
         Filter the table based on values supplied to the table filter parameters.
         """
         parameters = self.parameters
-        df = self.df.copy()
+        df = self.data()
 
         if df.empty:
             return df
@@ -1286,7 +1283,7 @@ class TableElement:
         bind = True if (self.actions['edit'] is True or self.actions['open'] is True) and editable is True else False
         events = False
 
-        col_widths = self.calc_column_widths(width=width - 16, size=font_size, pixels=False)
+        col_widths = self._calc_column_widths(width=width - 16, size=font_size, pixels=False)
         row4.append(sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
                              row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=font,
@@ -1492,7 +1489,7 @@ class TableElement:
         window[import_key].update(disabled=True)
         window[import_key].metadata['disabled'] = True
 
-    def calc_column_widths(self, width: int = 1200, size: int = 13, pixels: bool = False):
+    def _calc_column_widths(self, width: int = 1200, size: int = 13, pixels: bool = False):
         """
         Calculate the width of the table columns based on the number of columns displayed.
         """
@@ -1609,7 +1606,7 @@ class TableElement:
         header = list(columns.keys())
 
         tbl_width = width - 16  # for border sizes on either side of the table
-        lengths = self.calc_column_widths(width=tbl_width, pixels=True)
+        lengths = self._calc_column_widths(width=tbl_width, pixels=True)
         for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
             window[tbl_key].Widget.column(col_name, width=col_width)
@@ -1727,13 +1724,13 @@ class TableElement:
         operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'IN', 'In', 'in'}
         chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
 
-        df = self.df.copy()
+        df = self.data()
         if df.empty:
             return df
 
         header = df.columns.values.tolist()
 
-        logger.debug('DataTable {NAME}: subsetting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
+        logger.debug('DataTable {NAME}: sub-setting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
         rule_list = [i.strip() for i in
                      re.split('({})'.format('|'.join([' {} '.format(i) for i in chain_map])), subset_rule)]
 
@@ -1806,7 +1803,7 @@ class TableElement:
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
         tally_rule = self.tally_rule
-        df = df if df is not None else self.filter_deleted(self.df)
+        df = df if df is not None else self.data()
         if df.empty:
             return 0
 
@@ -1842,7 +1839,7 @@ class TableElement:
         if imports:
             df = self.import_df
         else:
-            df = self.filter_deleted(self.df.copy())
+            df = self.data()
 
         try:
             row_ids = df[id_field].tolist()
