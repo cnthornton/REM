@@ -425,7 +425,7 @@ class SettingsManager:
             fh.close()
 
         try:
-            report_template = cnfg['display']['report_template']
+            report_template = cnfg['display']['record_template']
         except KeyError:
             self.report_template = os.path.join(dirname, 'templates', 'report.html')
         else:
@@ -433,6 +433,16 @@ class SettingsManager:
                 self.report_template = os.path.join(dirname, 'templates', 'report.html')
             else:
                 self.report_template = report_template
+
+        try:
+            audit_template = cnfg['display']['audit_template']
+        except KeyError:
+            self.audit_template = os.path.join(dirname, 'templates', 'audit_report.html')
+        else:
+            if not audit_template:
+                self.audit_template = os.path.join(dirname, 'templates', 'audit_report.html')
+            else:
+                self.audit_template = audit_template
 
         try:
             report_style = cnfg['display']['report_stylesheet']
