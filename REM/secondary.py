@@ -268,10 +268,15 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
     deletable = True if record.permissions['delete'] in user_priv and record.level < 1 and view_only is False and \
                         record.new is False else False
+    printable = True if record.report is not None and record.permissions['report'] else False
 
     # Window Title
     title = record.title
-    title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
+    title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
+                            expand_x=True, justification='l'),
+                     sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.GENREPORT_ICON,
+                              visible=printable, tooltip='Generate record report')]],
+                            justification='r', element_justification='r')]]
 
     # Button layout
     if savable:
