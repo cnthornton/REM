@@ -6,11 +6,14 @@ missing data, the debugger, and the login window.
 import datetime
 import gc
 import textwrap
+import os
 
 import PySimpleGUI as sg
 import dateutil
 import numpy as np
 import pandas as pd
+import pdfkit
+from jinja2 import Environment, FileSystemLoader
 
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
@@ -430,6 +433,41 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                     break
             else:
                 continue
+
+        # Generate a record report
+        if event == 'Report':
+            outfile = sg.popup_get_file('', title='Save Report As', save_as=True, default_extension='pdf',
+                                        no_window=True, file_types=(('PDF - Portable Document Format', '*.pdf'),))
+
+            if not outfile:
+                msg = 'An valid output file is required to save the report'
+                popup_error(msg)
+
+                continue
+
+            css_url = settings.report_css
+
+            try:
+                template_vars = record.generate_report()
+            except Exception as e:
+                msg = 'failed to generate the record report - {ERR}'.format(ERR=e)
+                logger.error('Record {ID}: {MSG}'.format(ID=record.record_id(), MSG=msg))
+                popup_error(msg)
+
+                continue
+
+            env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.audit_template))))
+            template = env.get_template(os.path.basename(os.path.abspath(settings.audit_template)))
+            html_out = template.render(template_vars)
+            path_wkhtmltopdf = settings.wkhtmltopdf
+            config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+            try:
+                pdfkit.from_string(html_out, outfile, configuration=config, css=css_url,
+                                   options={'enable-local-file-access': None})
+            except Exception as e:
+                logger.error('Record {ID}: writing to PDF failed - {ERR}'.format(ID=record.record_id(), ERR=e))
+
+            continue
 
         # Update the record parameters with user-input
         if event in record_elements:  # selected a record event element

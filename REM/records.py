@@ -5,6 +5,7 @@ REM records classes and functions. Includes audit records and account records.
 import datetime
 import sys
 from random import randint
+import re
 
 import PySimpleGUI as sg
 import dateutil
@@ -773,6 +774,8 @@ class DatabaseRecord:
         references (list): list of reference records.
 
         components (list): list of record components.
+
+        report (dict): report definition
     """
 
     def __init__(self, record_entry, level: int = 0, record_layout: dict = None):
@@ -1008,6 +1011,18 @@ class DatabaseRecord:
         for modifier in available_modifiers:
             if modifier not in self.modifiers:
                 self.modifiers[modifier] = False
+
+        try:
+            report = entry['Report']
+        except KeyError:
+            self.report = None
+        else:
+            if 'Info' not in report:
+                report['Info'] = []
+            if 'subsections' not in report:
+                report['Subsections'] = {}
+
+            self.report = report
 
     def key_lookup(self, component):
         """
@@ -1803,7 +1818,7 @@ class DatabaseRecord:
             return False
         else:
             if len(statements) < 1:
-                logger.error('Record {ID}: failed to create transaction statements'.format(record_id))
+                logger.error('Record {ID}: failed to create transaction statements'.format(ID=record_id))
 
                 return False
 
@@ -1818,9 +1833,134 @@ class DatabaseRecord:
 
         return success
 
+    def generate_report(self):
+        """
+        Generate a summary report for the record.
+        """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+        date_fmt = settings.format_date_str(date_str=settings.display_date_format)
+        date_offset = settings.get_date_offset()
+
+        record_id = self.record_id()
+        report_title = self.title
+
+        report_dict = {'title': '{TITLE}: {ID}'.format(TITLE=report_title, ID=record_id),
+                       'info': [],
+                       'sections': []}
+
+        report_def = self.report
+        if not report_def:
+            return report_dict
+
+        # Add Info elements to the report, if defined
+        info_def = report_def['Info']
+        for element_name in info_def:
+            try:
+                element = self.fetch_element(element_name)
+            except KeyError:
+                logger.warning('{NAME}: report info element {ELEM} is not a valid record details element'
+                               .format(NAME=report_title, ELEM=element_name))
+                continue
+
+            elem_title = element.description
+            elem_value = element.format_display()
+            if elem_value == "":
+                continue
+            else:
+                report_dict['info'].append((elem_title, elem_value))
+
+        # Add sub-sections to the report, if defined
+        section_def = report_def['Subsections']
+        for heading in section_def:
+            section = section_def[heading]
+
+            try:
+                heading_title = section['Title']
+            except KeyError:
+                heading_title = heading
+
+            try:
+                component = section['Component']
+            except KeyError:
+                logger.warning('{NAME}, Heading {SEC}: missing required parameter "Component" in report configuration'
+                               .format(NAME=report_title, SEC=heading))
+                continue
+            else:
+                try:
+                    comp_table = self.fetch_component(component)
+                except KeyError:
+                    logger.warning('{NAME}, Heading {SEC}: unknown Component "{COMP}" defined in report configuration'
+                                   .format(NAME=report_title, SEC=heading, COMP=component))
+                    continue
+
+            # Subset table rows based on configured subset rules
+            try:
+                sub_rule = section['Subset']
+            except KeyError:
+                subset_df = comp_table.data()
+            else:
+                try:
+                    subset_df = comp_table.subset(sub_rule)
+                except (NameError, SyntaxError) as e:
+                    logger.error('{NAME}, Heading {SEC}: unable to subset table on rule {SUB} - '
+                                 '{ERR}'.format(NAME=report_title, SEC=heading, SUB=sub_rule, ERR=e))
+                    continue
+                else:
+                    if subset_df.empty:
+                        logger.warning('{NAME}, Heading {SEC}: sub-setting on rule "{SUB}" '
+                                       'removed all records'.format(NAME=report_title, SEC=heading, SUB=sub_rule))
+                        continue
+
+            # Select columns configured
+            try:
+                subset_df = subset_df[section['Columns']]
+            except KeyError as e:
+                logger.warning('{NAME}, Heading {SEC}: unknown column provided to the report configuration - {ERR}'
+                               .format(NAME=report_title, SEC=heading, ERR=e))
+                continue
+
+            # Format table for display
+            display_df = subset_df.copy()
+            for column in subset_df.columns:
+                dtype = subset_df[column].dtype
+                if is_float_dtype(dtype):
+                    display_df[column] = display_df[column].apply('{:,.2f}'.format)
+                elif is_datetime_dtype(dtype):
+                    display_df[column] = display_df[column].apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt)
+                        + relativedelta(years=+date_offset)).strftime(date_fmt) if pd.notnull(x) else '')
+
+            # Index rows using grouping list in configuration
+            try:
+                grouping = section['Group']
+            except KeyError:
+                grouped_df = display_df
+            else:
+                grouped_df = display_df.set_index(grouping).sort_index()
+
+            html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
+                                          sparsify=True, na_rep='')
+
+            # Highlight errors in html string
+            annotations = comp_table.annotate_display(grouped_df)
+            colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+            try:
+                html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
+            except Exception as e:
+                logger.warning('{NAME}, Heading {SEC}: failed to annotate output - {ERR}'
+                               .format(NAME=report_title, SEC=heading, ERR=e))
+                html_out = html_str
+
+            report_dict['sections'].append((heading_title, html_out))
+
+        return report_dict
+
     def layout(self, win_size: tuple = None, view_only: bool = False, ugroup: list = None):
         """
-        Generate a GUI layout for the account record.
+        Generate a GUI layout for the database record.
         """
         if win_size:
             width, height = win_size
@@ -2409,6 +2549,32 @@ class TAuditRecord(DatabaseRecord):
             elem_key = header.key_lookup('Element')
             display_value = header.format_display()
             window[elem_key].update(value=display_value)
+
+
+def replace_nth(s, sub, new, ns):
+    """
+    Replace the nth occurrence of an substring in a string
+    """
+    if isinstance(ns, str):
+        ns = [ns]
+
+    where = [m.start() for m in re.finditer(sub, s)]
+    new_s = s
+    for count, start_index in enumerate(where):
+        if count not in ns:
+            continue
+
+        if isinstance(ns, dict):
+            new_fmt = new.format(ns[count])
+        else:
+            new_fmt = new
+
+        before = new_s[:start_index]
+        after = new_s[start_index:]
+        after = after.replace(sub, new_fmt, 1)  # only replace first instance of substring
+        new_s = before + after
+
+    return new_s
 
 
 def create_record(record_entry, record_data, level: int = 1):
