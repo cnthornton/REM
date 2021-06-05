@@ -1768,110 +1768,120 @@ class AuditSummary:
         """
         Generate summary report and save to a PDF file.
         """
-        relativedelta = dateutil.relativedelta.relativedelta
-        strptime = datetime.datetime.strptime
-        is_float_dtype = pd.api.types.is_float_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        date_fmt = settings.format_date_str(date_str=settings.display_date_format)
-        date_offset = settings.get_date_offset()
+#        relativedelta = dateutil.relativedelta.relativedelta
+#        strptime = datetime.datetime.strptime
+#        is_float_dtype = pd.api.types.is_float_dtype
+#        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+#        date_fmt = settings.format_date_str(date_str=settings.display_date_format)
+#        date_offset = settings.get_date_offset()
+#
+#        report_def = self.report
+        report_title = self.title
 
-        report_def = self.report
+        logger.info('AuditRule {NAME}: saving summary report {TITLE} to {FILE}'
+                    .format(NAME=self.name, TITLE=report_title, FILE=filename))
 
-        logger.info('AuditRule {NAME}: saving summary report to {FILE}'.format(NAME=self.name, FILE=filename))
-
-        tabs = []
-        for tab_name in report_def:
-            reference_tab = self.fetch_tab(tab_name)
-            try:
-                notes = reference_tab.record.fetch_element('Notes')
-            except KeyError:
-                notes_title = notes_value = ""
-            else:
-                notes_title = notes.description
-                notes_value = notes.format_display()
-
-            tab_dict = {'title': '{TITLE}: {ID}'.format(TITLE=reference_tab.record.title,
-                                                        ID=reference_tab.record.record_id()),
-                        'notes': (notes_title, notes_value)}
-
-            # Fetch component accounts table from
-            comp_table = reference_tab.record.fetch_component('account')
-
-            section_def = report_def[tab_name]
-            sections = []
-            for section_name in section_def:
-                section = section_def[section_name]
-                title = section['Title']
-
-                # Subset table rows based on configured subset rules
-                try:
-                    sub_rule = section['Subset']
-                except KeyError:
-                    subset_df = comp_table.data()
-                else:
-                    try:
-                        subset_df = comp_table.subset(sub_rule)
-                    except (NameError, SyntaxError) as e:
-                        logger.error('AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
-                                     '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
-                        continue
-                    else:
-                        if subset_df.empty:
-                            logger.warning('AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule "{SUB}" '
-                                           'removed all records'.format(NAME=self.name, SEC=tab_name, SUB=sub_rule))
-                            continue
-
-                # Select columns configured
-                try:
-                    subset_df = subset_df[section['Columns']]
-                except KeyError as e:
-                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: unknown column provided - {ERR}'
-                                   .format(NAME=self.name, SEC=section_name, ERR=e))
-                    continue
-
-                # Format table for display
-                display_df = subset_df.copy()
-                for column in subset_df.columns:
-                    dtype = subset_df[column].dtype
-                    if is_float_dtype(dtype):
-                        display_df[column] = display_df[column].apply('{:,.2f}'.format)
-                    elif is_datetime_dtype(dtype):
-                        display_df[column] = \
-                            display_df[column].apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt)
-                                                                + relativedelta(years=+date_offset)).strftime(date_fmt)
-                                                                if pd.notnull(x) else '')
-
-                # Index rows using grouping list in configuration
-                try:
-                    grouping = section['Group']
-                except KeyError:
-                    grouped_df = display_df
-                else:
-                    grouped_df = display_df.set_index(grouping).sort_index()
-
-                html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
-                                              sparsify=True, na_rep='')
-
-                # Highlight errors in html string
-                annotations = comp_table.annotate_display(grouped_df)
-                colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-                try:
-                    html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
-                except Exception as e:
-                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: failed to annotate output - {ERR}'
-                                  .format(NAME=self.name, SEC=section_name, ERR=e))
-                    html_out = html_str
-
-                sections.append((title, html_out))
-
-            tab_dict['sections'] = sections
-            tabs.append(tab_dict)
+        audit_reports = []
+        for tab in self.tabs:
+            tab_report = tab.record.generate_report()
+            audit_reports.append(tab_report)
 
         css_url = settings.report_css
-        template_vars = {'title': self.title, 'report_tabs': tabs}
+        template_vars = {'title': report_title, 'report_tabs': audit_reports}
 
-        env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.report_template))))
-        template = env.get_template(os.path.basename(os.path.abspath(settings.report_template)))
+#        tabs = []
+#        for tab_name in report_def:
+#            reference_tab = self.fetch_tab(tab_name)
+#            try:
+#                notes = reference_tab.record.fetch_element('Notes')
+#            except KeyError:
+#                notes_title = notes_value = ""
+#            else:
+#                notes_title = notes.description
+#                notes_value = notes.format_display()
+#
+#            tab_dict = {'title': '{TITLE}: {ID}'.format(TITLE=reference_tab.record.title,
+#                                                        ID=reference_tab.record.record_id()),
+#                        'notes': (notes_title, notes_value)}
+#
+#            # Fetch component accounts table from
+#            comp_table = reference_tab.record.fetch_component('account')
+#
+#            section_def = report_def[tab_name]
+#            sections = []
+#            for section_name in section_def:
+#                section = section_def[section_name]
+#                title = section['Title']
+#
+#                # Subset table rows based on configured subset rules
+#                try:
+#                    sub_rule = section['Subset']
+#                except KeyError:
+#                    subset_df = comp_table.data()
+#                else:
+#                    try:
+#                        subset_df = comp_table.subset(sub_rule)
+#                    except (NameError, SyntaxError) as e:
+#                        logger.error('AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
+#                                     '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
+#                        continue
+#                    else:
+#                        if subset_df.empty:
+#                            logger.warning('AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule "{SUB}" '
+#                                           'removed all records'.format(NAME=self.name, SEC=tab_name, SUB=sub_rule))
+#                            continue
+#
+#                # Select columns configured
+#                try:
+#                    subset_df = subset_df[section['Columns']]
+#                except KeyError as e:
+#                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: unknown column provided - {ERR}'
+#                                   .format(NAME=self.name, SEC=section_name, ERR=e))
+#                    continue
+#
+#                # Format table for display
+#                display_df = subset_df.copy()
+#                for column in subset_df.columns:
+#                    dtype = subset_df[column].dtype
+#                    if is_float_dtype(dtype):
+#                        display_df[column] = display_df[column].apply('{:,.2f}'.format)
+#                    elif is_datetime_dtype(dtype):
+#                        display_df[column] = \
+#                            display_df[column].apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt)
+#                                                                + relativedelta(years=+date_offset)).strftime(date_fmt)
+#                                                                if pd.notnull(x) else '')
+#
+#                # Index rows using grouping list in configuration
+#                try:
+#                    grouping = section['Group']
+#                except KeyError:
+#                    grouped_df = display_df
+#                else:
+#                    grouped_df = display_df.set_index(grouping).sort_index()
+#
+#                html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
+#                                              sparsify=True, na_rep='')
+#
+#                # Highlight errors in html string
+#                annotations = comp_table.annotate_display(grouped_df)
+#                colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+#                try:
+#                    html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
+#                except Exception as e:
+#                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: failed to annotate output - {ERR}'
+#                                   .format(NAME=self.name, SEC=section_name, ERR=e))
+#                    html_out = html_str
+#
+#                sections.append((title, html_out))
+#
+#            tab_dict['sections'] = sections
+#            tabs.append(tab_dict)
+#
+#        css_url = settings.report_css
+#        template_vars = {'title': self.title, 'report_tabs': tabs}
+
+        env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.audit_template))))
+        template = env.get_template(os.path.basename(os.path.abspath(settings.audit_template)))
         html_out = template.render(template_vars)
         path_wkhtmltopdf = settings.wkhtmltopdf
         config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
