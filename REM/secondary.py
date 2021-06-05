@@ -271,7 +271,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
     deletable = True if record.permissions['delete'] in user_priv and record.level < 1 and view_only is False and \
                         record.new is False else False
-    printable = True if record.report is not None and record.permissions['report'] else False
+    printable = True if record.report is not None and record.permissions['report'] in user_priv else False
 
     # Window Title
     title = record.title

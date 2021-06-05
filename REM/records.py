@@ -812,14 +812,15 @@ class DatabaseRecord:
             permissions = entry['Permissions']
         except KeyError:
             self.permissions = {'edit': 'admin', 'delete': 'admin', 'mark': 'admin', 'references': 'admin',
-                                'components': 'admin', 'approve': 'admin'}
+                                'components': 'admin', 'approve': 'admin', 'report': 'admin'}
         else:
             self.permissions = {'edit': permissions.get('Edit', 'admin'),
                                 'delete': permissions.get('Delete', 'admin'),
                                 'mark': permissions.get('MarkForDeletion', 'admin'),
                                 'references': permissions.get('ModifyReferences', 'admin'),
                                 'components': permissions.get('ModifyComponents', 'admin'),
-                                'approve': permissions.get('Approve', 'admin')}
+                                'approve': permissions.get('Approve', 'admin'),
+                                'report': permissions.get('Report', 'admin')}
 
         try:
             self.title = entry['Title']
