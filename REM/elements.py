@@ -842,6 +842,68 @@ class TableElement:
 
         return display_df.fillna('')
 
+    def format_display_column(self, df, colname, date_fmt: str = None):
+        """
+        Format a specific column for displaying.
+        """
+        relativedelta = dateutil.relativedelta.relativedelta
+        strptime = datetime.datetime.strptime
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_integer_dtype = pd.api.types.is_integer_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+
+        display_map = {j: i for i, j in self.display_columns.items()}
+        aliases = self.aliases
+
+        date_fmt = date_fmt if date_fmt is not None else settings.format_date_str(date_str=settings.display_date_format)
+        date_offset = settings.get_date_offset()
+
+        try:
+            display_col = df[colname]
+        except KeyError:
+            logger.error('DataTable {TBL}: column {COL} not found in the table columns'
+                         .format(TBL=self.name, COL=colname))
+
+            raise
+
+        if colname in display_map:
+            display_name = display_map[colname]
+            if display_name in aliases:
+                alias_map = aliases[display_name]  # dictionary of mapped values
+            else:
+                alias_map = {}
+        else:
+            alias_map = {}
+
+        dtype = display_col.dtype
+        if is_float_dtype(dtype):
+            display_col = display_col.apply('{:,.2f}'.format)
+        elif is_datetime_dtype(dtype):
+            display_col = display_col.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
+                relativedelta(years=+date_offset)).strftime(date_fmt) if pd.notnull(x) else '')
+        elif is_bool_dtype(dtype):
+            try:
+                alias_map = {bool(i): j for i, j in alias_map.items()}
+            except ValueError:
+                logger.warning('DataTable {TBL}: aliases provided to column {COL} does not match data type {DTYPE} '
+                               'of the column'.format(TBL=self.name, COL=colname, DTYPE=dtype))
+        elif is_integer_dtype(dtype):
+            try:
+                alias_map = {int(i): j for i, j in alias_map.items()}
+            except ValueError:
+                logger.warning('DataTable {TBL}: aliases provided to column {COL} does not match data type {DTYPE} '
+                               'of the column'.format(TBL=self.name, COL=colname, DTYPE=dtype))
+
+        try:
+            display_col = display_col.apply(lambda x: alias_map[x] if x in alias_map else x)
+        except TypeError:
+            logger.warning('DataTable {TBL}: cannot replace values for column {COL} with their aliases as '
+                           'alias values are not of the same data type'.format(TBL=self.name, COL=colname))
+
+        return display_col.fillna('')
+
     def filter_table(self):
         """
         Filter the data table by applying the filter rules specified in the configuration.
@@ -3212,7 +3274,8 @@ class DataElement:
             display_value = str(value)
 
         elif isinstance(value, datetime.datetime):
-            display_value = value.strftime('%Y-%m-%d')
+#            display_value = value.strftime('%Y-%m-%d')
+            display_value = settings.format_display_date(value)
 
         else:
             aliases = options.get('Aliases', {})
