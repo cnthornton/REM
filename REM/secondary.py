@@ -255,6 +255,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     else:
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
+    record_id = record.record_id()
+
     # GUI layout
 
     # Element parameters
@@ -262,6 +264,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     pad_frame = mod_const.FRAME_PAD
 
     bg_col = mod_const.ACTION_COL
+    text_col = mod_const.TEXT_COL
     header_col = mod_const.HEADER_COL
 
     font_h = mod_const.HEADER_FONT
@@ -276,10 +279,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     # Window Title
     title = record.title
     title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
-                            expand_x=True, justification='l'),
-                     sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.GENREPORT_ICON,
-                              visible=printable, tooltip='Generate record report')]],
-                            justification='r', element_justification='r')]]
+                            expand_x=True, justification='l', background_color=header_col),
+                     sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.GENREPORT_ICON, border_width=0,
+                                        pad=(pad_frame, pad_frame), button_color=(text_col, header_col),
+                                        visible=printable, tooltip='Generate record report')]],
+                            justification='r', element_justification='r', background_color=header_col)]]
 
     # Button layout
     if savable:
@@ -384,10 +388,10 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             for param in record.parameters:
                 if param.required is True and param.value_set() is False:
                     msg = 'Record {ID}: no value provided for the required field {FIELD}' \
-                        .format(ID=record.record_id(), FIELD=param.description)
+                        .format(ID=record_id, FIELD=param.description)
                     logger.error(msg)
                     popup_error('record {ID} is missing a value for the required field {FIELD}'
-                                .format(ID=record.record_id(), FIELD=param.description))
+                                .format(ID=record_id, FIELD=param.description))
                     can_continue = False
 
                     break
@@ -409,7 +413,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             # Save the record to the database table
             saved = record.save()
             if saved is False:
-                msg = 'failed to save record {ID} to the database - see log for details'.format(ID=record.record_id())
+                msg = 'failed to save record {ID} to the database - see log for details'.format(ID=record_id)
                 popup_error(msg)
                 continue
             else:
@@ -435,14 +439,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 continue
 
         # Generate a record report
-        if event == 'Report':
+        if event == '-REPORT-':
             outfile = sg.popup_get_file('', title='Save Report As', save_as=True, default_extension='pdf',
                                         no_window=True, file_types=(('PDF - Portable Document Format', '*.pdf'),))
 
             if not outfile:
-                msg = 'An valid output file is required to save the report'
-                popup_error(msg)
-
                 continue
 
             css_url = settings.report_css
@@ -451,13 +452,13 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 template_vars = record.generate_report()
             except Exception as e:
                 msg = 'failed to generate the record report - {ERR}'.format(ERR=e)
-                logger.error('Record {ID}: {MSG}'.format(ID=record.record_id(), MSG=msg))
+                logger.exception('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
                 popup_error(msg)
 
                 continue
 
-            env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.audit_template))))
-            template = env.get_template(os.path.basename(os.path.abspath(settings.audit_template)))
+            env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.report_template))))
+            template = env.get_template(os.path.basename(os.path.abspath(settings.report_template)))
             html_out = template.render(template_vars)
             path_wkhtmltopdf = settings.wkhtmltopdf
             config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
@@ -465,7 +466,14 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 pdfkit.from_string(html_out, outfile, configuration=config, css=css_url,
                                    options={'enable-local-file-access': None})
             except Exception as e:
-                logger.error('Record {ID}: writing to PDF failed - {ERR}'.format(ID=record.record_id(), ERR=e))
+                msg = 'failed to generate the record {ID} report - unable to write the PDF'.format(ID=record_id)
+                popup_error(msg)
+                logger.error('Record {ID}: failed to generate the record report - {ERR}'
+                             .format(ID=record_id, ERR=e))
+            else:
+                msg = 'record report {OUTFILE} successfully written'.format(OUTFILE=outfile)
+                logger.debug('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+                popup_notice(msg)
 
             continue
 
@@ -475,9 +483,9 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 record.run_event(window, event, values)
             except Exception as e:
                 msg = 'Record {ID}: failed to run record event {EVENT} - {ERR}'\
-                    .format(ID=record.record_id(), EVENT=event, ERR=e)
+                    .format(ID=record_id, EVENT=event, ERR=e)
                 logger.error(msg)
-                popup_notice('failed to run event for record {}'.format(record.record_id()))
+                popup_notice('failed to run event for record {}'.format(record_id))
 
                 continue
 

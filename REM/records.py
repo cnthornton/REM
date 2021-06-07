@@ -1020,7 +1020,7 @@ class DatabaseRecord:
         else:
             if 'Info' not in report:
                 report['Info'] = []
-            if 'subsections' not in report:
+            if 'Subsections' not in report:
                 report['Subsections'] = {}
 
             self.report = report
@@ -1838,14 +1838,6 @@ class DatabaseRecord:
         """
         Generate a summary report for the record.
         """
-        relativedelta = dateutil.relativedelta.relativedelta
-        strptime = datetime.datetime.strptime
-        is_float_dtype = pd.api.types.is_float_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        date_fmt = settings.format_date_str(date_str=settings.display_date_format)
-        date_offset = settings.get_date_offset()
-
         record_id = self.record_id()
         report_title = self.title
 
@@ -1857,22 +1849,28 @@ class DatabaseRecord:
         if not report_def:
             return report_dict
 
+        logger.info('{NAME}: generating the template for the record report'.format(NAME=report_title))
+
         # Add Info elements to the report, if defined
         info_def = report_def['Info']
         for element_name in info_def:
+            logger.debug('{NAME}: formatting report element {ELEM}'.format(NAME=report_title, ELEM=element_name))
             try:
                 element = self.fetch_element(element_name)
             except KeyError:
-                logger.warning('{NAME}: report info element {ELEM} is not a valid record details element'
-                               .format(NAME=report_title, ELEM=element_name))
-                continue
+                try:
+                    element = self.fetch_header(element_name)
+                except KeyError:
+                    logger.warning('{NAME}: report element {ELEM} is not a valid record details or header element'
+                                   .format(NAME=report_title, ELEM=element_name))
+                    continue
 
             elem_title = element.description
             elem_value = element.format_display()
-            if elem_value == "":
-                continue
-            else:
-                report_dict['info'].append((elem_title, elem_value))
+            if not elem_value or elem_value == "":
+                elem_value = 'N/A'
+
+            report_dict['info'].append((elem_title, elem_value))
 
         # Add sub-sections to the report, if defined
         section_def = report_def['Subsections']
@@ -1883,6 +1881,8 @@ class DatabaseRecord:
                 heading_title = section['Title']
             except KeyError:
                 heading_title = heading
+
+            logger.debug('{NAME}: formatting report heading {HEAD}'.format(NAME=report_title, HEAD=heading_title))
 
             try:
                 component = section['Component']
@@ -1927,12 +1927,16 @@ class DatabaseRecord:
             # Format table for display
             display_df = subset_df.copy()
             for column in subset_df.columns:
-                dtype = subset_df[column].dtype
-                if is_float_dtype(dtype):
-                    display_df[column] = display_df[column].apply('{:,.2f}'.format)
-                elif is_datetime_dtype(dtype):
-                    display_df[column] = display_df[column].apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt)
-                        + relativedelta(years=+date_offset)).strftime(date_fmt) if pd.notnull(x) else '')
+                try:
+                    display_df[column] = comp_table.format_display_column(subset_df, column)
+                except Exception as e:
+                    logger.exception('{NAME}, Heading {SEC}: failed to format column "{COL}"'
+                                     .format(NAME=report_title, SEC=heading, COL=column))
+
+            if display_df.empty:
+                logger.warning('{NAME}, Heading {SEC}: no records remaining after sub-setting'
+                               .format(NAME=report_title, SEC=heading))
+                continue
 
             # Index rows using grouping list in configuration
             try:
