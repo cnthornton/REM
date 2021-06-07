@@ -945,14 +945,45 @@ class TableElement:
 
         return df
 
-    def summarize_table(self, df: pd.DataFrame = None):
+    def summarize_column(self, colname, df: pd.DataFrame = None):
         """
-        Update Summary element with data summary
+        Summarize a table column.
         """
         is_numeric_dtype = pd.api.types.is_numeric_dtype
         is_string_dtype = pd.api.types.is_string_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         is_bool_dtype = pd.api.types.is_bool_dtype
+
+        df = df if df is not None else self.data()
+
+        logger.debug('DataTable {NAME}: summarizing column {COL}'.format(NAME=self.name, COL=colname))
+
+        try:
+            col_values = df[colname]
+        except KeyError:
+            logger.error('DataTable {NAME}: missing table column "{COL}" from the dataframe'
+                         .format(NAME=self.name, COL=colname))
+
+            raise
+
+        dtype = col_values.dtype
+        if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
+            col_summary = col_values.sum()
+        elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+            col_summary = col_values.nunique()
+        else:  # possibly empty dataframe
+            col_summary = 0
+
+        return col_summary
+
+    def summarize_table(self, df: pd.DataFrame = None):
+        """
+        Update Summary element with data summary
+        """
+#        is_numeric_dtype = pd.api.types.is_numeric_dtype
+#        is_string_dtype = pd.api.types.is_string_dtype
+#        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+#        is_bool_dtype = pd.api.types.is_bool_dtype
 
         operators = set('+-*/')
 
@@ -990,18 +1021,19 @@ class TableElement:
                     continue
 
                 if component in self.columns:  # component is header column
-                    try:
-                        dtype = subset_df.dtypes[component]
-                    except KeyError:
-                        logger.error('DataTable {NAME}: missing table column "{COL}" from the subsetted dataframe'
-                                     .format(NAME=self.name, COL=component))
-                        raise
-                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
-                        col_summary = subset_df[component].sum()
-                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                        col_summary = subset_df[component].nunique()
-                    else:  # possibly empty dataframe
-                        col_summary = 0
+                    col_summary = self.summarize_column(component, df=subset_df)
+#                    try:
+#                        dtype = subset_df.dtypes[component]
+#                    except KeyError:
+#                        logger.error('DataTable {NAME}: missing table column "{COL}" from the subsetted dataframe'
+#                                     .format(NAME=self.name, COL=component))
+#                        raise
+#                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
+#                        col_summary = subset_df[component].sum()
+#                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+#                        col_summary = subset_df[component].nunique()
+#                    else:  # possibly empty dataframe
+#                        col_summary = 0
 
                     rule_values.append(col_summary)
                 else:

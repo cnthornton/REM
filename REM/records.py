@@ -2,6 +2,7 @@
 REM records classes and functions. Includes audit records and account records.
 """
 
+from bs4 import BeautifulSoup
 import datetime
 import sys
 from random import randint
@@ -1924,6 +1925,11 @@ class DatabaseRecord:
                                .format(NAME=report_title, SEC=heading, ERR=e))
                 continue
 
+            if subset_df.empty:
+                logger.warning('{NAME}, Heading {SEC}: no records remaining after sub-setting'
+                               .format(NAME=report_title, SEC=heading))
+                continue
+
             # Format table for display
             display_df = subset_df.copy()
             for column in subset_df.columns:
@@ -1932,11 +1938,6 @@ class DatabaseRecord:
                 except Exception as e:
                     logger.exception('{NAME}, Heading {SEC}: failed to format column "{COL}"'
                                      .format(NAME=report_title, SEC=heading, COL=column))
-
-            if display_df.empty:
-                logger.warning('{NAME}, Heading {SEC}: no records remaining after sub-setting'
-                               .format(NAME=report_title, SEC=heading))
-                continue
 
             # Index rows using grouping list in configuration
             try:
@@ -1958,6 +1959,47 @@ class DatabaseRecord:
                 logger.warning('{NAME}, Heading {SEC}: failed to annotate output - {ERR}'
                                .format(NAME=report_title, SEC=heading, ERR=e))
                 html_out = html_str
+
+            # Add summary totals
+            try:
+                total_col = section['Totals']
+            except KeyError:
+                pass
+            else:
+                if total_col in subset_df.columns:
+                    try:
+                        col_total = comp_table.summarize_column(total_col, df=subset_df)
+                    except Exception as e:
+                        logger.warning('{NAME}, Heading {SEC}: failed to summarize column "{COL}" - {ERR}'
+                                       .format(NAME=report_title, SEC=heading, COL=total_col, ERR=e))
+                    else:
+                        if isinstance(col_total, float):
+                            summ_value = '{:,.2f}'.format(col_total)
+                        else:
+                            summ_value = '{}'.format(col_total)
+
+                        soup = BeautifulSoup(html_out, 'html.parser')
+
+                        footer = soup.new_tag('tfoot')
+                        footer_row = soup.new_tag('tr')
+                        footer_header = soup.new_tag('th')
+                        footer_header['class'] = 'right'
+                        footer_header['colspan'] = '{}'.format(subset_df.shape[1])
+                        footer_header.string = 'Total:'
+                        footer_row.append(footer_header)
+
+                        footer_data = soup.new_tag('td')
+                        footer_data['class'] = 'right'
+                        footer_data.string = summ_value
+                        footer_row.append(footer_data)
+
+                        footer.append(footer_row)
+                        soup.table.append(footer)
+
+                        html_out = soup.decode()
+                else:
+                    logger.warning('{NAME}, Heading {SEC}: Totals column "{COL}" not found in list of output columns'
+                                   .format(NAME=report_title, SEC=heading, COL=total_col))
 
             report_dict['sections'].append((heading_title, html_out))
 
