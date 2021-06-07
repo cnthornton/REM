@@ -1980,16 +1980,18 @@ class DatabaseRecord:
 
                         soup = BeautifulSoup(html_out, 'html.parser')
 
+                        # Add a totals footer to the table
                         footer = soup.new_tag('tfoot')
                         footer_row = soup.new_tag('tr')
-                        footer_header = soup.new_tag('th')
-                        footer_header['class'] = 'right'
-                        footer_header['colspan'] = '{}'.format(subset_df.shape[1])
+                        footer_header = soup.new_tag('td')
+                        footer_header['id'] = 'total'
+                        footer_header['colspan'] = '{}'.format(subset_df.shape[1] - 1)
+                        footer_header['style'] = 'text-align:right; font-weight:bold;'
                         footer_header.string = 'Total:'
                         footer_row.append(footer_header)
 
                         footer_data = soup.new_tag('td')
-                        footer_data['class'] = 'right'
+#                        footer_header['colspan'] = '{}'.format(subset_df.shape[1])
                         footer_data.string = summ_value
                         footer_row.append(footer_data)
 
@@ -2001,6 +2003,7 @@ class DatabaseRecord:
                     logger.warning('{NAME}, Heading {SEC}: Totals column "{COL}" not found in list of output columns'
                                    .format(NAME=report_title, SEC=heading, COL=total_col))
 
+            print(html_out)
             report_dict['sections'].append((heading_title, html_out))
 
         return report_dict

@@ -280,8 +280,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     title = record.title
     title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
                             expand_x=True, justification='l', background_color=header_col),
-                     sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.GENREPORT_ICON, border_width=0,
-                                        pad=(pad_frame, pad_frame), button_color=(text_col, header_col),
+                     sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.REPORT_ICON, border_width=0,
+                                        pad=(pad_frame, pad_el), button_color=(text_col, header_col),
                                         visible=printable, tooltip='Generate record report')]],
                             justification='r', element_justification='r', background_color=header_col)]]
 

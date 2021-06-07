@@ -36,7 +36,7 @@ h4 img, h5 img, h6 img {
 /* Text elements
 -------------------------------------------------------------- */
 
-p           { font-size: 1.2em; margin: 0 0 1.5em; }
+p           { font-size: 1.2em; margin: 0 0 0.2em; }
 /*
 	These can be used to pull an image at the start of a paragraph, so
 	that the text flows around it (usage: <p><img class="left">Text</p>)
