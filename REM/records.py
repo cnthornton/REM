@@ -334,7 +334,7 @@ class RecordEntry:
             try:
                 id_col = references[id_field]
             except KeyError:
-                msg = 'missing ID column "{COL}" from record import columns {COLS}'\
+                msg = 'missing ID column "{COL}" from record import columns {COLS}' \
                     .format(COL=id_field, COLS=list(references.keys()))
                 logger.error(msg)
                 raise KeyError(msg)
@@ -523,7 +523,8 @@ class RecordEntry:
         record_ids = []
         for record_date in record_dates:
             try:
-                id_date = (record_date + relativedelta(years=+offset)).strftime(settings.format_date_str(date_str='YYMM'))
+                id_date = (record_date + relativedelta(years=+offset)).strftime(
+                    settings.format_date_str(date_str='YYMM'))
             except Exception as e:
                 logger.debug(e)
                 id_date = (strptime(record_date.strftime('%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S')
@@ -728,25 +729,26 @@ class CustomRecordEntry:
         except KeyError:
             raise AttributeError('missing required parameter "RecordLayout"')
 
-#        self.ids = []
+    #        self.ids = []
 
     def remove_unsaved_ids(self, record_id):
         """
         Remove record ID from the list of unsaved IDs
         """
         return True
-#        try:
-#            self.ids.remove(record_id)
-#        except ValueError:
-#            print('Warning: RecordEntry {NAME}: record {ID} was not found in the list of unsaved {TYPE} record IDs'
-#                  .format(NAME=self.name, ID=record_id, TYPE=self.name))
-#            success = False
-#        else:
-#            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID} from the list of unsaved records'
-#                  .format(NAME=self.name, ID=record_id))
-#            success = True
-#
-#        return success
+
+    #        try:
+    #            self.ids.remove(record_id)
+    #        except ValueError:
+    #            print('Warning: RecordEntry {NAME}: record {ID} was not found in the list of unsaved {TYPE} record IDs'
+    #                  .format(NAME=self.name, ID=record_id, TYPE=self.name))
+    #            success = False
+    #        else:
+    #            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID} from the list of unsaved records'
+    #                  .format(NAME=self.name, ID=record_id))
+    #            success = True
+    #
+    #        return success
 
     def import_references(self, *args, **kwargs):
         """
@@ -1237,9 +1239,9 @@ class DatabaseRecord:
                 comp_table = self.fetch_component(comp_type, by_type=True)
                 record_entry = settings.records.fetch_rule(comp_table.record_type)
                 comp_table.df = comp_table.append(record_entry.load_record_data(import_ids))
-                #pd.set_option('display.max_columns', None)
-                #print(comp_table.name)
-                #print(comp_table.df)
+                # pd.set_option('display.max_columns', None)
+                # print(comp_table.name)
+                # print(comp_table.df)
 
             self.ref_df = self.ref_df.append(ref_df, ignore_index=True)
 
@@ -1928,6 +1930,9 @@ class DatabaseRecord:
             if subset_df.empty:
                 logger.warning('{NAME}, Heading {SEC}: no records remaining after sub-setting'
                                .format(NAME=report_title, SEC=heading))
+                html_out = '<p>N/A</p>'
+                report_dict['sections'].append((heading_title, html_out))
+
                 continue
 
             # Format table for display
@@ -1991,7 +1996,6 @@ class DatabaseRecord:
                         footer_row.append(footer_header)
 
                         footer_data = soup.new_tag('td')
-#                        footer_header['colspan'] = '{}'.format(subset_df.shape[1])
                         footer_data.string = summ_value
                         footer_row.append(footer_data)
 
@@ -2662,4 +2666,3 @@ def import_references(record_id):
                              prog_db=True)
 
     return import_df
-

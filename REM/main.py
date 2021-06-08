@@ -115,7 +115,7 @@ class ToolBar:
 
         # Layout settings
         audit_ico = mod_const.AUDIT_ICON
-        report_ico = mod_const.REPORT_ICON
+        report_ico = mod_const.ARCHIVE_ICON
         db_ico = mod_const.DB_ICON
         user_ico = mod_const.USER_ICON
         menu_ico = mod_const.MENU_ICON
