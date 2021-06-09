@@ -2310,15 +2310,20 @@ class StandardRecord(DatabaseRecord):
         """
         Update the display of the record's elements and components.
         """
+        record_id = self.record_id()
+
         # Update data elements
+        logger.debug('Record {ID}: updating display data elements'.format(ID=record_id))
         for param in self.parameters:
             param.update_display(window, window_values=window_values)
 
         # Update the components display table
+        logger.debug('Record {ID}: updating display component tables'.format(ID=record_id))
         for component in self.components:
             component.update_display(window, window_values=window_values)
 
         # Update records header
+        logger.debug('Record {ID}: updating display header elements'.format(ID=record_id))
         for header in self.headers:
             elem_key = header.key_lookup('Element')
             display_value = header.format_display()
@@ -2417,15 +2422,20 @@ class DepositRecord(DatabaseRecord):
         greater_col = mod_const.PASS_COL
         lesser_col = mod_const.FAIL_COL
 
+        record_id = self.record_id()
+
         # Update parameter values
+        logger.debug('Record {ID}: updating display data elements'.format(ID=record_id))
         for param in self.parameters:
             param.update_display(window, window_values=window_values)
 
         # Update the components display table
+        logger.debug('Record {ID}: updating display component tables'.format(ID=record_id))
         for component in self.components:
             component.update_display(window, window_values=window_values)
 
         # Update the deposit total
+        logger.debug('Record {ID}: updating display deposit total'.format(ID=record_id))
         try:
             account_table = self.fetch_component('account')
         except KeyError:
@@ -2464,6 +2474,7 @@ class DepositRecord(DatabaseRecord):
 
         # Update records header
         for header in self.headers:
+            logger.debug('Record {ID}: updating header elements'.format(ID=record_id))
             elem_key = header.key_lookup('Element')
             display_value = header.format_display()
             window[elem_key].update(value=display_value)
@@ -2559,15 +2570,20 @@ class TAuditRecord(DatabaseRecord):
         greater_col = mod_const.PASS_COL
         lesser_col = mod_const.FAIL_COL
 
+        record_id = self.record_id()
+
         # Update parameter values
+        logger.debug('Record {ID}: updating display data elements'.format(ID=record_id))
         for param in self.parameters:
             param.update_display(window, window_values=window_values)
 
         # Update the components display table
+        logger.debug('Record {ID}: updating display component tables'.format(ID=record_id))
         for component in self.components:
             component.update_display(window, window_values=window_values)
 
         # Update the remainder
+        logger.debug('Record {ID}: updating display remainder'.format(ID=record_id))
         totals_table = self.fetch_element('Totals')
         totals_sum = totals_table.calculate_total()
 
@@ -2599,6 +2615,7 @@ class TAuditRecord(DatabaseRecord):
         window[remainder_key].update(background_color=bg_color)
 
         # Update records header
+        logger.debug('Record {ID}: updating display header elements'.format(ID=record_id))
         for header in self.headers:
             elem_key = header.key_lookup('Element')
             display_value = header.format_display()

@@ -3064,23 +3064,32 @@ class DataElement:
         elem_key = self.key_lookup('Element')
         options = self.options
 
+        logger.debug("DataElement {NAME}: updating the element's display value".format(NAME=self.name))
+
         # Update element display value
-        try:
-            param_value = window_values[elem_key]
-        except KeyError:
-            logger.warning('DataElement {NAME}: unable to locate values for element key "{KEY}"'
-                           .format(NAME=self.name, KEY=elem_key))
+        if self.editable and not self.hidden:
+            try:
+                param_value = window_values[elem_key]
+            except KeyError:
+                logger.warning('DataElement {NAME}: unable to locate values for element key "{KEY}"'
+                               .format(NAME=self.name, KEY=elem_key))
+                if self.value:
+                    display_value = self.format_display()
+                    window[elem_key].update(value=display_value)
+                else:
+                    display_value = None
+            except TypeError:
+                display_value = None
+            else:
+                self.value = self.format_value(param_value)
+                display_value = self.format_display()
+                window[elem_key].update(value=display_value)
+        else:
             if self.value:
                 display_value = self.format_display()
                 window[elem_key].update(value=display_value)
             else:
                 display_value = None
-        except TypeError:
-            display_value = None
-        else:
-            self.value = self.format_value(param_value)
-            display_value = self.format_display()
-            window[elem_key].update(value=display_value)
 
         # Update element background color
         bg_col = options.get('BackgroundColor', None)

@@ -8,7 +8,6 @@ import sys
 from random import randint
 
 import PySimpleGUI as sg
-import dateutil
 import pandas as pd
 import pdfkit
 from jinja2 import Environment, FileSystemLoader
@@ -313,6 +312,8 @@ class AuditRule:
             if next_subpanel == self.last_panel:
                 # Update audit records
                 for tab in self.summary.tabs:
+                    print('after next button')
+                    print(tab.record.table_values())
 
                     # Update audit record totals
                     tab.map_summary(self.tabs)
@@ -415,6 +416,10 @@ class AuditRule:
                     current_rule = self.reset_rule(window, current=True)
 
                     return current_rule
+                else:
+                    for tab in self.summary.tabs:
+                        tab.update_display(window)
+                        print(tab.record.table_values())
 
                 # Initialize audit
                 initialized = []
@@ -1534,7 +1539,6 @@ class AuditSummary:
         self.report = report
 
         # Dynamic attributes
-        self.parameters = None
         self.title = None
 
     def key_lookup(self, component):
@@ -1768,14 +1772,6 @@ class AuditSummary:
         """
         Generate summary report and save to a PDF file.
         """
-#        relativedelta = dateutil.relativedelta.relativedelta
-#        strptime = datetime.datetime.strptime
-#        is_float_dtype = pd.api.types.is_float_dtype
-#        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-#        date_fmt = settings.format_date_str(date_str=settings.display_date_format)
-#        date_offset = settings.get_date_offset()
-#
-#        report_def = self.report
         report_title = self.title
 
         logger.info('AuditRule {NAME}: saving summary report {TITLE} to {FILE}'
@@ -1788,97 +1784,6 @@ class AuditSummary:
 
         css_url = settings.report_css
         template_vars = {'title': report_title, 'report_tabs': audit_reports}
-
-#        tabs = []
-#        for tab_name in report_def:
-#            reference_tab = self.fetch_tab(tab_name)
-#            try:
-#                notes = reference_tab.record.fetch_element('Notes')
-#            except KeyError:
-#                notes_title = notes_value = ""
-#            else:
-#                notes_title = notes.description
-#                notes_value = notes.format_display()
-#
-#            tab_dict = {'title': '{TITLE}: {ID}'.format(TITLE=reference_tab.record.title,
-#                                                        ID=reference_tab.record.record_id()),
-#                        'notes': (notes_title, notes_value)}
-#
-#            # Fetch component accounts table from
-#            comp_table = reference_tab.record.fetch_component('account')
-#
-#            section_def = report_def[tab_name]
-#            sections = []
-#            for section_name in section_def:
-#                section = section_def[section_name]
-#                title = section['Title']
-#
-#                # Subset table rows based on configured subset rules
-#                try:
-#                    sub_rule = section['Subset']
-#                except KeyError:
-#                    subset_df = comp_table.data()
-#                else:
-#                    try:
-#                        subset_df = comp_table.subset(sub_rule)
-#                    except (NameError, SyntaxError) as e:
-#                        logger.error('AuditRuleSummary {NAME}, Report {SEC}: unable to subset table on rule {SUB} - '
-#                                     '{ERR}'.format(NAME=self.name, SEC=section_name, SUB=sub_rule, ERR=e))
-#                        continue
-#                    else:
-#                        if subset_df.empty:
-#                            logger.warning('AuditRuleSummary {NAME}, Report {SEC}: sub-setting on rule "{SUB}" '
-#                                           'removed all records'.format(NAME=self.name, SEC=tab_name, SUB=sub_rule))
-#                            continue
-#
-#                # Select columns configured
-#                try:
-#                    subset_df = subset_df[section['Columns']]
-#                except KeyError as e:
-#                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: unknown column provided - {ERR}'
-#                                   .format(NAME=self.name, SEC=section_name, ERR=e))
-#                    continue
-#
-#                # Format table for display
-#                display_df = subset_df.copy()
-#                for column in subset_df.columns:
-#                    dtype = subset_df[column].dtype
-#                    if is_float_dtype(dtype):
-#                        display_df[column] = display_df[column].apply('{:,.2f}'.format)
-#                    elif is_datetime_dtype(dtype):
-#                        display_df[column] = \
-#                            display_df[column].apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt)
-#                                                                + relativedelta(years=+date_offset)).strftime(date_fmt)
-#                                                                if pd.notnull(x) else '')
-#
-#                # Index rows using grouping list in configuration
-#                try:
-#                    grouping = section['Group']
-#                except KeyError:
-#                    grouped_df = display_df
-#                else:
-#                    grouped_df = display_df.set_index(grouping).sort_index()
-#
-#                html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
-#                                              sparsify=True, na_rep='')
-#
-#                # Highlight errors in html string
-#                annotations = comp_table.annotate_display(grouped_df)
-#                colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-#                try:
-#                    html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
-#                except Exception as e:
-#                    logger.warning('AuditRuleSummary {NAME}, Report {SEC}: failed to annotate output - {ERR}'
-#                                   .format(NAME=self.name, SEC=section_name, ERR=e))
-#                    html_out = html_str
-#
-#                sections.append((title, html_out))
-#
-#            tab_dict['sections'] = sections
-#            tabs.append(tab_dict)
-#
-#        css_url = settings.report_css
-#        template_vars = {'title': self.title, 'report_tabs': tabs}
 
         env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.audit_template))))
         template = env.get_template(os.path.basename(os.path.abspath(settings.audit_template)))
@@ -1939,11 +1844,8 @@ class AuditSummary:
 
                         return False
 
-#        success = []
         statements = {}
         for tab in tabs:
-#            # Save audit tab record
-#            success.append(tab.save_record())
             try:
                 statements = tab.save_record(statements=statements)
             except Exception as e:
@@ -2076,33 +1978,6 @@ class AuditRecordTab:
 
         if event in record_keys:
             self.record.run_event(window, event, values)
-#        component_elems = [i for component in record.components for i in component.elements]
-#
-#        if event in component_elems:  # component table event
-#            # Update data elements
-#            for param in record.parameters:
-#                param.update_display(window, window_values=values)
-#
-#            try:
-#                component_table = record.fetch_component(event, by_key=True)
-#            except KeyError:
-#                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
-#                             .format(ID=record.record_id(), KEY=event))
-#            else:
-#                import_key = component_table.key_lookup('Import')
-#                if event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
-#                                                                     window[import_key].metadata['visible'])):
-#                    component_table.import_rows(program_database=True)
-#                elif event == component_table.key_lookup('Add'):  # add account records
-#                    default_values = {i.name: i.value for i in record.parameters if i.etype != 'table'}
-#                    component_table.add_row(record_date=record.record_date(), defaults=default_values)
-#                else:
-#                    component_table.run_event(window, event, values)
-#
-#            record.update_display(window, window_values=values)
-#
-#        elif event in record_keys:
-#            self.record.run_event(window, event, values)
 
     def load_record(self, params):
         """
@@ -2129,7 +2004,7 @@ class AuditRecordTab:
         except Exception as e:
             mod_win2.popup_error('Attempt to import data from the database failed. Use the debug window for more '
                                  'information')
-            raise IOError('AuditSummaryTab {NAME}: failed to import data from the database - {ERR}'
+            raise IOError('failed to import data for audit {NAME} from the database - {ERR}'
                           .format(NAME=self.name, ERR=e))
         else:
             if not import_df.empty:  # Audit record already exists in database for the chosen parameters
@@ -2140,35 +2015,45 @@ class AuditRecordTab:
             else:  # audit has not been performed yet
                 logger.info('AuditSummaryTab {NAME}: no existing audit record for the supplied parameters ... '
                             'creating a new record'.format(NAME=self.name))
-                record = self.record
+
                 record_entry = settings.records.fetch_rule(self.name)
                 param_types = [i.etype for i in params]
-                param_names = [i.name for i in params]
-                date_index = param_types.index('date')
+#                param_names = [i.name for i in params]
+                try:
+                    date_index = param_types.index('date')
+                except IndexError:
+                    raise AttributeError('failed to create record - audit {NAME} is missing the date parameter'
+                                         .format(NAME=self.name))
 
                 # Create new record
                 record_date = params[date_index].value
                 record_id = record_entry.create_record_ids(record_date, offset=settings.get_date_offset())
                 if not record_id:
-                    raise IOError('failed to create a record ID for the {NAME} audit'.format(NAME=self.name))
+                    raise IOError('failed to create record - unable to create record ID for the {NAME} audit'
+                                  .format(NAME=self.name))
 
                 record_data = {'RecordID': record_id, 'RecordDate': record_date}
+                for param in params:
+                    param_name = param.name
+                    if param_name not in record_data:
+                        record_data[param_name] = param.value
 
-                for element in record.parameters:
-                    element_name = element.name
-                    if element_name in param_names:
-                        param = params[param_names.index(element_name)]
+#                for element in self.record.parameters:
+#                    element_name = element.name
+#                    if element_name in param_names:
+#                        param = params[param_names.index(element_name)]
+#
+#                        element_value = param.value
+#                        logger.debug('AuditRuleTab {NAME}: adding value "{VAL}" from parameter "{PARAM}" to data '
+#                                     'element {ELEM}'.format(NAME=self.name, VAL=element_value, PARAM=param.name,
+#                                                             ELEM=element_name))
+#                        record_data[param.name] = element_value
+#                    else:
+#                        logger.debug('AuditRuleTab {NAME}: no values found for data element {ELEM}'
+#                                     .format(NAME=self.name, ELEM=element_name))
 
-                        element_value = param.value
-                        logger.debug('AuditRuleTab {NAME}: adding value "{VAL}" from parameter "{PARAM}" to data '
-                                     'element {ELEM}'.format(NAME=self.name, VAL=element_value, PARAM=param.name,
-                                                             ELEM=element_name))
-                        record_data[param.name] = element_value
-                    else:
-                        logger.debug('AuditRuleTab {NAME}: no values found for data element {ELEM}'
-                                     .format(NAME=self.name, ELEM=element_name))
-
-                record.initialize(record_data, new=False)
+                self.record.initialize(record_data, new=False)
+                print(self.record.table_values())
 
                 return False
 

@@ -126,12 +126,13 @@ class ToolBar:
         text_col = mod_const.TEXT_COL
 
         toolbar = [[sg.Canvas(key='-CANVAS_WIDTH-', size=(width, 0), visible=True)],
-                   [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, tooltip='Run Audits',
+                   [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico,
+                                           tooltip='Transaction Audits and Finance Reconciliations',
                                            button_color=(text_col, header_col), pad=(padding, padding), border_width=0),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
                                            button_color=(text_col, header_col), border_width=0,
                                            tooltip=self.records_title, pad=(padding, padding)),
-                             sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip='Modify Database',
+                             sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip='Record Importing',
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
                                        disabled=True)]],
                            justification='l', background_color=header_col, expand_x=True),
