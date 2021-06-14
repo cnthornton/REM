@@ -53,8 +53,8 @@ HEADER_FONT = BOLD_LARGE_FONT = ('Arial', 14, 'bold')
 UNDERLINE_FONT = ('Arial', 12, 'underline')
 
 # Window initial dimensions
-WIN_HEIGHT = 800
-WIN_WIDTH = 1200
+WIN_HEIGHT = 400  #800
+WIN_WIDTH = 600  #1200
 
 # Tables
 TBL_WIDTH = 120  # default table width in characters

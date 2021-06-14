@@ -304,13 +304,13 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                                   bind_return_key=True)]]
 
     # Window layout
-    bffr_height = 230
+    bffr_height = 230  # window height minus space reserved for the title and buttons
     height_key = '-HEIGHT-'
     layout = [[sg.Col([[sg.Canvas(key=height_key, size=(1, height))]]),
               sg.Col([
                   [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                  [sg.Col(record.layout(win_size=(600, height - bffr_height), view_only=view_only, ugroup=user_priv),
+                  [sg.Col(record.layout(win_size=(width, height - bffr_height), view_only=view_only, ugroup=user_priv),
                           pad=(0, 0), background_color=bg_col, expand_x=True)],
                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
                   [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
@@ -327,14 +327,14 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
-    wh_ratio = 0.95
-    win_h = int(screen_h * 0.8)
+    wh_ratio = 0.95  # window width to height ratio
+    win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
     win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
 
     record.resize(window, win_size=(win_w, win_h - bffr_height))
     window.bind("<Configure>", window[height_key].Widget.config(height=int(win_h)))
     window = center_window(window)
-    current_w, current_h = window.size
+    current_w, current_h = [int(i) for i in window.size]
 
     # Update record display
     record.update_display(window)
@@ -353,7 +353,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
             break
 
-        win_w, win_h = window.size
+        win_w, win_h = [int(i) for i in window.size]
         if win_w != current_w or win_h != current_h:
             logger.debug('current window size is {W} x {H}'.format(W=current_w, H=current_h))
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
@@ -387,10 +387,10 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             can_continue = True
             for param in record.parameters:
                 if param.required is True and param.value_set() is False:
-                    msg = 'Record {ID}: no value provided for the required field {FIELD}' \
+                    msg = 'Record {ID}: no value provided for the required field "{FIELD}"' \
                         .format(ID=record_id, FIELD=param.description)
                     logger.error(msg)
-                    popup_error('record {ID} is missing a value for the required field {FIELD}'
+                    popup_error('record {ID} is missing a value for the required field "{FIELD}"'
                                 .format(ID=record_id, FIELD=param.description))
                     can_continue = False
 

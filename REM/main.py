@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.4.5'
+__version__ = '3.4.7'
 
 import sys
 import tkinter as tk
@@ -331,7 +331,7 @@ def get_panels(account_methods, win_size: tuple = None):
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
     # Home page action panel
-    panels = [mod_lo.home_screen()]
+    panels = [mod_lo.home_screen(win_size=(width, height))]
 
     # Add Audit rule with summary panel
     for account_method in account_methods:

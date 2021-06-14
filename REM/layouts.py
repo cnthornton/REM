@@ -458,8 +458,8 @@ def home_screen(win_size: tuple = None):
     else:
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
-    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width * 0.8), int(height * 0.8)),
-                               background_color=bg_col)]],
+#    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width), int(height)),
+    layout = sg.Col([[sg.Image(filename=settings.logo, background_color=bg_col)]],
                     key='-HOME-', element_justification='c', vertical_alignment='c', background_color=bg_col)
 
     return layout
