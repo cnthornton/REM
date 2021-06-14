@@ -3064,10 +3064,13 @@ class DataElement:
         elem_key = self.key_lookup('Element')
         options = self.options
 
-        logger.debug("DataElement {NAME}: updating the element's display value".format(NAME=self.name))
-
         # Update element display value
-        if self.editable and not self.hidden:
+        logger.debug('DataElement {NAME}: disabled {EDIT}; hidden {VIS}'
+                     .format(NAME=self.name, EDIT=self.disabled, VIS=self.hidden))
+        if not self.disabled and not self.hidden:  # element is not disabled and is visible to the user
+            logger.debug("DataElement {NAME}: updating the element's display value using current window values"
+                         .format(NAME=self.name))
+
             try:
                 param_value = window_values[elem_key]
             except KeyError:
@@ -3084,11 +3087,17 @@ class DataElement:
                 self.value = self.format_value(param_value)
                 display_value = self.format_display()
                 window[elem_key].update(value=display_value)
-        else:
+        else:  # element is either disabled or hidden
             if self.value:
+                logger.debug("DataElement {NAME}: updating the element's display value using existing element value"
+                             .format(NAME=self.name))
+
                 display_value = self.format_display()
                 window[elem_key].update(value=display_value)
             else:
+                logger.debug("DataElement {NAME}: no values provided to update the element's display"
+                             .format(NAME=self.name))
+
                 display_value = None
 
         # Update element background color
@@ -3410,7 +3419,7 @@ class DataElement:
                 except (ValueError, TypeError):
                     value_fmt = bool(input_value)
         else:
-            value_fmt = str(input_value)
+            value_fmt = str(input_value).strip()
 
         logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
                      .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
