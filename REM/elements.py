@@ -1729,21 +1729,33 @@ class TableElement:
 
     def append(self, add_df, imports: bool = False):
         """
-        Add a new row of data to table.
+        Add a new row of data to the data table.
         """
-        if imports:
+        if imports:  # add new data to the import dataframe instead of the data table
             df = self.import_df.copy()
-        else:
+            table_name = 'imports table'
+        else:  # add new data to the data table
+            table_name = 'data table'
             df = self.df.copy()
 
-        if add_df.empty:
+        if add_df.empty:  # no data to add
             return df
 
-        logger.debug('DataTable {NAME}: appending {NROW} rows to the table'
-                     .format(NAME=self.name, NROW=add_df.shape[0]))
+        # Convert add_df to a dataframe first if it is a series
+        if isinstance(add_df, pd.Series):
+            add_df = add_df.to_frame().T
 
+        # Make sure the data types of the columns are consistent
+        add_df = self.set_datatypes(add_df)
+
+        # Add new data to the table
+        logger.debug('DataTable {NAME}: appending {NROW} rows to the {TBL}'
+                     .format(NAME=self.name, NROW=add_df.shape[0], TBL=table_name))
         df = df.append(add_df, ignore_index=True)
-        df = self.set_datatypes(df)
+
+#
+#        df = df.append(add_df, ignore_index=True)
+#        df = self.set_datatypes(df)
 
         return df
 
@@ -1754,7 +1766,7 @@ class TableElement:
         logger.info('DataTable {NAME}: filling {NROW} rows using fill method {METHOD}'
                     .format(NAME=self.name, NROW=len(rows), METHOD=fill_method))
 
-        if rows is not None:
+        if rows is not None:  # fill only specified rows
             if len(rows) > 0:
                 try:
                     self.df.iloc[rows, self.df.columns.get_loc(column)] = \
@@ -1768,7 +1780,7 @@ class TableElement:
             else:
                 logger.warning('DataTable {NAME}: unable to fill table - no rows selected for filling'
                                .format(NAME=self.name))
-        else:
+        else:  # fill all column values
             try:
                 self.df[column].fillna(method=fill_method, inplace=True)
             except ValueError:
@@ -2428,8 +2440,8 @@ class TableElement:
 
         for column in dtype_map:
             if column not in header:
-                logger.warning('DataTable {NAME}: unable to specify the data type for column "{COL}" - "{COL}" is not '
-                               'in the dataframe header'.format(NAME=self.name, COL=column))
+                logger.warning('DataTable {NAME}: unable to specify the data type for configured column "{COL}" - '
+                               '"{COL}" is not in the dataframe header'.format(NAME=self.name, COL=column))
                 continue
 
             dtype = dtype_map[column]
@@ -2439,25 +2451,37 @@ class TableElement:
             elif isinstance(dtype, str):
                 try:
                     if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                        df[column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+                        df.loc[:, column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
                     elif dtype in ('int', 'integer', 'bigint'):
-                        df[column] = df[column].astype('Int64')
+                        try:
+                            df.loc[:, column] = df[column].astype('Int64')
+                        except TypeError:
+                            df.loc[:, column] = df[column].astype(float).astype('Int64')
                     elif dtype == 'mediumint':
-                        df[column] = df[column].astype('Int32')
+                        try:
+                            df.loc[:, column] = df[column].astype('Int32')
+                        except TypeError:
+                            df.loc[:, column] = df[column].astype(float).astype('Int32')
                     elif dtype == 'smallint':
-                        df[column] = df[column].astype('Int16')
+                        try:
+                            df.loc[:, column] = df[column].astype('Int16')
+                        except TypeError:
+                            df.loc[:, column] = df[column].astype(float).astype('Int16')
                     elif dtype in ('tinyint', 'bit'):
-                        df[column] = df[column].astype('Int8')
+                        try:
+                            df.loc[:, column] = df[column].astype('Int8')
+                        except TypeError:
+                            df.loc[:, column] = df[column].astype(float).astype('Int8')
                     elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-                        df[column] = pd.to_numeric(df[column], errors='coerce', downcast='float')
+                        df.loc[:, column] = pd.to_numeric(df[column], errors='coerce', downcast='float')
                     elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-                        df[column] = pd.to_numeric(df[column], errors='coerce')
+                        df.loc[:, column] = pd.to_numeric(df[column], errors='coerce')
                     elif dtype in ('bool', 'boolean'):
-                        df[column] = df[column].fillna(False).astype(np.bool, errors='raise')
+                        df.loc[:, column] = df[column].fillna(False).astype(np.bool, errors='raise')
                     elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-                        df[column] = df[column].astype(np.object, errors='raise')
+                        df.loc[:, column] = df[column].astype(np.object, errors='raise')
                     else:
-                        df[column] = df[column].astype(np.object, errors='raise')
+                        df.loc[:, column] = df[column].astype(np.object, errors='raise')
                 except Exception as e:
                     logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
                                    .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
