@@ -1415,8 +1415,13 @@ def convert_datatypes(value):
         converted_value = None
     elif is_float_dtype(type(value)) is True or isinstance(value, float):
         converted_value = float(value)
+#    elif is_integer_dtype(type(value)) is True or isinstance(value, int):
+#        converted_value = int(value)
     elif is_integer_dtype(type(value)) is True or isinstance(value, int):
-        converted_value = int(value)
+        try:
+            converted_value = int(value)
+        except TypeError:
+            converted_value = None
     elif is_bool_dtype(type(value)) is True or isinstance(value, bool):
         converted_value = bool(value)
     elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):

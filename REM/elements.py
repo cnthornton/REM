@@ -2414,39 +2414,60 @@ class TableElement:
         """
         Set column data types based on header mapping
         """
+        CategoricalDtype = pd.api.types.CategoricalDtype
+
         dtype_map = self.columns
         header = df.columns.tolist()
 
         logger.debug('DataTable {NAME}: setting column data types to configured data types'.format(NAME=self.name))
 
         if not isinstance(dtype_map, dict):
-            logger.warning('DataTable {NAME}: unable to set column datatype. Columns must be configured '
-                           'as an object in order to use this feature'.format(NAME=self.name))
+            logger.warning('DataTable {NAME}: unable to set column datatypes. Columns must be configured '
+                           'as an object to specify data types'.format(NAME=self.name))
             return df
 
         for column in dtype_map:
-            dtype = dtype_map[column]
-
             if column not in header:
+                logger.warning('DataTable {NAME}: unable to specify the data type for column "{COL}" - "{COL}" is not '
+                               'in the dataframe header'.format(NAME=self.name, COL=column))
                 continue
 
-            try:
-                if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                    df[column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
-                elif dtype in ('int', 'integer', 'bit'):
-                    df[column] = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
-                elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-                    df[column] = pd.to_numeric(df[column], errors='coerce')
-                elif dtype in ('bool', 'boolean'):
-                    df[column] = df[column].fillna(False).astype(np.bool, errors='raise')
-                elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-                    df[column] = df[column].astype(np.object, errors='raise')
-                else:
-                    df[column] = df[column].astype(np.object, errors='raise')
-            except Exception as e:
-                logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
-                               .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
-                logger.debug('DataTable {NAME}: column values are {VALS}'.format(NAME=self.name, VALS=df[column]))
+            dtype = dtype_map[column]
+            if isinstance(dtype, list) or isinstance(dtype, tuple):
+                cat_type = CategoricalDtype(categories=dtype, ordered=False)
+                df[column] = df[column].astype(cat_type)
+            elif isinstance(dtype, str):
+                try:
+                    if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                        df[column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+                    elif dtype in ('int', 'integer', 'bigint'):
+                        df[column] = df[column].astype('Int64')
+                    elif dtype == 'mediumint':
+                        df[column] = df[column].astype('Int32')
+                    elif dtype == 'smallint':
+                        df[column] = df[column].astype('Int16')
+                    elif dtype in ('tinyint', 'bit'):
+                        df[column] = df[column].astype('Int8')
+                    elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
+                        df[column] = pd.to_numeric(df[column], errors='coerce', downcast='float')
+                    elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
+                        df[column] = pd.to_numeric(df[column], errors='coerce')
+                    elif dtype in ('bool', 'boolean'):
+                        df[column] = df[column].fillna(False).astype(np.bool, errors='raise')
+                    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
+                        df[column] = df[column].astype(np.object, errors='raise')
+                    else:
+                        df[column] = df[column].astype(np.object, errors='raise')
+                except Exception as e:
+                    logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
+                                   .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                    logger.debug('DataTable {NAME}: column values are {VALS}'.format(NAME=self.name, VALS=df[column]))
+            else:
+                logger.warning('DataTable {NAME}: unable to specify the data type for column "{COL}" - data type is '
+                               'provided in an unaccepted format'.format(NAME=self.name, COL=column))
+
+        print(df.head())
+        print(df.dtypes)
 
         return df
 
