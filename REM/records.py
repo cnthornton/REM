@@ -307,8 +307,6 @@ class RecordEntry:
 
         if not isinstance(df, pd.DataFrame):
             raise ValueError('df must be a DataFrame or Series')
-        else:
-            columns = df.columns.values.tolist()
 
         if df.empty:
             return statements
@@ -323,6 +321,7 @@ class RecordEntry:
             df[settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
 
         # Prepare transaction for each export table containing fields comprising the record
+        columns = df.columns.values.tolist()
         for table in import_rules:
             table_entry = import_rules[table]
 
