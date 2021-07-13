@@ -484,7 +484,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             except Exception as e:
                 msg = 'Record {ID}: failed to run record event {EVENT} - {ERR}'\
                     .format(ID=record_id, EVENT=event, ERR=e)
-                logger.error(msg)
+                logger.exception(msg)
                 popup_notice('failed to run event for record {}'.format(record_id))
 
                 continue

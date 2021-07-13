@@ -670,7 +670,7 @@ class RecordEntry:
                 .format(TYPE=self.name, ERR=response['value'])
             logger.error(msg)
 
-            return None
+            return []
         else:
             logger.debug('RecordEntry {NAME}: successfully obtained a list of unsaved record IDs associated with the '
                          'record entry'.format(NAME=self.name))

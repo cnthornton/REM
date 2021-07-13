@@ -167,7 +167,7 @@ class ServerConnection:
 
         return message
 
-    def process_request(self, request, timeout: int = 20):
+    def process_request(self, request, timeout: int = 60):
         try:
             self.action = request['content']['action']
         except KeyError:
@@ -1308,7 +1308,7 @@ class AccountManager:
             msg = response['value']
             logger.error(msg)
 
-            df = pd.DataFrame()
+            raise ConnectionError(msg)
         else:
             try:
                 df = pd.DataFrame(response['value'])
@@ -1316,7 +1316,7 @@ class AccountManager:
                 msg = 'failed to read the results of the database query - {ERR}'.format(ERR=e)
                 logger.error(msg)
 
-                df = pd.DataFrame()
+                raise
 
         return df
 

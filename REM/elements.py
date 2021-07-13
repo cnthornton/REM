@@ -815,7 +815,6 @@ class TableElement:
         # Map column values to the aliases specified in the configuration
         for alias_col in aliases:
             alias_map = aliases[alias_col]  # dictionary of mapped values
-
             if alias_col not in display_header:
                 logger.warning('DataTable {TBL}: alias column {ALIAS} not found in the list of display columns'
                                .format(TBL=self.name, ALIAS=alias_col))
@@ -840,7 +839,7 @@ class TableElement:
                     logger.warning('DataTable {TBL}: cannot replace values for column {ALIAS} with their aliases as '
                                    'alias values are not of the same data type'.format(TBL=self.name, ALIAS=alias_col))
 
-        return display_df.fillna('')
+        return display_df.astype('object').fillna('')
 
     def format_display_column(self, df, colname, date_fmt: str = None):
         """
@@ -2452,6 +2451,7 @@ class TableElement:
 
             dtype = dtype_map[column]
             if isinstance(dtype, list) or isinstance(dtype, tuple):
+                dtype = dtype.append('')  # categories should contain empty string
                 cat_type = CategoricalDtype(categories=dtype, ordered=False)
                 df[column] = df[column].astype(cat_type)
             elif isinstance(dtype, str):
@@ -2496,6 +2496,8 @@ class TableElement:
             else:
                 logger.warning('DataTable {NAME}: unable to specify the data type for column "{COL}" - data type is '
                                'provided in an unaccepted format'.format(NAME=self.name, COL=column))
+
+        print(df.dtypes)
 
         return df
 
