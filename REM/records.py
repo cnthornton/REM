@@ -1939,7 +1939,7 @@ class DatabaseRecord:
             for column in subset_df.columns:
                 try:
                     display_df[column] = comp_table.format_display_column(subset_df, column)
-                except Exception as e:
+                except Exception:
                     logger.exception('{NAME}, Heading {SEC}: failed to format column "{COL}"'
                                      .format(NAME=report_title, SEC=heading, COL=column))
 
@@ -1955,9 +1955,9 @@ class DatabaseRecord:
                                           sparsify=True, na_rep='')
 
             # Highlight errors in html string
-            annotations = comp_table.annotate_display(grouped_df)
+            annotations = comp_table.annotate_display(grouped_df.reset_index())
             colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-            try:
+            try:  # colors should be a dictionary of row index with matching color
                 html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
             except Exception as e:
                 logger.warning('{NAME}, Heading {SEC}: failed to annotate output - {ERR}'
