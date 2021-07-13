@@ -2209,6 +2209,7 @@ class TableElement:
         Open selected record in new record window.
         """
         df = self.df.copy()
+        header = df.columns.values.tolist()
 
         try:
             row = df.loc[index]
@@ -2249,6 +2250,9 @@ class TableElement:
             return df
         else:
             for col_name, col_value in record_values.iteritems():
+                if col_name not in header:
+                    continue
+
                 try:
                     df.at[index, col_name] = col_value
                 except KeyError:
@@ -2256,6 +2260,8 @@ class TableElement:
                 except ValueError as e:
                     logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - {ERR}'
                                  .format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
+
+        df = self.set_datatypes(df)
 
         return df
 
@@ -2451,7 +2457,8 @@ class TableElement:
             elif isinstance(dtype, str):
                 try:
                     if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-                        df.loc[:, column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+                        df.loc[:, column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format,
+                                                           utc=True)
                     elif dtype in ('int', 'integer', 'bigint'):
                         try:
                             df.loc[:, column] = df[column].astype('Int64')
@@ -2489,9 +2496,6 @@ class TableElement:
             else:
                 logger.warning('DataTable {NAME}: unable to specify the data type for column "{COL}" - data type is '
                                'provided in an unaccepted format'.format(NAME=self.name, COL=column))
-
-        print(df.head())
-        print(df.dtypes)
 
         return df
 
