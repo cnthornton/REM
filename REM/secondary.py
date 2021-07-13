@@ -1944,7 +1944,8 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
         display_name = header_map[display_column]
 
         col_width = lengths[i]
-        column_layout = [[sg.Text(display_name, size=(col_width, 1), auto_size_text=False, border_width=1,
+        col_key = '-{COL}-'.format(COL=display_column.upper())
+        column_layout = [[sg.Text(display_name, key=col_key, size=(col_width, 1), auto_size_text=False, border_width=1,
                                   relief='sunken', background_color=header_col, justification='c', font=main_font,
                                   tooltip=display_name)]]
 
@@ -1975,7 +1976,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
 
         else:
             logger.debug('column "{COL}" is marked as readonly'.format(COL=display_column))
-            element_key = '-{COL}-'.format(COL=display_column)
+            element_key = '-{COL}_VALUE-'.format(COL=display_column.upper())
             readonly = True
             etype = 'input'
             dtype = 'string'
@@ -2019,10 +2020,32 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     window = sg.Window('Modify Record', layout, modal=True, resizable=False)
     window.finalize()
 
-    for display_column in display_header:
-        if display_column in edit_keys:
-            element_key = edit_keys[display_column]
-            window[element_key].expand(expand_x=True)
+    # Resize window
+    screen_w, screen_h = window.get_screen_dimensions()
+    if win_size:
+        win_w, win_h = win_size
+    else:
+        win_w = int(screen_w * 0.9)
+
+    # Expand column header widths to fit the screen size
+    col_lengths = mod_dm.calc_column_widths(display_header, width=win_w, font_size=font_size, pixels=False)
+
+    for i, display_column in enumerate(display_header):
+        col_width = col_lengths[i]
+        col_key = '-{COL}-'.format(COL=display_column.upper())
+
+        window[col_key].set_size(size=(col_width, None))
+        window[col_key].expand(expand_x=True)
+
+        # Expand cells to match header widths
+        try:
+            element_key = edit_keys[display_column]  # editable column
+        except KeyError:
+            element_key = '-{COL}_VALUE-'.format(COL=display_column.upper())  # read-only column
+
+        window[element_key].expand(expand_x=True)
+
+    window = center_window(window)
 
     # Start event loop
     while True:

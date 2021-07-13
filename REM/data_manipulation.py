@@ -27,7 +27,7 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
         logger.warning('division by zero error encountered while attempting to calculate column widths')
         col_fraction = width / 10
 
-    if pixels:
+    if pixels:  # output widths are in pixels
         max_size_per_col = int(col_fraction)
     else:
         width = int(width / font_size)
