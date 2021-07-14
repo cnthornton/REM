@@ -1751,6 +1751,10 @@ class TableElement:
         if isinstance(add_df, pd.Series):
             add_df = add_df.to_frame().T
 
+        # Add the is deleted column if it does not already exist in the dataframe to be appended
+        if self.deleted_column not in add_df.columns:
+            add_df[self.deleted_column] = False
+
         # Make sure the data types of the columns are consistent
         add_df = self.set_datatypes(add_df)
 
@@ -1759,7 +1763,9 @@ class TableElement:
                      .format(NAME=self.name, NROW=add_df.shape[0], TBL=table_name))
         df = df.append(add_df, ignore_index=True)
 
-#
+        pd.set_option('display.max_columns', None)
+        print(df)
+
 #        df = df.append(add_df, ignore_index=True)
 #        df = self.set_datatypes(df)
 

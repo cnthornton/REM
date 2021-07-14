@@ -1248,10 +1248,13 @@ class DataParameterCheckbox(DataParameter):
             logger.warning(msg)
             return self.value
 
-        try:
-            value_fmt = bool(int(input_value))
-        except (ValueError, TypeError):
-            value_fmt = bool(input_value)
+        if pd.isna(input_value):
+            value_fmt = False
+        else:
+            try:
+                value_fmt = bool(int(input_value))
+            except (ValueError, TypeError):
+                value_fmt = bool(input_value)
 
         self.value = value_fmt
 

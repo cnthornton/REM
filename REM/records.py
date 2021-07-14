@@ -312,12 +312,12 @@ class RecordEntry:
 
         if id_exists:  # record already exists in the database
             # Add edit details to records table
-            df[settings.editor_code] = user.uid
-            df[settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
+            df.loc[:, settings.editor_code] = user.uid
+            df.loc[:, settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
         else:  # new record was created
             # Add record creation details to records table
-            df[settings.creator_code] = user.uid
-            df[settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+            df.loc[:, settings.creator_code] = user.uid
+            df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
 
         # Prepare transaction for each export table containing fields comprising the record
         columns = df.columns.values.tolist()
@@ -1067,7 +1067,7 @@ class DatabaseRecord:
         """
         headers = self.headers
         parameters = self.parameters
-        modifiers = self.metadata
+        meta_params = self.metadata
         comp_types = self.component_types
         ref_types = self.reference_types
 
@@ -1110,22 +1110,20 @@ class DatabaseRecord:
                              .format(NAME=self.name, PARAM=header_name, VAL=value))
                 header.value = header.format_value({header.key_lookup('Element'): value})
 
-        # Set modifier values
-        if new is True:
-            self.metadata = []
-        else:
-            for modifier in modifiers:
-                modifier_name = modifier.name
+        # Set metadata parameter values
+        for meta_param in meta_params:
+            param_name = meta_param.name
 
-                try:
-                    value = record_data[modifier_name]
-                except KeyError:
-                    logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
-                                   .format(NAME=self.name, COL=modifier_name))
-                else:
+            try:
+                value = record_data[param_name]
+            except KeyError:
+                logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
+                               .format(NAME=self.name, COL=param_name))
+            else:
+                if not pd.isna(value):
                     logger.debug('RecordType {NAME}: initializing metadata field "{PARAM}" with value "{VAL}"'
-                                 .format(NAME=self.name, PARAM=modifier_name, VAL=value))
-                    modifier.value = modifier.format_value({modifier.key_lookup('Element'): value})
+                                 .format(NAME=self.name, PARAM=param_name, VAL=value))
+                    meta_param.value = meta_param.format_value({meta_param.key_lookup('Element'): value})
 
         # Set data element values
         for param in parameters:
@@ -1679,6 +1677,8 @@ class DatabaseRecord:
         for reference in self.references:
             ref_data = reference.as_table()
             ref_id = ref_data['DocNo']  # reference record ID
+            logger.debug('Record {ID}: preparing reference statement for reference {REF}'
+                         .format(ID=record_id, REF=ref_id))
             if ref_id == record_id:
                 logger.error('RecordType {NAME}, Record {ID}: oops ... got the order wrong'
                              .format(NAME=self.name, ID=record_id))
@@ -1717,6 +1717,8 @@ class DatabaseRecord:
         # Prepare to save record components
         comp_tables = self.components
         for comp_table in comp_tables:
+            logger.debug('Record {ID}: preparing statements for component table "{TBL}"'
+                         .format(ID=record_id, TBL=comp_table.name))
             comp_df = comp_table.df
             if comp_df.empty:
                 continue
@@ -1756,13 +1758,16 @@ class DatabaseRecord:
                                                                       filter_params)
                 else:  # new reference
                     if is_deleted:  # don't add reference for new associations that were removed.
+                        logger.warning('Record {ID}: new component "{REF}" from component table "{TBL}" was deleted '
+                                       'and therefore will not be saved'
+                                       .format(ID=record_id, REF=comp_id, TBL=comp_table.name))
                         continue
 
                     # Prepare the insert statement for the existing reference entry to the references table
                     comp_columns.extend([settings.creation_date, settings.creator_code])
 
-                    logger.info('RecordType {NAME}, Record {ID}: saving reference to "{REF}"'
-                                .format(NAME=self.name, ID=record_id, REF=comp_id))
+                    logger.info('RecordType {NAME}, Record {ID}: saving reference to "{REF}" from component table '
+                                '"{TBL}"'.format(NAME=self.name, ID=record_id, REF=comp_id, TBL=comp_table.name))
                     statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
 
                 try:
@@ -2132,17 +2137,17 @@ class DatabaseRecord:
                            and view_only is False else False
         approvable = True if self.permissions['approve'] in ugroup and self.new is False \
                              and view_only is False else False
-        modifier_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
-        if len(self.metadata) > 0:
+        meta_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
+        if len(self.metadata) > 0 and not self.new:
             metadata_visible = True
             annotation_layout = []
             for param in self.metadata:
                 param_name = param.name
-                if param_name in modifier_perms:
-                    param.editable = modifier_perms[param_name]
+                if param_name in meta_perms:
+                    param.editable = meta_perms[param_name]
 
                 annotation_layout.append(param.layout())
-        else:
+        else:  # don't show tab for new records or record w/o configured metadata
             metadata_visible = False
             annotation_layout = [[]]
 
