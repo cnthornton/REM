@@ -72,9 +72,17 @@ class DataParameter:
             sys.exit(1)
 
         try:
-            self.dtype = entry['DataType']
+            dtype = entry['DataType']
         except KeyError:
-            self.dtype = 'string'
+            self.dtype = 'varchar'
+        else:
+            supported_dtypes = settings.supported_dtypes
+            if dtype not in supported_dtypes:
+                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types are '
+                               '{TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
+                self.dtype = 'varchar'
+            else:
+                self.dtype = dtype
 
         try:
             editable = bool(int(entry['IsEditable']))

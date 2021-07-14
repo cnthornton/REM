@@ -135,6 +135,13 @@ class TableElement:
         else:
             if isinstance(columns, dict):
                 self.columns = columns
+                supported_dtypes = settings.supported_dtypes
+                for col_name, col_dtype in columns.items():
+                    if col_dtype not in supported_dtypes:
+                        logger.warning('DataTable {NAME}: the data type specified for column "{COL}" is not a '
+                                       'supported data type - supported data types are {TYPES}'
+                                       .format(NAME=name, COL=col_name, TYPES=', '.join(supported_dtypes)))
+                        self.columns[col_name] = 'varchar'
             else:
                 self.columns = {i: None for i in columns}
 
@@ -822,9 +829,9 @@ class TableElement:
 
             try:
                 col_dtype = display_df[alias_col].dtype
-                if is_integer_dtype(col_dtype):
+                if is_integer_dtype(col_dtype):  # convert integer-type alias keys to integer values
                     alias_map = {int(i): j for i, j in alias_map.items()}
-                elif is_bool_dtype(col_dtype):
+                elif is_bool_dtype(col_dtype):  # convert boolean-type alias keys to boolean values
                     alias_map = {bool(i): j for i, j in alias_map.items()}
             except KeyError:
                 logger.warning('DataTable {TBL}: alias {ALIAS} not found in the list of display columns'
@@ -2815,9 +2822,17 @@ class DataElement:
                 self.elements.append('-{NAME}_{ID}_Calendar-'.format(NAME=name, ID=self.id))
 
         try:
-            self.dtype = entry['DataType']
+            dtype = entry['DataType']
         except KeyError:
-            self.dtype = 'string'
+            self.dtype = 'varchar'
+        else:
+            supported_dtypes = settings.supported_dtypes
+            if dtype not in supported_dtypes:
+                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types are '
+                               '{TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
+                self.dtype = 'varchar'
+            else:
+                self.dtype = dtype
 
         try:
             self.description = entry['Description']
@@ -3323,7 +3338,7 @@ class DataElement:
 
             window[elem_key].metadata['value'] = display_value
 
-        elif dtype in ('int', 'integer', 'bit'):
+        elif dtype in ('int', 'integer', 'bit', 'tinyint', 'smallint', 'mediumint', 'bigint'):
             current_value = window[elem_key].metadata['value']
             try:
                 new_value = int(value)
@@ -3334,7 +3349,7 @@ class DataElement:
 
             window[elem_key].metadata['value'] = display_value
 
-        else:
+        else:  # remove newline and carriage return characters created by multiline elements for some reason
             display_value = value.rstrip('\n\r')
 
         return display_value
@@ -3374,11 +3389,10 @@ class DataElement:
         elif isinstance(value, float) and dtype != 'money':
             display_value = str(value)
 
-        elif isinstance(value, datetime.datetime):
-#            display_value = value.strftime('%Y-%m-%d')
+        elif isinstance(value, datetime.datetime):  # use global settings to determine how to format date
             display_value = settings.format_display_date(value)
 
-        else:
+        else:  # remove newline and carriage return characters created by multiline elements for some reason
             aliases = options.get('Aliases', {})
             display_value = aliases.get(value, str(value).rstrip('\n\r'))
 
@@ -3401,9 +3415,9 @@ class DataElement:
         if input_value == '' or pd.isna(input_value):
             return self.value
 
-        try:
+        try:  # reverse the alias map
             aliases = {j: i for i, j in options['Aliases'].items()}
-        except (AttributeError, KeyError):
+        except (AttributeError, KeyError):  # no aliases defined
             input_value = input_value
         else:
             try:
@@ -3451,12 +3465,13 @@ class DataElement:
                     logger.warning('DataElement {PARAM}: unknown object type for parameter value {VAL}'
                                    .format(PARAM=self.name, VAL=input_value))
                     return None
-        elif dtype in ('int', 'integer', 'bit'):
+        elif dtype in ('int', 'integer', 'bit', 'tinyint', 'smallint', 'mediumint', 'bigint'):
             try:
                 value_fmt = int(input_value)
             except (ValueError, TypeError, AttributeError):
                 try:
-                    value_fmt = input_value.replace(',', '')
+#                    value_fmt = input_value.replace(',', '')
+                    value_fmt = int(input_value.replace(',', ''))
                 except (ValueError, TypeError):
                     logger.warning('DataElement {PARAM}: unknown object type for parameter value {VAL}'
                                    .format(PARAM=self.name, VAL=input_value))

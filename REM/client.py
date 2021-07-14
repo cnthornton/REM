@@ -320,10 +320,17 @@ class SettingsManager:
         self.icons_dir = os.path.join(self.dirname, 'docs', 'images', 'icons')
         self.instance_id = randint(0, 1000000000)
 
+        # STATIC PARAMETERS
+        self.supported_dtypes = ['varchar', 'char', 'string', 'str', 'binary', 'text', 'tinytext', 'mediumtext',
+                                 'longtext', 'bool', 'boolean', 'bit', 'int', 'integer', 'tinyint', 'smallint',
+                                 'mediumint', 'bigint', 'float', 'decimal', 'dec', 'double', 'numeric', 'money', 'real',
+                                 'date', 'datetime', 'timestamp', 'time']
+
         # Supported locales
         #        self._locales = ['en_US', 'en_UK', 'th_TH']
         self._locales = {'English': 'en', 'Thai': 'th'}
 
+        # CONFIGURABLE PARAMETERS
         # User parameters
         try:
             self.username = cnfg['user']['username']
