@@ -200,7 +200,6 @@ class RecordEntry:
         # Query existing database entries
         import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                                  prog_db=True)
-
         return import_df
 
     def confirm_saved(self, id_list, id_field: str = 'RecordID'):
@@ -2006,7 +2005,6 @@ class DatabaseRecord:
                     logger.warning('{NAME}, Heading {SEC}: Totals column "{COL}" not found in list of output columns'
                                    .format(NAME=report_title, SEC=heading, COL=total_col))
 
-            print(html_out)
             report_dict['sections'].append((heading_title, html_out))
 
         return report_dict

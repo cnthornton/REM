@@ -732,14 +732,18 @@ class SettingsManager:
 
         return trans
 
-    def format_display_date(self, dt):
+    def format_display_date(self, dt, offset: bool = True):
         """
         Format a datetime object for displaying based on configured date format.
 
         Arguments:
             dt (datetime): datetime instance.
         """
-        date = self.apply_date_offset(dt)
+        if offset:
+            date = self.apply_date_offset(dt)
+        else:
+            date = dt
+
         date_str = self.format_date_str(date_str=self.display_date_format)
 
         date_formatted = date.strftime(date_str)

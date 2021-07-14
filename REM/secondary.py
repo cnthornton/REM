@@ -1560,7 +1560,8 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             # Load the display records
             import_df = record_entry.import_records(params=table.parameters)
 
-            table.df = pd.DataFrame(columns=list(table.columns))
+#            table.df = pd.DataFrame(columns=list(table.columns))
+            table.reset(window)
             table.df = table.append(import_df)
             display_df = table.update_display(window)
 
@@ -1743,8 +1744,6 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     try:
         return table.df.loc[select_index]
     except KeyError:
-        print(table.df)
-        print(select_index)
         raise KeyError('one or more selected index {} is missing from the import table dataframe'.format(select_index))
 
 

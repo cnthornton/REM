@@ -384,8 +384,8 @@ class TableElement:
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
 
-        self.df = pd.DataFrame(columns=list(columns))
-        self.import_df = pd.DataFrame(columns=list(columns))
+        self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
+        self.import_df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
 
     def key_lookup(self, component):
@@ -409,8 +409,8 @@ class TableElement:
         """
         columns = list(self.columns)
 
-        self.df = pd.DataFrame(columns=columns)
-        self.import_df = pd.DataFrame(columns=columns)
+        self.df = self.set_datatypes(pd.DataFrame(columns=columns))
+        self.import_df = self.set_datatypes(pd.DataFrame(columns=columns))
 
         self.update_display(window)
 
@@ -2463,9 +2463,9 @@ class TableElement:
                 df[column] = df[column].astype(cat_type)
             elif isinstance(dtype, str):
                 try:
-                    if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                    if dtype in ('date', 'datetime', 'timestamp', 'time'):
                         df.loc[:, column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format,
-                                                           utc=True)
+                                                           utc=False)
                     elif dtype in ('int', 'integer', 'bigint'):
                         try:
                             df.loc[:, column] = df[column].astype('Int64')
@@ -3389,8 +3389,11 @@ class DataElement:
         elif isinstance(value, float) and dtype != 'money':
             display_value = str(value)
 
-        elif isinstance(value, datetime.datetime):  # use global settings to determine how to format date
-            display_value = settings.format_display_date(value)
+        elif isinstance(value, datetime.datetime):
+            if self.disabled is True:  # use global settings to determine how to format date
+                display_value = settings.format_display_date(value)
+            else:  # enforce ISO formatting if element is editable
+                display_value = value.strftime(settings.format_date_str(date_str='YYYY-MM-DD'))
 
         else:  # remove newline and carriage return characters created by multiline elements for some reason
             aliases = options.get('Aliases', {})
@@ -3449,7 +3452,7 @@ class DataElement:
                     logger.warning('DataElement {PARAM}: unable to parse date {VAL}'
                                    .format(PARAM=self.name, VAL=input_value))
                     return self.value
-            elif isinstance(input_value, datetime.datetime):
+            elif isinstance(input_value, datetime.datetime):  # value is already formatted properly
                 value_fmt = input_value
             else:
                 logger.warning('DataElement {PARAM}: unknown object type for {VAL}'
@@ -3503,7 +3506,7 @@ class DataElement:
 
     def format_date(self, date_str):
         """
-        Forces user input to date element to be in ISO format.
+        Forces user input to date element to be in ISO format (YYYY-MM-DD).
         """
         buff = []
         for index, char in enumerate(date_str):
