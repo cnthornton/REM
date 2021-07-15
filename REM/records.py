@@ -786,9 +786,6 @@ class DatabaseRecord:
 
             level (int): depth at which record was opened [Default: 0].
         """
-        approved_record_types = settings.records.get_approved_groups()
-        available_modifiers = ['ImportUnsavedReferences']
-
         # Reserved fields
         self.id_field = 'RecordID'
         self.date_field = 'RecordDate'
@@ -808,7 +805,7 @@ class DatabaseRecord:
 
         entry = record_entry.record_layout if record_layout is None else record_layout
 
-        # User permissions when accessing record
+        # User access permissions
         try:
             permissions = entry['Permissions']
         except KeyError:
@@ -893,7 +890,7 @@ class DatabaseRecord:
                 self.metadata.append(param)
                 self.elements += param.elements
 
-        # Required record elements
+        # Record data elements
         self.parameters = []
         try:
             details = entry['Details']
@@ -939,6 +936,7 @@ class DatabaseRecord:
                 self.parameters.append(param_obj)
                 self.elements += param_obj.elements
 
+        # Linked records
         self.references = []
         self.reference_types = []
         try:
@@ -960,6 +958,7 @@ class DatabaseRecord:
                     else:
                         self.reference_types.append(ref_element)
 
+        # Record components
         self.components = []
         self.component_types = []
         try:
@@ -973,8 +972,10 @@ class DatabaseRecord:
                 logger.warning('RecordEntry {NAME}: unable to add components - missing required parameter "Elements"'
                                .format(NAME=self.name))
             else:
+                supported_record_types = settings.records.get_approved_groups()
+
                 for comp_element in comp_elements:
-                    if comp_element not in approved_record_types:
+                    if comp_element not in supported_record_types:
                         logger.warning('RecordEntry {NAME}: unable to add component of type "{TYPE}" - component '
                                        '"{TYPE}" must be an acceptable record type'
                                        .format(NAME=self.name, TYPE=comp_element))
@@ -988,6 +989,8 @@ class DatabaseRecord:
         self.ref_df = pd.DataFrame(
             columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
 
+        # Record behavior modifiers
+        supported_modifers = settings.supported_modifiers
         try:
             modifiers = entry['Modifiers']
         except KeyError:
@@ -995,7 +998,7 @@ class DatabaseRecord:
         else:
             self.modifiers = {}
             for modifier in modifiers:
-                if modifier not in available_modifiers:
+                if modifier not in supported_modifers:
                     logger.warning('RecordEntry {NAME}: unknown modifier "{MOD}" set in the configuration'
                                    .format(NAME=self.name, MOD=modifier))
                     continue
@@ -1010,10 +1013,11 @@ class DatabaseRecord:
 
                 self.modifiers[modifier] = mod_val
 
-        for modifier in available_modifiers:
+        for modifier in supported_modifers:
             if modifier not in self.modifiers:
                 self.modifiers[modifier] = False
 
+        # Record report layout definition
         try:
             report = entry['Report']
         except KeyError:

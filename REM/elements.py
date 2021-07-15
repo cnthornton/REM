@@ -135,7 +135,7 @@ class TableElement:
         else:
             if isinstance(columns, dict):
                 self.columns = columns
-                supported_dtypes = settings.supported_dtypes
+                supported_dtypes = settings.get_supported_dtypes()
                 for col_name, col_dtype in columns.items():
                     if col_dtype not in supported_dtypes:
                         logger.warning('DataTable {NAME}: the data type specified for column "{COL}" is not a '
@@ -2832,13 +2832,24 @@ class DataElement:
         except KeyError:
             self.dtype = 'varchar'
         else:
-            supported_dtypes = settings.supported_dtypes
-            if dtype not in supported_dtypes:
-                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types are '
-                               '{TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
-                self.dtype = 'varchar'
+            if self.etype in ('date', 'date_range'):
+                if dtype not in settings.supported_date_dtypes:
+                    self.dtype = 'datetime'
+                else:
+                    self.dtype = dtype
+            elif self.etype == 'checkbox':
+                if dtype not in settings.supported_bool_dtypes:
+                    self.dtype = 'bool'
+                else:
+                    self.dtype = dtype
             else:
-                self.dtype = dtype
+                supported_dtypes = settings.get_supported_dtypes()
+                if dtype not in supported_dtypes:
+                    logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types '
+                                   'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
+                    self.dtype = 'varchar'
+                else:
+                    self.dtype = dtype
 
         try:
             self.description = entry['Description']
@@ -3206,7 +3217,7 @@ class DataElement:
             return ''
 
         elem_key = self.key_lookup('Element')
-        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+        if dtype in settings.supported_date_dtypes:
             current_value = list(window[elem_key].metadata['value'])
 
             # Remove separator from the input
@@ -3333,7 +3344,7 @@ class DataElement:
 
             window[elem_key].metadata['value'] = current_value
 
-        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric'):
+        elif dtype in settings.supported_float_dtypes:
             current_value = window[elem_key].metadata['value']
             try:
                 float(value)
@@ -3344,7 +3355,7 @@ class DataElement:
 
             window[elem_key].metadata['value'] = display_value
 
-        elif dtype in ('int', 'integer', 'bit', 'tinyint', 'smallint', 'mediumint', 'bigint'):
+        elif dtype in settings.supported_int_dtypes:
             current_value = window[elem_key].metadata['value']
             try:
                 new_value = int(value)
@@ -3440,7 +3451,7 @@ class DataElement:
                              .format(NAME=self.name, VAL=input_value, ALIAS=alias_value))
                 input_value = alias_value
 
-        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+        if dtype in settings.supported_date_dtypes:
             if isinstance(input_value, str):
                 try:
                     date_format = self.options['DateFormat']
@@ -3464,7 +3475,7 @@ class DataElement:
                 logger.warning('DataElement {PARAM}: unknown object type for {VAL}'
                                .format(PARAM=self.name, VAL=input_value))
                 return self.value
-        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+        elif dtype in settings.supported_float_dtypes:
             try:
                 value_fmt = float(input_value)
             except (ValueError, TypeError):
@@ -3474,7 +3485,7 @@ class DataElement:
                     logger.warning('DataElement {PARAM}: unknown object type for parameter value {VAL}'
                                    .format(PARAM=self.name, VAL=input_value))
                     return None
-        elif dtype in ('int', 'integer', 'bit', 'tinyint', 'smallint', 'mediumint', 'bigint'):
+        elif dtype in settings.supported_int_dtypes:
             try:
                 value_fmt = int(input_value)
             except (ValueError, TypeError, AttributeError):
@@ -3485,7 +3496,7 @@ class DataElement:
                     logger.warning('DataElement {PARAM}: unknown object type for parameter value {VAL}'
                                    .format(PARAM=self.name, VAL=input_value))
                     return self.value
-        elif dtype in ('bool', 'boolean'):
+        elif dtype in settings.supported_bool_dtypes:
             if isinstance(input_value, bool):
                 value_fmt = input_value
             else:

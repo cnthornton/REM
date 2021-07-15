@@ -321,10 +321,16 @@ class SettingsManager:
         self.instance_id = randint(0, 1000000000)
 
         # STATIC PARAMETERS
-        self.supported_dtypes = ['varchar', 'char', 'string', 'str', 'binary', 'text', 'tinytext', 'mediumtext',
-                                 'longtext', 'bool', 'boolean', 'bit', 'int', 'integer', 'tinyint', 'smallint',
-                                 'mediumint', 'bigint', 'float', 'decimal', 'dec', 'double', 'numeric', 'money', 'real',
-                                 'date', 'datetime', 'timestamp', 'time']
+        # Supported data types
+        self.supported_date_dtypes = ('date', 'datetime', 'timestamp', 'time')
+        self.supported_int_dtypes = ('bit', 'int', 'integer', 'tinyint', 'smallint', 'mediumint', 'bigint')
+        self.supported_float_dtypes = ('float', 'decimal', 'dec', 'double', 'numeric', 'money', 'real')
+        self.supported_bool_dtypes = ('bool', 'boolean')
+        self.supported_str_dtypes = ('varchar', 'string', 'str', 'binary', 'text', 'tinytext', 'mediumtext', 'longtext')
+        self.supported_cat_dtypes = ('char',)
+
+        # Supported record modifiers
+        self.supported_modifiers = ['ImportUnsavedReferences']
 
         # Supported locales
         #        self._locales = ['en_US', 'en_UK', 'th_TH']
@@ -866,6 +872,15 @@ class SettingsManager:
             logger.removeHandler(handler)
 
         logger.addHandler(configure_handler(CNFG, stream=stream, log_level=log_level))
+
+    def get_supported_dtypes(self):
+        """
+        Return a tuple of all supported dtypes.
+        """
+        dtypes = self.supported_float_dtypes + self.supported_int_dtypes + self.supported_bool_dtypes + \
+                 self.supported_date_dtypes + self.supported_str_dtypes + self.supported_cat_dtypes
+
+        return tuple(set(dtypes))
 
 
 class AccountManager:

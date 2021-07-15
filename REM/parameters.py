@@ -76,13 +76,24 @@ class DataParameter:
         except KeyError:
             self.dtype = 'varchar'
         else:
-            supported_dtypes = settings.supported_dtypes
-            if dtype not in supported_dtypes:
-                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types are '
-                               '{TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
-                self.dtype = 'varchar'
+            if self.etype in ('date', 'date_range'):
+                if dtype not in settings.supported_date_dtypes:
+                    self.dtype = 'datetime'
+                else:
+                    self.dtype = dtype
+            elif self.etype == 'checkbox':
+                if dtype not in settings.supported_bool_dtypes:
+                    self.dtype = 'bool'
+                else:
+                    self.dtype = dtype
             else:
-                self.dtype = dtype
+                supported_dtypes = settings.get_supported_dtypes()
+                if dtype not in supported_dtypes:
+                    logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types '
+                                   'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
+                    self.dtype = 'varchar'
+                else:
+                    self.dtype = dtype
 
         try:
             editable = bool(int(entry['IsEditable']))
@@ -189,7 +200,7 @@ class DataParameter:
 
         elem_key = self.key_lookup('Element')
 
-        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+        if dtype in settings.supported_date_dtypes:
             current_value = list(window[elem_key].metadata['value'])
 
             # Remove separator from the input
@@ -245,7 +256,7 @@ class DataParameter:
 
             window[elem_key].metadata['value'] = ''.join(current_value)
 
-        elif dtype == 'money':
+        elif dtype in settings.supported_float_dtypes and dtype == 'money':
             current_value = list(window[elem_key].metadata['value'])
 
             # Remove currency and grouping separator
@@ -315,7 +326,7 @@ class DataParameter:
 
             window[elem_key].metadata['value'] = current_value
 
-        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric'):
+        elif dtype in settings.supported_float_dtypes and dtype != 'money':
             current_value = window[elem_key].metadata['value']
             try:
                 float(value)
@@ -326,7 +337,7 @@ class DataParameter:
 
             window[elem_key].metadata['value'] = display_value
 
-        elif dtype in ('int', 'integer', 'bit'):
+        elif dtype in settings.supported_int_dtypes:
             current_value = window[elem_key].metadata['value']
             try:
                 new_value = int(value)
@@ -383,9 +394,9 @@ class DataParameter:
         pattern = self.pattern_matching
 
         value = self.value
-        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+        if dtype in settings.supported_date_dtypes:
             query_value = self.value.strftime(settings.date_format)
-        elif dtype in ('bool', 'boolean'):
+        elif dtype in settings.supported_bool_dtypes:
             query_value = int(value)
         else:
             query_value = value
@@ -499,7 +510,7 @@ class DataParameterInput(DataParameter):
             if input_value is None:
                 return None
 
-        if dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+        if dtype in settings.supported_float_dtypes:
             try:
                 value_fmt = float(input_value)
             except (ValueError, TypeError):
@@ -509,7 +520,7 @@ class DataParameterInput(DataParameter):
                     logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
                                    .format(PARAM=self.name, VAL=input_value))
                     return None
-        elif dtype in ('int', 'integer', 'bit'):
+        elif dtype in settings.supported_int_dtypes:
             try:
                 value_fmt = int(input_value)
             except (ValueError, TypeError, AttributeError):
@@ -519,7 +530,7 @@ class DataParameterInput(DataParameter):
                     logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
                                    .format(PARAM=self.name, VAL=input_value))
                     return None
-        elif dtype in ('bool', 'boolean'):
+        elif dtype in settings.supported_bool_dtypes:
             if isinstance(input_value, bool):
                 value_fmt = input_value
             else:
@@ -549,7 +560,7 @@ class DataParameterInput(DataParameter):
 
         logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
                      .format(NAME=self.name, VAL=value))
-        if dtype == 'money':
+        if dtype in settings.supported_float_dtypes and dtype == 'money':
             if value[0] in ('-', '+'):  # sign of the number
                 numeric_sign = value[0]
                 value = value[1:]
@@ -567,7 +578,7 @@ class DataParameterInput(DataParameter):
                     .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
                                                             enumerate(value[::-1])][::-1]).lstrip(','))
 
-        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric'):
+        elif dtype in settings.supported_float_dtypes and dtype != 'money':
             try:
                 new_value = float(value)
             except ValueError:
@@ -575,7 +586,7 @@ class DataParameterInput(DataParameter):
             else:
                 display_value = str(new_value)
 
-        elif dtype in ('int', 'integer', 'bit'):
+        elif dtype in settings.supported_int_dtypes:
             try:
                 new_value = int(value)
             except ValueError:
