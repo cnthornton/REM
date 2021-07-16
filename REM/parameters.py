@@ -450,7 +450,7 @@ class DataParameterInput(DataParameter):
         # Element settings
         pad_el = mod_const.ELEM_PAD
 
-        font = mod_const.MID_FONT
+        font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
@@ -663,7 +663,7 @@ class DataParameterCombo(DataParameter):
         # Element settings
         pad_el = mod_const.ELEM_PAD
 
-        font = mod_const.MID_FONT
+        font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
@@ -796,7 +796,7 @@ class DataParameterDate(DataParameter):
         pad_el = mod_const.ELEM_PAD
 
         date_ico = mod_const.CALENDAR_ICON
-        font = mod_const.MID_FONT
+        font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
@@ -975,7 +975,7 @@ class DataParameterDateRange(DataParameter):
         pad_el = mod_const.ELEM_PAD
 
         date_ico = mod_const.CALENDAR_ICON
-        font = mod_const.MID_FONT
+        font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL

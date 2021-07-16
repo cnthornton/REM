@@ -46,10 +46,11 @@ TOOLTIP_FONT = 'Arial 12'
 
 SMALL_FONT = ('Arial', 9)
 BOLD_SMALL_FONT = ('Arial', 9, 'bold')
-MID_FONT = ('Arial', 13)
-BOLD_MID_FONT = ('Arial', 13, 'bold')
-LARGE_FONT = ('Arial', 14)
-HEADER_FONT = BOLD_LARGE_FONT = ('Arial', 14, 'bold')
+MID_FONT = ('Arial', 11)
+BOLD_MID_FONT = ('Arial', 11, 'bold')
+LARGE_FONT = ('Arial', 13)
+BOLD_LARGE_FONT = ('Arial', 13, 'bold')
+HEADER_FONT = BOLD_HEADER_FONT = ('Arial', 14, 'bold')
 UNDERLINE_FONT = ('Arial', 12, 'underline')
 
 # Window initial dimensions

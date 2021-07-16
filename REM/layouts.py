@@ -46,7 +46,7 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     pad_el = mod_const.ELEM_PAD
     pad_v = mod_const.VERT_PAD
 
-    font = font if font else mod_const.MID_FONT
+    font = font if font else mod_const.LARGE_FONT
     bold_font = mod_const.BOLD_FONT
     font_size = font[1]
 
@@ -130,7 +130,7 @@ def importer_layout(win_size: tuple = None):
     font_h = mod_const.HEADER_FONT
     font_bold = mod_const.BOLD_FONT
     font_main = mod_const.MAIN_FONT
-    font_large = mod_const.LARGE_FONT
+    font_large = mod_const.BOLD_HEADER_FONT
 
     # Element sizes
     bwidth = 0.5

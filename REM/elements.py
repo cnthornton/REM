@@ -1238,9 +1238,9 @@ class TableElement:
         pad_h = mod_const.HORZ_PAD
         pad_v = mod_const.VERT_PAD
 
-        font = font if font else mod_const.MID_FONT
+        font = font if font else mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
-        bold_l_font = mod_const.BOLD_LARGE_FONT
+        bold_l_font = mod_const.BOLD_HEADER_FONT
         font_size = font[1]
 
         # Table dimensions
@@ -2664,7 +2664,7 @@ class ReferenceElement:
         pad_v = mod_const.VERT_PAD
         pad_h = mod_const.HORZ_PAD
 
-        font = mod_const.MID_FONT
+        font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
 
         bg_col = mod_const.ACTION_COL if not warnings else mod_const.WARNING_COL
@@ -3010,8 +3010,8 @@ class DataElement:
         # Layout options
         pad_el = mod_const.ELEM_PAD
 
-        font = mod_const.MID_FONT
-        bold_font = mod_const.BOLD_LARGE_FONT
+        font = mod_const.LARGE_FONT
+        bold_font = mod_const.BOLD_HEADER_FONT
 
         bg_col = mod_const.ACTION_COL
         if is_disabled is True:

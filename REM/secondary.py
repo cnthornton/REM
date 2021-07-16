@@ -28,7 +28,7 @@ from REM.main import __version__
 def popup_confirm(msg):
     """Display popup asking user if they would like to continue without completing the current action.
     """
-    font = mod_const.MID_FONT
+    font = mod_const.LARGE_FONT
     return sg.popup_ok_cancel(textwrap.fill(msg, width=40), font=font, title='')
 
 
@@ -36,7 +36,7 @@ def popup_notice(msg):
     """
     Display popup notifying user that an action is required or couldn't be undertaken.
     """
-    font = mod_const.MID_FONT
+    font = mod_const.LARGE_FONT
     return sg.popup_ok(textwrap.fill(msg, width=40), font=font, title='')
 
 
@@ -44,7 +44,7 @@ def popup_error(msg):
     """
     Display popup notifying user that there is a fatal program error.
     """
-    font = mod_const.MID_FONT
+    font = mod_const.LARGE_FONT
     return sg.popup_error(textwrap.fill(msg, width=40), font=font, title='')
 
 
@@ -216,7 +216,7 @@ def debug_window():
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
     pad_v = mod_const.VERT_PAD
-    font = mod_const.MID_FONT
+    font = mod_const.LARGE_FONT
     bold_font = mod_const.BOLD_FONT
     bg_col = mod_const.ACTION_COL
     def_col = mod_const.DEFAULT_COL
@@ -1753,8 +1753,8 @@ def about():
     """
     bg_col = mod_const.ACTION_COL
     header_font = mod_const.HEADER_FONT
-    sub_font = mod_const.BOLD_MID_FONT
-    text_font = mod_const.MID_FONT
+    sub_font = mod_const.BOLD_LARGE_FONT
+    text_font = mod_const.LARGE_FONT
     pad_frame = mod_const.FRAME_PAD
     pad_el = mod_const.ELEM_PAD
     header_col = mod_const.HEADER_COL
@@ -1802,10 +1802,8 @@ def edit_settings(win_size: tuple = None):
     """
     Display window for editing the configuration.
     """
-    if win_size:
-        width, height = [i * 0.6 for i in win_size]
-    else:
-        width, height = (mod_const.WIN_WIDTH * 0.6, mod_const.WIN_HEIGHT * 0.6)
+    if not win_size:
+        win_size = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
     # Window and element size parameters
     pad_el = mod_const.ELEM_PAD
@@ -1815,8 +1813,6 @@ def edit_settings(win_size: tuple = None):
     font_h = mod_const.HEADER_FONT
     header_col = mod_const.HEADER_COL
 
-    bg_col = mod_const.ACTION_COL
-
     # GUI layout
     # Buttons
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
@@ -1824,22 +1820,29 @@ def edit_settings(win_size: tuple = None):
                     sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
                               bind_return_key=True, pad=(pad_el, 0), tooltip='Save changes')]]
 
+    settings_layout = settings.layout(win_size)
+
     layout = [[sg.Col([[sg.Text('Edit Settings', pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
-                                background_color=header_col)]], pad=(0, 0), justification='l',
-                      background_color=header_col, expand_x=True, expand_y=True)],
-              [sg.Frame('', settings.layout(), relief='sunken', border_width=1, pad=(0, 0),
-                        background_color=bg_col)],
+                                background_color=header_col)]],
+                      justification='l', background_color=header_col, expand_x=True, expand_y=True)],
+              settings_layout,
               [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
 
     window = sg.Window('Settings', layout, modal=True, resizable=False)
     window.finalize()
+
+    window = center_window(window)
 
     # Bind keys to events
     window.bind('<Key-Escape>', '-ESCAPE-')
     window.bind('<Key-Return>', '-ENTER-')
 
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
-                    '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname'}
+                    '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname',
+                    '-DISPLAY_DATE-': 'display_date', '-AUDIT_TEMPLATE-': 'audit_template'}
+
+    for element_key in element_keys:
+        window[element_key].expand(expand_x=True)
 
     # Start event loop
     while True:

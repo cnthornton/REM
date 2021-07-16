@@ -133,7 +133,7 @@ class ServerConnection:
             except BlockingIOError:  # resource temporarily unavailable (errno EWOULDBLOCK)
                 pass
             except ConnectionResetError:
-                msg = 'connection to {ADDR} was closed for unknown reason ... attempting to reconnect'\
+                msg = 'connection to {ADDR} was closed for unknown reason ... attempting to reconnect' \
                     .format(ADDR=self.addr)
                 logger.error(msg)
                 self._reset_connection()
@@ -142,15 +142,15 @@ class ServerConnection:
                 self._send_buffer = self._send_buffer[sent:]
 
     def _encode(self, obj, encoding):
-#        return json.dumps(obj, ensure_ascii=False).encode(encoding)
+        #        return json.dumps(obj, ensure_ascii=False).encode(encoding)
         return json_util.dumps(obj, ensure_ascii=False).encode(encoding)
 
     def _decode(self, json_bytes, encoding):
-#        tiow = io.TextIOWrapper(
-#            io.BytesIO(json_bytes), encoding=encoding, newline=""
-#        )
-#        obj = json.load(tiow)
-#        tiow.close()
+        #        tiow = io.TextIOWrapper(
+        #            io.BytesIO(json_bytes), encoding=encoding, newline=""
+        #        )
+        #        obj = json.load(tiow)
+        #        tiow.close()
         obj = json_util.loads(json_bytes.decode(encoding))
 
         return obj
@@ -239,7 +239,7 @@ class ServerConnection:
             # Queue the request for sending to the server
             self.queue_request()
             logger.info('sending request "{REQ}" to {ADDR}'.format(REQ=self.action, ADDR=self.addr))
-#            logger.debug('request sent: {}'.format(self.request))
+        #            logger.debug('request sent: {}'.format(self.request))
 
         # Continuously send the request until the send buffer is empty
         self._write()
@@ -299,6 +299,8 @@ class ServerConnection:
             encoding = self.header["content-encoding"]
             self.response = self._decode(data, encoding)
             logger.info('receiving response to request "{REQ}" from {ADDR}'.format(REQ=self.action, ADDR=self.addr))
+
+
 #            logger.debug('response received: {}'.format(self.response))
 
 
@@ -332,9 +334,11 @@ class SettingsManager:
         # Supported record modifiers
         self.supported_modifiers = ['ImportUnsavedReferences']
 
-        # Supported locales
+        # Supported localization parameters
         #        self._locales = ['en_US', 'en_UK', 'th_TH']
         self._locales = {'English': 'en', 'Thai': 'th'}
+        self.supported_display_date_formats = ['YYYY-MM-DD', 'YY-MM-DD', 'DD-MM-YYYY', 'DD-MM-YY', 'MM-DD-YY',
+                                               'MM-DD-YYYY']
 
         # CONFIGURABLE PARAMETERS
         # User parameters
@@ -492,6 +496,28 @@ class SettingsManager:
                            'default "65432"'.format(cnfg["server"]["port"]))
             self.port = 65432
 
+        # Keyboard bindings
+        self.hotkeys = {'-HK_ESCAPE-': ('Cancel Action', 'Key-Escape', 'Esc', 'Record'),
+                        '-HK_ENTER-': ('Save', 'Key-Return', 'Enter', 'Record'),
+                        '-HK_DELETE-': ('Delete', 'Key-Delete', 'Delete', 'Record'),
+                        '-HK_START-': ('Begin Action', 'Key-Space', 'Spacebar', 'General'),
+                        '-HK_RIGHT-': ('Move Right', 'Key-Right', 'Right', 'Navigation'),
+                        '-HK_LEFT-': ('Move Left', 'Key-Left', 'Left', 'Navigation'),
+                        '-HK_TAB1-': ('Tab1', 'Control-1', 'CTRL+1', 'Navigation'),
+                        '-HK_TAB2-': ('Tab2', 'Control-2', 'CTRL+2', 'Navigation'),
+                        '-HK_TAB3-': ('Tab3', 'Control-3', 'CTRL+3', 'Navigation'),
+                        '-HK_TAB4-': ('Tab4', 'Control-4', 'CTRL+4', 'Navigation'),
+                        '-HK_TAB5-': ('Tab5', 'Control-5', 'CTRL+5', 'Navigation'),
+                        '-HK_TAB6-': ('Tab6', 'Control-6', 'CTRL+6', 'Navigation'),
+                        '-HK_TAB7-': ('Tab7', 'Control-7', 'CTRL+7', 'Navigation'),
+                        '-HK_TAB8-': ('Tab8', 'Control-8', 'CTRL+8', 'Navigation'),
+                        '-HK_TAB9-': ('Tab9', 'Control-9', 'CTRL+9', 'Navigation'),
+                        '-HK_TBL_ADD-': ('Add row', 'Control-a', 'CTRL+A', 'Table'),
+                        '-HK_TBL_IMPORT-': ('Import row(s)', 'Control-q', 'CTRL+Q', 'Table'),
+                        '-HK_TBL_DEL-': ('Delete row(s)', 'Control-d', 'CTRL+D', 'Table'),
+                        '-HK_TBL_OPTS-': ('Toggle Options', 'Control-o', 'CTRL+O', 'Table'),
+                        '-HK_TBL_FILTER-': ('Apply filters', 'Control-f', 'CTRL+F', 'Table')}
+
         # Logging
         try:
             self.log_file = cnfg['log']['log_file']
@@ -556,6 +582,10 @@ class SettingsManager:
             self.host = value
         elif attr == 'dbname':
             self.dbname = value
+        elif attr == 'audit_template':
+            self.audit_template = value
+        elif attr == 'display_date':
+            self.display_date_format = value
 
     def get_unsaved_ids(self, internal: bool = True):
         """
@@ -587,9 +617,9 @@ class SettingsManager:
             msg = 'successfully removed IDs created during the program instance from the list of unsaved record IDs'
             logger.debug(msg)
 
-#        entries = self.records.rules
-#        for entry in entries:
-#            entry.remove_unsaved_ids(internal_only=internal)
+    #        entries = self.records.rules
+    #        for entry in entries:
+    #            entry.remove_unsaved_ids(internal_only=internal)
 
     def load_constants(self, connection):
         """
@@ -640,80 +670,132 @@ class SettingsManager:
 
         return success
 
-    def layout(self):
+    def layout(self, win_size: tuple = None):
         """
         Generate GUI layout for the settings window.
         """
-        width = 800
+        if not win_size:
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+        else:
+            width, height = win_size
 
         # Window and element size parameters
-        main_font = mod_const.MAIN_FONT
+        main_font = mod_const.MID_FONT
+        bold_font = mod_const.BOLD_MID_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
         pad_frame = mod_const.FRAME_PAD
-        in_size = 18
-        spacer = (12, 1)
-        dd_size = 8
 
         bg_col = mod_const.ACTION_COL
         in_col = mod_const.INPUT_COL
-
-        bwidth = 1
         select_col = mod_const.SELECT_TEXT_COL
 
-        layout = [
-            [sg.Frame('Localization', [
-                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
-                [sg.Text('Language:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                         background_color=bg_col),
-                 sg.Combo(list(self._locales.values()), key='-LANGUAGE-', size=(dd_size, 1), pad=(pad_el, pad_el),
-                          default_value=self.language, auto_size_text=False, background_color=in_col)],
-                [sg.Text('Locale:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                         background_color=bg_col),
-                 sg.Combo(list(self._locales), key='-LOCALE-', size=(dd_size, 1), pad=(pad_el, pad_el),
-                          default_value=self.locale, auto_size_text=False, background_color=in_col)],
-                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
-                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
-                      title_color=select_col, relief='groove')],
-            [sg.Frame('Display', [
-                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
-                [sg.Text('Report template:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
-                         font=main_font, background_color=bg_col),
-                 sg.Input(self.report_template, key='-TEMPLATE-', size=(60, 1),
-                          pad=(pad_el, pad_el), font=main_font, background_color=in_col),
-                 sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
-                [sg.Text('Report stylesheet:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
-                         font=main_font, background_color=bg_col),
-                 sg.Input(self.report_css, key='-CSS-', size=(60, 1), pad=(pad_el, pad_el),
-                          font=main_font, background_color=in_col),
-                 sg.FileBrowse('Browse...', pad=((pad_el, pad_frame), pad_el))],
-                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
-                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
-                      title_color=select_col, relief='groove')],
-            [sg.Frame('Database', [
-                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
-                [sg.Text('Database:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                         background_color=bg_col),
-                 sg.Combo(self.alt_dbs, default_value=self.dbname, key='-DATABASE-', size=(in_size - 1, 1),
-                          pad=((pad_el, pad_frame), pad_el), font=main_font, background_color=in_col)],
-                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
-                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
-                      title_color=select_col, relief='groove')],
-            [sg.Frame('Server', [
-                [sg.Canvas(size=(width, 0), pad=(0, pad_v), visible=True, background_color=bg_col)],
-                [sg.Text('Server Port:', size=(15, 1), pad=((pad_frame, pad_el), pad_el),
-                         font=main_font, background_color=bg_col),
-                 sg.Input(self.port, key='-PORT-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
-                          font=main_font, background_color=in_col),
-                 sg.Text('', size=spacer, background_color=bg_col),
-                 sg.Text('Server Host:', size=(15, 1), pad=((pad_frame, pad_el), pad_el), font=main_font,
-                         background_color=bg_col),
-                 sg.Input(self.host, key='-SERVER-', size=(in_size, 1), pad=((pad_el, pad_frame), pad_el),
-                          font=main_font, background_color=in_col)],
-                [sg.Canvas(size=(800, 0), pad=(0, pad_v), visible=True, background_color=bg_col)]],
-                      pad=(pad_frame, pad_frame), border_width=bwidth, background_color=bg_col,
-                      title_color=select_col, relief='groove')]]
+        bwidth = 1
+        spacer_h = 0
+        h_diff = height - mod_const.WIN_HEIGHT  # current width over default width
+        spacer_h = spacer_h + int(h_diff / 2)  # increase window width by 1 for every 2 pixel increase in screen width
+        win_h = mod_const.WIN_HEIGHT + spacer_h
+        container_h = win_h - 120  # window height minus header and buttons
+
+        spacer_w = 0  # default extra size in pixels
+        w_diff = width - mod_const.WIN_WIDTH  # current width over default width
+        spacer_w = spacer_w + int(w_diff / 5)  # increase window width by 1 for every 5 pixel increase in screen width
+        win_w = mod_const.WIN_WIDTH + spacer_w
+
+        # Set column sizes
+        dcol1_w = int(win_w * 0.4)
+        dcol2_w = int(win_w * 0.6)
+
+        hotkey_groups = {}
+        for hotkey in settings.hotkeys:
+            hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group = settings.hotkeys[hotkey]
+            hotkey_title = sg.Text(hotkey_action, font=main_font, background_color=bg_col)
+            hotkey_element = sg.Text(hotkey_shortcut, key=hotkey, font=main_font, background_color=bg_col)
+            if hotkey_group in hotkey_groups:
+                hotkey_groups[hotkey_group].append((hotkey_title, hotkey_element))
+            else:
+                hotkey_groups[hotkey_group] = [(hotkey_title, hotkey_element)]
+
+        hotkey_layout = []
+        for hotkey_group in hotkey_groups:
+            group_layout = [sg.Col([[sg.Text(hotkey_group, font=bold_font, background_color=bg_col)],
+                                    [sg.HorizontalSeparator(color=mod_const.FRAME_COL)]],
+                                   pad=(pad_v, (pad_v, pad_el)), background_color=bg_col, expand_x=True)]
+            hotkey_layout.append(group_layout)
+            group_col1 = [[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)]]
+            group_col2 = [[sg.Canvas(size=(dcol2_w, 0), background_color=bg_col)]]
+            for hotkey_pair in hotkey_groups[hotkey_group]:
+                hotkey_title, hotkey_element = hotkey_pair
+                group_col1.append([hotkey_title])
+                group_col2.append([hotkey_element])
+            hotkey_layout.append([sg.Col(group_col1, pad=(pad_v, pad_el), background_color=bg_col),
+                                  sg.Col(group_col2, pad=(pad_v, pad_el), background_color=bg_col)])
+
+        layout = [sg.Canvas(size=(1, container_h), background_color=bg_col),
+                  sg.Col([
+                      [sg.Frame('Localization', [
+                          [sg.Col([[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)],
+                                   [sg.Text('Language:', pad=(0, (0, pad_el)), font=main_font, background_color=bg_col)],
+                                   [sg.Text('Locale:', pad=(0, (0, pad_el)), font=main_font, background_color=bg_col)],
+                                   [sg.Text('Display Date Format:', pad=(0, (0, pad_el)), font=main_font,
+                                            background_color=bg_col)]],
+                                  pad=(pad_v, pad_el), background_color=bg_col),
+                           sg.Col([[sg.Canvas(size=(dcol2_w, 0), background_color=bg_col)],
+                                   [sg.Combo(list(self._locales.values()), key='-LANGUAGE-', pad=(0, (0, pad_el)),
+                                             default_value=self.language, background_color=in_col)],
+                                   [sg.Combo(list(self._locales), key='-LOCALE-', pad=(0, (0, pad_el)),
+                                             default_value=self.locale, background_color=in_col)],
+                                   [sg.Combo(list(self.supported_display_date_formats), key='-DISPLAY_DATE-',
+                                             pad=(0, (0, pad_el)), default_value=self.display_date_format,
+                                             background_color=in_col)]],
+                                  pad=(pad_v, pad_el), background_color=bg_col)]],
+                                pad=(pad_v, pad_v), border_width=bwidth, background_color=bg_col,
+                                title_color=select_col, relief='groove')],
+                      [sg.Frame('Display', [
+                          [sg.Col([[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)],
+                                   [sg.Text('Record Report Template:', pad=(0, (0, pad_el)), font=main_font,
+                                            background_color=bg_col)],
+                                   [sg.Text('Audit Report Template:', pad=(0, (0, pad_el)), font=main_font,
+                                            background_color=bg_col)],
+                                   [sg.Text('Report Stylesheet:', pad=(0, (0, pad_el)), font=main_font,
+                                            background_color=bg_col)]],
+                                  pad=(pad_v, pad_el), background_color=bg_col),
+                           sg.Col([[sg.Canvas(size=(dcol2_w, 0), background_color=bg_col)],
+                                   [sg.Input(self.report_template, key='-TEMPLATE-', pad=((0, pad_el), (0, pad_el)),
+                                             font=main_font, background_color=in_col),
+                                    sg.FileBrowse('Browse...', font=mod_const.SMALL_FONT)],
+                                   [sg.Input(self.audit_template, key='-AUDIT_TEMPLATE-',
+                                             pad=((0, pad_el), (0, pad_el)), font=main_font, background_color=in_col),
+                                    sg.FileBrowse('Browse...', font=mod_const.SMALL_FONT)],
+                                   [sg.Input(self.report_css, key='-CSS-', pad=((0, pad_el), (0, pad_el)),
+                                             font=main_font, background_color=in_col),
+                                    sg.FileBrowse('Browse...', font=mod_const.SMALL_FONT)]],
+                                  pad=(pad_v, pad_el), background_color=bg_col)]],
+                                pad=(pad_v, pad_v), border_width=bwidth, background_color=bg_col,
+                                title_color=select_col, relief='groove')],
+                      [sg.Frame('Server', [
+                          [sg.Col([[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)],
+                                   [sg.Text('Server Port:', pad=(0, (0, pad_el)), font=main_font,
+                                            background_color=bg_col)],
+                                   [sg.Text('Server Host:', pad=(0, (0, pad_el)), font=main_font,
+                                            background_color=bg_col)],
+                                   [sg.Text('Database:', pad=(0, (0, pad_el)), font=main_font,
+                                            background_color=bg_col)]],
+                                  pad=(pad_v, pad_el), background_color=bg_col),
+                           sg.Col([[sg.Canvas(size=(dcol2_w, 0), background_color=bg_col)],
+                                   [sg.Input(self.port, key='-PORT-', pad=(0, (0, pad_el)), font=main_font,
+                                             background_color=in_col)],
+                                   [sg.Input(self.host, key='-SERVER-', pad=(0, (0, pad_el)), font=main_font,
+                                             background_color=in_col)],
+                                   [sg.Combo(self.alt_dbs, default_value=self.dbname, key='-DATABASE-',
+                                             pad=(0, (0, pad_el)), font=main_font, background_color=in_col)]],
+                                  pad=(pad_v, pad_el), background_color=bg_col)]],
+                                pad=(pad_v, pad_v), border_width=bwidth, background_color=bg_col,
+                                title_color=select_col, relief='groove')],
+                      [sg.Frame('Keyboard', hotkey_layout, pad=(pad_v, pad_v), border_width=bwidth,
+                                background_color=bg_col, title_color=select_col, relief='groove')]
+                  ], background_color=bg_col, scrollable=True, vertical_scroll_only=True, expand_y=True)]
 
         return layout
 
@@ -928,7 +1010,7 @@ class AccountManager:
 
         # Prepare query statement and parameters
         query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
-        params = (uid, )
+        params = (uid,)
 
         # Prepare the server request
         value = {'connection_string': self._prepare_conn_str(), 'transaction_type': 'read', 'statement': query_str,
@@ -952,23 +1034,23 @@ class AccountManager:
             else:
                 ugroup = series['UserGroup']
 
-#        conn = self.db_connect(database=self.dbname, timeout=timeout)
-#        cursor = conn.cursor()
+        #        conn = self.db_connect(database=self.dbname, timeout=timeout)
+        #        cursor = conn.cursor()
 
         # Privileges
-#        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
-#        cursor.execute(query_str, (uid,))
+        #        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
+        #        cursor.execute(query_str, (uid,))
 
-#        ugroup = None
-#        results = cursor.fetchall()
-#        for row in results:
-#            username, user_group = row
-#            if username == uid:
-#                ugroup = user_group
-#                break
+        #        ugroup = None
+        #        results = cursor.fetchall()
+        #        for row in results:
+        #            username, user_group = row
+        #            if username == uid:
+        #                ugroup = user_group
+        #                break
 
-#        cursor.close()
-#        conn.close()
+        #        cursor.close()
+        #        conn.close()
 
         if not ugroup:
             self.uid = None
@@ -1441,8 +1523,8 @@ def convert_datatypes(value):
         converted_value = None
     elif is_float_dtype(type(value)) is True or isinstance(value, float):
         converted_value = float(value)
-#    elif is_integer_dtype(type(value)) is True or isinstance(value, int):
-#        converted_value = int(value)
+    #    elif is_integer_dtype(type(value)) is True or isinstance(value, int):
+    #        converted_value = int(value)
     elif is_integer_dtype(type(value)) is True or isinstance(value, int):
         try:
             converted_value = int(value)
@@ -1462,7 +1544,7 @@ def popup_error(msg):
     """
     Display popup notifying user that there is a fatal program error.
     """
-    font = mod_const.MID_FONT
+    font = mod_const.LARGE_FONT
     return sg.popup_error(textwrap.fill(msg, width=40), font=font, title='')
 
 
@@ -1473,7 +1555,7 @@ def load_config(cnfg_file):
     try:
         fh = open(cnfg_file, 'r', encoding='utf-8')
     except FileNotFoundError:
-        msg = 'Unable to load user settings file at {PATH}. Please verify that the file path is correct.'\
+        msg = 'Unable to load user settings file at {PATH}. Please verify that the file path is correct.' \
             .format(PATH=CNF_FILE)
         popup_error(msg)
         sys.exit(1)
