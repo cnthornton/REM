@@ -122,7 +122,7 @@ class AuditRule:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
-        self.elements = ['-ENTER-', '-ESCAPE-', '-LEFT-', '-RIGHT-']
+        self.elements = ['-HK_ENTER-', '-HK_ESCAPE-', '-HK_LEFT-', '-HK_RIGHT-']
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                               ['Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
                                'PanelHeight', 'FrameHeight', 'FrameWidth']])
@@ -186,7 +186,7 @@ class AuditRule:
 
             self.tabs.append(tab_rule)
             self.elements += tab_rule.elements
-            self.elements.append('-TAB{}-'.format(tab_i+1))
+            self.elements.append('-HK_TAB{}-'.format(tab_i+1))
 
         self.current_tab = 0
         self.final_tab = len(self.tabs)
@@ -279,8 +279,8 @@ class AuditRule:
         start_key = self.key_lookup('Start')
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TG')
-        tab_bttn_keys = ['-TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
-        tbl_bttn_keys = ['-TBL_ADD-', '-TBL_DEL-', '-TBL_IMP-']
+        tab_bttn_keys = ['-HK_TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
+        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-']
 
         # Rule component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
@@ -288,7 +288,7 @@ class AuditRule:
         summary_keys = self.summary.elements
 
         # Cancel button pressed
-        if event in (cancel_key, '-ESCAPE-'):
+        if event in (cancel_key, '-HK_ESCAPE-'):
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Transaction audit is currently in progress. Are you sure you would like to quit without saving?'
@@ -305,7 +305,7 @@ class AuditRule:
                 current_rule = self.reset_rule(window, current=False)
 
         # Next button pressed - display summary panel
-        elif (event == next_key) or (event == '-RIGHT-' and not window[next_key].metadata['disabled']):
+        elif (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
             next_subpanel = self.current_panel + 1
 
             # Prepare audit records
@@ -342,7 +342,7 @@ class AuditRule:
             self.current_panel = next_subpanel
 
         # Back button pressed
-        elif (event == back_key) or (event == '-LEFT-' and not window[back_key].metadata['disabled']):
+        elif (event == back_key) or (event == '-HK_LEFT-' and not window[back_key].metadata['disabled']):
             current_panel = self.current_panel
 
             # Delete unsaved keys if returning from summary panel
@@ -384,7 +384,7 @@ class AuditRule:
                 window[save_key].metadata['disabled'] = True
 
         # Start button pressed
-        elif (event == start_key) or (event == '-ENTER-' and not window[start_key].metadata['disabled']):
+        elif (event == start_key) or (event == '-HK_ENTER-' and not window[start_key].metadata['disabled']):
             # Check for valid parameter values
             params = self.parameters
             inputs = []
@@ -573,7 +573,7 @@ class AuditRule:
             self.summary.run_event(window, event, values)
 
         # Save results of the audit
-        elif event == save_key or (event == '-ENTER-' and not window[save_key].metadata['disabled']):
+        elif event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
             # Get output file from user
             title = self.summary.title.replace(' ', '_')
             outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
@@ -1514,7 +1514,7 @@ class AuditSummary:
 
                 self.tabs.append(tab)
                 self.elements += tab.elements
-                self.elements.append('-TAB{}-'.format(tab_i))
+                self.elements.append('-HK_TAB{}-'.format(tab_i))
 
         try:
             report = entry['Report']
@@ -1603,9 +1603,9 @@ class AuditSummary:
         """
         # Run a summary tab event
         tg_key = self.key_lookup('TG')
-        tab_bttn_keys = ['-TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
+        tab_bttn_keys = ['-HK_TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
         tab_keys = [i for j in self.tabs for i in j.elements]
-        tbl_bttn_keys = ['-TBL_ADD-', '-TBL_DEL-', '-TBL_IMP-']
+        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-']
 
         if event in tab_bttn_keys:
             # Get the element key corresponding the the tab number pressed

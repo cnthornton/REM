@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.4.16'
+__version__ = '3.4.17'
 
 import sys
 import tkinter as tk
@@ -463,22 +463,23 @@ def main():
     logger.info('starting the program')
 
     # Bind keyboard events
-    window.bind('<Key-Escape>', '-ESCAPE-')
-    window.bind('<Key-Return>', '-ENTER-')
-    window.bind('<Key-Right>', '-RIGHT-')
-    window.bind('<Key-Left>', '-LEFT-')
-    window.bind('<Key-a>', '-TBL_ADD-')
-    window.bind('<Key-d>', '-TBL_DEL-')
-    window.bind('<Key-i>', '-TBL_IMP-')
-    window.bind('<Key-F1>', '-TAB1-')
-    window.bind('<Key-F2>', '-TAB2-')
-    window.bind('<Key-F3>', '-TAB3-')
-    window.bind('<Key-F4>', '-TAB4-')
-    window.bind('<Key-F5>', '-TAB5-')
-    window.bind('<Key-F6>', '-TAB6-')
-    window.bind('<Key-F7>', '-TAB7-')
-    window.bind('<Key-F8>', '-TAB8-')
-    window.bind('<Key-F9>', '-TAB9-')
+    window = settings.set_shortcuts(window)
+#    window.bind('<Key-Escape>', '-ESCAPE-')
+#    window.bind('<Key-Return>', '-ENTER-')
+#    window.bind('<Key-Right>', '-RIGHT-')
+#    window.bind('<Key-Left>', '-LEFT-')
+#    window.bind('<Key-a>', '-TBL_ADD-')
+#    window.bind('<Key-d>', '-TBL_DEL-')
+#    window.bind('<Key-i>', '-TBL_IMP-')
+#    window.bind('<Key-F1>', '-TAB1-')
+#    window.bind('<Key-F2>', '-TAB2-')
+#    window.bind('<Key-F3>', '-TAB3-')
+#    window.bind('<Key-F4>', '-TAB4-')
+#    window.bind('<Key-F5>', '-TAB5-')
+#    window.bind('<Key-F6>', '-TAB6-')
+#    window.bind('<Key-F7>', '-TAB7-')
+#    window.bind('<Key-F8>', '-TAB8-')
+#    window.bind('<Key-F9>', '-TAB9-')
 
     screen_w, screen_h = window.get_screen_dimensions()
     logger.debug('screen size is {W} x {H}'.format(W=screen_w, H=screen_h))

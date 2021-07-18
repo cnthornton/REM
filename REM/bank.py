@@ -119,7 +119,7 @@ class BankRule:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
-        self.elements = ['-ENTER-', '-ESCAPE-', '-LEFT-', '-RIGHT-']
+        self.elements = ['-HK_ENTER-', '-HK_ESCAPE-', '-HK_LEFT-', '-HK_RIGHT-']
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                               ['MainPanel', 'SummaryPanel', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
                                'FrameHeight', 'PanelWidth', 'PanelHeight', 'Withdrawal', 'Deposit', 'MainTG',
@@ -540,7 +540,7 @@ class BankRule:
         param_keys = [i for j in self.parameters for i in j.elements]
 
         # Cancel button pressed
-        if event in (cancel_key, '-ESCAPE-'):
+        if event in (cancel_key, '-HK_ESCAPE-'):
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Bank Reconciliation is currently in progress. Are you sure you would like to quit without ' \
@@ -558,7 +558,7 @@ class BankRule:
                 current_rule = self.reset_rule(window, current=False)
 
         # Next button pressed - display summary panel
-        elif (event == next_key) or (event == '-RIGHT-' and not window[next_key].metadata['disabled']):
+        elif (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
             next_subpanel = self.current_panel + 1
 
             # Add any found references to the associations tables
@@ -607,7 +607,7 @@ class BankRule:
                 window[save_key].metadata['disabled'] = False
 
         # Back button pressed
-        elif (event == back_key) or (event == '-LEFT-' and not window[back_key].metadata['disabled']):
+        elif (event == back_key) or (event == '-HK_LEFT-' and not window[back_key].metadata['disabled']):
             prev_subpanel = self.current_panel - 1
 
             # Return to tab display
@@ -646,7 +646,7 @@ class BankRule:
                 window[save_key].metadata['disabled'] = True
 
         # Start button pressed
-        elif event == start_key:
+        elif event == start_key or event == 'HK_ENTER':
             # Check for valid parameter values
             params = self.parameters
             inputs = []

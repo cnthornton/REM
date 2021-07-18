@@ -497,10 +497,10 @@ class SettingsManager:
             self.port = 65432
 
         # Keyboard bindings
-        self.hotkeys = {'-HK_ESCAPE-': ('Cancel Action', 'Key-Escape', 'Esc', 'Record'),
-                        '-HK_ENTER-': ('Save', 'Key-Return', 'Enter', 'Record'),
-                        '-HK_DELETE-': ('Delete', 'Key-Delete', 'Delete', 'Record'),
-                        '-HK_START-': ('Begin Action', 'Key-Space', 'Spacebar', 'General'),
+        self.hotkeys = {'-HK_ESCAPE-': ('Cancel Action', 'Key-Escape', 'Esc', 'General'),
+                        '-HK_ENTER-': ('Start Action', 'Key-Return', 'Enter', 'General'),
+                        '-HK_DELETE-': ('Delete Record', 'Key-Delete', 'Delete', 'Record'),
+                        '-HK_SPACE-': ('Save Record', 'Key-Space', 'Spacebar', 'Record'),
                         '-HK_RIGHT-': ('Move Right', 'Key-Right', 'Right', 'Navigation'),
                         '-HK_LEFT-': ('Move Left', 'Key-Left', 'Left', 'Navigation'),
                         '-HK_TAB1-': ('Tab1', 'Control-1', 'CTRL+1', 'Navigation'),
@@ -963,6 +963,17 @@ class SettingsManager:
                  self.supported_date_dtypes + self.supported_str_dtypes + self.supported_cat_dtypes
 
         return tuple(set(dtypes))
+
+    def set_shortcuts(self, window):
+        """
+        Bind keyboard shortcuts to text.
+        """
+        hotkeys = self.hotkeys
+        for hotkey in hotkeys:
+            hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group = settings.hotkeys[hotkey]
+            window.bind('<{}>'.format(hotkey_shortcut), hotkey)
+
+        return window
 
 
 class AccountManager:
