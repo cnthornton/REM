@@ -282,7 +282,7 @@ class AuditRule:
         start_key = self.key_lookup('Start')
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TG')
-        tab_bttn_keys = ['-HK_TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
+        tab_bttn_keys = ['-HK_TAB{}-'.format(i) for i in range(1, 10)]
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
         # Rule component element events
@@ -491,9 +491,9 @@ class AuditRule:
         # Switch between tabs
         elif event in tab_bttn_keys:
             # Determine which panel to act on
-            if self.current_panel == self.last_panel:
+            if self.current_panel == self.last_panel:  # switch tabs in the summary subpanel
                 self.summary.run_event(window, event, values)
-            else:
+            else:  # switch tabs in the main subpanel
                 # Get the element key corresponding the the tab number pressed
                 tab_index = int(event[1:-1][-1]) - 1
 

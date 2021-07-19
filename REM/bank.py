@@ -552,6 +552,9 @@ class BankRule:
         tab_keys = [i for j in self.tabs for i in j.elements]
         param_keys = [i for j in self.parameters for i in j.elements]
 
+        tab_bttn_keys = ['-HK_TAB{}-'.format(i) for i in range(1, 10)]
+        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
+
         # Cancel button pressed
         if event in (cancel_key, '-HK_ESCAPE-'):
             # Check if reconciliation is currently in progress
@@ -659,7 +662,7 @@ class BankRule:
                 window[save_key].metadata['disabled'] = True
 
         # Start button pressed
-        elif event == start_key or event == 'HK_ENTER':
+        elif event == start_key or event == '-HK_ENTER-':
             # Check for valid parameter values
             params = self.parameters
             inputs = []
@@ -716,7 +719,22 @@ class BankRule:
                     self.toggle_parameters(window, 'disable')
 
         # Switch between tabs
-        elif event == main_tg_key:
+        if event in tab_bttn_keys:
+            # Determine which panel to act on
+            if self.current_panel == self.last_panel:  # switch tabs in the summary sub-panel
+                summary_tab = window[summary_tg_key].Get()
+                tab = self.fetch_tab(summary_tab, by_key=True)
+                tg_key = tab.key_lookup('AssociationTG')
+                event = summary_tg_key
+            else:  # switch tabs in the main sub-panel
+                tg_key = main_tg_key
+                event = main_tg_key
+
+            # Get the element key corresponding the the tab number pressed
+            tab_index = int(event[1:-1][-1]) - 1
+            window[tg_key].Widget.select(tab_index)
+
+        if event == main_tg_key:
             tab_key = window[main_tg_key].Get()
             tab = self.fetch_tab(tab_key, by_key=True)
             logger.debug('BankRule {NAME}: moving to bank record tab "{TAB}"'.format(NAME=self.name, TAB=tab.name))
@@ -736,7 +754,7 @@ class BankRule:
                         unselected_tab.table.collapse_expand(window, frame='filter')
 
         # Switch between summary tabs
-        elif event == summary_tg_key:
+        if event == summary_tg_key:
             summary_tab = window[summary_tg_key].Get()
             logger.debug('BankRule {NAME}: moving to summary tab "{TAB}"'.format(NAME=self.name, TAB=summary_tab))
 
@@ -760,9 +778,25 @@ class BankRule:
                     if window[filter_key].metadata['visible'] is False:
                         unselected_tab.table.collapse_expand(window, frame='filter')
 
+        # Run a table key event
+        if event in tbl_bttn_keys:
+            if self.current_panel == self.last_panel:  # switch tabs in the summary sub-panel
+                summary_tab_name = window[summary_tg_key].Get()
+
+                summary_tab = self.fetch_tab(summary_tab_name, by_key=True)
+                tg_key = summary_tab.key_lookup('AssociationTG')
+
+                tab_key = window[tg_key].Get()
+                tab = summary_tab.fetch_association(tab_key, by_key=True)
+            else:  # switch tabs in the main sub-panel
+                tab_key = window[main_tg_key].Get()
+                tab = self.fetch_tab(tab_key, by_key=True)
+
+            tab.run_event(window, event, values)
+
         # Run a tab event
-        elif event in tab_keys:
-            # Fetch the transaction tab
+        if event in tab_keys:
+            # Fetch the current tab in view
             try:
                 tab = self.fetch_tab(event, by_key=True)
             except KeyError:
@@ -789,7 +823,7 @@ class BankRule:
                 window[next_key].update(disabled=False)
 
         # Run parameter events
-        elif event in param_keys:
+        if event in param_keys:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
@@ -799,7 +833,7 @@ class BankRule:
                 param.run_event(window, event, values)
 
         # Save tables to file
-        elif event == save_key:
+        if event == save_key:
             default_title = '_'.join([self.title, '_'.join([i.print_value() for i in self.parameters])])\
                                 .replace(' ', '_') + '.xlsx'
             outfile = sg.popup_get_file('', save_as=True, default_path=default_title, default_extension='xlsx',
@@ -1170,17 +1204,18 @@ class BankRecordTab:
         Run a bank record tab event.
         """
         table_keys = self.table.elements
+        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
         association_keys = [i for j in self.associations for i in j.elements]
         tg_key = self.key_lookup('AssociationTG')
 
         success = True
         # Run component table events
-        if event in table_keys:
+        if event in table_keys or event in tbl_bttn_keys:
             table = self.table
 
             import_key = self.table.key_lookup('Import')
             export_key = self.table.key_lookup('Element')
-            if event == import_key:
+            if event == import_key or event == '-HK_TBL_IMPORT-':
                 table.import_rows(import_rules=self.import_rules, program_database=True)
                 table.update_display(window, window_values=values)
             elif event == export_key:
