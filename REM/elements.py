@@ -499,13 +499,13 @@ class TableElement:
             self.collapse_expand(window, frame='summary')
 
         # Click filter Apply button to apply filtering to table
-        elif event == filter_key:
+        elif event == filter_key or event == 'HK_TBL_FILTER':
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
 
         # Click to open table options panel
-        elif event == options_key:
+        elif event == options_key or event == 'HK_TBL_OPTS':
             if window[frame_key].metadata['visible'] is False:
                 window[frame_key].metadata['visible'] = True
 
@@ -594,11 +594,11 @@ class TableElement:
             else:
                 param.run_event(window, event, values)
 
-        elif event == add_key or (event == '-TBL_ADD-' and (not window[add_key].metadata['disabled'] and
+        elif event == add_key or (event == '-HK_TBL_ADD-' and (not window[add_key].metadata['disabled'] and
                                                             window[add_key].metadata['visible'])):
             self.add_row()
 
-        elif event == delete_key or (event == '-TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
+        elif event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
                                                                window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
             select_row_indices = values[tbl_key]
@@ -614,7 +614,7 @@ class TableElement:
 
             self.delete_rows(indices)
 
-        elif event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
+        elif event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                window[import_key].metadata['visible'])):
             self.import_rows()
 

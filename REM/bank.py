@@ -119,11 +119,14 @@ class BankRule:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
-        self.elements = ['-HK_ENTER-', '-HK_ESCAPE-', '-HK_LEFT-', '-HK_RIGHT-']
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                              ['MainPanel', 'SummaryPanel', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
-                               'FrameHeight', 'PanelWidth', 'PanelHeight', 'Withdrawal', 'Deposit', 'MainTG',
-                               'SummaryTG']])
+#        self.elements = ['-HK_ENTER-', '-HK_ESCAPE-', '-HK_LEFT-', '-HK_RIGHT-']
+#        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+#                              ['MainPanel', 'SummaryPanel', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
+#                               'FrameHeight', 'PanelWidth', 'PanelHeight', 'Withdrawal', 'Deposit', 'MainTG',
+#                               'SummaryTG']])
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ('MainPanel', 'SummaryPanel', 'Cancel', 'Save', 'Next', 'Back', 'Start', 'FrameWidth',
+                          'FrameHeight', 'PanelWidth', 'PanelHeight', 'Withdrawal', 'Deposit', 'MainTG', 'SummaryTG')]
 
         try:
             self.menu_title = entry['MenuTitle']

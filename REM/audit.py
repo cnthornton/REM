@@ -122,10 +122,13 @@ class AuditRule:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
-        self.elements = ['-HK_ENTER-', '-HK_ESCAPE-', '-HK_LEFT-', '-HK_RIGHT-']
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                              ['Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
-                               'PanelHeight', 'FrameHeight', 'FrameWidth']])
+#        self.elements = ['-HK_ENTER-', '-HK_ESCAPE-', '-HK_LEFT-', '-HK_RIGHT-']
+#        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+#                              ['Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth',
+#                               'PanelHeight', 'FrameHeight', 'FrameWidth']])
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ('Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth', 'PanelHeight',
+                          'FrameHeight', 'FrameWidth')]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -186,7 +189,7 @@ class AuditRule:
 
             self.tabs.append(tab_rule)
             self.elements += tab_rule.elements
-            self.elements.append('-HK_TAB{}-'.format(tab_i+1))
+#            self.elements.append('-HK_TAB{}-'.format(tab_i+1))
 
         self.current_tab = 0
         self.final_tab = len(self.tabs)
@@ -280,7 +283,7 @@ class AuditRule:
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TG')
         tab_bttn_keys = ['-HK_TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
-        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-']
+        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
         # Rule component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
@@ -1514,7 +1517,7 @@ class AuditSummary:
 
                 self.tabs.append(tab)
                 self.elements += tab.elements
-                self.elements.append('-HK_TAB{}-'.format(tab_i))
+#                self.elements.append('-HK_TAB{}-'.format(tab_i))
 
         try:
             report = entry['Report']
@@ -1605,7 +1608,7 @@ class AuditSummary:
         tg_key = self.key_lookup('TG')
         tab_bttn_keys = ['-HK_TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
         tab_keys = [i for j in self.tabs for i in j.elements]
-        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-']
+        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
         if event in tab_bttn_keys:
             # Get the element key corresponding the the tab number pressed
