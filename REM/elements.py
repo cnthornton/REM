@@ -499,13 +499,13 @@ class TableElement:
             self.collapse_expand(window, frame='summary')
 
         # Click filter Apply button to apply filtering to table
-        elif event == filter_key or event == 'HK_TBL_FILTER':
+        elif event == filter_key or event == '-HK_TBL_FILTER-':
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
 
         # Click to open table options panel
-        elif event == options_key or event == 'HK_TBL_OPTS':
+        elif event == options_key or event == '-HK_TBL_OPTS-':
             if window[frame_key].metadata['visible'] is False:
                 window[frame_key].metadata['visible'] = True
 
@@ -1178,8 +1178,8 @@ class TableElement:
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
-            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
-                         .format(NAME=self.name, RULE=annot_code, RES=list(results)))
+#            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
+#                         .format(NAME=self.name, RULE=annot_code, RES=list(results)))
             for row_index, result in results.iteritems():
                 if result:
                     logger.debug('DataTable {NAME}: table row {ROW} annotated on annotation code {CODE}'
@@ -1242,6 +1242,14 @@ class TableElement:
         bold_font = mod_const.BOLD_FONT
         bold_l_font = mod_const.BOLD_HEADER_FONT
         font_size = font[1]
+
+        # Hotkey text
+        hotkeys = settings.hotkeys
+        add_shortcut = hotkeys['-HK_TBL_ADD-'][2]
+        delete_shortcut = hotkeys['-HK_TBL_DEL-'][2]
+        import_shortcut = hotkeys['-HK_TBL_IMPORT-'][2]
+        options_shortcut = hotkeys['-HK_TBL_OPTS-'][2]
+        filter_shortcut = hotkeys['-HK_TBL_FILTER-'][2]
 
         # Table dimensions
         row_height = mod_const.TBL_ROW_HEIGHT
@@ -1319,9 +1327,10 @@ class TableElement:
                     element_justification='c', vertical_alignment='t', expand_x=True),
              sg.Col(right_cols, pad=(0, 0), background_color=filter_bg_col, justification='r',
                     element_justification='l', vertical_alignment='t', expand_x=True)],
-            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, (0, pad_h)),
+            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, (0, pad_h)), disabled=disabled,
                                 button_color=(alt_col, filter_head_col),
-                                disabled_button_color=(disabled_text_col, disabled_bg_col), disabled=disabled)]],
+                                disabled_button_color=(disabled_text_col, disabled_bg_col),
+                                tooltip='Apply table filters ({})'.format(filter_shortcut))]],
                     element_justification='c', background_color=filter_bg_col, expand_x=True)]],
                              border_width=1, background_color=filter_bg_col)]]
 
@@ -1332,10 +1341,11 @@ class TableElement:
 
         row1 = [
             sg.Col([[sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=filter_head_col),
-                     sg.Text('Show table filters', pad=((0, pad_h), 0), text_color=select_text_col,
+                     sg.Text('Table filters', pad=((0, pad_h), 0), text_color=select_text_col,
                              background_color=filter_head_col),
                      sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FilterButton'),
-                               button_color=(text_col, filter_head_col), border_width=0)]],
+                               button_color=(text_col, filter_head_col), border_width=0,
+                               tooltip='Hide / reveal table filter parameters')]],
                    pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
                    visible=visible_filter)]
         row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('FilterFrame'), background_color=filter_bg_col,
@@ -1368,7 +1378,8 @@ class TableElement:
             row3.append(sg.Col([
                 [sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                 [sg.Button('', key=options_key, image_data=mod_const.OPTIONS_ICON, border_width=0,
-                           button_color=(text_col, header_col), tooltip='Options')]],
+                           button_color=(text_col, header_col),
+                           tooltip='Show additional table options ({})'.format(options_shortcut))]],
                 pad=((pad_el, pad_el), int(pad_el / 2)), justification='r', element_justification='r',
                 background_color=header_col, vertical_alignment='c'))
         else:
@@ -1431,15 +1442,15 @@ class TableElement:
 
         mod_row = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['import'],
-                             tooltip='Add existing record to the table', metadata={'visible': self.actions['import'],
-                                                                                   'disabled': disabled}),
+                             tooltip='Add an existing database record to the table ({})'.format(import_shortcut),
+                             metadata={'visible': self.actions['import'], 'disabled': disabled}),
                    sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['add'],
-                             tooltip='Add a new row to the table', metadata={'visible': self.actions['add'],
-                                                                             'disabled': disabled}),
+                             tooltip='Add a new row to the table ({})'.format(add_shortcut),
+                             metadata={'visible': self.actions['add'], 'disabled': disabled}),
                    sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
                              button_color=(text_col, header_col), disabled=disabled, visible=self.actions['delete'],
-                             tooltip='Remove selected row from the table',
+                             tooltip='Remove the selected row(s) from the table ({})'.format(delete_shortcut),
                              metadata={'visible': self.actions['delete'], 'disabled': disabled})]
 
         row5.append(sg.Col([mod_row], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
@@ -1484,7 +1495,8 @@ class TableElement:
             row6 = [sg.Col([[sg.Text('Summary', pad=((0, pad_h), 0), text_color='white',
                                      background_color=filter_head_col),
                              sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('SummaryButton'),
-                                       button_color=(text_col, filter_head_col), border_width=0)]],
+                                       button_color=(text_col, filter_head_col), border_width=0,
+                                       tooltip='Hide / reveal table summary')]],
                            pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True)]
             row7 = [sg.pin(sg.Col(summary_elements, key=self.key_lookup('SummaryFrame'), pad=(pad_h, pad_v),
                                   background_color=filter_bg_col, visible=True, expand_x=True, expand_y=True,

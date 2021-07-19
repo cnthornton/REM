@@ -499,8 +499,6 @@ class SettingsManager:
         # Keyboard bindings
         self.hotkeys = {'-HK_ESCAPE-': ('Cancel Action', 'Key-Escape', 'Esc', 'General'),
                         '-HK_ENTER-': ('Start Action', 'Key-Return', 'Enter', 'General'),
-                        '-HK_DELETE-': ('Delete Record', 'Key-Delete', 'Delete', 'Record'),
-                        '-HK_SPACE-': ('Save Record', 'Key-Space', 'Spacebar', 'Record'),
                         '-HK_RIGHT-': ('Move Right', 'Key-Right', 'Right', 'Navigation'),
                         '-HK_LEFT-': ('Move Left', 'Key-Left', 'Left', 'Navigation'),
                         '-HK_TAB1-': ('Tab1', 'Control-1', 'CTRL+1', 'Navigation'),
@@ -512,6 +510,8 @@ class SettingsManager:
                         '-HK_TAB7-': ('Tab7', 'Control-7', 'CTRL+7', 'Navigation'),
                         '-HK_TAB8-': ('Tab8', 'Control-8', 'CTRL+8', 'Navigation'),
                         '-HK_TAB9-': ('Tab9', 'Control-9', 'CTRL+9', 'Navigation'),
+                        '-HK_RECORD_DEL-': ('Delete Record', 'Key-Delete', 'Delete', 'Record'),
+                        '-HK_RECORD_SAVE-': ('Save Record', 'Key-space', 'Spacebar', 'Record'),
                         '-HK_TBL_ADD-': ('Add row', 'Control-a', 'CTRL+A', 'Table'),
                         '-HK_TBL_IMPORT-': ('Import row(s)', 'Control-q', 'CTRL+Q', 'Table'),
                         '-HK_TBL_DEL-': ('Delete row(s)', 'Control-d', 'CTRL+D', 'Table'),
@@ -971,9 +971,29 @@ class SettingsManager:
         hotkeys = self.hotkeys
         for hotkey in hotkeys:
             hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group = settings.hotkeys[hotkey]
-            window.bind('<{}>'.format(hotkey_shortcut), hotkey)
+            try:
+                window.bind('<{}>'.format(hotkey_binding), hotkey)
+            except Exception:
+                logger.exception('failed to bind keyboard shortcut {}'.format(hotkey_binding))
+                print(hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group)
+                raise
 
         return window
+
+    def get_shortcuts(self, group: str = None):
+        """
+        Return a list of hotkeys belonging to a given shortcut group.
+        """
+        if not group:
+            return list(self.hotkeys)
+
+        elements = []
+        for hotkey in self.hotkeys:
+            hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group = settings.hotkeys[hotkey]
+            if hotkey_group == group:
+                elements.append(hotkey)
+
+        return elements
 
 
 class AccountManager:

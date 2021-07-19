@@ -132,6 +132,13 @@ def importer_layout(win_size: tuple = None):
     font_main = mod_const.MAIN_FONT
     font_large = mod_const.BOLD_HEADER_FONT
 
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    cancel_shortcut = hotkeys['-HK_ESCAPE-'][2]
+    save_shortcut = hotkeys['-HK_ENTER-'][2]
+    next_shortcut = hotkeys['-HK_RIGHT-'][2]
+    back_shortcut = hotkeys['-HK_LEFT-'][2]
+
     # Element sizes
     bwidth = 0.5
 
@@ -415,14 +422,17 @@ def importer_layout(win_size: tuple = None):
                                       border_width=0, relief='flat')]], pad=(0, pad_v), expand_x=True)]]
 
     bttn_layout = [[sg.Button('', key='-BACK-', image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), disabled=True, tooltip='Back'),
+                              pad=(pad_el, 0), disabled=True,
+                              tooltip='Return to previous panel ({})'.format(back_shortcut)),
                     sg.Button('', key='-NEXT-', image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), disabled=False, tooltip='Next'),
+                              pad=(pad_el, 0), disabled=False,
+                              tooltip='Move to next panel ({})'.format(next_shortcut)),
                     sg.Button('', bind_return_key=True, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
                               key='-IMPORT-', pad=(pad_el, 0), disabled=True,
-                              tooltip='Import file contents to the selected database table'),
+                              tooltip='Import file contents to the selected database table ({})'.format(save_shortcut)),
                     sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), disabled=False, tooltip='Cancel')]]
+                              pad=(pad_el, 0), disabled=False,
+                              tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut))]]
 
     sidebar_layout = [
         [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=def_col)]], background_color=def_col),

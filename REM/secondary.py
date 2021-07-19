@@ -269,6 +269,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     font_h = mod_const.HEADER_FONT
 
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    delete_shortcut = hotkeys['-HK_RECORD_DEL-'][2]
+    save_shortcut = hotkeys['-HK_RECORD_SAVE-'][2]
+
     # User permissions
     user_priv = user.access_permissions()
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
@@ -288,20 +293,24 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     # Button layout
     if savable:
         bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=deletable, tooltip='Delete record'),
+                                  pad=(pad_el, 0), visible=deletable,
+                                  tooltip='Delete the record from the database ({})'.format(delete_shortcut)),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=False, tooltip='Accept changes'),
+                                  pad=(pad_el, 0), visible=False,
+                                  tooltip='Accept changes to the record ({})'.format(save_shortcut)),
                         sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=True, tooltip='Save to database',
-                                  bind_return_key=True)]]
+                                  pad=(pad_el, 0), visible=True,
+                                  tooltip='Save record changes to the database ({})'.format(save_shortcut))]]
     else:
         bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=deletable, tooltip='Delete record'),
+                                  pad=(pad_el, 0), visible=deletable,
+                                  tooltip='Delete the record from the database ({})'.format(delete_shortcut)),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=True, tooltip='Accept changes'),
+                                  pad=(pad_el, 0), visible=True,
+                                  tooltip='Accept changes to the record ({})'.format(save_shortcut)),
                         sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=False, tooltip='Save to database',
-                                  bind_return_key=True)]]
+                                  pad=(pad_el, 0), visible=False,
+                                  tooltip='Save record changes to the database ({})'.format(save_shortcut))]]
 
     # Window layout
     bffr_height = 230  # window height minus space reserved for the title and buttons
@@ -361,13 +370,13 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
             current_w, current_h = (win_w, win_h)
 
-        if event == '-HK_ENTER-':
+        if event == '-HK_RECORD_SAVE-':
             if not savable:
                 window['-OK-'].click()
             else:
                 window['-SAVE-'].click()
 
-        if event == '-HK_DELETE-':
+        if event == '-HK_RECORD_DEL-':
             if deletable:
                 window['-DELETE-'].click()
 
@@ -1360,6 +1369,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     tbl_diff = 55
 
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    cancel_shortcut = hotkeys['-HK_ESCAPE-'][2]
+    new_shortcut = hotkeys['-HK_ENTER-'][2]
+
     # Title
     title = 'Import {TYPE} records'.format(TYPE=table.title)
     title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
@@ -1371,9 +1385,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Control buttons
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              disabled=False, tooltip='Cancel data import'),
+                              disabled=False,
+                              tooltip='Cancel data import ({})'.format(cancel_shortcut)),
                     sg.Button('', key='-NEW-', image_data=mod_const.NEW_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=((0, pad_el), 0), visible=enable_new, tooltip='Create new record')]]
+                              pad=((0, pad_el), 0), visible=enable_new,
+                              tooltip='Create new record ({})'.format(new_shortcut))]]
 
     width_key = '-WIDTH-'
     height_key = '-HEIGHT-'
@@ -1392,6 +1408,8 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Bind event keys
     window = settings.set_shortcuts(window)
+    table_shortcuts = settings.get_shortcuts('Table')
+    print('table shortcuts are: {}'.format(table_shortcuts))
 #    window.bind('<Key-Return>', '-ENTER-')
 #    window.bind('<Key-Escape>', '-ESCAPE-')
 
@@ -1461,7 +1479,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
             current_w, current_h = (win_w, win_h)
 
-        if event == '-NEW-':  # selected to create a new record
+        if enable_new and event in ('-NEW-', '-HK_ENTER-'):  # selected to create a new record
             if table.record_type is None:
                 msg = 'failed to create a new record - missing required configuration parameter "RecordType"'
                 popup_error(msg)
@@ -1551,7 +1569,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 continue
 
         # Run table filter event
-        if event in (filter_key, '-HK_ENTER-'):
+        if event in (filter_key, '-HK_TBL_FILTER-'):
             for param in table.parameters:
                 # Set parameter values from window elements
                 param.value = param.format_value(values)
@@ -1565,7 +1583,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             display_df = table.update_display(window)
 
         # Run table events
-        if event in table_elements:
+        if event in table_elements or event in table_shortcuts:
             display_df = table.run_event(window, event, values)
 
             continue
@@ -1813,12 +1831,19 @@ def edit_settings(win_size: tuple = None):
     font_h = mod_const.HEADER_FONT
     header_col = mod_const.HEADER_COL
 
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    cancel_shortcut = hotkeys['-HK_ESCAPE-'][2]
+    save_shortcut = hotkeys['-HK_ENTER-'][2]
+
     # GUI layout
     # Buttons
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=(pad_el, 0), tooltip='Cancel edit'),
+                              pad=(pad_el, 0),
+                              tooltip='Cancel edit ({})'.format(cancel_shortcut)),
                     sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0), tooltip='Save changes')]]
+                              bind_return_key=True, pad=(pad_el, 0),
+                              tooltip='Save changes ({})'.format(save_shortcut))]]
 
     settings_layout = settings.layout(win_size)
 

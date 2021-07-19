@@ -660,6 +660,13 @@ class AuditRule:
         panel_width = frame_width - 30
         tab_width = panel_width - 30
 
+        # Keyboard shortcuts
+        hotkeys = settings.hotkeys
+        cancel_shortcut = hotkeys['-HK_ESCAPE-'][2]
+        start_shortcut = save_shortcut = hotkeys['-HK_ENTER-'][2]
+        next_shortcut = hotkeys['-HK_RIGHT-'][2]
+        back_shortcut = hotkeys['-HK_LEFT-'][2]
+
         # Layout elements
         # Title
         panel_title = 'Transaction Audit: {}'.format(self.menu_title)
@@ -672,10 +679,10 @@ class AuditRule:
             param_elements += element_layout
 
         start_key = self.key_lookup('Start')
-        start_layout = [[mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False,
+        start_layout = [[mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False, use_ttk_buttons=True,
                                    button_color=(bttn_text_col, bttn_bg_col), metadata={'disabled': False},
                                    disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                   tooltip='Start transaction audit', use_ttk_buttons=True)]]
+                                   tooltip='Start transaction audit ({})'.format(start_shortcut))]]
 
         param_layout = [sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
                                vertical_alignment='t', expand_x=True),
@@ -723,18 +730,19 @@ class AuditRule:
         save_key = self.key_lookup('Save')
         bttn_layout = [
             sg.Col([[sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=((0, pad_el), 0), disabled=False, tooltip='Return to home screen')]],
+                               pad=((0, pad_el), 0), disabled=False,
+                               tooltip='Return to home screen ({})'.format(cancel_shortcut))]],
                    pad=(0, (pad_v, 0)), justification='l', expand_x=True),
             sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
             sg.Col([[sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=((0, pad_el), 0), disabled=True, tooltip='Return to audit',
-                               metadata={'disabled': True}),
+                               pad=((0, pad_el), 0), disabled=True,
+                               tooltip='Return to audit ({})'.format(back_shortcut), metadata={'disabled': True}),
                      sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=(pad_el, 0), disabled=True, tooltip='Review audit',
+                               pad=(pad_el, 0), disabled=True, tooltip='Review audit ({})'.format(next_shortcut),
                                metadata={'disabled': True}),
                      sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
                                pad=((pad_el, 0), 0), disabled=True, metadata={'disabled': True},
-                               tooltip='Save to database and generate summary report')]],
+                               tooltip='Save to database and generate summary report ({})'.format(save_shortcut))]],
                    pad=(0, (pad_v, 0)), justification='r')]
 
         fw_key = self.key_lookup('FrameWidth')
