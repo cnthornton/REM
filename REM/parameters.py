@@ -5,6 +5,7 @@ import datetime
 import sys
 from random import randint
 
+import numpy as np
 import PySimpleGUI as sg
 import pandas as pd
 
@@ -137,7 +138,10 @@ class DataParameter:
                                  '(False) or 1 (True)'.format(NAME=self.name))
             sys.exit(1)
         else:
-            self.pattern_matching = pattern
+            if self.dtype in settings.supported_str_dtypes or self.dtype in settings.supported_cat_dtypes:
+                self.pattern_matching = pattern
+            else:  # only allow pattern matching for string-like data types
+                self.pattern_matching = False
 
         try:
             self.icon = entry['Icon']
@@ -444,8 +448,72 @@ class DataParameter:
                 logger.warning(msg)
 
                 raise ValueError(msg)
+            else:
+                if value_fmt == '':
+                    value_fmt = None
 
         return value_fmt
+
+    def format_display_value(self, value):
+        """
+        Format a value for display.
+        """
+        dec_sep = settings.decimal_sep
+        group_sep = settings.thousands_sep
+
+        dtype = self.dtype
+
+        if dtype in settings.supported_float_dtypes and dtype == 'money':
+            value = str(value)
+            if value[0] in ('-', '+'):  # sign of the number
+                numeric_sign = value[0]
+                value = value[1:]
+            else:
+                numeric_sign = ''
+            if dec_sep in value:
+                integers, decimals = value.split(dec_sep)
+                decimals = decimals[0:2]
+                display_value = '{SIGN}{VAL}{SEP}{DEC}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(integers[::-1])][::-1]).lstrip(','),
+                            SEP=dec_sep, DEC=decimals)
+            else:
+                display_value = '{SIGN}{VAL}' \
+                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                            enumerate(value[::-1])][::-1]).lstrip(','))
+
+        elif dtype in settings.supported_float_dtypes and dtype != 'money':
+            try:
+                new_value = float(value)
+            except ValueError:
+                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                display_value = ''
+            else:
+                display_value = str(new_value)
+
+        elif dtype in settings.supported_int_dtypes:
+            try:
+                new_value = int(value)
+            except ValueError:
+                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                display_value = ''
+            else:
+                display_value = str(new_value)
+
+        elif dtype in settings.supported_date_dtypes:
+            try:
+                display_value = settings.format_display_date(value)
+            except ValueError:
+                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                display_value = ''
+
+        else:
+            display_value = str(value)
+
+        return display_value
 
     def format_date(self, date_str):
         """
@@ -474,11 +542,11 @@ class DataParameter:
         """
         status = False if value == 'enable' else True
 
-        element_key = self.key_lookup('Element')
-        logger.debug('DataParameter {NAME}: updating element to "disabled={VAL}"'
-                     .format(NAME=self.name, VAL=status))
-
-        window[element_key].update(disabled=status)
+        for element_key in self.elements:
+            if window[element_key].metadata and 'disabled' in window[element_key].metadata:
+                logger.debug('DataParameter {NAME}: updating element {KEY} to "disabled={VAL}"'
+                             .format(NAME=self.name, KEY=element_key, VAL=status))
+                window[element_key].update(disabled=status)
 
     def query_statement(self, column):
         """
@@ -497,7 +565,7 @@ class DataParameter:
             query_value = value
 
         if pd.isna(query_value):
-            statement = ('{COL} IS NULL'.format(COL=column),)
+            statement = None
         else:
             if pattern is True:
                 query_value = '%{VAL}%'.format(VAL=query_value)
@@ -514,6 +582,8 @@ class DataParameterInput(DataParameter):
     """
     def __init__(self, name, entry):
         super().__init__(name, entry)
+        if self.dtype in settings.supported_date_dtypes:
+            self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
 
         # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): self.default})
@@ -574,6 +644,15 @@ class DataParameterInput(DataParameter):
                             sg.Input(param_value, key=elem_key, size=size, enable_events=True, font=font,
                                      background_color=in_col, tooltip='Input value for {}'.format(self.description),
                                      metadata={'value': param_value, 'disabled': False})]
+            if self.dtype in settings.supported_date_dtypes:
+                calendar_key = self.key_lookup('Calendar')
+                date_ico = mod_const.CALENDAR_ICON
+
+                calendar_bttn = sg.CalendarButton('', target=elem_key, key=calendar_key, format='%Y-%m-%d',
+                                                  image_data=date_ico, pad=((pad_el, 0), 0), font=font, border_width=0,
+                                                  tooltip='Select date from calendar menu',
+                                                  metadata={'disabled': False})
+                param_layout.append(calendar_bttn)
         else:
             param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
@@ -599,7 +678,7 @@ class DataParameterInput(DataParameter):
                            .format(NAME=self.name))
             return self.value
         else:
-            if input_value is None:
+            if input_value == '' or pd.isna(input_value):
                 return None
 
         try:
@@ -613,55 +692,14 @@ class DataParameterInput(DataParameter):
         """
         Format the parameter's value for displaying.
         """
-        dec_sep = settings.decimal_sep
-        group_sep = settings.thousands_sep
-
-        dtype = self.dtype
         value = self.value
 
-        if value == '' or pd.isna(value) is True:
+        if value == '' or pd.isna(value):
             return ''
-        else:
-            value = str(value)
 
         logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
                      .format(NAME=self.name, VAL=value))
-        if dtype in settings.supported_float_dtypes and dtype == 'money':
-            if value[0] in ('-', '+'):  # sign of the number
-                numeric_sign = value[0]
-                value = value[1:]
-            else:
-                numeric_sign = ''
-            if dec_sep in value:
-                integers, decimals = value.split(dec_sep)
-                decimals = decimals[0:2]
-                display_value = '{SIGN}{VAL}{SEP}{DEC}'\
-                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                            enumerate(integers[::-1])][::-1]).lstrip(','),
-                            SEP=dec_sep, DEC=decimals)
-            else:
-                display_value = '{SIGN}{VAL}'\
-                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                            enumerate(value[::-1])][::-1]).lstrip(','))
-
-        elif dtype in settings.supported_float_dtypes and dtype != 'money':
-            try:
-                new_value = float(value)
-            except ValueError:
-                display_value = value
-            else:
-                display_value = str(new_value)
-
-        elif dtype in settings.supported_int_dtypes:
-            try:
-                new_value = int(value)
-            except ValueError:
-                display_value = value
-            else:
-                display_value = str(new_value)
-
-        else:
-            display_value = str(value)
+        display_value = self.format_display_value(value)
 
         return display_value
 
@@ -672,6 +710,43 @@ class DataParameterInput(DataParameter):
         formatted_value = self.format_display()
 
         return formatted_value
+
+    def filter_table(self, df):
+        """
+        Use the parameter value to filter a dataframe.
+        """
+        param_value = self.value
+        match_pattern = self.pattern_matching
+        dtype = self.dtype
+        column = self.name
+
+        if pd.isna(param_value) or param_value == '':  # don't filter on NA values
+            return df
+
+        try:
+            if dtype in settings.supported_date_dtypes:
+                col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+            elif dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            elif dtype in settings.supported_bool_dtypes:
+                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+            else:
+                col_values = df[column].astype(np.object, errors='raise')
+        except Exception as e:
+            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+
+        if match_pattern is True:
+            df = df[col_values.str.contains(param_value, case=False, regex=True)]
+        else:
+            df = df[col_values == param_value]
+
+        return df
 
 
 class DataParameterCombo(DataParameter):
@@ -824,6 +899,9 @@ class DataParameterCombo(DataParameter):
                            .format(NAME=self.name))
             return self.value
 
+        if input_value == '' or pd.isna(input_value):
+            return None
+
         try:
             input_value_fmt = self.set_datatype(input_value)
         except ValueError:
@@ -855,6 +933,39 @@ class DataParameterCombo(DataParameter):
         formatted_value = self.format_display()
 
         return formatted_value
+
+    def filter_table(self, df):
+        """
+        Use the parameter value to filter a dataframe.
+        """
+        param_value = self.value
+        dtype = self.dtype
+        column = self.name
+
+        if pd.isna(param_value):  # don't filter on NA values
+            return df
+
+        try:
+            if dtype in settings.supported_date_dtypes:
+                col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+            elif dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            elif dtype in settings.supported_bool_dtypes:
+                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+            else:
+                col_values = df[column].astype(np.object, errors='raise')
+        except Exception as e:
+            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+
+        df = df[col_values == param_value]
+
+        return df
 
 
 class DataParameterDate(DataParameter):
@@ -938,7 +1049,8 @@ class DataParameterDate(DataParameter):
                                      metadata={'value': param_value, 'disabled': False}),
                             sg.CalendarButton('', target=input_key, key=calendar_key, format='%Y-%m-%d',
                                               image_data=date_ico, font=font, border_width=0,
-                                              tooltip='Select date from calendar menu')]
+                                              tooltip='Select date from calendar menu',
+                                              metadata={'disabled': False})]
         else:
             param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
                                     background_color=bg_col),
@@ -964,7 +1076,7 @@ class DataParameterDate(DataParameter):
                            .format(NAME=self.name))
             return self.value
 
-        if pd.isna(input_value):
+        if pd.isna(input_value) or input_value == '':
             return None
 
         try:
@@ -979,21 +1091,12 @@ class DataParameterDate(DataParameter):
         Format the parameter's value for displaying.
         """
         value = self.value
-        if pd.isna(value) is True:
+        if pd.isna(value):
             return ''
 
-        if isinstance(value, str):
-            logger.warning('DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
-                           .format(NAME=self.name, TYPE=type(value), VAL=value))
-            value_fmt = value
-        elif isinstance(value, datetime.datetime):
-            value_fmt = settings.format_display_date(value)
-        else:
-            logger.warning('DataParameter {NAME}: unknown object type {TYPE} provided for parameter value {VAL}'
-                           .format(NAME=self.name, TYPE=type(value), VAL=value))
-            value_fmt = None
+        display_value = self.format_display_value(value)
 
-        return value_fmt
+        return display_value
 
     def print_value(self):
         """
@@ -1003,20 +1106,257 @@ class DataParameterDate(DataParameter):
 
         return formatted_value.replace('-', '')
 
-    def toggle_parameter(self, window, value: str = 'enable'):
+    def filter_table(self, df):
         """
-        Toggle parameter elements on and off.
+        Use the parameter value to filter a dataframe.
         """
-        status = False if value == 'enable' else True
+        param_value = self.value
+        dtype = self.dtype
+        column = self.name
 
-        logger.debug('DataParameter {NAME}: setting elements to "disabled={VAL}"'
-                     .format(NAME=self.name, VAL=status))
+        if pd.isna(param_value):  # don't filter on NA values
+            return df
 
+        try:
+            if dtype in settings.supported_date_dtypes:
+                col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+            elif dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            elif dtype in settings.supported_bool_dtypes:
+                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+            else:
+                col_values = df[column].astype(np.object, errors='raise')
+        except Exception as e:
+            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+
+        df = df[col_values == param_value]
+
+        return df
+
+
+class DataParameterRange(DataParameter):
+    """
+    Date parameter range element object.
+    """
+
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+
+        try:
+            self.value = [self.set_datatype(self.default[0]), self.set_datatype(self.default[1])]
+        except (IndexError, TypeError):
+            self.value = [self.set_datatype(self.default), self.set_datatype(self.default)]
+        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
         element_key = self.key_lookup('Element')
-        calendar_key = self.key_lookup('Calendar')
+        if event == element_key:
+            self.value = mod_win2.range_value_window(self.dtype, title=self.description)
 
-        window[element_key].update(disabled=status)
-        window[calendar_key].update(disabled=status)
+            display_value = self.format_display()
+            window[event].update(text=display_value)
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        try:
+            def_val1, def_val2 = self.default
+        except (ValueError, TypeError):
+            def_val1 = def_val2 = self.default
+
+        if def_val1 is not None or def_val2 is not None:
+            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = [self.set_datatype(def_val1), self.set_datatype(def_val2)]
+
+            display_value = self.format_display()
+            window[self.key_lookup('Element')].update(value=display_value)
+
+    def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL):
+        """
+        Create a GUI layout for the parameter.
+        """
+        self.bg_col = bg_col
+
+        # Element settings
+        pad_el = mod_const.ELEM_PAD
+
+        font = mod_const.LARGE_FONT
+        bttn_font = mod_const.MID_FONT
+        bold_font = mod_const.BOLD_FONT
+
+        in_col = mod_const.INPUT_COL
+        text_col = mod_const.TEXT_COL
+
+        # Parameter settings
+        desc = '{}:'.format(self.description)
+        display_value = self.format_display()
+        icon = self.icon
+
+        # Icon layout
+        if icon is None:
+            icon_layout = []
+        else:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+            else:
+                icon_layout = []
+
+        # Element layout
+        desc_key = self.key_lookup('Description')
+        element_key = self.key_lookup('Element')
+        if self.editable is True:
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                    background_color=bg_col),
+                            sg.Button(button_text=display_value, key=element_key, font=bttn_font,
+                                      button_color=(text_col, in_col),
+                                      size=size, tooltip='Set value range for {}'.format(self.description),
+                                      metadata={'value': [], 'disabled': False})]
+        else:
+            param_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, pad=((0, pad_el), 0), font=bold_font,
+                                    background_color=bg_col),
+                            sg.Text(display_value, key=element_key, size=size, font=font, background_color=bg_col,
+                                    border_width=1, metadata={'value': [], 'disabled': True})]
+
+        layout = [icon_layout + param_layout]
+
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
+
+    def format_value(self, *args, **kwargs):
+        """
+        Set the value of the data element from user input.
+        """
+        return self.value
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        values = self.value
+
+        if all([pd.isna(i) for i in values]):  # no parameter values set for either range element
+            return ''
+
+        formatted_values = []
+        for value in values:
+            if pd.isna(value):
+                continue
+
+            formatted_values.append(self.format_display_value(value))
+
+        return ' - '.join(formatted_values)
+
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        display_value = self.format_display()
+        return display_value.replace(' ', '')
+
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        values = self.value
+        try:
+            from_val, to_val = values
+        except ValueError:
+            statement = None
+        else:
+            if from_val and to_val:
+                statement = ('{COL} BETWEEN ? AND ?'.format(COL=column), values)
+            elif from_val and not to_val:
+                statement = ('{COL} = ?'.format(COL=column), (from_val,))
+            elif to_val and not from_val:
+                statement = ('{COL} = ?'.format(COL=column), (to_val,))
+            else:
+                statement = None
+
+        return statement
+
+    def filter_table(self, df):
+        """
+        Use the parameter value to filter a dataframe.
+        """
+        param_values = self.value
+        dtype = self.dtype
+        column = self.name
+
+        if all([pd.isna(i) for i in param_values]):  # don't filter on NA values
+            return df
+
+        try:
+            from_value, to_value = param_values
+        except ValueError:
+            logger.error('DataParameter {NAME}: ranged parameters require exactly two values'
+                         .format(NAME=self.name))
+            return df
+
+        try:
+            if dtype in settings.supported_date_dtypes:
+                col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+            elif dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            elif dtype in settings.supported_bool_dtypes:
+                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+            else:
+                col_values = df[column].astype(np.object, errors='raise')
+        except Exception as e:
+            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
+            logger.debug('DataParameter {NAME}: filtering table on values {VAL1} and {VAL2}'
+                         .format(NAME=self.name, VAL1=from_value, VAL2=to_value))
+            try:
+                df = df[(col_values >= from_value) & (col_values <= to_value)]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: parameter name not found in the table header'
+                               .format(NAME=self.name))
+            except SyntaxError:
+                logger.warning('DataParameter {TBL}: unable to filter table on parameter values {VAL1} and {VAL2}'
+                               .format(TBL=self.name, VAL1=from_value, VAL2=to_value))
+        elif from_value not in (None, '') and to_value in (None, ''):  # rows equal to from component
+            logger.debug('DataParameter {NAME}: filtering table on parameter value {VAL}'
+                         .format(NAME=self.name, VAL=from_value))
+            try:
+                df = df[col_values == from_value]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
+            except SyntaxError:
+                logger.warning('DataParameter {NAME}: unable to filter table on parameter value {VAL}'
+                               .format(NAME=self.name, VAL=from_value))
+        elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
+            logger.debug('DataParameter {NAME}: filtering table on parameter value {VAL}'
+                         .format(NAME=self.name, VAL=to_value))
+            try:
+                df = df[col_values == to_value]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
+            except SyntaxError:
+                logger.warning('DataParameter {NAME}: unable to filter table on parameter value {VAL}'
+                               .format(NAME=self.name, VAL=to_value))
+
+        return df
 
 
 class DataParameterDateRange(DataParameter):
@@ -1114,7 +1454,8 @@ class DataParameterDateRange(DataParameter):
                                   metadata={'value': [], 'disabled': False}),
                          sg.CalendarButton('', target=from_key, key=from_date_key, format='%Y-%m-%d',
                                            image_data=date_ico, font=font, border_width=0,
-                                           tooltip='Select date from calendar menu')]],
+                                           tooltip='Select date from calendar menu',
+                                           metadata={'disabled': False})]],
                        pad=padding, background_color=bg_col, visible=(not self.hidden)),
                 sg.Col([icon_layout +
                         [sg.Text('{}:'.format(to_desc), auto_size_text=True, pad=((0, pad_el), 0),
@@ -1124,7 +1465,8 @@ class DataParameterDateRange(DataParameter):
                                   tooltip='Input date as YYYY-MM-DD or use the calendar button to select the date',
                                   metadata={'value': [], 'disabled': False}),
                          sg.CalendarButton('', target=to_key, key=to_date_key, format='%Y-%m-%d', image_data=date_ico,
-                                           font=font, border_width=0, tooltip='Select date from calendar menu')]],
+                                           font=font, border_width=0, tooltip='Select date from calendar menu',
+                                           metadata={'disabled': False})]],
                        pad=padding, background_color=bg_col, visible=(not self.hidden))]
         else:
             layout = [
@@ -1198,15 +1540,7 @@ class DataParameterDateRange(DataParameter):
                 formatted_values.append('')
                 continue
 
-            if isinstance(value, str):
-                value_fmt = value
-            elif isinstance(value, datetime.datetime):
-                value_fmt = value.strftime('%Y-%m-%d')
-            else:
-                logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                               .format(PARAM=self.name, VAL=value))
-                value_fmt = ''
-
+            value_fmt = self.format_display_value(value)
             formatted_values.append(value_fmt)
 
         return formatted_values
@@ -1249,24 +1583,73 @@ class DataParameterDateRange(DataParameter):
 
         return statement
 
-    def toggle_parameter(self, window, value: str = 'enable'):
+    def filter_table(self, df):
         """
-        Toggle parameter elements on and off.
+        Use the parameter value to filter a dataframe.
         """
-        status = False if value == 'enable' else True
+        param_values = self.value
+        dtype = self.dtype
+        column = self.name
 
-        logger.debug('DataParameter {NAME}: updating elements to "disabled={VAL}"'
-                     .format(NAME=self.name, VAL=status))
+        if all([pd.isna(i) for i in param_values]):  # don't filter on NA values
+            return df
 
-        element_key = self.key_lookup('Element')
-        calendar_key = self.key_lookup('Calendar')
-        element2_key = self.key_lookup('Element2')
-        calendar2_key = self.key_lookup('Calendar2')
+        try:
+            from_value, to_value = param_values
+        except ValueError:
+            logger.error('DataParameter {NAME}: ranged parameters require exactly two values'
+                         .format(NAME=self.name))
+            return df
 
-        window[element_key].update(disabled=status)
-        window[calendar_key].update(disabled=status)
-        window[element2_key].update(disabled=status)
-        window[calendar2_key].update(disabled=status)
+        try:
+            if dtype in settings.supported_date_dtypes:
+                col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+            elif dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            elif dtype in settings.supported_bool_dtypes:
+                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+            else:
+                col_values = df[column].astype(np.object, errors='raise')
+        except Exception as e:
+            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
+            logger.debug('DataParameter {NAME}: filtering table on values {VAL1} and {VAL2}'
+                         .format(NAME=self.name, VAL1=from_value, VAL2=to_value))
+            try:
+                df = df[(col_values >= from_value) & (col_values <= to_value)]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: parameter name not found in the table header'
+                               .format(NAME=self.name))
+            except SyntaxError:
+                logger.warning('DataParameter {TBL}: unable to filter table on parameter values {VAL1} and {VAL2}'
+                               .format(TBL=self.name, VAL1=from_value, VAL2=to_value))
+        elif from_value not in (None, '') and to_value in (None, ''):  # rows equal to from component
+            logger.debug('DataParameter {NAME}: filtering table on parameter value {VAL}'
+                         .format(NAME=self.name, VAL=from_value))
+            try:
+                df = df[col_values == from_value]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
+            except SyntaxError:
+                logger.warning('DataParameter {NAME}: unable to filter table on parameter value {VAL}'
+                               .format(NAME=self.name, VAL=from_value))
+        elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
+            logger.debug('DataParameter {NAME}: filtering table on parameter value {VAL}'
+                         .format(NAME=self.name, VAL=to_value))
+            try:
+                df = df[col_values == to_value]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
+            except SyntaxError:
+                logger.warning('DataParameter {NAME}: unable to filter table on parameter value {VAL}'
+                               .format(NAME=self.name, VAL=to_value))
+
+        return df
 
 
 class DataParameterCheckbox(DataParameter):
@@ -1344,7 +1727,8 @@ class DataParameterCheckbox(DataParameter):
         # Parameter layout
         param_layout = [sg.Text('', key=desc_key, background_color=bg_col),
                         sg.Checkbox(desc, default=param_value, key=key, pad=padding, font=bold_font,
-                                    enable_events=True, background_color=bg_col, disabled=disabled)]
+                                    enable_events=True, background_color=bg_col, disabled=disabled,
+                                    metadata={'disabled': disabled})]
 
         layout = [icon_layout + param_layout]
 
@@ -1390,3 +1774,40 @@ class DataParameterCheckbox(DataParameter):
         formatted_value = self.format_display()
 
         return formatted_value
+
+    def filter_table(self, df):
+        """
+        Use the parameter value to filter a dataframe.
+        """
+        param_value = self.value
+        match_pattern = self.pattern_matching
+        dtype = self.dtype
+        column = self.name
+
+        if pd.isna(param_value):  # don't filter on NA values
+            return df
+
+        try:
+            if dtype in settings.supported_date_dtypes:
+                col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+            elif dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            elif dtype in settings.supported_bool_dtypes:
+                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+            else:
+                col_values = df[column].astype(np.object, errors='raise')
+        except Exception as e:
+            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+
+        if match_pattern is True:
+            df = df[col_values.str.contains(param_value, case=False, regex=True)]
+        else:
+            df = df[col_values == param_value]
+
+        return df
