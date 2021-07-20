@@ -150,9 +150,14 @@ class DataParameter:
             self.justification = 'left'
 
         try:
-            self.default = entry['DefaultValue']
+            default = entry['DefaultValue']
         except KeyError:
             self.default = None
+        else:
+            try:
+                self.default = self.set_datatype(default)
+            except ValueError:
+                self.default = None
 
         self.value = None
         self.bg_col = mod_const.ACTION_COL
@@ -353,6 +358,95 @@ class DataParameter:
 
         return display_value
 
+    def set_datatype(self, value):
+        """
+        Set the data type of the provided value.
+        """
+        strptime = datetime.datetime.strptime
+        group_sep = settings.thousands_sep
+        dtype = self.dtype
+
+        cnvrt_failure_msg = 'DataParameter {PARAM}: failed to format parameter value "{VAL}" as "{DTYPE}" - {ERR}'
+
+        if pd.isna(value):
+            return None
+
+        if dtype in settings.supported_float_dtypes:
+            try:
+                value_fmt = float(value)
+            except (ValueError, TypeError):
+                try:
+                    value_fmt = float(value.replace(group_sep, ''))
+                except (ValueError, TypeError, AttributeError):
+                    msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+                                                   ERR='unable to convert value of type "{TYPE}"'.format(TYPE=type(value)))
+                    logger.warning(msg)
+
+                    raise ValueError(msg)
+
+        elif dtype in settings.supported_int_dtypes:
+            try:
+                value_fmt = int(value)
+            except (ValueError, TypeError, AttributeError):
+                try:
+                    value_fmt = value.replace(',', '')
+                except (ValueError, TypeError):
+                    msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+                                                   ERR='unable to convert value of type "{TYPE}"'.format(TYPE=type(value)))
+                    logger.warning(msg)
+
+                    raise ValueError(msg)
+
+        elif dtype in settings.supported_bool_dtypes:
+            if isinstance(value, bool):
+                value_fmt = value
+            else:
+                try:
+                    value_fmt = bool(int(value))
+                except (ValueError, TypeError):
+                    try:
+                        value_fmt = bool(value)
+                    except ValueError:
+                        msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+                                                       ERR='unable to convert value of type "{TYPE}"'.format(
+                                                           TYPE=type(value)))
+                        logger.warning(msg)
+
+                        raise ValueError(msg)
+
+        elif dtype in settings.supported_date_dtypes:
+            if isinstance(value, str):
+                try:
+                    value_fmt = strptime(value, '%Y-%m-%d')
+                except (ValueError, TypeError):
+                    msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+                                                   ERR='unable to parse the provided date format')
+                    logger.warning(msg)
+
+                    raise ValueError(msg)
+            elif isinstance(value, datetime.datetime):
+                value_fmt = value
+            else:
+                msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+                                               ERR='unable to convert value of type "{TYPE}"'.format(
+                                                   TYPE=type(value)))
+                logger.warning(msg)
+
+                raise ValueError(msg)
+
+        else:
+            try:
+                value_fmt = str(value)
+            except (ValueError, TypeError):
+                msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+                                               ERR='unable to convert value of type "{TYPE}"'.format(
+                                                   TYPE=type(value)))
+                logger.warning(msg)
+
+                raise ValueError(msg)
+
+        return value_fmt
+
     def format_date(self, date_str):
         """
         Forces user input to date element to be in ISO format.
@@ -394,6 +488,7 @@ class DataParameter:
         pattern = self.pattern_matching
 
         value = self.value
+
         if dtype in settings.supported_date_dtypes:
             query_value = self.value.strftime(settings.date_format)
         elif dtype in settings.supported_bool_dtypes:
@@ -401,14 +496,14 @@ class DataParameter:
         else:
             query_value = value
 
-        if query_value:
+        if pd.isna(query_value):
+            statement = ('{COL} IS NULL'.format(COL=column),)
+        else:
             if pattern is True:
                 query_value = '%{VAL}%'.format(VAL=query_value)
                 statement = ('{COL} LIKE ?'.format(COL=column), (query_value,))
             else:
                 statement = ('{COL} = ?'.format(COL=column), (query_value,))
-        else:
-            statement = None
 
         return statement
 
@@ -497,9 +592,6 @@ class DataParameterInput(DataParameter):
 
             values (dict): GUI element values.
         """
-        group_sep = settings.thousands_sep
-        dtype = self.dtype
-
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
@@ -510,36 +602,10 @@ class DataParameterInput(DataParameter):
             if input_value is None:
                 return None
 
-        if dtype in settings.supported_float_dtypes:
-            try:
-                value_fmt = float(input_value)
-            except (ValueError, TypeError):
-                try:
-                    value_fmt = float(input_value.replace(group_sep, ''))
-                except (ValueError, TypeError, AttributeError):
-                    logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                                   .format(PARAM=self.name, VAL=input_value))
-                    return None
-        elif dtype in settings.supported_int_dtypes:
-            try:
-                value_fmt = int(input_value)
-            except (ValueError, TypeError, AttributeError):
-                try:
-                    value_fmt = input_value.replace(',', '')
-                except (ValueError, TypeError):
-                    logger.warning('DataParameter {PARAM}: unknown object type for parameter value {VAL}'
-                                   .format(PARAM=self.name, VAL=input_value))
-                    return None
-        elif dtype in settings.supported_bool_dtypes:
-            if isinstance(input_value, bool):
-                value_fmt = input_value
-            else:
-                try:
-                    value_fmt = bool(int(input_value))
-                except (ValueError, TypeError):
-                    value_fmt = bool(input_value)
-        else:
-            value_fmt = str(input_value)
+        try:
+            value_fmt = self.set_datatype(input_value)
+        except ValueError:
+            value_fmt = None
 
         return value_fmt
 
@@ -615,26 +681,53 @@ class DataParameterCombo(DataParameter):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
+
+        # Dropdown values
         try:
             self.combo_values = entry['Values']
         except KeyError:
-            msg = _('Configuration Warning: DataParameter {PARAM}: values required for parameter type '
-                    '"dropdown"').format(PARAM=name)
-            mod_win2.popup_notice(msg)
+            msg = 'values required for parameter type "dropdown"'
+            mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.combo_values = []
 
+        # Enforce supported data types for the dropdown parameter
+        supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + settings.supported_cat_dtypes
+        if self.dtype not in supported_dtypes:
+            msg = 'unsupported data type provided for the "dropdown" parameter. Supported data types are {DTYPES}' \
+                .format(DTYPES=', '.join(supported_dtypes))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            self.dtype = 'varchar'
+
+        # Dropdown aliases
         try:
             aliases = entry['Aliases']
         except KeyError:
-            self.aliases = {i: i for i in self.combo_values}
+            self.aliases = {self.set_datatype(i): self.set_datatype(i) for i in self.combo_values}
         else:
-            for value in self.combo_values:
-                if value not in aliases:
-                    aliases[value] = value
-            self.aliases = aliases
+            self.aliases = {}
+            for combo_value in self.combo_values:
+                if combo_value not in aliases:
+                    value_fmt = self.set_datatype(combo_value)
+                    self.aliases[value_fmt] = value_fmt
+                else:
+                    alias = aliases[combo_value]
+                    self.aliases[self.set_datatype(combo_value)] = self.set_datatype(alias)
 
-        self.value = self.format_value({self.key_lookup('Element'): self.default})
+        # Set the default value
+        if self.default in self.combo_values:
+            default_value = self.aliases.get(self.default, self.default)
+        else:  # set default to None
+            if not pd.isna(self.default):
+                msg = 'default value "{VAL}" not found in the list of available values for the parameter'\
+                    .format(VAL=self.default)
+                mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.default = default_value = None
+
+        self.value = self.format_value({self.key_lookup('Element'): default_value})
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
@@ -649,7 +742,9 @@ class DataParameterCombo(DataParameter):
 
         # Update the parameter window element
         if self.hidden is False:
-            self.value = self.format_value({self.key_lookup('Element'): self.default})
+            default_value = self.aliases.get(self.default, self.default)
+
+            self.value = self.format_value({self.key_lookup('Element'): default_value})
             display_value = self.format_display()
 
             window[self.key_lookup('Element')].update(value=display_value)
@@ -729,8 +824,13 @@ class DataParameterCombo(DataParameter):
                            .format(NAME=self.name))
             return self.value
 
+        try:
+            input_value_fmt = self.set_datatype(input_value)
+        except ValueError:
+            return self.value
+
         aliases = {j: i for i, j in self.aliases.items()}
-        value_fmt = aliases.get(input_value, input_value)
+        value_fmt = aliases.get(input_value_fmt, input_value_fmt)
 
         return value_fmt
 
@@ -766,6 +866,15 @@ class DataParameterDate(DataParameter):
         super().__init__(name, entry)
         self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
 
+        # Enforce supported data types for the date parameter
+        supported_dtypes = settings.supported_date_dtypes
+        if self.dtype not in supported_dtypes:
+            msg = 'unsupported data type provided for the "date" parameter. Supported data types are {DTYPES}' \
+                .format(DTYPES=', '.join(supported_dtypes))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            self.dtype = 'date'
+
+        # Set the default value
         self.value = self.format_value({self.key_lookup('Element'): self.default})
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
@@ -848,8 +957,6 @@ class DataParameterDate(DataParameter):
 
             values (dict): GUI element values.
         """
-        strptime = datetime.datetime.strptime
-
         try:
             input_value = values[self.key_lookup('Element')]
         except KeyError:
@@ -857,21 +964,12 @@ class DataParameterDate(DataParameter):
                            .format(NAME=self.name))
             return self.value
 
-        if not input_value:
+        if pd.isna(input_value):
             return None
 
-        if isinstance(input_value, str):
-            try:
-                value_fmt = strptime(input_value, '%Y-%m-%d')
-            except (ValueError, TypeError):
-                logger.warning('DataParameter {NAME}: unable to parse date {VAL}'
-                               .format(NAME=self.name, VAL=input_value))
-                value_fmt = None
-        elif isinstance(input_value, datetime.datetime):
-            value_fmt = input_value
-        else:
-            logger.warning('DataParameter {NAME}: unknown object type for {VAL}'
-                           .format(NAME=self.name, VAL=input_value))
+        try:
+            value_fmt = self.set_datatype(input_value)
+        except ValueError:
             value_fmt = None
 
         return value_fmt
@@ -1179,8 +1277,16 @@ class DataParameterCheckbox(DataParameter):
     def __init__(self, name, entry):
         super().__init__(name, entry)
 
-        if self.default is None:
+        if pd.isna(self.default):
             self.default = False
+
+        supported_dtypes = settings.supported_bool_dtypes
+        if self.dtype not in supported_dtypes:
+            msg = 'unsupported data type provided for the "checkbox" parameter. Supported data types are {DTYPES}' \
+                .format(DTYPES=', '.join(supported_dtypes))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.dtype = 'bool'
 
         self.value = self.format_value({self.key_lookup('Element'): self.default})
         logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
@@ -1258,14 +1364,14 @@ class DataParameterCheckbox(DataParameter):
             msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
             logger.warning(msg)
             return self.value
-
-        if pd.isna(input_value):
-            value_fmt = False
         else:
-            try:
-                value_fmt = bool(int(input_value))
-            except (ValueError, TypeError):
-                value_fmt = bool(input_value)
+            if pd.isna(input_value):  # Null values default to False
+                return False
+
+        try:
+            value_fmt = self.set_datatype(input_value)
+        except ValueError:
+            value_fmt = False
 
         self.value = value_fmt
 

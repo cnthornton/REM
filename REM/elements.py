@@ -1078,16 +1078,14 @@ class TableElement:
             column = param.name
 
             try:
-                if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
+                if dtype in settings.supported_date_dtypes:
                     col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
-                elif dtype in ('int', 'integer', 'bit'):
+                elif dtype in settings.supported_int_dtypes:
                     col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
-                elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
+                elif dtype in settings.supported_float_dtypes:
                     col_values = pd.to_numeric(df[column], errors='coerce')
-                elif dtype in ('bool', 'boolean'):
+                elif dtype in settings.supported_bool_dtypes:
                     col_values = df[column].fillna(False).astype(np.bool, errors='raise')
-                elif dtype in ('char', 'varchar', 'binary', 'text'):
-                    col_values = df[column].astype(np.object, errors='raise')
                 else:
                     col_values = df[column].astype(np.object, errors='raise')
             except Exception as e:
