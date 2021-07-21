@@ -162,6 +162,8 @@ class AuditRule:
                 param_class = mod_param.DataParameterDate
             elif param_layout == 'date_range':
                 param_class = mod_param.DataParameterDateRange
+            elif param_layout == 'range':
+                param_class = mod_param.DataParameterRange
             elif param_layout == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
             else:
@@ -986,7 +988,7 @@ class AuditTransactionTab:
             element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.parameters]
         elif by_type is True:
-            element_names = [i.etype for i in self.parameters]
+            element_names = [i.dtype for i in self.parameters]
         else:
             element_names = [i.name for i in self.parameters]
 
@@ -2028,7 +2030,7 @@ class AuditRecordTab:
                             'creating a new record'.format(NAME=self.name))
 
                 record_entry = settings.records.fetch_rule(self.name)
-                param_types = [i.etype for i in params]
+                param_types = [i.dtype for i in params]
 #                param_names = [i.name for i in params]
                 try:
                     date_index = param_types.index('date')

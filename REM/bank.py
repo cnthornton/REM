@@ -157,6 +157,8 @@ class BankRule:
                 param_class = mod_param.DataParameterInput
             elif param_layout == 'date':
                 param_class = mod_param.DataParameterDate
+            elif param_layout == 'range':
+                param_class = mod_param.DataParameterRange
             elif param_layout == 'date_range':
                 param_class = mod_param.DataParameterDateRange
             elif param_layout == 'checkbox':
