@@ -976,7 +976,6 @@ class SettingsManager:
         """
         Set the data type of the provided value.
         """
-        strptime = datetime.datetime.strptime
         group_sep = self.thousands_sep
 
         date_format = self.format_date_str(date_format) if date_format else self.date_format
@@ -1031,7 +1030,7 @@ class SettingsManager:
         elif dtype in self.supported_date_dtypes:
             if isinstance(value, str):
                 try:
-                    value_fmt = strptime(value, date_format)
+                    value_fmt = pd.to_datetime(value, format=date_format)
                 except (ValueError, TypeError):
                     msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype,
                                                    ERR='unable to parse the provided date format')

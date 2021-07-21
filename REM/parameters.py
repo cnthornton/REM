@@ -1359,7 +1359,8 @@ class DataParameterRange(DataParameter):
         """
         element_key = self.key_lookup('Element')
         if event == element_key:
-            self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description)
+            self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
+                                                     date_format='YYYY-MM-DD')
 
             display_value = self.format_display()
             window[event].update(text=display_value)

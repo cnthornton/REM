@@ -1889,7 +1889,7 @@ def edit_settings(win_size: tuple = None):
     gc.collect()
 
 
-def range_value_window(dtype, current: list = None, title: str = 'Range'):
+def range_value_window(dtype, current: list = None, title: str = 'Range', date_format: str = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
@@ -1903,6 +1903,7 @@ def range_value_window(dtype, current: list = None, title: str = 'Range'):
     date_ico = mod_const.CALENDAR_ICON
     font = mod_const.LARGE_FONT
     font_h = mod_const.HEADER_FONT
+    bold_font = mod_const.BOLD_LARGE_FONT
 
     in_col = mod_const.INPUT_COL
     bg_col = mod_const.ACTION_COL
@@ -1916,13 +1917,13 @@ def range_value_window(dtype, current: list = None, title: str = 'Range'):
     orig_val1, orig_val2 = value_range
     if dtype in settings.supported_date_dtypes:
         in_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
-                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                              pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
                               tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
                      sg.CalendarButton('', target='-R1-', format='%Y-%m-%d', image_data=date_ico, font=font,
                                        border_width=0, tooltip='Select date from calendar menu'),
-                     sg.Text(' - ', background_color=bg_col),
+                     sg.Text('  -  ', font=bold_font),
                      sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
-                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                              pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
                               tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
                      sg.CalendarButton('', target='-R2-', format='%Y-%m-%d', image_data=date_ico, font=font,
                                        border_width=0, tooltip='Select date from calendar menu'),
@@ -1931,7 +1932,7 @@ def range_value_window(dtype, current: list = None, title: str = 'Range'):
         in_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
                               pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
                               tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                     sg.Text(' - ', background_color=bg_col),
+                     sg.Text('  -  ', font=bold_font),
                      sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
                               pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
                               tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
@@ -1947,7 +1948,7 @@ def range_value_window(dtype, current: list = None, title: str = 'Range'):
               [sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
               [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
 
-    window = sg.Window('Settings', layout, modal=True, resizable=False)
+    window = sg.Window('Range', layout, modal=True, resizable=False)
     window.finalize()
     window = center_window(window)
 
@@ -1962,11 +1963,11 @@ def range_value_window(dtype, current: list = None, title: str = 'Range'):
             break
 
         if event in ('-SAVE-', '-HK_ENTER-'):
-            val1 = window['-R1-']
-            val2 = window['-R2-']
+            val1 = values['-R1-']
+            val2 = values['-R2-']
             try:
-                value_range[0] = settings.format_value(val1, dtype)
-                value_range[1] = settings.format_value(val2, dtype)
+                value_range[0] = settings.format_value(val1, dtype, date_format=date_format)
+                value_range[1] = settings.format_value(val2, dtype, date_format=date_format)
             except ValueError:
                 msg = 'failed to format values as "{DTYPE}"'.format(DTYPE=dtype)
                 popup_error(msg)
