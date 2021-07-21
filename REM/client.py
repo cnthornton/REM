@@ -972,6 +972,96 @@ class SettingsManager:
 
         return tuple(set(dtypes))
 
+    def format_value(self, value, dtype, date_format: str = None):
+        """
+        Set the data type of the provided value.
+        """
+        strptime = datetime.datetime.strptime
+        group_sep = self.thousands_sep
+
+        date_format = self.format_date_str(date_format) if date_format else self.date_format
+
+        cnvrt_failure_msg = 'failed to format value "{VAL}" as "{DTYPE}" - {ERR}'
+
+        if pd.isna(value):
+            return None
+
+        if dtype in self.supported_float_dtypes:
+            try:
+                value_fmt = float(value)
+            except (ValueError, TypeError):
+                try:
+                    value_fmt = float(value.replace(group_sep, ''))
+                except (ValueError, TypeError, AttributeError):
+                    msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type '
+                                                                               '"{TYPE}"'.format(TYPE=type(value)))
+                    logger.warning(msg)
+
+                    raise ValueError(msg)
+
+        elif dtype in self.supported_int_dtypes:
+            try:
+                value_fmt = int(value)
+            except (ValueError, TypeError, AttributeError):
+                try:
+                    value_fmt = value.replace(',', '')
+                except (ValueError, TypeError):
+                    msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type '
+                                                                               '"{TYPE}"'.format(TYPE=type(value)))
+                    logger.warning(msg)
+
+                    raise ValueError(msg)
+
+        elif dtype in self.supported_bool_dtypes:
+            if isinstance(value, bool):
+                value_fmt = value
+            else:
+                try:
+                    value_fmt = bool(int(value))
+                except (ValueError, TypeError):
+                    try:
+                        value_fmt = bool(value)
+                    except ValueError:
+                        msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type '
+                                                                                   '"{TYPE}"'.format(TYPE=type(value)))
+                        logger.warning(msg)
+
+                        raise ValueError(msg)
+
+        elif dtype in self.supported_date_dtypes:
+            if isinstance(value, str):
+                try:
+                    value_fmt = strptime(value, date_format)
+                except (ValueError, TypeError):
+                    msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype,
+                                                   ERR='unable to parse the provided date format')
+                    logger.warning(msg)
+
+                    raise ValueError(msg)
+            elif isinstance(value, datetime.datetime):
+                value_fmt = value
+            else:
+                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type "{TYPE}"'
+                                               .format(TYPE=type(value)))
+                logger.warning(msg)
+
+                raise ValueError(msg)
+
+        else:
+            try:
+                value_fmt = str(value)
+            except (ValueError, TypeError):
+                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type "{TYPE}"'
+                                               .format(TYPE=type(value)))
+                logger.warning(msg)
+
+                raise ValueError(msg)
+            else:
+                if value_fmt == '':
+                    value_fmt = None
+
+        return value_fmt
+
     def set_shortcuts(self, window):
         """
         Bind keyboard shortcuts to text.

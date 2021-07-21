@@ -396,10 +396,10 @@ class DataParameter:
         elif dtype in settings.supported_int_dtypes:
             try:
                 value_fmt = int(value)
-            except (ValueError, TypeError, AttributeError):
+            except (ValueError, TypeError):
                 try:
                     value_fmt = value.replace(',', '')
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, AttributeError):
                     msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
                                                    ERR='unable to convert value of type "{TYPE}"'.format(
                                                        TYPE=type(value)))
@@ -1359,7 +1359,7 @@ class DataParameterRange(DataParameter):
         """
         element_key = self.key_lookup('Element')
         if event == element_key:
-            self.value = mod_win2.range_value_window(self.dtype, title=self.description)
+            self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description)
 
             display_value = self.format_display()
             window[event].update(text=display_value)

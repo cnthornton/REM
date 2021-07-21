@@ -316,14 +316,14 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     bffr_height = 230  # window height minus space reserved for the title and buttons
     height_key = '-HEIGHT-'
     layout = [[sg.Col([[sg.Canvas(key=height_key, size=(1, height))]]),
-              sg.Col([
-                  [sg.Col(title_layout, background_color=header_col, expand_x=True)],
-                  [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                  [sg.Col(record.layout(win_size=(width, height - bffr_height), view_only=view_only, ugroup=user_priv),
-                          pad=(0, 0), background_color=bg_col, expand_x=True)],
-                  [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                  [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
-              ], pad=(0, 0), expand_y=True, expand_x=True)]]
+               sg.Col([
+                   [sg.Col(title_layout, background_color=header_col, expand_x=True)],
+                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+                   [sg.Col(record.layout(win_size=(width, height - bffr_height), view_only=view_only, ugroup=user_priv),
+                           pad=(0, 0), background_color=bg_col, expand_x=True)],
+                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+                   [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
+               ], pad=(0, 0), expand_y=True, expand_x=True)]]
 
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
@@ -488,7 +488,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             try:
                 record.run_event(window, event, values)
             except Exception as e:
-                msg = 'Record {ID}: failed to run record event {EVENT} - {ERR}'\
+                msg = 'Record {ID}: failed to run record event {EVENT} - {ERR}' \
                     .format(ID=record_id, EVENT=event, ERR=e)
                 logger.exception(msg)
                 popup_notice('failed to run event for record {}'.format(record_id))
@@ -547,10 +547,10 @@ def database_importer_window(win_size: tuple = None):
     # Bind keyboard events
     window = settings.set_shortcuts(window)
     deletion_keys = ['d', 'Delete', 'BackSpace']
-#    window.bind('<Key-Escape>', '-ESCAPE-')
-#    window.bind('<Key-Return>', '-ENTER-')
-#    window.bind('<Key-Right>', '-RIGHT-')
-#    window.bind('<Key-Left>', '-LEFT-')
+    #    window.bind('<Key-Escape>', '-ESCAPE-')
+    #    window.bind('<Key-Return>', '-ENTER-')
+    #    window.bind('<Key-Right>', '-RIGHT-')
+    #    window.bind('<Key-Left>', '-LEFT-')
 
     # Element values
     panel_keys = {0: '-P1-', 1: '-P2-', 2: '-P3-'}
@@ -721,8 +721,8 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             coltype = dtype_map[db_type.lower()]
                         except KeyError:
-                            msg = 'database data type {DTYPE} of row {ROW} not in list of expected data types'\
-                                .format(DTYPE=db_type, ROW=index+1)
+                            msg = 'database data type {DTYPE} of row {ROW} not in list of expected data types' \
+                                .format(DTYPE=db_type, ROW=index + 1)
                             logger.warning(msg)
                             popup_notice(msg)
                             continue
@@ -866,7 +866,7 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             subset_df = subset_df[cond_results]
                         except Exception as e:
-                            msg = 'failed to subset the dataframe using subset rule "{RULE}" - {ERR}'\
+                            msg = 'failed to subset the dataframe using subset rule "{RULE}" - {ERR}' \
                                 .format(RULE=sub_num, ERR=e)
                             popup_error(msg)
                             logger.error(msg)
@@ -919,7 +919,7 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             elem_dtype = columns[elem_col][0]
                         except KeyError:
-                            msg = 'column "{COL}" used in modify rule "{RULE}" must be a valid table column'\
+                            msg = 'column "{COL}" used in modify rule "{RULE}" must be a valid table column' \
                                 .format(COL=elem_col, RULE=elem_num + 1)
                             popup_error(msg)
                             logger.warning(msg)
@@ -1410,8 +1410,8 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     window = settings.set_shortcuts(window)
     table_shortcuts = settings.get_shortcuts('Table')
     print('table shortcuts are: {}'.format(table_shortcuts))
-#    window.bind('<Key-Return>', '-ENTER-')
-#    window.bind('<Key-Escape>', '-ESCAPE-')
+    #    window.bind('<Key-Return>', '-ENTER-')
+    #    window.bind('<Key-Escape>', '-ESCAPE-')
 
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
@@ -1577,7 +1577,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             # Load the display records
             import_df = record_entry.import_records(params=table.parameters)
 
-#            table.df = pd.DataFrame(columns=list(table.columns))
+            #            table.df = pd.DataFrame(columns=list(table.columns))
             table.reset(window)
             table.df = table.append(import_df)
             display_df = table.update_display(window)
@@ -1859,8 +1859,8 @@ def edit_settings(win_size: tuple = None):
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
-#    window.bind('<Key-Escape>', '-ESCAPE-')
-#    window.bind('<Key-Return>', '-ENTER-')
+    #    window.bind('<Key-Escape>', '-ESCAPE-')
+    #    window.bind('<Key-Return>', '-ENTER-')
 
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
                     '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname',
@@ -1887,6 +1887,100 @@ def edit_settings(win_size: tuple = None):
     layout = None
     window = None
     gc.collect()
+
+
+def range_value_window(dtype, current: list = None, title: str = 'Range'):
+    """
+    Display window for obtaining values for a ranged parameter.
+    """
+    value_range = current if current and len(current) == 2 else [None, None]
+
+    # Element settings
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+    pad_v = mod_const.VERT_PAD
+
+    date_ico = mod_const.CALENDAR_ICON
+    font = mod_const.LARGE_FONT
+    font_h = mod_const.HEADER_FONT
+
+    in_col = mod_const.INPUT_COL
+    bg_col = mod_const.ACTION_COL
+    header_col = mod_const.HEADER_COL
+
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    save_shortcut = hotkeys['-HK_ENTER-'][2]
+
+    # Layout
+    orig_val1, orig_val2 = value_range
+    if dtype in settings.supported_date_dtypes:
+        in_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
+                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                     sg.CalendarButton('', target='-R1-', format='%Y-%m-%d', image_data=date_ico, font=font,
+                                       border_width=0, tooltip='Select date from calendar menu'),
+                     sg.Text(' - ', background_color=bg_col),
+                     sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
+                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                     sg.CalendarButton('', target='-R2-', format='%Y-%m-%d', image_data=date_ico, font=font,
+                                       border_width=0, tooltip='Select date from calendar menu'),
+                     ]
+    else:
+        in_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
+                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                     sg.Text(' - ', background_color=bg_col),
+                     sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
+                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                     ]
+
+    bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                              bind_return_key=True, pad=(pad_el, 0),
+                              tooltip='Save value range ({})'.format(save_shortcut))]]
+
+    layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
+                                background_color=header_col)]],
+                      justification='l', background_color=header_col, expand_x=True, expand_y=True)],
+              [sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
+
+    window = sg.Window('Settings', layout, modal=True, resizable=False)
+    window.finalize()
+    window = center_window(window)
+
+    # Bind keys to events
+    window = settings.set_shortcuts(window)
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
+            break
+
+        if event in ('-SAVE-', '-HK_ENTER-'):
+            val1 = window['-R1-']
+            val2 = window['-R2-']
+            try:
+                value_range[0] = settings.format_value(val1, dtype)
+                value_range[1] = settings.format_value(val2, dtype)
+            except ValueError:
+                msg = 'failed to format values as "{DTYPE}"'.format(DTYPE=dtype)
+                popup_error(msg)
+
+                continue
+
+            break
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return value_range
 
 
 def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win_size: tuple = None):
