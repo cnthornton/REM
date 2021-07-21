@@ -831,8 +831,9 @@ class SettingsManager:
         """
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
-        if not is_datetime_dtype(type(dt)) or not isinstance(dt, datetime.datetime):
-            raise ValueError('a datetime object is required in order to format a date for display')
+        if not is_datetime_dtype(type(dt)) and not isinstance(dt, datetime.datetime):
+            raise ValueError('a datetime object is required in order to format a date for display - an object of '
+                             'type "{TYPE}" was provided instead'.format(TYPE=type(dt)))
 
         if offset:
             date = self.apply_date_offset(dt)

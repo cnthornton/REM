@@ -16,7 +16,7 @@ from REM.client import logger, settings
 
 class DataParameter:
     """
-    GUI data storage element.
+    Data input parameter element.
 
     Attributes:
 
@@ -37,8 +37,6 @@ class DataParameter:
         hidden (bool): element is not visible to the user. [Default: False]
 
         required (bool): parameter value is required for an event.
-
-        pattern_matching (bool): query with paramter using pattern matching [Default: False]
 
         icon (str): file name of the parameter's icon [Default: None].
 
@@ -77,24 +75,13 @@ class DataParameter:
         except KeyError:
             self.dtype = 'varchar'
         else:
-            if self.etype in ('date', 'date_range'):
-                if dtype not in settings.supported_date_dtypes:
-                    self.dtype = 'datetime'
-                else:
-                    self.dtype = dtype
-            elif self.etype == 'checkbox':
-                if dtype not in settings.supported_bool_dtypes:
-                    self.dtype = 'bool'
-                else:
-                    self.dtype = dtype
+            supported_dtypes = settings.get_supported_dtypes()
+            if dtype not in supported_dtypes:
+                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types '
+                               'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
+                self.dtype = None
             else:
-                supported_dtypes = settings.get_supported_dtypes()
-                if dtype not in supported_dtypes:
-                    logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types '
-                                   'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
-                    self.dtype = 'varchar'
-                else:
-                    self.dtype = dtype
+                self.dtype = dtype
 
         try:
             editable = bool(int(entry['IsEditable']))
@@ -128,20 +115,6 @@ class DataParameter:
             sys.exit(1)
         else:
             self.required = required
-
-        try:
-            pattern = bool(int(entry['PatternMatching']))
-        except KeyError:
-            self.pattern_matching = False
-        except ValueError:
-            mod_win2.popup_error('Configuration Error: DataParameter {NAME}: "PatternMatching" must be either 0 '
-                                 '(False) or 1 (True)'.format(NAME=self.name))
-            sys.exit(1)
-        else:
-            if self.dtype in settings.supported_str_dtypes or self.dtype in settings.supported_cat_dtypes:
-                self.pattern_matching = pattern
-            else:  # only allow pattern matching for string-like data types
-                self.pattern_matching = False
 
         try:
             self.icon = entry['Icon']
@@ -548,42 +521,62 @@ class DataParameter:
                              .format(NAME=self.name, KEY=element_key, VAL=status))
                 window[element_key].update(disabled=status)
 
-    def query_statement(self, column):
-        """
-        Generate the filter clause for SQL querying.
-        """
-        dtype = self.dtype
-        pattern = self.pattern_matching
-
-        value = self.value
-
-        if dtype in settings.supported_date_dtypes:
-            query_value = self.value.strftime(settings.date_format)
-        elif dtype in settings.supported_bool_dtypes:
-            query_value = int(value)
-        else:
-            query_value = value
-
-        if pd.isna(query_value):
-            statement = None
-        else:
-            if pattern is True:
-                query_value = '%{VAL}%'.format(VAL=query_value)
-                statement = ('{COL} LIKE ?'.format(COL=column), (query_value,))
-            else:
-                statement = ('{COL} = ?'.format(COL=column), (query_value,))
-
-        return statement
-
 
 class DataParameterInput(DataParameter):
     """
-    Input-style parameter.
+    Data parameter of standard input type.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        id (int): data element number.
+
+        elements (list): list of data element GUI keys.
+
+        description (str): display name of the data element.
+
+        etype (str): GUI element type. Can be dropdown, input, date, date_range, button, or checkbox.
+
+        dtype (str): data type of the parameter's data storage elements [Default: string].
+
+        editable (bool): element is editable. [Default: False]
+
+        hidden (bool): element is not visible to the user. [Default: False]
+
+        required (bool): parameter value is required for an event.
+
+        pattern_matching (bool): query parameter using pattern matching [Default: False]
+
+        icon (str): file name of the parameter's icon [Default: None].
+
+        value: value of the parameter's data storage elements.
     """
     def __init__(self, name, entry):
         super().__init__(name, entry)
+        # Add additional calendar element for input with datetime data types to list of editable elements
         if self.dtype in settings.supported_date_dtypes:
             self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
+
+        # Data type check
+        if not self.dtype:
+            self.dtype = 'varchar'
+
+        # Optional pattern matching flag for string and character data types
+        try:
+            pattern = bool(int(entry['PatternMatching']))
+        except KeyError:
+            self.pattern_matching = False
+        except ValueError:
+            mod_win2.popup_error('Configuration Error: DataParameter {NAME}: "PatternMatching" must be either 0 '
+                                 '(False) or 1 (True)'.format(NAME=self.name))
+            sys.exit(1)
+        else:
+            supported_dtypes = settings.supported_str_dtypes + settings.supported_cat_dtypes
+            if self.dtype in supported_dtypes:
+                self.pattern_matching = pattern
+            else:  # only allow pattern matching for string-like data types
+                self.pattern_matching = False
 
         # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): self.default})
@@ -711,6 +704,33 @@ class DataParameterInput(DataParameter):
 
         return formatted_value
 
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        dtype = self.dtype
+        pattern = self.pattern_matching
+
+        value = self.value
+
+        if dtype in settings.supported_date_dtypes:
+            query_value = self.value.strftime(settings.date_format)
+        elif dtype in settings.supported_bool_dtypes:
+            query_value = int(value)
+        else:
+            query_value = value
+
+        if pd.isna(query_value):
+            statement = None
+        else:
+            if pattern is True:
+                query_value = '%{VAL}%'.format(VAL=query_value)
+                statement = ('{COL} LIKE ?'.format(COL=column), (query_value,))
+            else:
+                statement = ('{COL} = ?'.format(COL=column), (query_value,))
+
+        return statement
+
     def filter_table(self, df):
         """
         Use the parameter value to filter a dataframe.
@@ -751,29 +771,67 @@ class DataParameterInput(DataParameter):
 
 class DataParameterCombo(DataParameter):
     """
-    DropDown-style parameter.
+    Dropdown-type data parameter.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        id (int): data element number.
+
+        elements (list): list of data element GUI keys.
+
+        description (str): display name of the data element.
+
+        etype (str): GUI element type. Can be dropdown, input, date, date_range, button, or checkbox.
+
+        dtype (str): data type of the parameter's data storage elements [Default: string].
+
+        editable (bool): element is editable. [Default: False]
+
+        hidden (bool): element is not visible to the user. [Default: False]
+
+        required (bool): parameter value is required for an event.
+
+        combo_values (list): list of possible values for the dropdown menu.
+
+        aliases (dict): optional combo value aliases.
+
+        icon (str): file name of the parameter's icon [Default: None].
+
+        value: value of the parameter's data storage elements.
     """
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
 
+        # Enforce supported data types for the dropdown parameter
+        supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + settings.supported_cat_dtypes
+        if not self.dtype or self.dtype not in supported_dtypes:
+            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
+                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.dtype = 'varchar'
+
         # Dropdown values
         try:
-            self.combo_values = entry['Values']
+            combo_values = entry['Values']
         except KeyError:
-            msg = 'values required for parameter type "dropdown"'
+            msg = 'missing required parameter "Values" for data parameters of type "{ETYPE}"'.format(ETYPE=self.etype)
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.combo_values = []
-
-        # Enforce supported data types for the dropdown parameter
-        supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + settings.supported_cat_dtypes
-        if self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "dropdown" parameter. Supported data types are {DTYPES}' \
-                .format(DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-            self.dtype = 'varchar'
+        else:
+            self.combo_values = []
+            for combo_value in combo_values:
+                try:
+                    self.combo_values.append(self.set_datatype(combo_value))
+                except ValueError:
+                    msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
+                    mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                    logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
         # Dropdown aliases
         try:
@@ -784,11 +842,10 @@ class DataParameterCombo(DataParameter):
             self.aliases = {}
             for combo_value in self.combo_values:
                 if combo_value not in aliases:
-                    value_fmt = self.set_datatype(combo_value)
-                    self.aliases[value_fmt] = value_fmt
+                    self.aliases[combo_value] = combo_value
                 else:
                     alias = aliases[combo_value]
-                    self.aliases[self.set_datatype(combo_value)] = self.set_datatype(alias)
+                    self.aliases[combo_value] = self.set_datatype(alias)
 
         # Set the default value
         if self.default in self.combo_values:
@@ -802,6 +859,7 @@ class DataParameterCombo(DataParameter):
 
             self.default = default_value = None
 
+        # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): default_value})
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
@@ -934,6 +992,25 @@ class DataParameterCombo(DataParameter):
 
         return formatted_value
 
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        dtype = self.dtype
+        value = self.value
+
+        if dtype in settings.supported_bool_dtypes:
+            query_value = int(value)
+        else:
+            query_value = value
+
+        if pd.isna(query_value):
+            statement = None
+        else:
+            statement = ('{COL} = ?'.format(COL=column), (query_value,))
+
+        return statement
+
     def filter_table(self, df):
         """
         Use the parameter value to filter a dataframe.
@@ -970,7 +1047,7 @@ class DataParameterCombo(DataParameter):
 
 class DataParameterDate(DataParameter):
     """
-    Date-style parameter.
+    Date-style data parameter.
     """
 
     def __init__(self, name, entry):
@@ -980,8 +1057,8 @@ class DataParameterDate(DataParameter):
         # Enforce supported data types for the date parameter
         supported_dtypes = settings.supported_date_dtypes
         if self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "date" parameter. Supported data types are {DTYPES}' \
-                .format(DTYPES=', '.join(supported_dtypes))
+            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
+                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             self.dtype = 'date'
 
@@ -1106,6 +1183,19 @@ class DataParameterDate(DataParameter):
 
         return formatted_value.replace('-', '')
 
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        query_value = self.value
+
+        if pd.isna(query_value):
+            statement = None
+        else:
+            statement = ('{COL} = ?'.format(COL=column), (query_value,))
+
+        return statement
+
     def filter_table(self, df):
         """
         Use the parameter value to filter a dataframe.
@@ -1142,12 +1232,47 @@ class DataParameterDate(DataParameter):
 
 class DataParameterRange(DataParameter):
     """
-    Date parameter range element object.
+    Data parameter with a range-picking element.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        id (int): data element number.
+
+        elements (list): list of data element GUI keys.
+
+        description (str): display name of the data element.
+
+        etype (str): GUI element type. Can be dropdown, input, date, date_range, button, or checkbox.
+
+        dtype (str): data type of the parameter's data storage elements [Default: string].
+
+        editable (bool): element is editable. [Default: False]
+
+        hidden (bool): element is not visible to the user. [Default: False]
+
+        required (bool): parameter value is required for an event.
+
+        icon (str): file name of the parameter's icon [Default: None].
+
+        value: value of the parameter's data storage elements.
     """
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
 
+        # Enforce supported data types for the dropdown parameter
+        supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes \
+                           + settings.supported_date_dtypes
+        if not self.dtype or self.dtype not in supported_dtypes:
+            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
+                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.dtype = 'float'
+
+        # Dynamic attributes
         try:
             self.value = [self.set_datatype(self.default[0]), self.set_datatype(self.default[1])]
         except (IndexError, TypeError):
@@ -1655,22 +1780,48 @@ class DataParameterDateRange(DataParameter):
 class DataParameterCheckbox(DataParameter):
     """
     Checkbox parameter element object.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        id (int): data element number.
+
+        elements (list): list of data element GUI keys.
+
+        description (str): display name of the data element.
+
+        etype (str): GUI element type. Can be dropdown, input, date, date_range, button, or checkbox.
+
+        dtype (str): data type of the parameter's data storage elements [Default: string].
+
+        editable (bool): element is editable. [Default: False]
+
+        hidden (bool): element is not visible to the user. [Default: False]
+
+        required (bool): parameter value is required for an event.
+
+        icon (str): file name of the parameter's icon [Default: None].
+
+        value: value of the parameter's data storage elements.
     """
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
 
-        if pd.isna(self.default):
+        if pd.isna(self.default):  # the default for checkbox elements is always False if not set in config
             self.default = False
 
+        # Data type check
         supported_dtypes = settings.supported_bool_dtypes
         if self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "checkbox" parameter. Supported data types are {DTYPES}' \
-                .format(DTYPES=', '.join(supported_dtypes))
+            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
+                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'bool'
 
+        # Dynamic attributes
         self.value = self.format_value({self.key_lookup('Element'): self.default})
         logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, formatted value {VAL}'
@@ -1775,12 +1926,33 @@ class DataParameterCheckbox(DataParameter):
 
         return formatted_value
 
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        value = self.value
+
+        try:
+            query_value = int(value)
+        except ValueError:
+            msg = 'unable to format parameter value {VAL} for querying - unsupported value type "{TYPE}" provided'\
+                .format(VAL=value, TYPE=type(value))
+            logger.error('DataParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            query_value = None
+
+        if pd.isna(query_value):
+            statement = None
+        else:
+            statement = ('{COL} = ?'.format(COL=column), (query_value,))
+
+        return statement
+
     def filter_table(self, df):
         """
         Use the parameter value to filter a dataframe.
         """
         param_value = self.value
-        match_pattern = self.pattern_matching
         dtype = self.dtype
         column = self.name
 
@@ -1805,9 +1977,6 @@ class DataParameterCheckbox(DataParameter):
 
         logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
-        if match_pattern is True:
-            df = df[col_values.str.contains(param_value, case=False, regex=True)]
-        else:
-            df = df[col_values == param_value]
+        df = df[col_values == param_value]
 
         return df
