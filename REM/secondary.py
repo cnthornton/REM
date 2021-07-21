@@ -1666,8 +1666,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
-#    window.bind('<Key-Escape>', '-ESCAPE-')
-#    window.bind('<Key-Return>', '-ENTER-')
+    table_shortcuts = settings.get_shortcuts('Table')
 
     # Resize screen
     screen_w, screen_h = window.get_screen_dimensions()
@@ -1750,7 +1749,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             select_index = [table.index_map[i] for i in selected_rows]
             break
 
-        if event in table.elements:
+        if event in table.elements or event in table_shortcuts:
             display_table = table.run_event(window, event, values)
             continue
 
