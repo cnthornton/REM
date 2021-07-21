@@ -93,9 +93,9 @@ class TableElement:
         self.elements = ['-TBL_ADD-', '-TBL_DEL-', '-TBL_IMP-']
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ['Element', 'Import', 'Add', 'Delete', 'Export', 'Total', 'Search', 'Filter', 'Fill',
-                               'FilterFrame', 'FilterButton', 'SummaryFrame', 'SummaryButton', 'Width', 'CollapseButton',
-                               'CollapseFrame', 'SummaryWidth', 'Options', 'Cancel', 'Sort', 'OptionsFrame',
-                               'OptionsWidth']])
+                               'FilterFrame', 'FilterButton', 'SummaryFrame', 'SummaryButton', 'Width',
+                               'CollapseButton', 'CollapseFrame', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
+                               'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3']])
         self.etype = 'table'
 
         try:
@@ -1140,6 +1140,9 @@ class TableElement:
         cancel_key = self.key_lookup('Cancel')
         options_key = self.key_lookup('Options')
         sort_key = self.key_lookup('Sort')
+        col1width_key = self.key_lookup('WidthCol1')
+        col2width_key = self.key_lookup('WidthCol2')
+        col3width_key = self.key_lookup('WidthCol3')
 
         # Element settings
         text_col = mod_const.TEXT_COL  # standard text color
@@ -1194,20 +1197,26 @@ class TableElement:
 
         # Row layouts
 
-        # Table filters
+        # Table filter parameters layout
         filter_params = self.parameters
-        use_center = True
         if len(filter_params) <= 2 or len(filter_params) == 4:
             use_center = False
+            param_w = int(width * 0.35 / 10)
+            col2_w = int(width * 0.1)
+            col1_w = col3_w = int(width * 0.45)
+        else:
+            use_center = True
+            param_w = int(width * 0.30 / 10)
+            col1_w = col2_w = col3_w = int(width * 0.33)
 
-        left_cols = []
-        center_cols = []
-        right_cols = []
-        left_sizes = []
+        left_cols = [[sg.Canvas(key=col1width_key, size=(col1_w, 0), background_color=filter_bg_col)]]
+        center_cols = [[sg.Canvas(key=col2width_key, size=(col2_w, 0), background_color=filter_bg_col)]]
+        right_cols = [[sg.Canvas(key=col3width_key, size=(col3_w, 0), background_color=filter_bg_col)]]
 
         i = 0
         for parameter in filter_params:
-            param_cols = parameter.layout(padding=(0, pad_el * 2), size=(14, 1), bg_col=filter_bg_col)
+            param_cols = parameter.layout(padding=(0, pad_el * 2), size=(param_w, 1), bg_col=filter_bg_col,
+                                          auto_size_desc=False)
             for param_layout in param_cols:
                 i += 1
                 if use_center is True:
@@ -1217,13 +1226,11 @@ class TableElement:
 
                 if use_center is True and index_mod == 1:
                     left_cols.append([param_layout])
-                    left_sizes.append(len(parameter.description))
                 elif use_center is True and index_mod == 2:
                     center_cols.append([param_layout])
                 elif use_center is True and index_mod == 0:
                     right_cols.append([param_layout])
                 elif use_center is False and index_mod == 1:
-                    left_sizes.append(len(parameter.description))
                     left_cols.append([param_layout])
                     center_cols.append([sg.Canvas(size=(0, 0), visible=True)])
                 elif use_center is False and index_mod == 0:
@@ -1232,24 +1239,15 @@ class TableElement:
                     logger.warning('DataTable {NAME}: cannot assign layout for table filter parameter {PARAM}'
                                    .format(NAME=self.name, PARAM=parameter.name))
 
-        if len(right_cols) < 1:
-            right_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
-                                      background_color=filter_bg_col, expand_x=True)])
-        if len(left_cols) < 1:
-            left_cols.append([sg.Col([[sg.Canvas(size=(0, 0), background_color=filter_bg_col)]],
-                                     background_color=filter_bg_col, expand_x=True)])
-        if len(center_cols) < 1:
-            center_cols.append([])
-
         filters = [[sg.Frame('', [
-            [sg.Canvas(size=(width / 13, 0), key=self.key_lookup('Width'), background_color=alt_col)],
+            [sg.Canvas(size=(width / 10, 0), key=self.key_lookup('Width'), background_color=alt_col)],
             [sg.Col(left_cols, pad=(0, 0), background_color=filter_bg_col, justification='l',
-                    element_justification='r', vertical_alignment='t', expand_x=True),
+                    element_justification='c', vertical_alignment='t'),
              sg.Col(center_cols, pad=(0, 0), background_color=filter_bg_col, justification='c',
-                    element_justification='c', vertical_alignment='t', expand_x=True),
+                    element_justification='c', vertical_alignment='t'),
              sg.Col(right_cols, pad=(0, 0), background_color=filter_bg_col, justification='r',
-                    element_justification='l', vertical_alignment='t', expand_x=True)],
-            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, (0, pad_h)), disabled=disabled,
+                    element_justification='c', vertical_alignment='t')],
+            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_h), disabled=disabled,
                                 button_color=(alt_col, filter_head_col),
                                 disabled_button_color=(disabled_text_col, disabled_bg_col),
                                 tooltip='Apply table filters ({})'.format(filter_shortcut))]],
@@ -1662,6 +1660,34 @@ class TableElement:
         if len(filter_params) > 0 and self.actions['filter'] is True:
             width_key = self.key_lookup('Width')
             window[width_key].set_size((width, None))
+
+            # Resize the filter parameters
+            col1width_key = self.key_lookup('WidthCol1')
+            col2width_key = self.key_lookup('WidthCol2')
+            col3width_key = self.key_lookup('WidthCol3')
+
+            if len(filter_params) <= 2 or len(filter_params) == 4:
+                param_w = int(width * 0.35)
+                col_widths = [int(width * 0.45), int(width * 0.1), int(width * 0.45)]
+            else:
+                param_w = int(width * 0.30)
+                col_widths = [int(width * 0.33) for _ in range(3)]
+
+            remainder = width - sum(col_widths)
+            index = 0
+            for one in [1 for _ in range(int(remainder))]:
+                if index > 2:  # restart at first column
+                    index = 0
+                col_widths[index] += one
+                index += one
+
+            col1_w, col2_w, col3_w = col_widths
+            window[col1width_key].set_size(size=(col1_w, None))
+            window[col2width_key].set_size(size=(col2_w, None))
+            window[col3width_key].set_size(size=(col3_w, None))
+
+            for param in self.parameters:
+                param.resize(window, size=(param_w, None), pixels=True)
 
         swidth_key = self.key_lookup('SummaryWidth')
         if self.summary_rules:

@@ -36,6 +36,8 @@ B2_SIZE = 6
 B3_SIZE = 31
 IN1_SIZE = 20
 BTTN_SIZE = (60, 30)
+PARAM_SIZE_PX = (300, 10)  # pixels
+PARAM_SIZE_CHAR = (30, 1)  # characters
 
 # Text
 MAIN_FONT = ('Arial', 12)
