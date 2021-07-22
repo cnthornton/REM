@@ -1942,13 +1942,16 @@ def range_value_window(dtype, current: list = None, title: str = 'Range', date_f
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Save value range ({})'.format(save_shortcut))]]
 
-    layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
-                                background_color=header_col)]],
-                      justification='l', background_color=header_col, expand_x=True, expand_y=True)],
-              [sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
-              [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
+#    layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
+#                                background_color=header_col)]],
+#                      justification='l', background_color=header_col, expand_x=True, expand_y=True)],
+#              [sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+#              [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
 
-    window = sg.Window('Range', layout, modal=True, resizable=False)
+    layout = [[sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+
+    window = sg.Window(title, layout, modal=True, resizable=False)
     window.finalize()
     window = center_window(window)
 

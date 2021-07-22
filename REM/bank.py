@@ -408,9 +408,14 @@ class BankRule:
         title_layout = [[sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
         # Rule parameter elements
+        if len(params) > 1:
+            param_pad = ((0, pad_h), 0)
+        else:
+            param_pad = (0, 0)
+
         param_elements = []
         for param in params:
-            element_layout = param.layout(padding=((0, pad_h), 0))
+            element_layout = param.layout(padding=param_pad, size=(40, 1), auto_size_desc=True)
             param_elements += element_layout
 
         start_key = self.key_lookup('Start')

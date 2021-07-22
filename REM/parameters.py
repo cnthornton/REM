@@ -1383,7 +1383,7 @@ class DataParameterRange(DataParameter):
             self.value = [self.set_datatype(def_val1), self.set_datatype(def_val2)]
 
             display_value = self.format_display()
-            window[self.key_lookup('Element')].update(value=display_value)
+            window[self.key_lookup('Element')].update(text=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
                auto_size_desc: bool = True):
