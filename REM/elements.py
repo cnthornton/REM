@@ -2168,7 +2168,7 @@ class TableElement:
         elif record_group == 'bank_deposit':
             record_class = mod_records.DepositRecord
         elif record_group == 'audit':
-            record_class = mod_records.TAuditRecord
+            record_class = mod_records.AuditRecord
         else:
             raise AttributeError('unknown record group provided {GROUP}'.format(NAME=self.name, GROUP=record_group))
 
@@ -2714,7 +2714,7 @@ class ReferenceElement:
         elif record_group == 'bank_deposit':
             record_class = mod_records.DepositRecord
         elif record_group == 'audit':
-            record_class = mod_records.TAuditRecord
+            record_class = mod_records.AuditRecord
         else:
             raise TypeError('unknown record group provided {}'.format(record_group))
 

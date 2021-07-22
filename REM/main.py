@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.5.8'
+__version__ = '3.5.9'
 
 import sys
 import tkinter as tk
@@ -644,11 +644,16 @@ def main():
         # Display "About" window
         if values['-MMENU-'] == 'About':
             mod_win2.about()
+
             continue
 
         # Display the database update window
         if event == '-DBMENU-':
-            mod_win2.database_importer_window(win_size=window.get_screen_size())
+            try:
+                mod_win2.database_importer_window(win_size=window.get_screen_size())
+            except Exception as e:
+                logger.exception('importing records to the database failed - {ERR}'.format(ERR=e))
+
             continue
 
         # Pull up an existing database record

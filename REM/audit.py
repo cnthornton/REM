@@ -1897,7 +1897,7 @@ class AuditRecordTab:
                          ['Tab']]
 
         record_entry = settings.records.fetch_rule(name)
-        self.record = mod_records.TAuditRecord(record_entry, level=0)
+        self.record = mod_records.AuditRecord(record_entry, level=0)
         self.record.metadata = []
         self.elements += self.record.elements
 

@@ -2490,7 +2490,7 @@ class DepositRecord(DatabaseRecord):
             window[elem_key].update(value=display_value)
 
 
-class TAuditRecord(DatabaseRecord):
+class AuditRecord(DatabaseRecord):
     """
     Class to manage the layout of an audit record.
     """
@@ -2668,7 +2668,7 @@ def create_record(record_entry, record_data, level: int = 1):
     elif record_type == 'bank_deposit':
         record_class = DepositRecord
     elif record_type == 'audit':
-        record_class = TAuditRecord
+        record_class = AuditRecord
     else:
         logger.warning('unknown record layout type provided {}'.format(record_type))
         return None

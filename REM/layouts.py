@@ -141,6 +141,10 @@ def importer_layout(win_size: tuple = None):
 
     # Element sizes
     bwidth = 0.5
+    format_param_w = 14
+    format_desc_w = 24
+    frame_w = int(width * 0.85)
+    checkbox_pad = 5
 
     # Element selection options
     try:
@@ -187,27 +191,25 @@ def importer_layout(win_size: tuple = None):
                                              button_color=(text_col, bg_col))]]
 
         subset_layout.append(
-                [sg.Col([
-                    [sg.Col([[sg.Text('Subset Rule {}:'.format(index + 1), pad=((0, pad_h), 0), font=font_bold,
-                                      background_color=bg_col, auto_size_text=True)]],
-                            justification='l', element_justification='l', background_color=bg_col),
-                     sg.Col([[sg.Frame('', [
-                         [sg.Text('Column:', pad=(pad_el, pad_el), background_color=def_col, font=font_main),
-                          sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(12, 1),
-                                   background_color=input_col, font=font_main),
-                          sg.Text('Operator:', pad=((0, pad_el), pad_el), background_color=def_col),
-                          sg.Combo(cond_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(12, 1),
-                                   font=font_bold, background_color=input_col),
-                          sg.Text('Value:', pad=((0, pad_el), pad_el), background_color=def_col, font=font_main),
-                          sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(12, 1),
-                                   background_color=bg_col, font=font_main)]],
-                                       background_color=def_col, border_width=1)]],
-                            justification='c', element_justification='l', background_color=bg_col, expand_x=True),
-                     sg.Col(subset_bttn_layout, pad=(pad_h, 0), justification='r', element_justification='r',
-                            background_color=bg_col)]],
-                    key=subset_key, pad=(0, int(pad_el / 2)), visible=visible, expand_x=True,
-                    background_color=bg_col, vertical_alignment='t', justification='l',
-                    element_justification='l')])
+            [sg.Col([
+                [sg.Col([[sg.Text('Subset Rule {}:'.format(index + 1), pad=((0, pad_h), 0), font=font_bold,
+                                  background_color=bg_col, auto_size_text=True)]],
+                        justification='l', element_justification='l', background_color=bg_col),
+                 sg.Col([[sg.Frame('', [
+                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=def_col, font=font_main),
+                      sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(14, 1),
+                               background_color=input_col, font=font_main, tooltip='Column'),
+                      sg.Combo(cond_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(6, 1),
+                               font=font_bold, background_color=input_col, tooltip='Operator'),
+                      sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(14, 1),
+                               background_color=input_col, font=font_main, tooltip='Column value')]],
+                                   background_color=def_col, border_width=1)]],
+                        justification='c', element_justification='l', background_color=bg_col, expand_x=True),
+                 sg.Col(subset_bttn_layout, pad=(pad_h, 0), justification='r', element_justification='r',
+                        background_color=bg_col)]],
+                key=subset_key, pad=(0, int(pad_el / 2)), visible=visible, expand_x=True,
+                background_color=bg_col, vertical_alignment='t', justification='l',
+                element_justification='l')])
 
     # Modify layout
     modify_keys = ['-MODIFY_{}-'.format(i) for i in range(10)]
@@ -240,15 +242,13 @@ def importer_layout(win_size: tuple = None):
                                   background_color=bg_col, auto_size_text=True)]],
                         justification='l', element_justification='l', background_color=bg_col),
                  sg.Col([[sg.Frame('', [
-                     [sg.Text('Column:', pad=(pad_el, pad_el), background_color=def_col, font=font_main),
-                      sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(12, 1),
-                               background_color=input_col, font=font_main),
-                      sg.Text('Operator:', pad=((0, pad_el), pad_el), background_color=def_col),
-                      sg.Combo(math_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(12, 1),
-                               font=font_bold, background_color=input_col),
-                      sg.Text('Value:', pad=((0, pad_el), pad_el), background_color=def_col, font=font_main),
-                      sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(12, 1),
-                               background_color=bg_col, font=font_main)]],
+                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=def_col, font=font_main),
+                      sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(14, 1),
+                               background_color=input_col, font=font_main, tooltip='Column'),
+                      sg.Combo(math_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(6, 1),
+                               font=font_bold, background_color=input_col, tooltip='Operator'),
+                      sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(14, 1),
+                               background_color=input_col, font=font_main, tooltip='Column value')]],
                                    background_color=def_col, border_width=1)]],
                         justification='c', element_justification='l', background_color=bg_col, expand_x=True),
                  sg.Col(modify_bttn_layout, pad=(pad_h, 0), justification='r', element_justification='r',
@@ -263,64 +263,72 @@ def importer_layout(win_size: tuple = None):
                     sg.FileBrowse('Browse ...', pad=((pad_el, pad_frame), 0))]],
                   pad=(pad_frame, (pad_frame, pad_v)), justification='l', background_color=bg_col)],
           [sg.Frame('File format', [
-              [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
-              [sg.Col([
-                  [sg.Text('Format:', size=(16, 1), pad=(pad_el, pad_el), background_color=bg_col),
-                   sg.Combo(file_types, key='-FORMAT-', default_value='xls', size=(12, 1),
-                            pad=(pad_el, pad_el), background_color=input_col, tooltip='Format of the input file'),
-                   sg.Text('', size=(10, 1), background_color=bg_col),
-                   sg.Text('Newline Separator:', size=(16, 1), pad=(pad_el, pad_el), background_color=bg_col),
+              [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
+              [sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)]],
+                      pad=(0, pad_v), background_color=bg_col, expand_x=True, expand_y=True),
+               sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)],
+                       [sg.Text('Format:', auto_size_text=True, pad=(pad_el, pad_el), background_color=bg_col),
+                        sg.Combo(file_types, key='-FORMAT-', default_value='xls', size=(12, 1),
+                                 pad=(pad_el, pad_el), background_color=input_col, tooltip='Format of the input file')],
+                       [sg.Text('Encoding:', auto_size_text=True, pad=(pad_el, 0), background_color=bg_col),
+                   sg.Combo(encodings, key='-ENCODE-', default_value='Default', size=(12, 1), pad=(pad_el, pad_el),
+                            background_color=input_col)]],
+                      pad=((pad_h, 0), pad_v), background_color=bg_col, element_justification='r', expand_x=True),
+               sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)]],
+                      pad=(0, pad_v), background_color=bg_col, expand_x=True, expand_y=True),
+               sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)],
+                       [sg.Text('Newline Separator:', auto_size_text=True, pad=(pad_el, pad_el), background_color=bg_col),
                    sg.Input('\\n', key='-NSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
                             background_color=input_col,
                             tooltip='Character used in the CSV file to distinguish between rows')],
-                  [sg.Text('Encoding:', size=(16, 1), pad=(pad_el, 0), background_color=bg_col),
-                   sg.Combo(encodings, key='-ENCODE-', default_value='Default', size=(12, 1), pad=(pad_el, pad_el),
-                            background_color=input_col),
-                   sg.Text('', size=(10, 1), background_color=bg_col),
-                   sg.Text('Field Separator:', size=(16, 1), pad=(pad_el, pad_el), background_color=bg_col),
+                       [sg.Text('Field Separator:', auto_size_text=True, pad=(pad_el, pad_el), background_color=bg_col),
                    sg.Input('\\t', key='-FSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
                             background_color=input_col,
                             tooltip='Character used in the CSV file to distinguish between columns')]],
-                  pad=(pad_v, pad_v), background_color=bg_col, vertical_alignment='t', expand_x=True, expand_y=True)]
-          ],
-                    pad=(pad_frame, pad_v), border_width=bwidth, background_color=bg_col, title_color=select_col,
-                    relief='groove')],
+                      pad=((0, pad_h), pad_v), background_color=bg_col, element_justification='r', expand_x=True),
+               sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)]], pad=(0, pad_v),
+                      background_color=bg_col, expand_x=True, expand_y=True)]
+          ], pad=(pad_frame, pad_v), border_width=bwidth, background_color=bg_col, title_color=select_col, relief='groove')],
           [sg.Frame('Formatting options', [
-              [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
-              [sg.Col([
-                  [sg.Checkbox('Recognize dates', key='-DATES-', pad=(0, pad_el), default=True, font=font_main,
-                               background_color=bg_col,
-                               tooltip='Attempt to parse the values of columns containing dates.')],
-                  [sg.Checkbox('Recognize integers', key='-INTS-', pad=(0, pad_el), default=True,
-                               font=font_main, background_color=bg_col,
-                               tooltip='Attempt to infer whether the data type of a column is an integer or float. '
-                                       'This is especially relevant for excel files, which store all numeric values as '
-                                       'decimals')],
-                  [sg.Text('Skip n rows at top:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
-                           font=font_main, tooltip='Do not import the first n rows'),
-                   sg.Input('0', key='-TSKIP-', size=(8, 1), pad=(0, pad_el), font=font_main,
-                            background_color=input_col)],
-                  [sg.Text('Skip n rows at bottom:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
-                           font=font_main, tooltip='Do not import the last n rows'),
-                   sg.Input('0', key='-BSKIP-', size=(8, 1), pad=(0, pad_el), font=font_main,
-                            background_color=input_col)],
-                  [sg.Text('Header row (0 indexed):', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
-                           font=font_main, tooltip='Row number, starting at 0, containing the column names (applied '
-                                                   'after filtering by skipped rows).'),
-                   sg.Input('0', key='-HROW-', size=(8, 1), pad=(0, pad_el), font=font_main,
-                            background_color=input_col)],
-                  [sg.Text('Thousands separator:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
-                           font=font_main,
-                           tooltip='Thousands character used for parsing string columns into a numeric form'),
-                   sg.Input(',', key='-TSEP-', size=(8, 1), pad=(0, pad_el), font=font_main,
-                            background_color=input_col)],
-                  [sg.Checkbox('Day before month', key='-DAYFIRST-', pad=(0, pad_el),
-                               default=True, font=font_main, background_color=bg_col,
-                               tooltip='When parsing a date, the day comes before the month (e.g DD/MM)')],
-                  [sg.Checkbox('Year first', key='-YEARFIRST-', pad=(0, pad_el),
-                               default=False, font=font_main, background_color=bg_col,
-                               tooltip='When parsing a date, the year comes before the month and day (e.g YY/MM/DD)')]],
-                  pad=(pad_v, pad_v), background_color=bg_col, vertical_alignment='t', expand_x=True, expand_y=True)]
+              [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
+              [sg.Checkbox('Recognize dates', key='-DATES-', pad=(pad_h, (pad_v, pad_el)), default=True, font=font_main,
+                           background_color=bg_col,
+                           tooltip='Attempt to parse the values of columns containing dates.')],
+              [sg.Checkbox('Recognize integers', key='-INTS-', pad=(pad_h, pad_el), default=True, font=font_main,
+                           background_color=bg_col,
+                           tooltip='Attempt to infer whether data type of a column is an integer or float. '
+                                   'Excel files store all numeric values as decimals')],
+              [sg.Col([[sg.Canvas(size=(int(frame_w * 0.25), 0), background_color=bg_col)],
+                       [sg.Text('Skip n rows at top:', auto_size_text=True, pad=(0, pad_el), font=font_main,
+                                background_color=bg_col, tooltip='Do not import the first n rows')],
+                       [sg.Text('Skip n rows at bottom:', auto_size_text=True, pad=(0, pad_el), background_color=bg_col,
+                                font=font_main, tooltip='Do not import the last n rows')],
+                       [sg.Text('Header row (0 indexed):', auto_size_text=True, pad=(0, pad_el),
+                                background_color=bg_col, font=font_main,
+                                tooltip='Row number, starting at 0, containing the column names (applied '
+                                        'after filtering by skipped rows).')],
+                       [sg.Text('Thousands separator:', auto_size_text=True, pad=(0, pad_el), background_color=bg_col,
+                                font=font_main,
+                                tooltip='Thousands character used for parsing string columns into a numeric form')],
+                       [sg.Text('Date format:', auto_size_text=True, pad=(0, pad_el), background_color=bg_col,
+                                font=font_main, tooltip='Date format used by columns containing date values')],
+                       [sg.Text('Date offset:', auto_size_text=True, pad=(0, pad_el), background_color=bg_col,
+                                font=font_main, tooltip='Dates are offset by the given number of years')]],
+                      pad=((pad_h, 0), (0, pad_v)), background_color=bg_col),
+               sg.Col([[sg.Canvas(size=(int(frame_w * 0.5), 0), background_color=bg_col)],
+                       [sg.Input('0', key='-TSKIP-', size=(format_param_w, 1), pad=(0, pad_el), font=font_main,
+                                 background_color=input_col)],
+                       [sg.Input('0', key='-BSKIP-', size=(format_param_w, 1), pad=(0, pad_el), font=font_main,
+                                 background_color=input_col)],
+                       [sg.Input('0', key='-HROW-', size=(format_param_w, 1), pad=(0, pad_el), font=font_main,
+                                 background_color=input_col)],
+                       [sg.Input(',', key='-TSEP-', size=(format_param_w, 1), pad=(0, pad_el), font=font_main,
+                                 background_color=input_col)],
+                       [sg.Input('YYYY-MM-DD', key='-DATE_FORMAT-', size=(format_param_w, 1), pad=(0, pad_el),
+                                 font=font_main, background_color=input_col)],
+                       [sg.Input('0', key='-DATE_OFFSET-', size=(format_param_w, 1), pad=(0, pad_el), font=font_main,
+                                 background_color=input_col)]],
+                      pad=((0, pad_h), (0, pad_v)), background_color=bg_col, expand_x=True)]
           ],
                     pad=(pad_frame, (pad_v, pad_frame)), border_width=bwidth, background_color=bg_col,
                     title_color=select_col, relief='groove')]]
@@ -332,7 +340,7 @@ def importer_layout(win_size: tuple = None):
                              enable_events=True, background_color=input_col)]],
                   pad=(pad_frame, (pad_frame, pad_v)), justification='l', background_color=bg_col)],
           [sg.Frame('Required Columns', [
-              [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
+              [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
                   [sg.Col([[sg.Listbox(values=[], key='-REQLIST-', size=(26, 8), font=font_main,
                                        background_color=bg_col, bind_return_key=True,
@@ -347,7 +355,7 @@ def importer_layout(win_size: tuple = None):
                     pad=(pad_frame, pad_v), border_width=bwidth, background_color=bg_col, title_color=select_col,
                     relief='groove', tooltip='Set static values for required import columns.')],
           [sg.Frame('Column Map', [
-              [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
+              [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
                   [sg.Col([[sg.Listbox(values=[], key='-MAPLIST-', size=(26, 8), font=font_main,
                                        background_color=bg_col, bind_return_key=True,
@@ -362,7 +370,7 @@ def importer_layout(win_size: tuple = None):
                     pad=(pad_frame, pad_v), border_width=bwidth, background_color=bg_col, title_color=select_col,
                     relief='groove', tooltip='Map imported file column names to database table column names')],
           [sg.Frame('Subset Table Rows', [
-              [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
+              [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col(subset_layout, pad=(pad_v, pad_v), key='-SUBSET-',
                       background_color=bg_col, expand_x=True, expand_y=True,
                       vertical_alignment='t', scrollable=True, vertical_scroll_only=True, justification='l',
@@ -382,25 +390,25 @@ def importer_layout(win_size: tuple = None):
                             'columns support this operation.')]
           ]
     p3 = [[sg.Frame('Import Statistics', [
-              [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
-              [sg.Col([
-                  [sg.Text('Database table:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
-                           font=font_main),
-                   sg.Text('0', key='-TABLENAME-', size=(12, 1), pad=(0, pad_el), font=font_main,
-                           background_color=bg_col)],
-                  [sg.Text('Number of columns selected:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
-                           font=font_main),
-                   sg.Text('0', key='-NCOL-', size=(12, 1), pad=(0, pad_el), font=font_main,
-                           background_color=bg_col)],
-                  [sg.Text('Number of rows to be imported:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
-                           font=font_main),
-                   sg.Text('0', key='-NROW-', size=(12, 1), pad=(0, pad_el), font=font_main, background_color=bg_col)
-                   ]
-              ], pad=(pad_v, pad_v), background_color=bg_col, vertical_alignment='t', expand_x=True, expand_y=True)]],
+        [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
+        [sg.Col([
+            [sg.Text('Database table:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+                     font=font_main),
+             sg.Text('0', key='-TABLENAME-', size=(12, 1), pad=(0, pad_el), font=font_main,
+                     background_color=bg_col)],
+            [sg.Text('Number of columns selected:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+                     font=font_main),
+             sg.Text('0', key='-NCOL-', size=(12, 1), pad=(0, pad_el), font=font_main,
+                     background_color=bg_col)],
+            [sg.Text('Number of rows to be imported:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+                     font=font_main),
+             sg.Text('0', key='-NROW-', size=(12, 1), pad=(0, pad_el), font=font_main, background_color=bg_col)
+             ]
+        ], pad=(pad_v, pad_v), background_color=bg_col, vertical_alignment='t', expand_x=True, expand_y=True)]],
                     pad=(pad_frame, (pad_frame, pad_v)), border_width=bwidth, background_color=bg_col,
                     title_color=select_col, relief='groove')],
           [sg.Frame('Table Preview', [
-              [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
+              [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
                   [create_table_layout([[]], ['{}'.format(i) for i in range(1)], '-PREVIEW-', pad=(0, 0), nrow=15,
                                        width=width * 0.94, tooltip='Preview of the first 10 and last 10 records that '
@@ -468,9 +476,8 @@ def home_screen(win_size: tuple = None):
     else:
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
-#    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width), int(height)),
+    #    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width), int(height)),
     layout = sg.Col([[sg.Image(filename=settings.logo, background_color=bg_col)]],
                     key='-HOME-', element_justification='c', vertical_alignment='c', background_color=bg_col)
 
     return layout
-

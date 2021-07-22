@@ -518,12 +518,11 @@ def database_importer_window(win_size: tuple = None):
                  'char': np.object, 'varchar': np.object, 'binary': np.object, 'varbinary': np.object,
                  'tinytext': np.object, 'text': np.object, 'string': np.object}
 
-    date_types = ['date', 'datetime', 'time', 'timestamp']
-
     oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
 
-    cond_operators = ['==', '!=', '>', '<', '>=', '<=']
-    math_operators = ['+', '-', '*', '/', '%']
+#    cond_operators = ['==', '!=', '>', '<', '>=', '<=']
+    math_operators = ('+', '-', '*', '/', '%')
+    date_types = settings.supported_date_dtypes
 
     # Layout settings
     main_font = mod_const.MAIN_FONT
@@ -541,16 +540,12 @@ def database_importer_window(win_size: tuple = None):
     # Window layout
     layout = mod_lo.importer_layout(win_size=(width, height))
 
-    window = sg.Window('Import to Database', layout, font=main_font, modal=True, return_keyboard_events=True)
+    window = sg.Window('Import records to Database', layout, font=main_font, modal=True, return_keyboard_events=True)
     window.finalize()
 
     # Bind keyboard events
     window = settings.set_shortcuts(window)
     deletion_keys = ['d', 'Delete', 'BackSpace']
-    #    window.bind('<Key-Escape>', '-ESCAPE-')
-    #    window.bind('<Key-Return>', '-ENTER-')
-    #    window.bind('<Key-Right>', '-RIGHT-')
-    #    window.bind('<Key-Left>', '-LEFT-')
 
     # Element values
     panel_keys = {0: '-P1-', 1: '-P2-', 2: '-P3-'}
@@ -589,6 +584,7 @@ def database_importer_window(win_size: tuple = None):
                 logger.info('removing unsaved record IDs')
                 record_entry.remove_unsaved_ids(record_ids)
                 record_ids = []
+
             break
 
         # Import selected data into the database table
@@ -666,6 +662,7 @@ def database_importer_window(win_size: tuple = None):
             # Verify that required fields have values
             if not infile:
                 popup_notice('Please select an input file')
+
                 continue
             else:
                 skiptop = values['-TSKIP-']
@@ -677,6 +674,7 @@ def database_importer_window(win_size: tuple = None):
                     msg = 'only integer values allowed when indicating number of rows to skip'
                     popup_notice(msg)
                     logger.warning(msg)
+
                     continue
 
                 header_row = values['-HROW-']
@@ -686,6 +684,7 @@ def database_importer_window(win_size: tuple = None):
                     msg = 'header row must be an integer value'
                     popup_notice(msg)
                     logger.warning(msg)
+
                     continue
 
                 thousands_sep = values['-TSEP-']
@@ -693,6 +692,32 @@ def database_importer_window(win_size: tuple = None):
                     msg = 'unsupported character provided as the thousands separator'
                     popup_notice(msg)
                     logger.warning(msg)
+
+                    continue
+
+                date_offset = values['-DATE_OFFSET-']
+                offset_oper = date_offset[0]
+                if offset_oper in ('+', '-'):
+                    date_offset = date_offset[1:]
+                else:
+                    offset_oper = '+'
+
+                try:
+                    date_offset = abs(int(date_offset))
+                except ValueError:
+                    msg = 'unsupported character provided as the date offset - date offset requires an integer value'
+                    popup_notice(msg)
+                    logger.warning(msg)
+
+                    continue
+
+                try:
+                    date_format = settings.format_date_str(values['-DATE_FORMAT-'])
+                except TypeError:
+                    msg = 'unknown format provided to the date format parameter'
+                    popup_notice(msg)
+                    logger.warning(msg)
+
                     continue
 
             # Populate Preview table with top 10 and bottom 10 values from spreadsheet
@@ -725,6 +750,7 @@ def database_importer_window(win_size: tuple = None):
                                 .format(DTYPE=db_type, ROW=index + 1)
                             logger.warning(msg)
                             popup_notice(msg)
+
                             continue
                         else:
                             convert_map[fcolname] = coltype
@@ -732,7 +758,7 @@ def database_importer_window(win_size: tuple = None):
                     # Import spreadsheet into dataframe
                     file_format = values['-FORMAT-']
                     if file_format == 'xls':
-                        formatting_options = {'convert_float': values['-INTS-'],
+                        formatting_options = {'convert_float': values['-INTS-'], 'parse_dates': False,
                                               'skiprows': skiptop, 'skipfooter': skipbottom, 'header': header_row,
                                               'thousands': thousands_sep, 'dtype': convert_map}
                         reader = pd.read_excel
@@ -740,7 +766,7 @@ def database_importer_window(win_size: tuple = None):
                         formatting_options = {'sep': values['-FSEP-'], 'skiprows': skiptop,
                                               'skipfooter': skipbottom, 'header': header_row,
                                               'thousands': thousands_sep, 'encoding': 'utf-8',
-                                              'error_bad_lines': False,
+                                              'error_bad_lines': False, 'parse_dates': False,
                                               'skip_blank_lines': True, 'dtype': convert_map}
                         reader = pd.read_csv
 
@@ -748,7 +774,14 @@ def database_importer_window(win_size: tuple = None):
 
                     # Import data from the file into a pandas dataframe
                     pd.set_option('display.max_columns', None)
-                    import_df = reader(infile, **formatting_options)
+                    try:
+                        import_df = reader(infile, **formatting_options)
+                    except Exception as e:
+                        msg = 'unable to parse the format of the input file {IN}'.format(IN=infile)
+                        logger.error('{MSG} - {ERR}'.format(MSG=msg, ERR=e))
+                        popup_notice(msg)
+
+                        continue
 
                     # Rename columns based on mapping information
                     col_mapper = pd.Series(map_df['Table Column Name'].values,
@@ -771,6 +804,7 @@ def database_importer_window(win_size: tuple = None):
                             if all_col not in import_df.columns.values.tolist():
                                 logger.warning('column "{COL}" not a valid database column in table {TBL}'
                                                .format(COL=all_col, TBL=table))
+
                         continue
                     else:
                         # Set columns dtypes
@@ -795,14 +829,21 @@ def database_importer_window(win_size: tuple = None):
                         if values['-DATES-']:
                             for date_col in date_cols:
                                 try:
-                                    final_df[date_col] = pd.to_datetime(final_df[date_col],
-                                                                        dayfirst=values['-DAYFIRST-'],
-                                                                        yearfirst=values['-YEARFIRST-'])
+                                    if offset_oper == '+':
+                                        final_df.loc[:, date_col] = final_df[date_col]\
+                                            .apply(lambda x: datetime.datetime.strptime(x, date_format) -
+                                                             relativedelta(years=+date_offset))
+                                    else:
+                                        final_df.loc[:, date_col] = final_df[date_col]\
+                                            .apply(lambda x: datetime.datetime.strptime(x, date_format) +
+                                                             relativedelta(years=+date_offset))
+
                                 except Exception as e:
-                                    msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}' \
+                                    print(final_df[date_col])
+                                    msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}'\
                                         .format(COL=date_col, ERR=e)
                                     popup_error(msg)
-                                    logger.error(msg)
+                                    logger.exception(msg)
 
                     # Subset table based on specified subset rules
                     subset_df = final_df
@@ -885,13 +926,15 @@ def database_importer_window(win_size: tuple = None):
                         msg = 'failed to create a record IDs for the table entries'
                         popup_notice(msg)
                         logger.error(msg)
+                        record_ids = []
+
                         continue
 
-                    subset_df[settings.id_field] = record_ids
+                    subset_df.loc[:, settings.id_field] = record_ids
 
                     # Set values for the creator fields
-                    subset_df[settings.creator_code] = user.uid
-                    subset_df[settings.creation_date] = datetime.datetime.now()
+                    subset_df.loc[:, settings.creator_code] = user.uid
+                    subset_df.loc[:, settings.creation_date] = datetime.datetime.now()
 
                     # Modify table column values based on the modify column rules
                     for elem_num in mods_in_view:
@@ -906,6 +949,7 @@ def database_importer_window(win_size: tuple = None):
                                   'or mapping columns chosen for importing'.format(COL=elem_col, RULE=elem_num + 1)
                             popup_error(msg)
                             logger.warning(msg)
+
                             continue
 
                         if elem_oper not in math_operators:
@@ -913,6 +957,7 @@ def database_importer_window(win_size: tuple = None):
                                   'math operator'.format(OPER=elem_oper, RULE=elem_num + 1)
                             popup_error(msg)
                             logger.warning(msg)
+
                             continue
 
                         # Get the datatype of the column to modify
@@ -923,6 +968,7 @@ def database_importer_window(win_size: tuple = None):
                                 .format(COL=elem_col, RULE=elem_num + 1)
                             popup_error(msg)
                             logger.warning(msg)
+
                             continue
                         else:
                             elem_obj = dtype_map[elem_dtype]
@@ -935,6 +981,7 @@ def database_importer_window(win_size: tuple = None):
                                 .format(VAL=elem_val, RULE=elem_num + 1)
                             popup_error(msg)
                             logger.warning(msg)
+
                             continue
                         else:
                             logger.debug('modifying table column "{COL}" by value "{VAL}" on rule "{RULE}"'
@@ -970,6 +1017,7 @@ def database_importer_window(win_size: tuple = None):
                                       'columns.'.format(COL=elem_col, OPER=oper_map[elem_oper], RULE=elem_num + 1)
                                 popup_error(msg)
                                 logger.warning(msg)
+
                                 continue
 
                             try:
@@ -987,6 +1035,7 @@ def database_importer_window(win_size: tuple = None):
                                   'numeric or date data type can be modified'.format(RULE=elem_num + 1, COL=elem_col)
                             popup_error(msg)
                             logger.error(msg)
+
                             continue
 
                     # Populate preview with table values
@@ -1000,7 +1049,17 @@ def database_importer_window(win_size: tuple = None):
                         window['-PREVIEW-'].Widget.column(index, width=col_width)
                         window['-PREVIEW-'].Widget.heading(index, text=column_name)
 
-                    preview_df = subset_df.head(10).append(subset_df.tail(10))[preview_cols]
+                    sub_nrow = subset_df.shape[0]
+                    if sub_nrow >= 10:
+                        nhead = 10
+                        if sub_nrow <= 20:
+                            ntail = sub_nrow - 10
+                        else:
+                            ntail = 10
+                    else:
+                        nhead = sub_nrow
+                        ntail = 0
+                    preview_df = subset_df.head(nhead).append(subset_df.tail(ntail))[preview_cols]
 
                     window['-PREVIEW-'].update(values=preview_df.values.tolist())
 
@@ -1406,13 +1465,6 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     window = sg.Window('', layout, modal=True, resizable=True)
     window.finalize()
 
-    # Bind event keys
-    window = settings.set_shortcuts(window)
-    table_shortcuts = settings.get_shortcuts('Table')
-    print('table shortcuts are: {}'.format(table_shortcuts))
-    #    window.bind('<Key-Return>', '-ENTER-')
-    #    window.bind('<Key-Escape>', '-ESCAPE-')
-
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
     if win_size:
@@ -1431,6 +1483,10 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     window = center_window(window)
 
+    # Bind event keys
+    window = settings.set_shortcuts(window)
+    table_shortcuts = settings.get_shortcuts('Table')
+
     # Set table datatypes
     table.df = table.set_datatypes(table.df)
 
@@ -1443,7 +1499,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     elif record_type == 'bank_deposit':
         record_class = mod_records.DepositRecord
     elif record_type == 'audit':
-        record_class = mod_records.TAuditRecord
+        record_class = mod_records.AuditRecord
     else:
         logger.error('failed to initialize record import window - unknown record layout type provided {}'
                      .format(record_type))
@@ -1668,7 +1724,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     window = settings.set_shortcuts(window)
     table_shortcuts = settings.get_shortcuts('Table')
 
-    # Resize screen
+    # Resize and center the screen
     screen_w, screen_h = window.get_screen_dimensions()
     if win_size:
         win_w, win_h = win_size
@@ -1684,14 +1740,13 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     window[height_key].set_size((None, tbl_h))
 
     table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
+    current_w, current_h = window.size
 
     window = center_window(window)
 
+    # Start event loop
     table_statement = mod_db.format_tables(import_rules)
     import_columns = mod_db.format_import_columns(import_rules)
-
-    # Start event loop
-    current_w, current_h = window.size
 
     display_table = table.update_display(window)
 
@@ -1768,14 +1823,18 @@ def about():
     """
     Display the "about program" window.
     """
+    # Window and element size parameters
     bg_col = mod_const.ACTION_COL
+    header_col = mod_const.HEADER_COL
+
     header_font = mod_const.HEADER_FONT
     sub_font = mod_const.BOLD_LARGE_FONT
     text_font = mod_const.LARGE_FONT
+
     pad_frame = mod_const.FRAME_PAD
     pad_el = mod_const.ELEM_PAD
-    header_col = mod_const.HEADER_COL
 
+    # GUI layout
     layout = [[sg.Frame('', [[sg.Col([[sg.Image(filename=settings.logo)]], pad=((0, pad_el), 0),
                                      background_color=bg_col),
                               sg.Col(
@@ -1836,7 +1895,8 @@ def edit_settings(win_size: tuple = None):
     save_shortcut = hotkeys['-HK_ENTER-'][2]
 
     # GUI layout
-    # Buttons
+
+    # Button layout
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
                               pad=(pad_el, 0),
                               tooltip='Cancel edit ({})'.format(cancel_shortcut)),
@@ -1844,30 +1904,29 @@ def edit_settings(win_size: tuple = None):
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Save changes ({})'.format(save_shortcut))]]
 
+    # Get parameter layout from settings
     settings_layout = settings.layout(win_size)
 
-    layout = [[sg.Col([[sg.Text('Edit Settings', pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
+    layout = [[sg.Col([[sg.Text('Edit Program Settings', pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
                                 background_color=header_col)]],
                       justification='l', background_color=header_col, expand_x=True, expand_y=True)],
               settings_layout,
               [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
 
+    # Finalize window and center
     window = sg.Window('Settings', layout, modal=True, resizable=False)
     window.finalize()
 
     window = center_window(window)
 
-    # Bind keys to events
-    window = settings.set_shortcuts(window)
-    #    window.bind('<Key-Escape>', '-ESCAPE-')
-    #    window.bind('<Key-Return>', '-ENTER-')
-
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
                     '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname',
                     '-DISPLAY_DATE-': 'display_date', '-AUDIT_TEMPLATE-': 'audit_template'}
-
     for element_key in element_keys:
         window[element_key].expand(expand_x=True)
+
+    # Bind keys to events
+    window = settings.set_shortcuts(window)
 
     # Start event loop
     while True:
@@ -1898,16 +1957,13 @@ def range_value_window(dtype, current: list = None, title: str = 'Range', date_f
     # Element settings
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
-    pad_v = mod_const.VERT_PAD
 
     date_ico = mod_const.CALENDAR_ICON
     font = mod_const.LARGE_FONT
-    font_h = mod_const.HEADER_FONT
     bold_font = mod_const.BOLD_LARGE_FONT
 
     in_col = mod_const.INPUT_COL
     bg_col = mod_const.ACTION_COL
-    header_col = mod_const.HEADER_COL
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys
@@ -1941,12 +1997,6 @@ def range_value_window(dtype, current: list = None, title: str = 'Range', date_f
     bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Save value range ({})'.format(save_shortcut))]]
-
-#    layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, (pad_frame, pad_v)), font=font_h,
-#                                background_color=header_col)]],
-#                      justification='l', background_color=header_col, expand_x=True, expand_y=True)],
-#              [sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
-#              [sg.Col(bttn_layout, justification='c', pad=(0, (pad_v, pad_frame)))]]
 
     layout = [[sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
@@ -2018,7 +2068,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     else:
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
-    # Format dataframe as a list for the gui
+    # Format dataframe as a list for the layout
     header = row.index.tolist()
 
     if header_map is None:
