@@ -369,11 +369,62 @@ def evaluate_rule(data, condition, as_list: bool = True):
     return row_status
 
 
+def evaluate_operation(data, operation):
+    """
+    Evaluate a given operation.
+    """
+    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!='}
+
+    if isinstance(data, pd.Series):
+        header = data.index.tolist()
+    elif isinstance(data, pd.DataFrame):
+        header = data.columns.values.tolist()
+    elif isinstance(data, dict):
+        header = list(data)
+    else:
+        raise ValueError('data must be either a pandas DataFrame or Series')
+
+    if isinstance(operation, str):
+        components = parse_operation_string(operation)
+    elif isinstance(operation, list):
+        components = operation
+    else:
+        raise ValueError('operation {} must be provided as either a string or list'.format(operation))
+
+    rule_value = []
+    for i, component in enumerate(components):
+        if component in operators:  # component is an operator
+            rule_value.append(component)
+        elif component in header:
+            rule_value.append('data["{}"]'.format(component))
+        elif component.lower() in header:
+            rule_value.append('data["{}"]'.format(component.lower()))
+        else:  # component is an integer or bool
+            try:
+                pd.to_numeric(component, downcast='integer')
+            except Exception:
+                logger.error('unsupported component {COMP} found in operation "{NAME}" - only column, operators, and '
+                             'numeric values are allowed'.format(COMP=component, NAME=operation))
+                raise
+            else:
+                rule_value.append(str(component))
+
+    eval_str = ' '.join(rule_value)
+    try:
+        result = eval(eval_str)
+    except SyntaxError:
+        raise SyntaxError('invalid syntax for operation "{NAME}"'.format(NAME=operation))
+    except NameError:  # dataframe does not have column
+        raise NameError('unknown column found in operation "{NAME}"'.format(NAME=operation))
+
+    return result
+
+
 def parse_operation_string(condition, equivalent: bool = True):
     """
     Split operation string into a list.
     """
-    operators = set('+-*/><=!')
+    operators = set('+-*/%><=!')
 
     # Find the column names and operators defined in the condition rule
     parsed_condition = []
