@@ -1660,7 +1660,7 @@ class DatabaseRecord:
 
         # Verify that required parameters have values
         for param in self.parameters:
-            if param.required is True and param.value_set() is False:
+            if param.required is True and param.has_value() is False:
                 msg = 'no value provided for the required field {FIELD}'.format(FIELD=param.description)
                 logger.warning('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
 
@@ -1683,7 +1683,7 @@ class DatabaseRecord:
 
         # Prepare to save record references
         for reference in self.references:
-            ref_data = reference.as_table()
+            ref_data = reference.as_row()
             ref_id = ref_data['DocNo']  # reference record ID
             logger.debug('Record {ID}: preparing reference statement for reference {REF}'
                          .format(ID=record_id, REF=ref_id))

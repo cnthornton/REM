@@ -976,88 +976,131 @@ class SettingsManager:
         """
         Set the data type of the provided value.
         """
-        group_sep = self.thousands_sep
-
-        date_format = self.format_date_str(date_format) if date_format else self.date_format
-
-        cnvrt_failure_msg = 'failed to format value "{VAL}" as "{DTYPE}" - {ERR}'
-
-        if pd.isna(value):
+        if pd.isna(value) or value == '':
             return None
 
+        cnvrt_failure_msg = 'failed to format value "{VAL}" as "{DTYPE}" - {ERR}'
         if dtype in self.supported_float_dtypes:
             try:
-                value_fmt = float(value)
-            except (ValueError, TypeError):
-                try:
-                    value_fmt = float(value.replace(group_sep, ''))
-                except (ValueError, TypeError, AttributeError):
-                    msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type '
-                                                                               '"{TYPE}"'.format(TYPE=type(value)))
-                    logger.warning(msg)
+                value_fmt = self.format_as_float(value)
+            except ValueError as e:
+                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR=e)
+                logger.warning(msg)
 
-                    raise ValueError(msg)
+                raise ValueError(msg)
 
         elif dtype in self.supported_int_dtypes:
             try:
-                value_fmt = int(value)
-            except (ValueError, TypeError, AttributeError):
-                try:
-                    value_fmt = value.replace(',', '')
-                except (ValueError, TypeError):
-                    msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type '
-                                                                               '"{TYPE}"'.format(TYPE=type(value)))
-                    logger.warning(msg)
+                value_fmt = self.format_as_int(value)
+            except ValueError as e:
+                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR=e)
+                logger.warning(msg)
 
-                    raise ValueError(msg)
+                raise ValueError(msg)
 
         elif dtype in self.supported_bool_dtypes:
-            if isinstance(value, bool):
-                value_fmt = value
-            else:
-                try:
-                    value_fmt = bool(int(value))
-                except (ValueError, TypeError):
-                    try:
-                        value_fmt = bool(value)
-                    except ValueError:
-                        msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type '
-                                                                                   '"{TYPE}"'.format(TYPE=type(value)))
-                        logger.warning(msg)
+            try:
+                value_fmt = self.format_as_bool(value)
+            except ValueError as e:
+                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR=e)
+                logger.warning(msg)
 
-                        raise ValueError(msg)
+                raise ValueError(msg)
 
         elif dtype in self.supported_date_dtypes:
-            if isinstance(value, str):
-                try:
-                    value_fmt = pd.to_datetime(value, format=date_format)
-                except (ValueError, TypeError):
-                    msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype,
-                                                   ERR='unable to parse the provided date format')
-                    logger.warning(msg)
-
-                    raise ValueError(msg)
-            elif isinstance(value, datetime.datetime):
-                value_fmt = value
-            else:
-                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type "{TYPE}"'
-                                               .format(TYPE=type(value)))
+            try:
+                value_fmt = self.format_as_datetime(value, date_format=date_format)
+            except ValueError as e:
+                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR=e)
                 logger.warning(msg)
 
                 raise ValueError(msg)
 
         else:
+            value_fmt = str(value)
+
+        return value_fmt
+
+    def format_as_bool(self, value):
+        """
+        Format a value as a boolean.
+        """
+        if isinstance(value, bool):
+            value_fmt = value
+        else:
             try:
-                value_fmt = str(value)
+                value_fmt = bool(int(value))
             except (ValueError, TypeError):
-                msg = cnvrt_failure_msg.format(VAL=value, DTYPE=dtype, ERR='unable to convert value of type "{TYPE}"'
-                                               .format(TYPE=type(value)))
-                logger.warning(msg)
+                try:
+                    value_fmt = bool(value)
+                except ValueError:
+                    msg = 'unable to convert value {VAL} of type "{TYPE}" to a boolean value'\
+                        .format(VAL=value, TYPE=type(value))
+
+                    raise ValueError(msg)
+
+        return value_fmt
+
+    def format_as_int(self, value, group_sep: str = None, dec_sep: str = None):
+        """
+        Format a value as an integer.
+        """
+        group_sep = group_sep if group_sep else settings.thousands_sep
+        dec_sep = dec_sep if dec_sep else settings.decimal_sep
+
+        try:
+            value_fmt = int(value)
+        except (ValueError, TypeError):
+            try:
+                value_fmt = int(value.replace(group_sep, '').replace(dec_sep, '.'))
+            except (ValueError, TypeError, AttributeError):
+                msg = 'unable to convert value {VAL} of type "{TYPE}" to an integer value' \
+                    .format(VAL=value, TYPE=type(value))
 
                 raise ValueError(msg)
-            else:
-                if value_fmt == '':
-                    value_fmt = None
+
+        return value_fmt
+
+    def format_as_float(self, value, group_sep: str = None, dec_sep: str = None):
+        """
+        Format a value as a float.
+        """
+        group_sep = group_sep if group_sep else settings.thousands_sep
+        dec_sep = dec_sep if dec_sep else settings.decimal_sep
+
+        try:
+            value_fmt = float(value)
+        except (ValueError, TypeError):
+            try:
+                value_fmt = float(value.replace(group_sep, '').replace(dec_sep, '.'))
+            except (ValueError, TypeError, AttributeError):
+                msg = 'unable to convert value {VAL} of type "{TYPE}" to an float value' \
+                    .format(VAL=value, TYPE=type(value))
+
+                raise ValueError(msg)
+
+        return value_fmt
+
+    def format_as_datetime(self, value, date_format: str = None):
+        """
+        Format a value as a float.
+        """
+        date_format = self.format_date_str(date_format) if date_format else self.date_format
+
+        if isinstance(value, str):
+            try:
+                value_fmt = pd.to_datetime(value, format=date_format)
+            except (ValueError, TypeError):
+                msg = 'unable to parse the provided date format'.format(VAL=value, TYPE=type(value))
+
+                raise ValueError(msg)
+        elif isinstance(value, datetime.datetime):
+            value_fmt = value
+        else:
+            msg = 'unable to convert value {VAL} of type "{TYPE}" to an datetime value' \
+                .format(VAL=value, TYPE=type(value))
+
+            raise ValueError(msg)
 
         return value_fmt
 

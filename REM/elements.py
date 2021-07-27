@@ -1929,7 +1929,7 @@ class TableElement:
 
         return row_ids
 
-    def value_set(self):
+    def has_value(self):
         """
         Return True if no NAs in the table else return False.
         """
@@ -2692,7 +2692,7 @@ class ReferenceElement:
         # Load a reference record in a new window
         elif event == ref_key:
             try:
-                record = self.initialize_record()
+                record = self.load_record()
             except Exception as e:
                 msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.record_id, ERR=e)
                 mod_win2.popup_error(msg)
@@ -2703,7 +2703,7 @@ class ReferenceElement:
 
         return result
 
-    def initialize_record(self, level: int = 1):
+    def load_record(self, level: int = 1):
         """
         Create a record object from the reference.
         """
@@ -2723,7 +2723,7 @@ class ReferenceElement:
 
         return record
 
-    def as_table(self):
+    def as_row(self):
         """
         Format reference as a table entry.
         """
@@ -2753,7 +2753,7 @@ class DataElement:
 
         description (str): display name of the data element.
 
-        etype (str): GUI element type. Can be dropdown, input, date, or checkbox
+        etype (str): GUI element type. Can be text, dropdown, input, multiline, reference, or checkbox.
 
         dtype (str): element data type.
 
@@ -3474,7 +3474,7 @@ class DataElement:
 
         return value_fmt
 
-    def value_set(self):
+    def has_value(self):
         """
         Return True if element has a valid value else False
         """

@@ -889,7 +889,7 @@ class AuditRule:
         Enable / Disable audit rule parameter elements.
         """
         for param in self.parameters:
-            param.toggle_parameter(window, value)
+            param.toggle_elements(window, value)
 
 
 class AuditTransactionTab:
@@ -1830,7 +1830,7 @@ class AuditSummary:
         for tab in tabs:
             # Verify that all required fields for tab record have values
             for param in tab.record.parameters:
-                if param.required is True and param.value_set() is False:
+                if param.required is True and param.has_value() is False:
                     msg = 'record {ID} is missing values for required field {FIELD}' \
                         .format(ID=tab.record.record_id(), FIELD=param.description)
                     logger.warning('AuditRuleSummary {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))

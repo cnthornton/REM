@@ -542,7 +542,7 @@ class DataParameter:
 
         return ''.join(buff)
 
-    def toggle_parameter(self, window, value: str = 'enable'):
+    def toggle_elements(self, window, value: str = 'enable'):
         """
         Toggle parameter elements on and off.
         """
@@ -588,6 +588,7 @@ class DataParameterInput(DataParameter):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
+
         # Add additional calendar element for input with datetime data types to list of editable elements
         if self.dtype in settings.supported_date_dtypes:
             self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
@@ -1982,9 +1983,6 @@ class DataParameterCheckbox(DataParameter):
             desc_h = int(height / 10) if pixels else height
         else:
             desc_h = None
-
-        print('resizing checkbox parameter to {}'.format(width))
-        print('resizing checkbox description to {}'.format(desc_w))
 
         desc_key = self.key_lookup('Description')
         window[desc_key].set_size(size=(desc_w, desc_h))

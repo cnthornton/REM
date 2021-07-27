@@ -392,7 +392,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
             # Verify that required parameters have values
             can_continue = True
             for param in record.parameters:
-                if param.required is True and param.value_set() is False:
+                if param.required is True and param.has_value() is False:
                     msg = 'Record {ID}: no value provided for the required field "{FIELD}"' \
                         .format(ID=record_id, FIELD=param.description)
                     logger.error(msg)
@@ -629,7 +629,7 @@ def database_importer_window(win_size: tuple = None):
 
             # Export report describing success of import by row
             success_col = 'Successfully saved'
-            subset_df[success_col] = success
+            subset_df.loc[:, success_col] = success
             outfile = sg.popup_get_file('', title='Save Database import report', save_as=True,
                                         default_extension='xlsx', no_window=True,
                                         file_types=(

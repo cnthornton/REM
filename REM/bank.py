@@ -972,7 +972,7 @@ class BankRule:
         Enable / Disable audit rule parameter elements.
         """
         for parameter in self.parameters:
-            parameter.toggle_parameter(window, value=value)
+            parameter.toggle_elements(window, value=value)
 
 
 class BankRecordTab:
