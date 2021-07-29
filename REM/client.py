@@ -537,6 +537,7 @@ class SettingsManager:
         self.bank_rules = None
         self.cash_rules = None
         self.record_rules = None
+        self.aliases = None
 
         try:
             self.dbname = cnfg['database']['default_database']
@@ -621,6 +622,28 @@ class SettingsManager:
     #        for entry in entries:
     #            entry.remove_unsaved_ids(internal_only=internal)
 
+    def fetch_alias_definition(self, parameter):
+        """
+        Get parameter alias definitions.
+        """
+        aliases = self.aliases
+        if not aliases:
+            msg = 'no alias definitions were defined in the configuration'
+            logger.warning(msg)
+
+            return {}
+
+        logger.debug('fetching alias definition for parameter {PARAM}'.format(PARAM=parameter))
+        try:
+            param_aliases = aliases[parameter]
+        except KeyError:
+            msg = 'no aliases found for parameter {PARAM}'.format(PARAM=parameter)
+            logger.debug(msg)
+
+            param_aliases = {}
+
+        return param_aliases
+
     def load_constants(self, connection):
         """
         Load configuration constants.
@@ -636,6 +659,7 @@ class SettingsManager:
             msg = 'failed to load configuration constants from server - {}'.format(response['value'])
             logger.error(msg)
             popup_error(msg)
+
             conf_const = {}
         else:
             conf_const = response['value']
@@ -644,6 +668,11 @@ class SettingsManager:
         self.cash_rules = conf_const.get('cash_rules', None)
         self.bank_rules = conf_const.get('bank_rules', None)
         self.record_rules = conf_const.get('records', None)
+        param_def = conf_const.get('parameters', None)
+        try:
+            self.aliases = param_def['definition']
+        except KeyError:
+            logger.warning('parameter configuration is missing the definitions entry')
 
         database_attrs = conf_const.get('database', {})
         self.prog_db = database_attrs.get('program_database', 'REM')

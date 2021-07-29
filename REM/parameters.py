@@ -10,8 +10,9 @@ import PySimpleGUI as sg
 import pandas as pd
 
 import REM.constants as mod_const
+import REM.database as mod_db
 import REM.secondary as mod_win2
-from REM.client import logger, settings
+from REM.client import logger, settings, user
 
 
 class DataParameter:
@@ -28,7 +29,7 @@ class DataParameter:
 
         description (str): display name of the data element.
 
-        etype (str): GUI element type. Can be dropdown, input, date, date_range, button, or checkbox.
+        etype (str): GUI element type. Can be dropdown, input, range, or checkbox.
 
         dtype (str): data type of the parameter's data storage elements [Default: string].
 
@@ -569,7 +570,7 @@ class DataParameterInput(DataParameter):
 
         description (str): display name of the data element.
 
-        etype (str): GUI element type. Can be dropdown, input, date, date_range, button, or checkbox.
+        etype (str): GUI element type. Can be dropdown, input, range, or checkbox.
 
         dtype (str): data type of the parameter's data storage elements [Default: string].
 
@@ -864,7 +865,22 @@ class DataParameterCombo(DataParameter):
 
             self.dtype = 'varchar'
 
+        # Dropdown options
+        try:
+            value_opts = entry['DynamicValues']
+        except KeyError:
+            self.options = None
+        else:
+            if 'DatabaseTable' not in value_opts or 'ValueColumn' not in value_opts:
+                msg = 'both the DatabaseTable and ValueColumn parameters are required for DynamicValues'
+                logger.warning('DataParamter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                self.options = None
+            else:
+                self.options = value_opts
+
         # Dropdown values
+        param_def = settings.fetch_alias_definition(self.name)
         try:
             combo_values = entry['Values']
         except KeyError:
@@ -875,21 +891,31 @@ class DataParameterCombo(DataParameter):
             self.combo_values = []
         else:
             self.combo_values = []
+            self.aliases = {}
             for combo_value in combo_values:
                 try:
-                    self.combo_values.append(self.set_datatype(combo_value))
+                    value_fmt = self.set_datatype(combo_value)
                 except ValueError:
                     msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                else:
+                    self.combo_values.append(value_fmt)
+
+                # Add alias from parameter definition, if configured
+                if combo_value in param_def:
+                    self.aliases[combo_value] = param_def[combo_value]
+                else:
+                    print('value {VAL} is not found in the alias definition'.format(VAL=combo_value))
 
         # Dropdown aliases
         try:
             aliases = entry['Aliases']
         except KeyError:
-            self.aliases = {self.set_datatype(i): self.set_datatype(i) for i in self.combo_values}
+            if not self.aliases:
+                self.aliases = {self.set_datatype(i): self.set_datatype(i) for i in self.combo_values}
         else:
-            self.aliases = {}
+            self.aliases = {}  # overwrite possible existing aliases set in parameter definitions
             for combo_value in self.combo_values:
                 if combo_value not in aliases:
                     self.aliases[combo_value] = combo_value
@@ -931,6 +957,42 @@ class DataParameterCombo(DataParameter):
             display_value = self.format_display()
 
             window[self.key_lookup('Element')].update(value=display_value)
+
+    def load_values(self):
+        """
+        Load the combo value options from the database.
+        """
+        dynamic_values = self.options
+        if not dynamic_values:
+            logger.warning('DataParameter {NAME}: unable to load combo values from the database - no dynamic values '
+                           'were configured for the parameter'.format(NAME=self.name))
+            return []
+
+        db_table = dynamic_values['DatabaseTable']
+        value_col = dynamic_values['ValueColumn']
+        if 'Filters' in dynamic_values:
+            import_filters = mod_db.format_import_filters({db_table: dynamic_values})
+        else:
+            import_filters = None
+
+        columns = [value_col]
+        if 'AliasColumn' in dynamic_values:
+            alias_col = dynamic_values['AliasColumn']
+            columns.append(alias_col)
+        else:
+            alias_col = None
+
+        # Load the combo values from the database table
+        import_df = user.read_db(*user.prepare_query_statement(db_table, columns=columns, filter_rules=import_filters),
+                                 prog_db=True)
+        if alias_col:
+            combo_values = {}
+            for i, row in import_df.iterrows():
+                combo_values[row[value_col]] = row[alias_col]
+        else:
+            combo_values = import_df[value_col].tolist()
+
+        return combo_values
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
                auto_size_desc: bool = True):

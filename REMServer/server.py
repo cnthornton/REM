@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 
 import logging
 import logging.handlers as handlers
@@ -525,6 +525,7 @@ class ConfigManager:
         self.cash_rules = None
         self.bank_rules = None
         self.records = None
+        self.aliases = None
 
         # Unsaved record IDs
         self.unsaved_ids = {}
@@ -749,6 +750,7 @@ class ConfigManager:
         self.cash_rules = collection.find_one({'name': 'cash_rules'})
         self.bank_rules = collection.find_one({'name': 'bank_rules'})
         self.records = collection.find_one({'name': 'records'})
+        self.aliases = collection.find_one({'name': 'parameters'})
 
         logger.info('configuration successfully loaded')
 
@@ -770,7 +772,8 @@ class ConfigManager:
                           'databases': self.dbs, 'db_date_format': self.date_format}
 
         attrs = {'audit_rules': self.audit_rules, 'bank_rules': self.bank_rules, 'cash_rules': self.cash_rules,
-                 'records': self.records, 'table_fields': tbl_fields, 'database': database_attrs}
+                 'records': self.records, 'parameters': self.aliases, 'table_fields': tbl_fields,
+                 'database': database_attrs}
 
         if subset is not None:
             attrs = {i: j for i, j in attrs if i in subset}
