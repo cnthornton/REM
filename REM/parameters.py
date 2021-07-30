@@ -2189,7 +2189,7 @@ class DataParameterCheckbox(DataParameter):
         dtype = self.dtype
         column = self.name
 
-        if pd.isna(param_value):  # don't filter on NA values
+        if not param_value:  # don't filter on NA values or False values
             return df
 
         try:
