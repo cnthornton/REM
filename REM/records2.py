@@ -1983,18 +1983,7 @@ def create_record(record_entry, record_data, level: int = 1):
     """
     Create a new database record.
     """
-    record_type = record_entry.group
-    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
-        record_class = StandardRecord
-    elif record_type == 'bank_deposit':
-        record_class = DepositRecord
-    elif record_type == 'audit':
-        record_class = AuditRecord
-    else:
-        logger.warning('unknown record layout type provided {}'.format(record_type))
-        return None
-
-    record = record_class(record_entry, level=level)
+    record = DatabaseRecord(record_entry, level=level)
     record.initialize(record_data, new=True)
 
     return record

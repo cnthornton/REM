@@ -121,7 +121,7 @@ class CashRule:
 
         try:
             self.permissions = entry['AccessPermissions']
-        except KeyError:  # default permission for a mod_cash rule is 'user'
+        except KeyError:  # default permission for a cash rule is 'user'
             self.permissions = 'user'
 
         try:

@@ -137,7 +137,7 @@ class AuditRule:
 
         try:
             self.permissions = entry['AccessPermissions']
-        except KeyError:  # default permission for an audit is 'user'
+        except KeyError:  # default permission for an audit rule is 'user'
             self.permissions = 'user'
 
         self.parameters = []

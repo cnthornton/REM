@@ -1018,34 +1018,24 @@ class BankRecordTab:
             logger.error(msg)
 
             raise AttributeError(msg)
+        else:
+            record_entry = settings.records.fetch_rule(self.record_type)
 
         try:
             self.import_rules = entry['ImportRules']
         except KeyError:
-            msg = 'BankRecordTab {NAME}: missing required field "ImportRules".'.format(NAME=name)
-            logger.error(msg)
-
-            raise AttributeError(msg)
+            self.import_rules = record_entry.import_rules
 
         try:
             self.record_layout = entry['RecordLayout']
         except KeyError:
-            self.record_layout = None
+            self.record_layout = record_entry.record_layout
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
         except KeyError:
-            msg = 'BankRecordTab {NAME}: missing required parameter "DisplayTable"'.format(NAME=name)
-            logger.error(msg)
-
-            raise AttributeError(msg)
-        except AttributeError as e:
-            msg = 'BankRecordTab {NAME}: unable to initialize DisplayTable - {ERR}'.format(NAME=name, ERR=e)
-            logger.error(msg)
-
-            raise AttributeError(msg)
-        else:
-            self.elements += self.table.elements
+            self.table = mod_elem.TableElement(name, record_entry.import_table)
+        self.elements += self.table.elements
 
         try:
             assoc_entries = entry['Associations']
@@ -1447,7 +1437,14 @@ class BankRecordTab:
             assoc_df["RecordType"] = association.table.record_type
 
             # Subset dataframe on relevant columns
-            assoc_df = assoc_df[rule_fields]
+            try:
+                assoc_df = assoc_df[rule_fields]
+            except KeyError:
+                print(rule_fields)
+                pd.set_option('display.max_columns', None)
+                print(assoc_df)
+
+                raise
 
             # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)

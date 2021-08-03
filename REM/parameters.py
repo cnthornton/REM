@@ -636,12 +636,14 @@ class DataParameterInput(DataParameter):
             window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True):
+               auto_size_desc: bool = True, hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+
+        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
@@ -705,7 +707,7 @@ class DataParameterInput(DataParameter):
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
 
     def format_value(self, values):
         """
@@ -865,20 +867,6 @@ class DataParameterCombo(DataParameter):
 
             self.dtype = 'varchar'
 
-        # Dropdown options
-        try:
-            value_opts = entry['DynamicValues']
-        except KeyError:
-            self.options = None
-        else:
-            if 'DatabaseTable' not in value_opts or 'ValueColumn' not in value_opts:
-                msg = 'both the DatabaseTable and ValueColumn parameters are required for DynamicValues'
-                logger.warning('DataParamter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                self.options = None
-            else:
-                self.options = value_opts
-
         # Dropdown values
         param_def = settings.fetch_alias_definition(self.name)
         try:
@@ -902,7 +890,7 @@ class DataParameterCombo(DataParameter):
                 else:
                     self.combo_values.append(value_fmt)
 
-                # Add alias from parameter definition, if configured
+                # Add alias from parameter definition, if configured in the parameter definitions
                 if combo_value in param_def:
                     self.aliases[combo_value] = param_def[combo_value]
                 else:
@@ -958,49 +946,15 @@ class DataParameterCombo(DataParameter):
 
             window[self.key_lookup('Element')].update(value=display_value)
 
-    def load_values(self):
-        """
-        Load the combo value options from the database.
-        """
-        dynamic_values = self.options
-        if not dynamic_values:
-            logger.warning('DataParameter {NAME}: unable to load combo values from the database - no dynamic values '
-                           'were configured for the parameter'.format(NAME=self.name))
-            return []
-
-        db_table = dynamic_values['DatabaseTable']
-        value_col = dynamic_values['ValueColumn']
-        if 'Filters' in dynamic_values:
-            import_filters = mod_db.format_import_filters({db_table: dynamic_values})
-        else:
-            import_filters = None
-
-        columns = [value_col]
-        if 'AliasColumn' in dynamic_values:
-            alias_col = dynamic_values['AliasColumn']
-            columns.append(alias_col)
-        else:
-            alias_col = None
-
-        # Load the combo values from the database table
-        import_df = user.read_db(*user.prepare_query_statement(db_table, columns=columns, filter_rules=import_filters),
-                                 prog_db=True)
-        if alias_col:
-            combo_values = {}
-            for i, row in import_df.iterrows():
-                combo_values[row[value_col]] = row[alias_col]
-        else:
-            combo_values = import_df[value_col].tolist()
-
-        return combo_values
-
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True):
+               auto_size_desc: bool = True, hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+
+        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
@@ -1061,7 +1015,7 @@ class DataParameterCombo(DataParameter):
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
 
     def format_value(self, values):
         """
@@ -1205,12 +1159,14 @@ class DataParameterDate(DataParameter):
             window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True):
+               auto_size_desc: bool = True, hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+
+        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
@@ -1271,7 +1227,7 @@ class DataParameterDate(DataParameter):
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
 
     def format_value(self, values):
         """
@@ -1449,12 +1405,14 @@ class DataParameterRange(DataParameter):
             window[self.key_lookup('Element')].update(text=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True):
+               auto_size_desc: bool = True, hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+
+        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
@@ -1511,7 +1469,7 @@ class DataParameterRange(DataParameter):
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
 
     def format_value(self, *args, **kwargs):
         """
@@ -1717,11 +1675,13 @@ class DataParameterDateRange(DataParameter):
         window[elem2_key].expand(expand_x=True)
 
     def layout(self, size: tuple = (14, 1), padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True):
+               auto_size_desc: bool = True, hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
+
+        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
@@ -1790,7 +1750,7 @@ class DataParameterDateRange(DataParameter):
                          sg.CalendarButton('', target=to_key, key=to_date_key, format='%Y-%m-%d', image_data=date_ico,
                                            font=font, border_width=0, tooltip='Select date from calendar menu',
                                            metadata={'disabled': False})]],
-                       pad=padding, background_color=bg_col, visible=(not self.hidden))]
+                       pad=padding, background_color=bg_col, visible=visible)]
         else:
             layout = [
                 sg.Col([[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout +
@@ -1804,7 +1764,7 @@ class DataParameterDateRange(DataParameter):
                                  background_color=bg_col, justification='right'),
                          sg.Text(to_value, key=to_key, size=size, font=font,
                                  background_color=bg_col, border_width=1, metadata={'value': [], 'disabled': True})]],
-                       pad=padding, background_color=bg_col, visible=(not self.hidden))]
+                       pad=padding, background_color=bg_col, visible=visible)]
 
         return layout
 
@@ -2066,7 +2026,7 @@ class DataParameterCheckbox(DataParameter):
             window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True):
+               auto_size_desc: bool = True, hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
@@ -2074,6 +2034,7 @@ class DataParameterCheckbox(DataParameter):
         size = size if size else mod_const.PARAM_SIZE_CHAR
 
         disabled = False if self.editable is True else True
+        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
@@ -2116,7 +2077,7 @@ class DataParameterCheckbox(DataParameter):
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=(not self.hidden))]
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
 
     def format_value(self, values):
         """

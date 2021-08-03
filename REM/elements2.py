@@ -586,9 +586,7 @@ class TableElement:
                     index = select_row_index
 
                 logger.debug('DataTable {NAME}: opening record at real index {IND}'.format(NAME=self.name, IND=index))
-                if self.actions['open'] is True:
-                    self.df = self.export_row(index)
-                elif self.actions['open'] is False and self.actions['edit'] is True:
+                if self.actions['edit'] is True:
                     self.edit_row(index)
 
         elif event == self.key_lookup('FilterButton'):
@@ -2211,9 +2209,8 @@ class RecordTable(TableElement):
 
                 logger.debug('DataTable {NAME}: opening record at real index {IND}'.format(NAME=self.name, IND=index))
                 if self.actions['open'] is True:
-                    self.df = self.export_row(index)
-                elif self.actions['open'] is False and self.actions['edit'] is True:
-                    self.edit_row(index)
+                    view_only = not self.actions['edit']
+                    self.df = self.export_row(index, view_only=view_only)
 
         elif event == self.key_lookup('FilterButton'):
             self.collapse_expand(window, frame='filter')
