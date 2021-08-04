@@ -134,6 +134,11 @@ class BankRule:
             self.menu_title = name
 
         try:
+            self.menu_flags = entry['MenuFlags']
+        except KeyError:
+            self.menu_flags = {}
+
+        try:
             self.permissions = entry['AccessPermissions']
         except KeyError:  # default permission for a mod_cash rule is 'user'
             self.permissions = 'user'

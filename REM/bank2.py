@@ -337,10 +337,6 @@ class BankRule:
         window[reconcile_key].update(disabled=True)
         window[expand_key].update(disabled=True)
 
-        # Reset the current sub-panel
-        self.current_account = None
-        self.title = None
-
         # Reset component account entries
         for acct in self.acct_entries:
             acct.reset(window)
@@ -357,6 +353,16 @@ class BankRule:
 
             return self.name
         else:
+            # Reset the current account display
+            current_acct = self.fetch_account(self.current_account)
+            window[current_acct.key_lookup('Panel')].update(visible=False)
+
+            panel_title_key = self.key_lookup('Title')
+            window[panel_title_key].update(value='')
+
+            self.current_account = None
+            self.title = None
+
             return None
 
     def layout(self, win_size: tuple = None):
@@ -945,8 +951,9 @@ class AccountEntry:
         # Layout
         tbl_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))]]
 
-        layout = sg.Col(tbl_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
-                        background_color=bg_col, expand_x=True)
+        panel_key = self.key_lookup('Panel')
+        layout = sg.Col(tbl_layout, key=panel_key, pad=(pad_frame, pad_frame), justification='c',
+                        vertical_alignment='t', background_color=bg_col, expand_x=True)
 
         return layout
 

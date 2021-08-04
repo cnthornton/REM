@@ -62,11 +62,14 @@ class ToolBar:
                 for submenu in rule_submenu:
                     rules[rule_title].append(submenu)
 
+            rule_menu = []
             for rule in rules:
-                acct_menu.append(('!', rule))
+                rule_menu.append(('!', rule))
 
                 menu_items = rules[rule]
-                acct_menu.append([('', i) for i in menu_items])
+                rule_menu.append([('', i) for i in menu_items])
+
+            acct_menu.append(rule_menu)
 
         # Program records menu items
         acct_records = {}
@@ -744,16 +747,25 @@ def main():
                 # Obtain the selected rule object
                 current_rule = bank_rules.fetch_rule(selected_rule)
 
+                # Use the menu flag to find the primary account
+                try:
+                    acct_name = current_rule.menu_flags[selected_menu]
+                except KeyError:
+                    acct_name = selected_rule.name
+
+                # Fetch the primary account
+                current_acct = current_rule.fetch_account(acct_name)
+
                 # Update the display title
                 panel_title_key = current_rule.key_lookup('Title')
-                window[panel_title_key].update(value=current_rule.title)
+                window[panel_title_key].update(value=current_acct.title)
 
                 # Update the panel-in-display and the account panel
                 window[current_panel].update(visible=False)
 
                 current_panel = current_rule.element_key
                 window[current_panel].update(visible=True)
-                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
+                window[current_acct.key_lookup('Panel')].update(visible=True)
 
                 # Disable toolbar
                 toolbar.disable(window, all_rules)
