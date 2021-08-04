@@ -101,11 +101,13 @@ class BankRule:
 
         id (int): rule element number.
 
-        menu_title (str): bank reconciliation rule title.
-
         element_key (str): panel element key.
 
         elements (list): list of rule GUI element keys.
+
+        menu_title (str): bank reconciliation rule title.
+
+        menu_flags (dict): submenu flags that change the initial behavior of the rule.
 
         permissions (str): permissions required to view the accounting method. Default: user.
     """
@@ -130,6 +132,11 @@ class BankRule:
             self.menu_title = entry['MenuTitle']
         except KeyError:
             self.menu_title = name
+
+        try:
+            self.menu_flags = entry['MenuFlags']
+        except KeyError:
+            self.menu_flags = {}
 
         try:
             self.permissions = entry['AccessPermissions']

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.5.12'
+__version__ = '3.5.13'
 
 import sys
 import tkinter as tk
@@ -44,11 +44,29 @@ class ToolBar:
         for account_method in account_methods:
             acct_menu.append(('', account_method.title))
 
-            rules = []
+            rules = {}
+#            rules = []
             for rule in account_method.rules:
-                rules.append(('!', rule.menu_title))
+#                rules.append(('!', rule.menu_title))
+                rule_title = rule.menu_title
+                rules[rule.menu_title] = []
 
-            acct_menu.append(rules)
+#            acct_menu.append(rules)
+
+                # Add any submenus to the menu definition. Submenus act as flags to main workflow rule.
+                try:
+                    rule_submenu = rule.menu_flags
+                except AttributeError:
+                    continue
+
+                for submenu in rule_submenu:
+                    rules[rule_title].append(submenu)
+
+            for rule in rules:
+                acct_menu.append(('!', rule))
+
+                menu_items = rules[rule]
+                acct_menu.append([('', i) for i in menu_items])
 
         # Program records menu items
         acct_records = {}
@@ -430,12 +448,14 @@ def main():
 
     # Create the menu mapper
     menu_mapper = {}
-    for rule in audit_rules.rules + cash_rules.rules + bank_rules.rules:
-        if rule.sub_menu:
-            for menu_title in rule.sub_menu:
-                menu_mapper[menu_title] = rule.menu_title
-        else:
+    for rule in [i for acct_method in (audit_rules, cash_rules, bank_rules) for i in acct_method.rules]:
+        try:
+            rule_submenu = rule.menu_flags
+        except AttributeError:
             menu_mapper[rule.menu_title] = rule.menu_title
+        else:
+            for menu_title in rule_submenu:
+                menu_mapper[menu_title] = rule.menu_title
 
     # Event metadata
     current_rule = None

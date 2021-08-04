@@ -104,11 +104,15 @@ class AuditRule:
 
         name (str): audit rule name.
 
-        menu_title (str): menu title for the audit rule.
+        id (int): rule element number.
 
         element_key (str): GUI element key.
 
         elements (list): list of rule GUI element keys.
+
+        menu_title (str): menu title for the audit rule.
+
+        menu_flags (dict): submenu flags that change the initial behavior of the rule.
 
         permissions (str): permissions required to view the audit. Default: user.
 
@@ -142,6 +146,11 @@ class AuditRule:
             self.menu_title = entry['MenuTitle']
         except KeyError:
             self.menu_title = name
+
+        try:
+            self.menu_flags = entry['MenuFlags']
+        except KeyError:
+            self.menu_flags = {}
 
         try:
             self.permissions = entry['AccessPermissions']
