@@ -962,6 +962,29 @@ class DatabaseRecord:
                     else:
                         self.reference_types.append(ref_element)
 
+        try:
+            ref_entry = entry['References2']
+        except KeyError:
+            logger.info('RecordEntry {NAME}: no reference2 record types configured'.format(NAME=self.name))
+        else:
+            try:
+                ref_elements = ref_entry['Elements']
+            except KeyError:
+                logger.warning('RecordEntry {NAME}: unable to add references - missing required parameter "Elements"'
+                               .format(NAME=self.name))
+            else:
+                for ref_element in ref_elements:
+                    element_entry = ref_elements[ref_element]
+                    try:
+                        ref_box = mod_elem.ReferenceElement(ref_element, element_entry, self.name)
+                    except AttributeError as e:
+                        logger.warning('RecordType {NAME}: failed to add reference entry {ID} to list of references - '
+                                       '{ERR}'.format(NAME=self.name, ID=ref_element, ERR=e))
+                        continue
+                    else:
+                        self.references.append(ref_box)
+                        self.elements += ref_box.elements
+
         # Record components
         self.components = []
         self.component_types = []

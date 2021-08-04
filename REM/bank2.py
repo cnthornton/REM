@@ -772,24 +772,6 @@ class AccountEntry:
             record_entry = settings.records.fetch_rule(self.record_type)
 
         try:
-            ref_entry = entry['Reference']
-        except KeyError:
-            msg = 'AccountEntry {NAME}: missing required configuration parameter "Reference".'.format(NAME=name)
-            logger.error(msg)
-
-            raise AttributeError(msg)
-        else:
-            reference = record_entry.fetch_component(ref_entry)
-            try:
-                self.refmap = reference['ColumnMap']
-            except KeyError:
-                msg = 'AccountEntry {NAME}: no column mapping specified in the {RTYPE} configuration for reference ' \
-                      '{REF}'.format(NAME=name, RTYPE=self.record_type, REF=ref_entry)
-                logger.error(msg)
-
-                raise AttributeError(msg)
-
-        try:
             self.import_rules = entry['ImportRules']
         except KeyError:
             self.import_rules = record_entry.import_rules
@@ -798,6 +780,39 @@ class AccountEntry:
             self.record_layout = entry['RecordLayout']
         except KeyError:
             self.record_layout = record_entry.record_layout
+
+        try:
+            reference = entry['Reference']
+        except KeyError:
+            msg = 'AccountEntry {NAME}: missing required configuration parameter "Reference".'.format(NAME=name)
+            logger.error(msg)
+
+            raise AttributeError(msg)
+        else:
+            try:
+                references = self.record_layout['References2']
+            except KeyError:
+                msg = 'the record layout is missing configured layout parameter "References2"'
+                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise AttributeError(msg)
+
+            try:
+                ref_entry = references[reference]
+            except KeyError:
+                msg = 'the record layout is missing configured reference component {COMP}'.format(COMP=reference)
+                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise AttributeError(msg)
+
+            try:
+                self.refmap = ref_entry['ColumnMap']
+            except KeyError:
+                msg = 'no column mapping specified in the {RTYPE} configuration for reference {REF}'\
+                    .format(NAME=name, RTYPE=self.record_type, REF=reference)
+                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise AttributeError(msg)
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
