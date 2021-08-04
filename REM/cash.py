@@ -9,17 +9,17 @@ import REM.secondary as mod_win2
 from REM.client import logger
 
 
-class CashRules:
+class CashRuleController:
     """
-    Class to store and manage program cash_reconciliation configuration settings.
+    Class to store and manage configured cash reconciliation definitions.
 
     Arguments:
 
-        cnfg (ConfigManager): program configuration class.
+        cash_param (dict): configuration for the cash rule definitions.
 
     Attributes:
 
-        rules (list): List of CashRule objects.
+        rules (list): list reconciliation definitions as CashRule objects.
     """
 
     def __init__(self, cash_param):
@@ -30,7 +30,7 @@ class CashRules:
             try:
                 cash_name = cash_param['name']
             except KeyError:
-                msg = 'CashRules: the parameter "name" is a required field'
+                msg = 'CashRuleController: the parameter "name" is a required field'
                 mod_win2.popup_error(msg)
                 logger.error(msg)
                 sys.exit(1)
@@ -45,7 +45,7 @@ class CashRules:
             try:
                 cash_rules = cash_param['rules']
             except KeyError:
-                msg = 'CashRules {NAME}: the parameter "rules" is a required field'.format(NAME=self.name)
+                msg = 'CashRuleController {NAME}: the parameter "rules" is a required field'.format(NAME=self.name)
                 mod_win2.popup_error(msg)
                 logger.error(msg)
                 sys.exit(1)
@@ -70,7 +70,7 @@ class CashRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            logger.error('CashRules {NAME}: rule "{RULE}" not in list of configured mod_cash reconciliation rules. '
+            logger.error('CashRuleController {NAME}: rule "{RULE}" not in list of configured mod_cash reconciliation rules. '
                          'Available rules are {ALL}'
                          .format(NAME=self.name, RULE=name, ALL=', '.join(self.print_rules())))
             rule = None

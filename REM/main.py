@@ -336,7 +336,7 @@ def get_panels(account_methods, win_size: tuple = None):
     # Add Audit rule with summary panel
     for account_method in account_methods:
         for rule in account_method.rules:
-            msg = 'creating the layout for accounting method {ACCT}, rule {RULE}'\
+            msg = 'creating layout for workflow method {ACCT}, rule {RULE}'\
                 .format(ACCT=account_method.name, RULE=rule.name)
             logger.debug(msg)
             panels.append(rule.layout(win_size=win_size))
@@ -368,28 +368,6 @@ def resize_elements(window, rules):
             logger.error(msg)
 
             continue
-
-
-def format_date_element(date_str):
-    """
-    Forces user input to date element to be in ISO format.
-    """
-    buff = []
-    for index, char in enumerate(date_str):
-        if index == 3:
-            if len(date_str) != 4:
-                buff.append('{}-'.format(char))
-            else:
-                buff.append(char)
-        elif index == 5:
-            if len(date_str) != 6:
-                buff.append('{}-'.format(char))
-            else:
-                buff.append(char)
-        else:
-            buff.append(char)
-
-    return ''.join(buff)
 
 
 def main():
@@ -433,9 +411,9 @@ def main():
     record_rules = mod_records.RecordsConfiguration(settings.record_rules)
     settings.records = record_rules
 
-    audit_rules = mod_audit.AuditRules(settings.audit_rules)
-    cash_rules = mod_cash.CashRules(settings.cash_rules)
-    bank_rules = mod_bank.BankRules(settings.bank_rules)
+    audit_rules = mod_audit.AuditRuleController(settings.audit_rules)
+    cash_rules = mod_cash.CashRuleController(settings.cash_rules)
+    bank_rules = mod_bank.BankRuleController(settings.bank_rules)
 
     acct_methods = [audit_rules, bank_rules]
     all_rules = [audit_rules, cash_rules, bank_rules, record_rules]
@@ -680,9 +658,9 @@ def main():
 
             continue
 
-        # Activate appropriate panel
+        # Activate appropriate accounting workflow method panel
         selected_action = values['-AMENU-']
-        if selected_action in audit_names:
+        if selected_action in audit_names:  # workflow method is a transaction audit
             # Obtain the selected rule object
             current_rule = audit_rules.fetch_rule(selected_action)
 
@@ -701,7 +679,7 @@ def main():
 
             continue
 
-        elif selected_action in cash_names:
+        elif selected_action in cash_names:  # workflow method is cash reconciliation
             # Obtain the selected rule object
             current_rule = cash_rules.fetch_rule(selected_action)
 
@@ -731,7 +709,31 @@ def main():
 
             continue
 
-        elif values['-AMENU-'] in bank_names:
+        elif values['-AMENU-'] in bank_names:  # workflow method is bank reconciliation
+            # Obtain the selected rule object
+            current_rule = bank_rules.fetch_rule(selected_action)
+
+            # Clear the panel
+##            current_rule.reset_rule(window, current=True)
+
+            # Update the display title
+            panel_title_key = current_rule.key_lookup('Title')
+            window[panel_title_key].update(value=current_rule.title)
+
+            # Update the panel-in-display and the account panel
+            window[current_panel].update(visible=False)
+
+            current_panel = current_rule.element_key
+            window[current_panel].update(visible=True)
+            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
+
+            # Disable toolbar
+            toolbar.disable(window, all_rules)
+
+            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
+            continue
+
+        elif values['-AMENU-'] in bank_names:  # workflow method is bank reconciliation
             # Obtain the selected rule object
             current_rule = bank_rules.fetch_rule(selected_action)
 

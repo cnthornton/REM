@@ -23,17 +23,17 @@ import REM.secondary as mod_win2
 from REM.client import logger, settings, user
 
 
-class AuditRules:
+class AuditRuleController:
     """
-    Class to store and manage program audit_rule configuration settings.
+    Class to store and manage configured transaction audit definitions.
 
     Arguments:
 
-        audit_param (dict): configuration for the audit rules.
+        audit_param (dict): configuration for the audit rule definitions.
 
     Attributes:
 
-        rules (list): List of AuditRule objects.
+        rules (list): list of transaction audit definitions as AuditRule objects.
     """
 
     def __init__(self, audit_param):
@@ -43,8 +43,11 @@ class AuditRules:
             try:
                 audit_name = audit_param['name']
             except KeyError:
-                mod_win2.popup_error('Error: audit_rules: the parameter "name" is a required field')
-                sys.exit(1)
+                msg = 'missing required field "name"'
+                logger.error('AuditRuleController: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error('Configuration Error: audit_rules: {MSG}'.format(MSG=msg))
+
+                raise AttributeError(msg)
             else:
                 self.name = audit_name
 
@@ -56,8 +59,11 @@ class AuditRules:
             try:
                 audit_rules = audit_param['rules']
             except KeyError:
-                mod_win2.popup_error('Error: audit_rules: the parameter "rules" is a required field')
-                sys.exit(1)
+                msg = 'missing required field "rules"'
+                logger.error('AuditRuleController: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error('Configuration Error: audit_rules: {MSG}'.format(MSG=msg))
+
+                raise AttributeError(msg)
 
             for audit_rule in audit_rules:
                 self.rules.append(AuditRule(audit_rule, audit_rules[audit_rule]))
@@ -73,14 +79,16 @@ class AuditRules:
 
     def fetch_rule(self, name, title=True):
         """
-        Fetch a given rule from the rule set by its name or title.
+        Fetch a given audit rule from the rule set by name or title.
         """
         rule_names = self.print_rules(title=title)
         try:
             index = rule_names.index(name)
         except IndexError:
-            logger.warning('AuditRules: Rule {NAME} not in list of configured audit rules. Available rules are {ALL}'
-                           .format(NAME=name, ALL=', '.join(self.print_rules())))
+            msg = 'rule "{NAME}" is not in the list of configured audit definitions ({ALL})'\
+                .format(NAME=name, ALL=', '.join(self.print_rules()))
+            logger.warning('AuditRuleController {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
             rule = None
         else:
             rule = self.rules[index]

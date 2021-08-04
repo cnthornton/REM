@@ -18,17 +18,17 @@ import REM.secondary as mod_win2
 from REM.client import logger, settings, user
 
 
-class BankRules:
+class BankRuleController:
     """
-    Class to store and manage program bank_reconciliation configuration settings.
+    Class to store and manage configured bank reconciliation definitions.
 
     Arguments:
 
-        cnfg (ConfigManager): program configuration class.
+        bank_param (dict): configuration for the bank reconciliation definitions.
 
     Attributes:
 
-        rules (list): List of BankRule objects.
+        rules (list): list of bank reconciliation definitions as BankRule objects.
     """
 
     def __init__(self, bank_param):
@@ -38,8 +38,9 @@ class BankRules:
             try:
                 bank_name = bank_param['name']
             except KeyError:
-                msg = 'BankRules: the parameter "name" is a required field'
-                logger.error(msg)
+                msg = 'missing required field "name"'
+                logger.error('BankRuleController: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error('Configuration Error: bank_rules: {MSG}'.format(MSG=msg))
 
                 raise AttributeError(msg)
             else:
@@ -51,10 +52,11 @@ class BankRules:
                 self.title = bank_name
 
             try:
-                bank_rules = bank_param['Entries']
+                bank_rules = bank_param['rules']
             except KeyError:
-                msg = 'BankRules {NAME}: the parameter "" is a required field'.format(NAME=self.name)
-                logger.error(msg)
+                msg = 'missing required field "rules"'.format(NAME=self.name)
+                logger.error('BankRuleController: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error('Configuration Error: bank_rules: {MSG}'.format(MSG=msg))
 
                 raise AttributeError(msg)
 
@@ -78,9 +80,10 @@ class BankRules:
         try:
             index = rule_names.index(name)
         except IndexError:
-            logger.error('BankRules {NAME}: rule "{RULE}" not in list of configured bank reconciliation rules. '
-                         'Available rules are {ALL}'
-                         .format(NAME=self.name, RULE=name, ALL=', '.join(self.print_rules())))
+            msg = 'rule "{RULE}" is not in the list of configured bank reconciliation definitions ({ALL})'\
+                .format(RULE=name, ALL=', '.join(self.print_rules()))
+            logger.error('BankRuleController {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
             rule = None
         else:
             rule = self.rules[index]
