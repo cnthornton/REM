@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.5.11'
+__version__ = '3.5.12'
 
 import sys
 import tkinter as tk
@@ -428,6 +428,15 @@ def main():
     cash_names = cash_rules.print_rules()
     bank_names = bank_rules.print_rules()
 
+    # Create the menu mapper
+    menu_mapper = {}
+    for rule in audit_rules.rules + cash_rules.rules + bank_rules.rules:
+        if rule.sub_menu:
+            for menu_title in rule.sub_menu:
+                menu_mapper[menu_title] = rule.menu_title
+        else:
+            menu_mapper[rule.menu_title] = rule.menu_title
+
     # Event metadata
     current_rule = None
     debug_win = None
@@ -659,108 +668,107 @@ def main():
             continue
 
         # Activate appropriate accounting workflow method panel
-        selected_action = values['-AMENU-']
-        if selected_action in audit_names:  # workflow method is a transaction audit
-            # Obtain the selected rule object
-            current_rule = audit_rules.fetch_rule(selected_action)
+        selected_menu = values['-AMENU-']
+        if selected_menu in menu_mapper:
+            selected_rule = menu_mapper[selected_menu]
 
-            # Clear the panel
-            current_rule.reset_rule(window, current=True)
+            if selected_rule in audit_names:  # workflow method is a transaction audit
+                # Obtain the selected rule object
+                current_rule = audit_rules.fetch_rule(selected_rule)
 
-            # Update panel-in-display
-            window[current_panel].update(visible=False)
+                # Clear the panel
+                current_rule.reset_rule(window, current=True)
 
-            current_panel = current_rule.element_key
-            window[current_panel].update(visible=True)
-            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
+                # Update panel-in-display
+                window[current_panel].update(visible=False)
 
-            # Disable the toolbar
-            toolbar.disable(window, all_rules)
+                current_panel = current_rule.element_key
+                window[current_panel].update(visible=True)
+                logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
 
-            continue
+                # Disable the toolbar
+                toolbar.disable(window, all_rules)
 
-        elif selected_action in cash_names:  # workflow method is cash reconciliation
-            # Obtain the selected rule object
-            current_rule = cash_rules.fetch_rule(selected_action)
-
-            # Get the record entry
-            record_type = current_rule.record_type
-            record_entry = settings.records.fetch_rule(record_type)
-            if not record_entry:
-                msg = 'unable to find a configured record type with name {NAME}'.format(NAME=record_type)
-                logger.error(msg)
-                logger.warning(msg)
                 continue
-            else:
-                logger.debug('the record type selected is {TYPE}'.format(TYPE=record_type))
 
-            # Display the import record window
-            table_entry = current_rule.import_table_entry
-            table_entry['RecordType'] = record_type
-            import_table = mod_elem.TableElement(current_rule.name, table_entry)
+            elif selected_rule in cash_names:  # workflow method is cash reconciliation
+                # Obtain the selected rule object
+                current_rule = cash_rules.fetch_rule(selected_rule)
 
-            try:
-                mod_win2.record_import_window(import_table, enable_new=True,
-                                              record_layout=current_rule.record_layout_entry)
-            except Exception as e:
-                msg = 'record importing failed - {ERR}'.format(ERR=e)
-                mod_win2.popup_error(msg)
-                logger.exception(msg)
+                # Get the record entry
+                record_type = current_rule.record_type
+                record_entry = settings.records.fetch_rule(record_type)
+                if not record_entry:
+                    msg = 'unable to find a configured record type with name {NAME}'.format(NAME=record_type)
+                    logger.warning(msg)
+                    continue
+                else:
+                    logger.debug('the record type selected is {TYPE}'.format(TYPE=record_type))
 
-            continue
+                # Display the import record window
+                table_entry = current_rule.import_table_entry
+                table_entry['RecordType'] = record_type
+                import_table = mod_elem.TableElement(current_rule.name, table_entry)
 
-        elif values['-AMENU-'] in bank_names:  # workflow method is bank reconciliation
-            # Obtain the selected rule object
-            current_rule = bank_rules.fetch_rule(selected_action)
+                try:
+                    mod_win2.record_import_window(import_table, enable_new=True,
+                                                  record_layout=current_rule.record_layout_entry)
+                except Exception as e:
+                    msg = 'record importing failed - {ERR}'.format(ERR=e)
+                    mod_win2.popup_error(msg)
+                    logger.exception(msg)
 
-            # Clear the panel
-##            current_rule.reset_rule(window, current=True)
+                continue
 
-            # Update the display title
-            panel_title_key = current_rule.key_lookup('Title')
-            window[panel_title_key].update(value=current_rule.title)
+            elif selected_rule in bank_names:  # workflow method is bank reconciliation
+                # Obtain the selected rule object
+                current_rule = bank_rules.fetch_rule(selected_rule)
 
-            # Update the panel-in-display and the account panel
-            window[current_panel].update(visible=False)
+                # Update the display title
+                panel_title_key = current_rule.key_lookup('Title')
+                window[panel_title_key].update(value=current_rule.title)
 
-            current_panel = current_rule.element_key
-            window[current_panel].update(visible=True)
-            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
+                # Update the panel-in-display and the account panel
+                window[current_panel].update(visible=False)
 
-            # Disable toolbar
-            toolbar.disable(window, all_rules)
+                current_panel = current_rule.element_key
+                window[current_panel].update(visible=True)
+                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
 
-            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
-            continue
+                # Disable toolbar
+                toolbar.disable(window, all_rules)
 
-        elif values['-AMENU-'] in bank_names:  # workflow method is bank reconciliation
-            # Obtain the selected rule object
-            current_rule = bank_rules.fetch_rule(selected_action)
+                logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
+                continue
 
-            # Clear the panel
-            current_rule.reset_rule(window, current=True)
+            elif selected_rule in bank_names:  # workflow method is bank reconciliation
+                # Obtain the selected rule object
+                current_rule = bank_rules.fetch_rule(selected_rule)
 
-            # Update panel-in-display
-            window[current_panel].update(visible=False)
+                # Clear the panel
+                current_rule.reset_rule(window, current=True)
 
-            current_panel = current_rule.element_key
-            window[current_panel].update(visible=True)
-            window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
+                # Update panel-in-display
+                window[current_panel].update(visible=False)
 
-            # Collapse the filter frame of the first tab
-            tg_key = current_rule.key_lookup('MainTG')
-            logger.debug('collapsing the filter frame of the first tab with key {}'.format(tg_key))
-            tab_key = window[tg_key].Get()
-            tab = current_rule.fetch_tab(tab_key, by_key=True)
-            filter_key = tab.table.key_lookup('FilterFrame')
-            if window[filter_key].metadata['visible'] is True:
-                tab.table.collapse_expand(window, frame='filter')
+                current_panel = current_rule.element_key
+                window[current_panel].update(visible=True)
+                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
 
-            # Disable toolbar
-            toolbar.disable(window, all_rules)
+                # Collapse the filter frame of the first tab
+                tg_key = current_rule.key_lookup('MainTG')
+                logger.debug('collapsing the filter frame of the first tab with key {}'.format(tg_key))
+                tab_key = window[tg_key].Get()
+                tab = current_rule.fetch_tab(tab_key, by_key=True)
+                filter_key = tab.table.key_lookup('FilterFrame')
+                if window[filter_key].metadata['visible'] is True:
+                    tab.table.collapse_expand(window, frame='filter')
 
-            logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
-            continue
+                # Disable toolbar
+                toolbar.disable(window, all_rules)
+
+                logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
+                continue
 
         # Action events
         if current_rule and (event in current_rule.elements or event in settings.hotkeys):
