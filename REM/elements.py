@@ -3193,7 +3193,7 @@ class DataElement:
                     mod_win2.popup_notice(msg)
                     logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                    display_value = self.format_date(''.join(current_value))
+                    display_value = settings.format_as_iso(''.join(current_value))
                 else:
                     current_value = new_value
                     display_value = new_date.strftime('%Y-%m-%d')
@@ -3229,9 +3229,9 @@ class DataElement:
                     if new_char.isnumeric():  # can add integers
                         current_value[new_index] = new_char
 
-                display_value = self.format_date(current_value)
+                display_value = settings.format_as_iso(current_value)
             else:
-                display_value = self.format_date(current_value)
+                display_value = settings.format_as_iso(current_value)
 
             window[elem_key].metadata['value'] = ''.join(current_value)
 
@@ -3482,27 +3482,6 @@ class DataElement:
             return True
         else:
             return False
-
-    def format_date(self, date_str):
-        """
-        Forces user input to date element to be in ISO format (YYYY-MM-DD).
-        """
-        buff = []
-        for index, char in enumerate(date_str):
-            if index == 3:
-                if len(date_str) != 4:
-                    buff.append('{}-'.format(char))
-                else:
-                    buff.append(char)
-            elif index == 5:
-                if len(date_str) != 6:
-                    buff.append('{}-'.format(char))
-                else:
-                    buff.append(char)
-            else:
-                buff.append(char)
-
-        return ''.join(buff)
 
     def collapse_expand(self, window):
         """

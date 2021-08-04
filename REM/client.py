@@ -1133,6 +1133,30 @@ class SettingsManager:
 
         return value_fmt
 
+    def format_as_iso(self, date_str):
+        """
+        Set a date string to be in ISO format.
+        """
+        if not isinstance(date_str, str):
+            date_str = str(date_str)
+
+        buff = []
+        for index, char in enumerate(date_str):
+            if index == 3:
+                if len(date_str) != 4:
+                    buff.append('{}-'.format(char))
+                else:
+                    buff.append(char)
+            elif index == 5:
+                if len(date_str) != 6:
+                    buff.append('{}-'.format(char))
+                else:
+                    buff.append(char)
+            else:
+                buff.append(char)
+
+        return ''.join(buff)
+
     def set_shortcuts(self, window):
         """
         Bind keyboard shortcuts to text.
