@@ -297,8 +297,23 @@ class RecordEntry:
 
         return import_df
 
-    def export_table(self, df, id_field: str = 'RecordID', id_exists: bool = False, statements: dict = None,
+    def export_table(self, df, id_field: str = 'RecordID', exists: bool = None, statements: dict = None,
                      export_columns: bool = True):
+        """
+        Create export statement for the dataframe records.
+
+        Arguments:
+            df (DataFrame): table containing the record data that will be exported to the database.
+
+            id_field (str): name of the column containing the record IDs.
+
+            exists (bool): records already exist in the database [Default: False].
+
+            statements (dict): dictionary of existing database transaction statements to append the results to.
+
+            export_columns (bool): use import column mapping to transform column names to database names before
+                exporting [Default: True]
+        """
         import_rules = self.import_rules
 
         if not statements:
@@ -310,16 +325,18 @@ class RecordEntry:
         if df.empty:
             return statements
 
-        if id_exists:  # record already exists in the database
+        if exists is True:  # records already exist in the database
             # Add edit details to records table
             df.loc[:, settings.editor_code] = user.uid
             df.loc[:, settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
-        else:  # new record was created
+        elif exists is False:  # new records were created
             # Add record creation details to records table
             df.loc[:, settings.creator_code] = user.uid
             df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+        else:  # need to check database existence individually for each record in the table
+            exists = self.confirm_saved(df[id_field].values.tolist(), id_field=id_field)
 
-        # Prepare transaction for each export table containing fields comprising the record
+        # Prepare a separate database transaction statement for each database table containing the record's data
         columns = df.columns.values.tolist()
         for table in import_rules:
             table_entry = import_rules[table]
@@ -342,31 +359,80 @@ class RecordEntry:
             export_df = df[include_columns]
 
             export_columns = [references[i] for i in include_columns]
-            export_values = [tuple(i) for i in export_df.values.tolist()]
 
-            if id_exists:
-                record_ids = df[id_field]
+            if isinstance(exists, bool):  # all records in table either exist in db already or not
+                # Prepare either insert or update statements depending on truth value of exists
+                export_values = [tuple(i) for i in export_df.values.tolist()]
+
+                if exists is True:  # all records already exist in the database table
+                    record_ids = export_df[id_field]
+                    if not isinstance(record_ids, pd.Series):
+                        record_ids = [record_ids]
+                    else:
+                        record_ids = record_ids.values.tolist()
+                    filter_params = [(i,) for i in record_ids]
+                    filter_clause = '{COL} = ?'.format(COL=id_col)
+                    statement, param = user.prepare_update_statement(table, export_columns, export_values,
+                                                                     filter_clause, filter_params)
+                else:  # none of the records exist yet in the database table
+                    statement, param = user.prepare_insert_statement(table, export_columns, export_values)
+
+                if isinstance(param, list):
+                    try:
+                        statements[statement].extend(param)
+                    except KeyError:
+                        statements[statement] = param
+                elif isinstance(param, tuple):
+                    try:
+                        statements[statement].append(param)
+                    except KeyError:
+                        statements[statement] = [param]
+            else:
+                # Prepare separate update and insert statements depending on whether an individual record exists
+                # Extract all currently existing records from the table
+                current_df = export_df[exists]
+
+                # Prepare either update statement for the existing records
+                export_values = [tuple(i) for i in current_df.values.tolist()]
+
+                record_ids = current_df[id_field]
                 if not isinstance(record_ids, pd.Series):
                     record_ids = [record_ids]
                 else:
                     record_ids = record_ids.values.tolist()
                 filter_params = [(i,) for i in record_ids]
                 filter_clause = '{COL} = ?'.format(COL=id_col)
-                statement, param = user.prepare_update_statement(table, export_columns, export_values, filter_clause,
-                                                                 filter_params)
-            else:
+                statement, param = user.prepare_update_statement(table, export_columns, export_values,
+                                                                 filter_clause, filter_params)
+
+                if isinstance(param, list):
+                    try:
+                        statements[statement].extend(param)
+                    except KeyError:
+                        statements[statement] = param
+                elif isinstance(param, tuple):
+                    try:
+                        statements[statement].append(param)
+                    except KeyError:
+                        statements[statement] = [param]
+
+                # Extract all new records from the table
+                new_df = export_df[[not i for i in exists]]
+
+                # Prepare either update statement for the existing records
+                export_values = [tuple(i) for i in new_df.values.tolist()]
                 statement, param = user.prepare_insert_statement(table, export_columns, export_values)
 
-            if isinstance(param, list):
-                try:
-                    statements[statement].extend(param)
-                except KeyError:
-                    statements[statement] = param
-            elif isinstance(param, tuple):
-                try:
-                    statements[statement].append(param)
-                except KeyError:
-                    statements[statement] = [param]
+                if isinstance(param, list):
+                    try:
+                        statements[statement].extend(param)
+                    except KeyError:
+                        statements[statement] = param
+                elif isinstance(param, tuple):
+                    try:
+                        statements[statement].append(param)
+                    except KeyError:
+                        statements[statement] = [param]
 
         return statements
 
@@ -734,19 +800,6 @@ class CustomRecordEntry:
         Remove record ID from the list of unsaved IDs
         """
         return True
-
-    #        try:
-    #            self.ids.remove(record_id)
-    #        except ValueError:
-    #            print('Warning: RecordEntry {NAME}: record {ID} was not found in the list of unsaved {TYPE} record IDs'
-    #                  .format(NAME=self.name, ID=record_id, TYPE=self.name))
-    #            success = False
-    #        else:
-    #            print('Info: RecordEntry {NAME}: removing unsaved record ID {ID} from the list of unsaved records'
-    #                  .format(NAME=self.name, ID=record_id))
-    #            success = True
-    #
-    #        return success
 
     def import_references(self, *args, **kwargs):
         """
@@ -1694,8 +1747,8 @@ class DatabaseRecord:
         try:
             id_exists = record_entry.confirm_saved(record_id, id_field=self.id_field)
             record_data = self.table_values().to_frame().transpose()
-            statements = record_entry.export_table(record_data, statements=statements, id_field=self.id_field,
-                                                   id_exists=id_exists)
+            statements = record_entry.export_table(record_data, id_field=self.id_field, exists=id_exists,
+                                                   statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
             logger.exception(msg)
@@ -1820,8 +1873,8 @@ class DatabaseRecord:
             #            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
             existing_comps = comp_df[saved_records]
             try:
-                statements = comp_entry.export_table(existing_comps, statements=statements,
-                                                     id_field=comp_table.id_column, id_exists=True)
+                statements = comp_entry.export_table(existing_comps, id_field=comp_table.id_column, exists=True,
+                                                     statements=statements)
             except Exception as e:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
@@ -1832,8 +1885,8 @@ class DatabaseRecord:
             #            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
             new_comps = comp_df[[not x for x in saved_records]]
             try:
-                statements = comp_entry.export_table(new_comps, statements=statements,
-                                                     id_field=comp_table.id_column, id_exists=False)
+                statements = comp_entry.export_table(new_comps, id_field=comp_table.id_column, exists=False,
+                                                     statements=statements)
             except Exception as e:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
