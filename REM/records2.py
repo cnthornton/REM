@@ -1402,8 +1402,8 @@ class DatabaseRecord:
         try:
             id_exists = record_entry.confirm_saved(record_id, id_field=self.id_field)
             record_data = self.table_values().to_frame().transpose()
-            statements = record_entry.export_table(record_data, statements=statements, id_field=self.id_field,
-                                                   id_exists=id_exists)
+            statements = record_entry.export_table(record_data, id_field=self.id_field, exists=id_exists,
+                                                   statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
             logger.exception(msg)
@@ -1528,8 +1528,8 @@ class DatabaseRecord:
             #            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
             existing_comps = comp_df[saved_records]
             try:
-                statements = comp_entry.export_table(existing_comps, statements=statements,
-                                                     id_field=comp_table.id_column, id_exists=True)
+                statements = comp_entry.export_table(existing_comps, id_field=comp_table.id_column, exists=True,
+                                                     statements=statements)
             except Exception as e:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
@@ -1540,8 +1540,8 @@ class DatabaseRecord:
             #            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
             new_comps = comp_df[[not x for x in saved_records]]
             try:
-                statements = comp_entry.export_table(new_comps, statements=statements,
-                                                     id_field=comp_table.id_column, id_exists=False)
+                statements = comp_entry.export_table(new_comps, id_field=comp_table.id_column, exists=False,
+                                                     statements=statements)
             except Exception as e:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)

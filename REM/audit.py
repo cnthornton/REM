@@ -334,8 +334,6 @@ class AuditRule:
             if next_subpanel == self.last_panel:
                 # Update audit records
                 for tab in self.summary.tabs:
-                    print('after next button')
-                    print(tab.record.table_values())
 
                     # Update audit record totals
                     tab.map_summary(self.tabs)
@@ -441,7 +439,6 @@ class AuditRule:
                 else:
                     for tab in self.summary.tabs:
                         tab.update_display(window)
-                        print(tab.record.table_values())
 
                 # Initialize audit
                 initialized = []
@@ -2053,7 +2050,6 @@ class AuditRecordTab:
 
                 record_entry = settings.records.fetch_rule(self.name)
                 param_types = [i.dtype for i in params]
-#                param_names = [i.name for i in params]
                 try:
                     date_index = param_types.index('date')
                 except IndexError:
@@ -2073,22 +2069,7 @@ class AuditRecordTab:
                     if param_name not in record_data:
                         record_data[param_name] = param.value
 
-#                for element in self.record.parameters:
-#                    element_name = element.name
-#                    if element_name in param_names:
-#                        param = params[param_names.index(element_name)]
-#
-#                        element_value = param.value
-#                        logger.debug('AuditRuleTab {NAME}: adding value "{VAL}" from parameter "{PARAM}" to data '
-#                                     'element {ELEM}'.format(NAME=self.name, VAL=element_value, PARAM=param.name,
-#                                                             ELEM=element_name))
-#                        record_data[param.name] = element_value
-#                    else:
-#                        logger.debug('AuditRuleTab {NAME}: no values found for data element {ELEM}'
-#                                     .format(NAME=self.name, ELEM=element_name))
-
                 self.record.initialize(record_data, new=False)
-                print(self.record.table_values())
 
                 return False
 
@@ -2207,7 +2188,7 @@ class AuditRecordTab:
             logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         deposit_df['RecordID'] = deposit_ids
-        statements = record_entry.export_table(deposit_df, statements=statements, id_field='RecordID', id_exists=False)
+        statements = record_entry.export_table(deposit_df, id_field='RecordID', exists=False, statements=statements)
 
         # Save the associations to the references database table
         for index, row in deposit_df.iterrows():
@@ -2242,9 +2223,7 @@ class AuditRecordTab:
 
         # Export audit record
         statements = record.prepare_save_statements(statements)
-#        saved = record.save(statements=statements)
-#
-#        return saved
+
         return statements
 
     def map_summary(self, rule_tabs):

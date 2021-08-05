@@ -873,7 +873,8 @@ class DataParameterCombo(DataParameter):
                 if combo_value in param_def:
                     self.aliases[combo_value] = param_def[combo_value]
                 else:
-                    print('value {VAL} is not found in the alias definition'.format(VAL=combo_value))
+                    msg = 'value {VAL} is not found in the alias definition'.format(VAL=combo_value)
+                    logger.debug('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
         # Dropdown aliases
         try:
@@ -1612,7 +1613,7 @@ class DataParameterDateRange(DataParameter):
             self.value = self.format_value({self.key_lookup('Element'): def_val1,
                                             self.key_lookup('Element2'): def_val2})
             display_val1, display_val2 = self.format_display()
-            print('resetting parameter {} to {} and {}'.format(self.name, display_val1, display_val2))
+#            print('resetting parameter {} to {} and {}'.format(self.name, display_val1, display_val2))
 
             window[self.key_lookup('Element')].update(value=display_val1)
             window[self.key_lookup('Element2')].update(value=display_val2)

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.5.13'
+__version__ = '3.5.15'
 
 import sys
 import tkinter as tk
@@ -67,6 +67,8 @@ class ToolBar:
                 rule_menu.append(('!', rule))
 
                 menu_items = rules[rule]
+                if not menu_items:
+                    continue
                 rule_menu.append([('', i) for i in menu_items])
 
             acct_menu.append(rule_menu)
@@ -457,8 +459,11 @@ def main():
         except AttributeError:
             menu_mapper[rule.menu_title] = rule.menu_title
         else:
-            for menu_title in rule_submenu:
-                menu_mapper[menu_title] = rule.menu_title
+            if not rule_submenu:
+                menu_mapper[rule.menu_title] = rule.menu_title
+            else:
+                for menu_title in rule_submenu:
+                    menu_mapper[menu_title] = rule.menu_title
 
     # Event metadata
     current_rule = None

@@ -1725,8 +1725,8 @@ class TableElement:
                      .format(NAME=self.name, NROW=add_df.shape[0], TBL=table_name))
         df = df.append(add_df, ignore_index=True)
 
-        pd.set_option('display.max_columns', None)
-        print(df)
+#        pd.set_option('display.max_columns', None)
+#        print(df)
 
 #        df = df.append(add_df, ignore_index=True)
 #        df = self.set_datatypes(df)
@@ -2472,7 +2472,7 @@ class TableElement:
                 logger.warning('DataTable {NAME}: unable to specify the data type for column "{COL}" - data type is '
                                'provided in an unaccepted format'.format(NAME=self.name, COL=column))
 
-        print(df.dtypes)
+#        print(df.dtypes)
 
         return df
 

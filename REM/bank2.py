@@ -3,7 +3,6 @@ REM bank reconciliation configuration classes and objects.
 """
 
 import datetime
-import sys
 from random import randint
 
 import PySimpleGUI as sg
@@ -12,8 +11,6 @@ import pandas as pd
 import REM.constants as mod_const
 import REM.database as mod_db
 import REM.elements as mod_elem
-import REM.layouts as mod_layout
-import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.client import logger, settings, user
 
@@ -110,6 +107,8 @@ class BankRule:
         menu_flags (dict): submenu flags that change the initial behavior of the rule.
 
         permissions (str): permissions required to view the accounting method. Default: user.
+
+        accts (list): list of account entry objects.
     """
 
     def __init__(self, name, entry):
@@ -151,13 +150,13 @@ class BankRule:
 
             raise AttributeError(msg)
 
-        self.acct_entries = []
+        self.accts = []
         self.panel_keys = {}
         for acct_id in accts:  # account entries
             acct_entry = accts[acct_id]
 
             acct = AccountEntry(acct_id, acct_entry)
-            self.acct_entries.append(acct)
+            self.accts.append(acct)
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
             self.elements += acct.elements
 
@@ -186,11 +185,11 @@ class BankRule:
         """
         Fetch a GUI parameter element by name or event key.
         """
-        accounts = [i.name for i in self.acct_entries]
+        accounts = [i.name for i in self.accts]
 
         if account_id in accounts:
             index = accounts.index(account_id)
-            account = self.acct_entries[index]
+            account = self.accts[index]
         else:
             raise KeyError('account ID {ACCT} not found in list of {NAME} account entries'
                            .format(ACCT=account_id, NAME=self.name))
@@ -201,7 +200,7 @@ class BankRule:
         """
         Fetch account summary panel.
         """
-        panels = {i.name: i.key_lookup('Panel') for i in self.acct_entries}
+        panels = {i.name: i.key_lookup('Panel') for i in self.accts}
 
         try:
             panel_key = panels[account_id]
@@ -254,7 +253,8 @@ class BankRule:
         # generate a summary report.
         if event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
             # Get output file from user
-            title = self.title
+            default_title = '_'.join([acct.title, '_'.join([i.print_value() for i in self.accts.params])]) \
+                                .replace(' ', '_') + '.xlsx'
             outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
                                         default_extension='pdf', no_window=True,
                                         file_types=(('PDF - Portable Document Format', '*.pdf'),))
@@ -338,7 +338,7 @@ class BankRule:
         window[expand_key].update(disabled=True)
 
         # Reset component account entries
-        for acct in self.acct_entries:
+        for acct in self.accts:
             acct.reset(window)
 
         # Remove any unsaved IDs created during the reconciliation
@@ -430,7 +430,7 @@ class BankRule:
 
         # Panels
         panels = []
-        for acct in self.acct_entries:
+        for acct in self.accts:
             layout = acct.layout(size=(panel_width, panel_height))
             panels.append(layout)
 
@@ -486,7 +486,7 @@ class BankRule:
         else:
             width, height = window.size  # current window size (width, height)
 
-        accts = self.acct_entries
+        accts = self.accts
         for acct in accts:
             acct.resize(window, size=(width, height))
 
@@ -660,8 +660,8 @@ class BankRule:
                     assoc_acct.table.df.loc[assoc_acct.table.id_column == ref_id, assoc_ref_cols] = assoc_ref_values
 
                 elif nmatch > 1:  # too many matches
-                    logger.debug('BankRecordTab {NAME}: found more than one match for record "{RECORD}"'
-                                 .format(NAME=self.name, RECORD=record_id))
+                    logger.debug('BankRule {NAME}: found more than one match for account {ACCT} record "{RECORD}"'
+                                 .format(NAME=self.name, ACCT=self.current_account, RECORD=record_id))
                     continue
 
             elif nmatch == 1:  # found one exact match
@@ -686,8 +686,8 @@ class BankRule:
                 assoc_acct.table.df.loc[assoc_acct.table.id_column == ref_id, assoc_ref_cols] = assoc_ref_values
 
             elif nmatch > 1:  # too many matches
-                logger.debug('BankRecordTab {NAME}: found more than one match for record "{RECORD}"'
-                             .format(NAME=self.name, RECORD=record_id))
+                logger.debug('BankRule {NAME}: found more than one match for account {ACCT} record "{RECORD}"'
+                             .format(NAME=self.name, ACCT=self.current_account, RECORD=record_id))
 
                 # Match the first of the exact matches
                 results = matches.iloc[0]
@@ -709,6 +709,79 @@ class BankRule:
                 assoc_ref_cols = [assoc_refmap['RefID', assoc_refmap['RefType'], assoc_refmap['RefDate']]]
                 assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
                 assoc_acct.table.df.loc[assoc_acct.table.id_column == ref_id, assoc_ref_cols] = assoc_ref_values
+
+    def save_records(self):
+        """
+        Save any changes to the records made during the reconciliation process.
+        """
+        primary = self.fetch_account(self.current_account)
+        transactions = primary.transactions
+
+        accts = [primary]
+        for transaction in transactions:
+            trans_acct = self.fetch_account(transaction)
+            accts.append(trans_acct)
+
+        statements = {}
+        for acct in accts:
+            record_type = acct.record_type
+            record_entry = settings.records.fetch_rule(record_type)
+
+            # Prepare to save the record
+            logger.debug('BankRule {NAME}: preparing account {ACCT} statements'.format(NAME=self.name, ACCT=acct.name))
+            try:
+                statements = record_entry.export_table(acct.table.data(), id_field=acct.table.id_column, exists=True,
+                                                       statements=statements)
+            except Exception as e:
+                msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}'\
+                    .format(ACCT=acct.name, ERR=e)
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise
+
+        logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
+                    .format(NAME=self.name, ACCT=self.current_account))
+        sstrings = []
+        psets = []
+        for i, j in statements.items():
+            sstrings.append(i)
+            psets.append(j)
+
+        success = user.write_db(sstrings, psets)
+
+        return success
+
+    def save_report(self, filename):
+        """
+        Generate a summary report of the reconciliation to a PDF.
+        """
+        status = []
+        with pd.ExcelWriter(filename) as writer:
+            for acct in self.accts:
+                sheet_name = acct.title
+                table = acct.table
+                df = table.data()
+                if df.empty:
+                    continue
+
+                export_df = table.format_display_table(df)
+                annotations = table.annotate_display(df)
+                annotation_map = {i: table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+                try:
+                    export_df.style.apply(lambda x: ['background-color: {}'
+                                          .format(annotation_map.get(x.name, 'white')) for _ in x], axis=1) \
+                        .to_excel(writer, sheet_name=sheet_name, engine='openpyxl', header=True, index=False)
+                except Exception as e:
+                    msg = 'failed to save table {SHEET} to file to {FILE} - {ERR}' \
+                        .format(SHEET=sheet_name, FILE=filename, ERR=e)
+                    logger.error(msg)
+                    mod_win2.popup_error(msg)
+
+                    status.append(False)
+                else:
+                    status.append(True)
+
+        return all(status)
 
 
 class AccountEntry:
