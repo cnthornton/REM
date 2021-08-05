@@ -210,29 +210,3 @@ def format_tables(import_rules):
 
     return ' '.join(table_rules)
 
-
-def get_primary_table(import_rules):
-    """
-    Get the primary record table.
-    """
-    return list(import_rules.keys())[0]
-
-
-def get_primary_id_column(import_rules):
-    """
-    Get the ID column of the primary record table
-    """
-    id_col = 'DocNo'
-
-    table = get_primary_table(import_rules)
-    table_entry = import_rules[table]
-
-    table_cols = table_entry['Columns']
-    for column in table_cols:
-        column_alias = table_cols[column]
-        if column_alias == 'RecordID':
-            id_col = column
-            break
-
-    return id_col
-

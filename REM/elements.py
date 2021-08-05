@@ -386,6 +386,7 @@ class TableElement:
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
 
+        # Dynamic attributes
         self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.import_df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
@@ -413,6 +414,7 @@ class TableElement:
 
         self.df = self.set_datatypes(pd.DataFrame(columns=columns))
         self.import_df = self.set_datatypes(pd.DataFrame(columns=columns))
+        self.index_map = {}
 
         self.update_display(window)
 
@@ -2756,7 +2758,7 @@ class ReferenceElement2:
         refmap (dict): required reference parameters mapped to database column names.
     """
 
-    def __init__(self, name, entry, parent):
+    def __init__(self, name, entry, parent=None):
         """
         GUI data element.
 
@@ -2766,7 +2768,7 @@ class ReferenceElement2:
             entry (pd.Series): configuration entry for the element.
         """
         self.name = name
-        self.parent = self.record_type = parent
+        self.parent = parent
         self.id = randint(0, 1000000000)
         self.etype = 'reference'
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
@@ -2858,6 +2860,43 @@ class ReferenceElement2:
 
         height_key = self.key_lookup('Height')
         window[height_key].set_size(size=(None, height))
+
+    def run_event(self, window, event, *args):
+        """
+        Run a record reference event.
+        """
+        result = True
+        elem_key = self.key_lookup('Element')
+        del_key = self.key_lookup('Unlink')
+        ref_key = self.key_lookup('Reference')
+
+        # Delete a reference from the record reference database table
+        logger.info('ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
+        if event == del_key:
+            msg = 'Are you sure that you would like to disassociate reference {REF} from the record? This action ' \
+                  'cannot be undone. Disassociating a reference does not delete the reference record.' \
+                .format(REF=self.reference_id)
+            user_action = mod_win2.popup_confirm(msg)
+
+            if user_action.upper() == 'OK':
+                # Set element to deleted in metadata
+                window[elem_key].metadata['deleted'] = True
+
+                self.reset(window)
+
+        # Load a reference record in a new window
+        elif event == ref_key:
+            try:
+                record = self.load_record()
+            except Exception as e:
+                msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.reference_id, ERR=e)
+                mod_win2.popup_error(msg)
+                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            else:
+                # Display the record window
+                mod_win2.record_window(record, view_only=True)
+
+        return result
 
     def load_reference(self, entry):
         """
@@ -3031,48 +3070,11 @@ class ReferenceElement2:
 
         window.Element(elem_key).SetTooltip(warnings)
 
-    def run_event(self, window, event, *args):
-        """
-        Run a record reference event.
-        """
-        result = True
-        elem_key = self.key_lookup('Element')
-        del_key = self.key_lookup('Unlink')
-        ref_key = self.key_lookup('Reference')
-
-        # Delete a reference from the record reference database table
-        logger.info('ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
-        if event == del_key:
-            msg = 'Are you sure that you would like to disassociate reference {REF} from the record? This action ' \
-                  'cannot be undone. Disassociating a reference does not delete the reference record.' \
-                .format(REF=self.reference_id)
-            user_action = mod_win2.popup_confirm(msg)
-
-            if user_action.upper() == 'OK':
-                # Set element to deleted in metadata
-                window[elem_key].metadata['deleted'] = True
-
-                self.reset(window)
-
-        # Load a reference record in a new window
-        elif event == ref_key:
-            try:
-                record = self.load_record()
-            except Exception as e:
-                msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.reference_id, ERR=e)
-                mod_win2.popup_error(msg)
-                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            else:
-                # Display the record window
-                mod_win2.record_window(record, view_only=True)
-
-        return result
-
     def load_record(self, level: int = 1):
         """
         Load the reference record from the database.
         """
-        record_entry = settings.records.fetch_rule(self.record_type)
+        record_entry = settings.records.fetch_rule(self.reference_type)
         record_group = record_entry.group
         if record_group in ('account', 'bank_statement', 'cash_expense'):
             record_class = mod_records.StandardRecord
@@ -3083,7 +3085,6 @@ class ReferenceElement2:
         else:
             raise TypeError('unknown record group provided {}'.format(record_group))
 
-        record_entry = settings.records.fetch_rule(self.reference_type)
         imports = record_entry.load_record_data(self.reference_id)
         nrow = imports.shape[0]
 

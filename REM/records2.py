@@ -885,7 +885,7 @@ class DatabaseRecord:
                     elif etype == 'input':
                         element_class = mod_elem.DataElementInput
                     elif etype == 'dropdown':
-                        element_class = mod_elem.DataElementDropdown
+                        element_class = mod_elem.DataElementCombo
                     elif etype == 'mulitline':
                         element_class = mod_elem.DataElementMultiline
                     else:

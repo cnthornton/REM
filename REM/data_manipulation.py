@@ -312,63 +312,6 @@ def evaluate_rule(data, condition, as_list: bool = True):
     return row_status
 
 
-def evaluate_rule(data, condition, as_list: bool = True):
-    """
-    Check whether rows in dataframe pass a given condition rule.
-    """
-    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in', 'not in', '!', 'not'}
-
-    if isinstance(data, pd.Series):
-        header = data.index.tolist()
-    elif isinstance(data, pd.DataFrame):
-        header = data.columns.values.tolist()
-    else:
-        raise ValueError('data must be either a pandas DataFrame or Series')
-
-    if isinstance(condition, str):
-        conditional = parse_operation_string(condition)
-    elif isinstance(condition, list):
-        conditional = condition
-    else:
-        raise ValueError('condition argument {} must be either a string or list'.format(condition))
-
-    rule_value = []
-    for i, component in enumerate(conditional):
-        if component.lower() in operators:  # component is an operator
-            if component.lower() in ('!', 'not'):
-                rule_value.append('~')
-            else:
-                rule_value.append(component)
-        elif component in header:
-            rule_value.append('data["{}"]'.format(component))
-        elif component.lower() in header:
-            rule_value.append('data["{}"]'.format(component.lower()))
-        else:  # component is a string or integer
-            if component.isalpha() and '"' not in component:
-                rule_value.append('"{}"'.format(component))
-            else:
-                rule_value.append(component)
-
-    eval_str = ' '.join(rule_value)
-    try:
-        row_status = eval(eval_str)
-    except SyntaxError:
-        raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
-    except NameError:  # dataframe does not have column
-        raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
-
-    if as_list is True:
-        if isinstance(row_status, pd.Series):
-            row_status = row_status.tolist()
-        else:
-            row_status = [row_status]
-    else:
-        if not isinstance(row_status, pd.Series):
-            row_status = pd.Series(row_status)
-
-    return row_status
-
-
 def evaluate_operation(data, operation):
     """
     Evaluate a given operation.

@@ -155,13 +155,12 @@ class BankRule:
         for acct_id in accts:  # account entries
             acct_entry = accts[acct_id]
 
-            acct = AccountEntry(acct_id, acct_entry)
+            acct = AccountEntry(acct_id, acct_entry, parent=self.name)
             self.accts.append(acct)
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
             self.elements += acct.elements
 
         # Dynamic Attributes
-        self.current_panel = None
         self.in_progress = False
         self.current_account = None
         self.title = None
@@ -195,21 +194,6 @@ class BankRule:
                            .format(ACCT=account_id, NAME=self.name))
 
         return account
-
-    def fetch_panel(self, account_id):
-        """
-        Fetch account summary panel.
-        """
-        panels = {i.name: i.key_lookup('Panel') for i in self.accts}
-
-        try:
-            panel_key = panels[account_id]
-        except KeyError:
-            logger.error('BankRule {NAME}: account {ACCT} not found in list of account entries'
-                         .format(NAME=self.name, ACCT=account_id))
-            panel_key = None
-
-        return panel_key
 
     def run_event(self, window, event, values):
         """
@@ -253,9 +237,8 @@ class BankRule:
         # generate a summary report.
         if event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
             # Get output file from user
-            default_title = '_'.join([acct.title, '_'.join([i.print_value() for i in self.accts.params])]) \
-                                .replace(' ', '_') + '.xlsx'
-            outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
+            default_title = acct.title + '.xlsx'
+            outfile = sg.popup_get_file('', title='Save As', default_path=default_title, save_as=True,
                                         default_extension='pdf', no_window=True,
                                         file_types=(('PDF - Portable Document Format', '*.pdf'),))
 
@@ -337,13 +320,9 @@ class BankRule:
         window[reconcile_key].update(disabled=True)
         window[expand_key].update(disabled=True)
 
-        # Reset component account entries
+        # Reset account entries
         for acct in self.accts:
             acct.reset(window)
-
-        # Remove any unsaved IDs created during the reconciliation
-        if self.in_progress:
-            settings.remove_unsaved_ids()
 
         self.in_progress = False
 
@@ -505,6 +484,7 @@ class BankRule:
         """
         # Fetch primary account and prepare data
         acct = self.fetch_account(self.current_account)
+
         refmap = acct.refmap
         table = acct.table
         id_column = table.id_column
@@ -949,7 +929,7 @@ class AccountEntry:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            logger.warning('BankRecordTab {NAME}: component "{COMP}" not found in list of elements'
+            logger.warning('AccountEntry {NAME}: component "{COMP}" not found in list of elements'
                            .format(NAME=self.name, COMP=component))
             key = None
 
@@ -1080,11 +1060,11 @@ class AccountEntry:
                               prog_db=True)
         except Exception as e:
             msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
-            logger.error('BankRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             mod_win2.popup_error(msg)
             data_loaded = False
         else:
-            logger.debug('BankRecordTab {NAME}: loaded data for bank reconciliation "{RULE}"'
+            logger.debug('AccountEntry {NAME}: loaded data for bank reconciliation "{RULE}"'
                          .format(NAME=self.name, RULE=self.parent))
             data_loaded = True
 
