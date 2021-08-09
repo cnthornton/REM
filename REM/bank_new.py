@@ -163,6 +163,8 @@ class BankRule:
         # Dynamic Attributes
         self.in_progress = False
         self.current_account = None
+        self.current_panel = self.key_lookup('MainPanel')
+        self.first_panel = self.key_lookup('MainPanel')
         self.title = None
 
     def key_lookup(self, component):
@@ -843,7 +845,7 @@ class AccountEntry:
             raise AttributeError(msg)
         else:
             try:
-                references = self.record_layout['References2']
+                references = self.record_layout['References2']['Elements']
             except KeyError:
                 msg = 'the record layout is missing configured layout parameter "References2"'
                 logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))

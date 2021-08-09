@@ -510,8 +510,10 @@ class SettingsManager:
                         '-HK_TAB7-': ('Tab7', 'Key-F7', 'F7', 'Navigation'),
                         '-HK_TAB8-': ('Tab8', 'Key-F8', 'F8', 'Navigation'),
                         '-HK_TAB9-': ('Tab9', 'Key-F9', 'F9', 'Navigation'),
-                        '-HK_RECORD_DEL-': ('Delete Record', 'Key-Delete', 'Delete', 'Record'),
-                        '-HK_RECORD_SAVE-': ('Save Record', 'Key-space', 'Spacebar', 'Record'),
+                        '-HK_RECORD_DEL-': ('Delete Record', 'Control-Shift-d', 'CTRL+Shift+d', 'Record'),
+                        '-HK_RECORD_SAVE-': ('Save Record', 'Control-Shift-s', 'CTRL+Shift+s', 'Record'),
+                        '-HK_DE_SAVE-': ('Save changes', 'Control-s', 'CTRL+S', 'Data Element'),
+                        '-HK_DE_CANCEL-': ('Cancel editing', 'Control-c', 'CTRL+C', 'Data Element'),
                         '-HK_TBL_ADD-': ('Add row', 'Control-a', 'CTRL+A', 'Table'),
                         '-HK_TBL_IMPORT-': ('Import row(s)', 'Control-q', 'CTRL+Q', 'Table'),
                         '-HK_TBL_DEL-': ('Delete row(s)', 'Control-d', 'CTRL+D', 'Table'),
@@ -1133,29 +1135,35 @@ class SettingsManager:
 
         return value_fmt
 
-    def format_as_iso(self, date_str):
+    def format_as_iso(self, value):
         """
         Set a date string to be in ISO format.
+
+        Arguments:
+            value (list): value to be formatted as an ISO date string.
         """
-        if not isinstance(date_str, str):
-            date_str = str(date_str)
+        if isinstance(value, str):
+            logger.warning('input {IN} is a string value'.format(IN=value))
+            value = list(value)
 
         buff = []
-        for index, char in enumerate(date_str):
+        for index, char in enumerate(value):
             if index == 3:
-                if len(date_str) != 4:
+                if len(value) != 4:
                     buff.append('{}-'.format(char))
                 else:
                     buff.append(char)
             elif index == 5:
-                if len(date_str) != 6:
+                if len(value) != 6:
                     buff.append('{}-'.format(char))
                 else:
                     buff.append(char)
             else:
                 buff.append(char)
 
-        return ''.join(buff)
+        formatted_date = ''.join(buff)
+
+        return formatted_date
 
     def set_shortcuts(self, window):
         """
