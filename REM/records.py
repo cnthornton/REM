@@ -853,8 +853,9 @@ class DatabaseRecord:
 
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame',
-                          'Height', 'Width', 'DetailsTab', 'InfoTab', 'TG', 'FrameHeight', 'FrameWidth']]
+                         ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
+                          'DetailsFrame', 'Height', 'Width', 'DetailsTab', 'InfoTab', 'TG', 'FrameHeight',
+                          'FrameWidth']]
 
         entry = record_entry.record_layout if record_layout is None else record_layout
 
@@ -2132,6 +2133,14 @@ class DatabaseRecord:
 
         # Layout elements
         try:
+            details_title = record_layout['Details'].get('Title', 'Details')
+        except KeyError:
+            details_title = 'Details'
+            has_details = False
+        else:
+            has_details = True
+
+        try:
             reference_title = record_layout['References'].get('Title', 'References')
         except KeyError:
             reference_title = 'References'
@@ -2161,13 +2170,29 @@ class DatabaseRecord:
                           sg.Col([right_layout], background_color=bg_col, justification='r',
                                  element_justification='r')]]
 
-        # Create layout for record details
+        # Create the layout for the record information panel
         details_layout = []
+
+        # Create layout for record details
+        details_panel_key = self.key_lookup('DetailsButton')
+        info_layout = [[sg.Image(data=mod_const.INFO_ICON, pad=((0, pad_el), 0), background_color=bg_col),
+                       sg.Text(details_title, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
+                       sg.Button('', image_data=mod_const.HIDE_ICON, key=details_panel_key,
+                                 button_color=(text_col, bg_col), border_width=0, disabled=False, visible=True,
+                                 metadata={'visible': True, 'disabled': False})]]
+
+        de_elements = []
         for data_elem in self.parameters:
 #            details_layout.append([data_elem.layout(padding=(0, pad_el), editable=editable, collapsible=True, overwrite=self.new)])
-            details_layout.append([data_elem.layout(padding=(0, pad_el), editable=editable, overwrite=self.new)])
+            de_elements.append([data_elem.layout(padding=(0, pad_el), editable=editable, overwrite=self.new)])
 
-        # Add reference boxes to the details section
+        info_layout.append([sg.pin(sg.Col(de_elements, key=self.key_lookup('DetailsFrame'), background_color=bg_col,
+                                          visible=True, expand_x=True, metadata={'visible': True}))])
+
+        if has_details is True:
+            details_layout.append([sg.Col(info_layout, expand_x=True, pad=(0, pad_el), background_color=bg_col)])
+
+        # Add reference boxes to the record information panel
         ref_key = self.key_lookup('ReferencesButton')
         ref_layout = [[sg.Image(data=mod_const.NETWORK_ICON, pad=((0, pad_el), 0), background_color=bg_col),
                        sg.Text(reference_title, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
@@ -2301,6 +2326,9 @@ class DatabaseRecord:
         if frame == 'references':
             hide_key = self.key_lookup('ReferencesButton')
             frame_key = self.key_lookup('ReferencesFrame')
+        elif frame == 'details':
+            hide_key = self.key_lookup('DetailsButton')
+            frame_key = self.key_lookup('DetailsFrame')
         else:
             hide_key = self.key_lookup('ComponentsButton')
             frame_key = self.key_lookup('ComponentsFrame')
@@ -2344,6 +2372,10 @@ class StandardRecord(DatabaseRecord):
                              .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
+
+        # Expand or collapse the details frame
+        if event == self.key_lookup('DetailsButton'):
+            self.collapse_expand(window, frame='details')
 
         # Expand or collapse the references frame
         if event == self.key_lookup('ReferencesButton'):
@@ -2465,6 +2497,10 @@ class DepositRecord(DatabaseRecord):
                              .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
+
+        # Expand or collapse the details frame
+        if event == self.key_lookup('DetailsButton'):
+            self.collapse_expand(window, frame='details')
 
         # Collapse or expand the references frame
         if event == self.key_lookup('ReferencesButton'):
@@ -2627,6 +2663,10 @@ class AuditRecord(DatabaseRecord):
                              .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
+
+        # Expand or collapse the details frame
+        if event == self.key_lookup('DetailsButton'):
+            self.collapse_expand(window, frame='details')
 
         if event == self.key_lookup('ReferencesButton'):
             self.collapse_expand(window, frame='references')
