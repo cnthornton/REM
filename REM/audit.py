@@ -344,6 +344,14 @@ class AuditRule:
                     # Update the audit record's display
                     tab.update_display(window)
 
+                    # Bind events to element keys
+                    for record_element in tab.record.parameters:
+                        if record_element.etype == 'table':
+                            continue
+                        else:
+                            elem_key = record_element.key_lookup('Element')
+                            window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+
                 # Disable / enable action buttons
                 window[next_key].update(disabled=True)
                 window[next_key].metadata['disabled'] = True
@@ -592,7 +600,7 @@ class AuditRule:
             self.summary.run_event(window, event, values)
 
         # Save results of the audit
-        elif event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
+        elif event == save_key:
             # Get output file from user
             title = self.summary.title.replace(' ', '_')
             outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,

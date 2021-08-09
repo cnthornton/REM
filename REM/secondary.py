@@ -270,11 +270,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     font_h = mod_const.HEADER_FONT
 
-    # Keyboard shortcuts
-    hotkeys = settings.hotkeys
-    delete_shortcut = hotkeys['-HK_RECORD_DEL-'][2]
-    save_shortcut = hotkeys['-HK_RECORD_SAVE-'][2]
-
     # User permissions
     user_priv = user.access_permissions()
     savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
@@ -295,23 +290,23 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
     if savable:
         bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=deletable,
-                                  tooltip='Delete the record from the database ({})'.format(delete_shortcut)),
+                                  tooltip='Delete the record from the database'),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=False,
-                                  tooltip='Accept changes to the record ({})'.format(save_shortcut)),
+                                  tooltip='Accept changes to the record'),
                         sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=True,
-                                  tooltip='Save record changes to the database ({})'.format(save_shortcut))]]
+                                  tooltip='Save record changes to the database')]]
     else:
         bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=deletable,
-                                  tooltip='Delete the record from the database ({})'.format(delete_shortcut)),
+                                  tooltip='Delete the record from the database'),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=True,
-                                  tooltip='Accept changes to the record ({})'.format(save_shortcut)),
+                                  tooltip='Accept changes to the record'),
                         sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=False,
-                                  tooltip='Save record changes to the database ({})'.format(save_shortcut))]]
+                                  tooltip='Save record changes to the database')]]
 
     # Window layout
     bffr_height = 230  # window height minus space reserved for the title and buttons
@@ -331,6 +326,13 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
+
+    for element in record.parameters:
+        if element.etype == 'table':
+            continue
+        else:
+            elem_key = element.key_lookup('Element')
+            window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
 
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
