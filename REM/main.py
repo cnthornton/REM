@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.5.15'
+__version__ = '3.5.17'
 
 import sys
 import tkinter as tk
@@ -507,17 +507,17 @@ def main():
 
         # Resize screen
         if resized and current_panel != home_panel:
-            if current_rule is not None:
+#            if current_rule is not None:
                 window[current_rule.panel_keys[current_rule.current_panel]].update(visible=False)
-                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=True)
+#                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=True)
                 window[current_rule.element_key].update(visible=False)
-
+#
                 window.refresh()
-
+#
                 window[current_rule.element_key].update(visible=True)
-                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=False)
+#                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=False)
                 window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
-
+#
                 resized = False
 
                 continue
@@ -526,7 +526,7 @@ def main():
         # Get window dimensions
         try:
             win_w, win_h = window.size
-        except Exception:
+        except AttributeError:
             continue
 
         if win_w != current_w or win_h != current_h:
@@ -748,35 +748,37 @@ def main():
 
                 continue
 
-            elif selected_rule in bank_names:  # workflow method is bank reconciliation
-                # Obtain the selected rule object
-                current_rule = bank_rules.fetch_rule(selected_rule)
-
-                # Use the menu flag to find the primary account
-                try:
-                    acct_name = current_rule.menu_flags[selected_menu]
-                except KeyError:
-                    acct_name = selected_rule.name
-
-                # Fetch the primary account
-                current_acct = current_rule.fetch_account(acct_name)
-
-                # Update the display title
-                panel_title_key = current_rule.key_lookup('Title')
-                window[panel_title_key].update(value=current_acct.title)
-
-                # Update the panel-in-display and the account panel
-                window[current_panel].update(visible=False)
-
-                current_panel = current_rule.element_key
-                window[current_panel].update(visible=True)
-                window[current_acct.key_lookup('Panel')].update(visible=True)
-
-                # Disable toolbar
-                toolbar.disable(window, all_rules)
-
-                logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
-                continue
+#            elif selected_rule in bank_names:  # workflow method is bank reconciliation
+#                # Obtain the selected rule object
+#                current_rule = bank_rules.fetch_rule(selected_rule)
+#
+#                # Use the menu flag to find the primary account
+#                try:
+#                    acct_name = current_rule.menu_flags[selected_menu]
+#                except KeyError:
+#                    acct_name = selected_rule.name
+#
+#                # Fetch the primary account
+#                current_acct = current_rule.fetch_account(acct_name)
+#                current_rule.current_account = current_acct
+#                current_rule.current_panel = current_acct.key_lookup('Panel')
+#
+#                # Update the display title
+#                panel_title_key = current_rule.key_lookup('Title')
+#                window[panel_title_key].update(value=current_acct.title)
+#
+#                # Update the panel-in-display and the account panel
+#                window[current_panel].update(visible=False)
+#
+#                current_panel = current_rule.element_key
+#                window[current_panel].update(visible=True)
+#                window[current_rule.current_panel].update(visible=True)
+#
+#                # Disable toolbar
+#                toolbar.disable(window, all_rules)
+#
+#                logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
+#                continue
 
             elif selected_rule in bank_names:  # workflow method is bank reconciliation
                 # Obtain the selected rule object

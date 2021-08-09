@@ -889,16 +889,12 @@ class DatabaseRecord:
                 param_entry = headers[param_name]
                 param_entry['IsEditable'] = False
                 param_layout = param_entry['ElementType']
-                if param_layout == 'dropdown':
+                if param_layout in ('dropdown', 'combo'):
                     param_class = mod_param.DataParameterCombo
-                elif param_layout == 'input':
+                elif param_layout in ('text', 'input', 'date'):
                     param_class = mod_param.DataParameterInput
-                elif param_layout == 'range':
+                elif param_layout in ('range', 'date_range'):
                     param_class = mod_param.DataParameterRange
-                elif param_layout == 'date':
-                    param_class = mod_param.DataParameterDate
-                elif param_layout == 'date_range':
-                    param_class = mod_param.DataParameterDateRange
                 elif param_layout == 'checkbox':
                     param_class = mod_param.DataParameterCheckbox
                 else:
@@ -926,16 +922,12 @@ class DatabaseRecord:
             for param_name in metadata:
                 param_entry = metadata[param_name]
                 param_layout = param_entry['ElementType']
-                if param_layout == 'dropdown':
+                if param_layout in ('dropdown', 'combo'):
                     param_class = mod_param.DataParameterCombo
-                elif param_layout == 'input':
+                elif param_layout in ('text', 'input', 'date'):
                     param_class = mod_param.DataParameterInput
-                elif param_layout == 'range':
+                elif param_layout in ('range', 'date_range'):
                     param_class = mod_param.DataParameterRange
-                elif param_layout == 'date':
-                    param_class = mod_param.DataParameterDate
-                elif param_layout == 'date_range':
-                    param_class = mod_param.DataParameterDateRange
                 elif param_layout == 'checkbox':
                     param_class = mod_param.DataParameterCheckbox
                 else:
@@ -970,15 +962,14 @@ class DatabaseRecord:
                 # Set the object type of the record parameter.
                 if param_type == 'table':
                     element_class = mod_elem.TableElement
-
-                    # Format entry for table
-                    description = param_entry.get('Description', param)
-                    try:
-                        param_entry = param_entry['Options']
-                    except KeyError:
-                        raise AttributeError('the "Options" parameter is required for table element {PARAM}'
-                                             .format(PARAM=param))
-                    param_entry['Title'] = description
+                elif param_type in ('input', 'date'):
+                    element_class = mod_elem.DataElementInput
+                elif param_type in ('dropdown', 'combo'):
+                    element_class = mod_elem.DataElementCombo
+                elif param_type in ('multi', 'multiline'):
+                    element_class = mod_elem.DataElementMultiline
+                elif param_type == 'element_reference':
+                    element_class = mod_elem.DataElementReference
                 else:
                     element_class = mod_elem.DataElement
 
@@ -2161,8 +2152,8 @@ class DatabaseRecord:
         # Create layout for record details
         details_layout = []
         for data_elem in self.parameters:
-            details_layout.append([data_elem.layout(padding=(0, pad_el), collapsible=True, editable=editable,
-                                                    overwrite_edit=self.new)])
+#            details_layout.append([data_elem.layout(padding=(0, pad_el), editable=editable, collapsible=True, overwrite=self.new)])
+            details_layout.append([data_elem.layout(padding=(0, pad_el), editable=editable, overwrite=self.new)])
 
         # Add reference boxes to the details section
         ref_key = self.key_lookup('ReferencesButton')
