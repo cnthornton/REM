@@ -968,7 +968,7 @@ class DatabaseRecord:
                     element_class = mod_elem.DataElementCombo
                 elif param_type in ('multi', 'multiline'):
                     element_class = mod_elem.DataElementMultiline
-                elif param_type == 'element_reference':
+                elif param_type == 'data_reference':
                     element_class = mod_elem.DataElementReference
                 else:
                     element_class = mod_elem.DataElement
@@ -1892,6 +1892,18 @@ class DatabaseRecord:
         """
         record_id = self.record_id()
 
+        # Check if any data elements are in edit mode before saving. Attempt to save if so.
+        for param in self.parameters:
+            try:
+                edit_mode = param.edit_mode
+            except AttributeError:
+                continue
+            else:
+                if edit_mode:
+                    mod_win2.popup_notice('Please save or cancel all changes to record data elements before continuing')
+
+                    return False
+
         try:
             statements = self.prepare_save_statements(statements=statements)
         except Exception as e:
@@ -2320,6 +2332,19 @@ class StandardRecord(DatabaseRecord):
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
 
+        # Check if any data elements are in edit mode
+        for param in self.parameters:
+            try:
+                edit_mode = param.edit_mode
+            except AttributeError:
+                continue
+
+            if edit_mode and event not in param.elements:  # element is edited and event not an element event
+                logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
+                             .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+                # Attempt to save the data element value
+                param.run_event(window, param.key_lookup('Save'), values)
+
         # Expand or collapse the references frame
         if event == self.key_lookup('ReferencesButton'):
             self.collapse_expand(window, frame='references')
@@ -2427,6 +2452,19 @@ class DepositRecord(DatabaseRecord):
         modifier_elems = [i for modifier in self.metadata for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
+
+        # Check if any data elements are in edit mode
+        for param in self.parameters:
+            try:
+                edit_mode = param.edit_mode
+            except AttributeError:
+                continue
+
+            if edit_mode and event not in param.elements:  # element is edited and event not an element event
+                logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
+                             .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+                # Attempt to save the data element value
+                param.run_event(window, param.key_lookup('Save'), values)
 
         # Collapse or expand the references frame
         if event == self.key_lookup('ReferencesButton'):
@@ -2576,6 +2614,19 @@ class AuditRecord(DatabaseRecord):
         modifier_elems = [i for modifier in self.metadata for i in modifier.elements]
         component_elems = [i for component in self.components for i in component.elements]
         reference_elems = [i for reference in self.references for i in reference.elements]
+
+        # Check if any data elements are in edit mode
+        for param in self.parameters:
+            try:
+                edit_mode = param.edit_mode
+            except AttributeError:
+                continue
+
+            if edit_mode and event not in param.elements:  # element is edited and event not an element event
+                logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
+                             .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+                # Attempt to save the data element value
+                param.run_event(window, param.key_lookup('Save'), values)
 
         if event == self.key_lookup('ReferencesButton'):
             self.collapse_expand(window, frame='references')

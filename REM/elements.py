@@ -3273,6 +3273,7 @@ class DataElement:
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
         self.disabled = False
+        self.edit_mode = False
 
     def key_lookup(self, component):
         """
@@ -3322,6 +3323,8 @@ class DataElement:
         window[edit_key].update(disabled=False)
         window[update_key].update(visible=False)
         window[elem_key].update(disabled=True)
+
+        self.edit_mode = False
 
     def resize(self, window, size: tuple = None):
         """
@@ -3374,6 +3377,8 @@ class DataElement:
                 date_key = self.key_lookup('Calendar')
                 window[date_key].update(disabled=False)
 
+            self.edit_mode = True
+
         if event == save_key:
             # Update value of the data element
             try:
@@ -3401,6 +3406,8 @@ class DataElement:
                 date_key = self.key_lookup('Calendar')
                 window[date_key].update(disabled=True)
 
+            self.edit_mode = False
+
         if event == cancel_key:
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
@@ -3411,6 +3418,8 @@ class DataElement:
             if self.dtype in settings.supported_date_dtypes:
                 date_key = self.key_lookup('Calendar')
                 window[date_key].update(disabled=True)
+
+            self.edit_mode = False
 
             self.update_display(window)
 
@@ -3553,7 +3562,7 @@ class DataElement:
         if not display_value:
             display_value = self.format_display()
 
-        if pd.isna(display_value) or rules is None:
+        if pd.isna(display_value) or not rules:
             return None
 
         logger.debug('DataElement {NAME}: annotating display value on configured annotation rules'.format(NAME=self.name))

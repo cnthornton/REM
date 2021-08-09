@@ -3432,7 +3432,11 @@ class ElementReference:
         """
         Format element for display.
         """
+        bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
+        tooltip = self.description
+
         elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
 
         # Get values of the reference elements
         values = {}
@@ -3454,32 +3458,53 @@ class ElementReference:
         display_value = self.format_display()
         window[elem_key].update(value=display_value)
 
-    def annotate_display(self, value):
+        # Check if the display value passes any annotations rules and update background.
+        annotation = self.annotate_display(display_value)
+        if annotation:
+            rule = self.annotation_rules[annotation]
+            bg_col = rule['BackgroundColor']
+            tooltip = rule['Description']
+
+        window[desc_key].update(background_color=bg_col)
+        window[desc_key].SetTooltip(tooltip)
+
+    def annotate_display(self, display_value=None):
         """
-        Annotate the display value using configured annotation rules.
+        Annotate the display element using configured annotation rules.
         """
         rules = self.annotation_rules
 
-        if pd.isna(value) or value == '':
+        if not display_value:
+            display_value = self.format_display()
+
+        if pd.isna(display_value) or rules is None:
             return None
 
-        logger.debug('ElementReference {NAME}: annotating display on configured annotation rules'.format(NAME=self.name))
+        logger.debug('ElementReference {NAME}: annotating display value on configured annotation rules'
+                     .format(NAME=self.name))
 
         annotation = None
         for annot_code in rules:
-            logger.debug('ElementReference {NAME}: annotating display based on configured annotation rule "{CODE}"'
+            logger.debug('ElementReference {NAME}: annotating element based on configured annotation rule "{CODE}"'
                          .format(NAME=self.name, CODE=annot_code))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                result = mod_dm.evaluate_rule(value, {annot_code: annot_condition}, as_list=False)
+                result = mod_dm.evaluate_condition({self.name, display_value}, annot_condition)
             except Exception as e:
-                logger.error('ElementReference {NAME}: failed to annotate display using annotation rule {CODE} - {ERR}'
+                logger.error('ElementReference {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
-            if result is True:
-                annotation = annot_code
+            if result:
+                logger.debug('ElementReference {NAME}: element value {VAL} annotated on annotation code {CODE}'
+                             .format(NAME=self.name, VAL=display_value, CODE=annot_code))
+                if annotation:
+                    logger.warning('ElementReference {NAME}: element value {VAL} has passed two or more annotation '
+                                   'rules ... defaulting to the first passed "{CODE}"'
+                                   .format(NAME=self.name, VAL=display_value, CODE=annotation))
+                else:
+                    annotation = annot_code
 
         return annotation
 
@@ -3508,7 +3533,7 @@ class DataElement:
 
         description (str): display name of the data element.
 
-        etype (str): GUI element type. Can be dropdown, input, multiline, reference, or checkbox
+        etype (str): GUI element type. Can be dropdown, input, or multiline
 
         dtype (str): element data type.
 
@@ -3801,13 +3826,13 @@ class DataElement:
                                       font=bold_font, auto_size_text=True, tooltip=self.description),
                               sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
                                         button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
-                                        tooltip='edit element value'),
+                                        border_width=0, tooltip='edit element value'),
                               sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Save changes'),
+                                        border_width=0, tooltip='Save changes'),
                               sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Cancel edit')]
+                                        border_width=0, tooltip='Cancel edit')]
 
         # Element layout
         display_value = self.format_display()
@@ -3817,12 +3842,12 @@ class DataElement:
                                   metadata={'disabled': is_disabled, 'name': self.name})]
 
         # Layout
-        layout = sg.Col([icon_layout + description_layout + element_layout + required_layout],
+        layout = sg.Col([icon_layout + description_layout, element_layout + required_layout],
                         pad=padding, background_color=bg_col)
 
         return layout
 
-    def update_display(self, window):
+    def update_display(self, window, window_values=None):
         """
         Format element for display.
         """
@@ -3902,7 +3927,7 @@ class DataElement:
 
 class DataElementInput(DataElement):
     """
-    GUI data element.
+    Input-style data element.
 
     Attributes:
 
@@ -4022,32 +4047,36 @@ class DataElementInput(DataElement):
                                       font=bold_font, auto_size_text=True, tooltip=self.description),
                               sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
                                         button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
-                                        tooltip='Edit element value'),
+                                        border_width=0, tooltip='Edit element value'),
                               sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Save changes'),
+                                        border_width=0, tooltip='Save changes'),
                               sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Cancel edit')]
+                                        border_width=0, tooltip='Cancel edit')]
 
         # Element layout
         display_value = self.format_display()
         elem_key = self.key_lookup('Element')
-        element_layout = [sg.Input(display_value, key=elem_key, size=size, enable_events=True, font=font,
+        value_key = self.key_lookup('Value')
+        element_layout = [sg.Text(display_value, key=elem_key, size=size, font=font, background_color=input_col,
+                                  text_color=text_col, visible=True,
+                                  metadata={'disabled': is_disabled, 'name': self.name, 'visible': True}),
+                          sg.Input(display_value, key=value_key, size=size, enable_events=True, font=font,
                                    background_color=input_col, text_color=text_col, disabled=is_disabled,
                                    disabled_readonly_background_color=input_col,
-                                   disabled_readonly_text_color=text_col,
+                                   disabled_readonly_text_color=text_col, visible=False,
                                    tooltip='Input value for {}'.format(self.description),
-                                   metadata={'disabled': is_disabled, 'name': self.name})]
+                                   metadata={'disabled': is_disabled, 'name': self.name, 'visible': False})]
         if dtype in settings.supported_date_dtypes:
             date_key = self.key_lookup('Calendar')
-            element_layout.append(sg.CalendarButton('', target=elem_key, key=date_key, format='%Y-%m-%d',
+            element_layout.append(sg.CalendarButton('', target=value_key, key=date_key, format='%Y-%m-%d',
                                                     image_data=mod_const.CALENDAR_ICON,
                                                     font=font, border_width=0, disabled=is_disabled,
                                                     tooltip='Select the date from the calendar dropdown'))
 
         # Layout
-        layout = sg.Col([icon_layout + description_layout + element_layout + required_layout],
+        layout = sg.Col([icon_layout + description_layout, element_layout + required_layout],
                         pad=padding, background_color=bg_col)
 
         return layout
@@ -4155,7 +4184,7 @@ class DataElementInput(DataElement):
 
 class DataElementCombo(DataElement):
     """
-    Dropdown-stype data element.
+    Dropdown-style data element.
 
     Attributes:
 
@@ -4332,13 +4361,13 @@ class DataElementCombo(DataElement):
                                       font=bold_font, auto_size_text=True, tooltip=self.description),
                               sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
                                         button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
-                                        tooltip='Edit element value'),
+                                        border_width=0, tooltip='Edit element value'),
                               sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Save changes'),
+                                        border_width=0, tooltip='Save changes'),
                               sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Cancel edit')]
+                                        border_width=0, tooltip='Cancel edit')]
 
         # Element layout
         try:
@@ -4357,14 +4386,18 @@ class DataElementCombo(DataElement):
 
         display_value = self.format_display()
         elem_key = self.key_lookup('Element')
-        element_layout = [sg.Combo(display_values, default_value=display_value, key=elem_key, size=size, font=font,
+        value_key = self.key_lookup('Value')
+        element_layout = [sg.Text(display_value, key=elem_key, size=size, font=font, background_color=input_col,
+                                  text_color=text_col, visible=True,
+                                  metadata={'disabled': is_disabled, 'name': self.name, 'visible': True}),
+                          sg.Combo(display_values, default_value=display_value, key=value_key, size=size, font=font,
                                    text_color=text_col, background_color=input_col,
-                                   enable_events=True, disabled=is_disabled,
+                                   enable_events=True, disabled=is_disabled, visible=False,
                                    tooltip='Select value from list for {}'.format(self.description),
                                    metadata={'disabled': is_disabled, 'name': self.name})]
 
         # Layout
-        layout = sg.Col([icon_layout + description_layout + element_layout + required_layout],
+        layout = sg.Col([icon_layout + description_layout, element_layout + required_layout],
                         pad=padding, background_color=bg_col)
 
         return layout
@@ -4418,7 +4451,7 @@ class DataElementCombo(DataElement):
 
 class DataElementMultiline(DataElement):
     """
-    GUI data element.
+    Multiline-style data element.
 
     Attributes:
 
@@ -4545,28 +4578,33 @@ class DataElementMultiline(DataElement):
                                       font=bold_font, auto_size_text=True, tooltip=self.description),
                               sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
                                         button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
-                                        tooltip='Edit element value'),
+                                        border_width=0, tooltip='Edit element value'),
                               sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Save changes'),
+                                        border_width=0, tooltip='Save changes'),
                               sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
                                         button_color=(text_col, bg_col), visible=False, disabled=is_disabled,
-                                        tooltip='Cancel edit')]
+                                        border_width=0, tooltip='Cancel edit')]
 
         # Element layout
         display_value = self.format_display()
         elem_key = self.key_lookup('Element')
+        value_key = self.key_lookup('Value')
 
         height = self.nrow
         width = size[0]
         element_layout = [sg.Multiline(display_value, key=elem_key, size=(width, height), font=font,
+                                       background_color=input_col, text_color=text_col, visible=True,
+                                       border_width=1, disabled=True,
+                                       metadata={'disabled': is_disabled, 'name': self.name, 'visible': True}),
+                          sg.Multiline(display_value, key=value_key, size=(width, height), font=font,
                                        background_color=input_col, text_color=text_col, write_only=False,
-                                       border_width=1, disabled=is_disabled, enable_events=True,
+                                       border_width=1, disabled=is_disabled, enable_events=True, visible=False,
                                        tooltip='Input value for {}'.format(self.description),
                                        metadata={'disabled': is_disabled, 'name': self.name})]
 
         # Layout
-        layout = sg.Col([icon_layout + description_layout + element_layout + required_layout],
+        layout = sg.Col([icon_layout + description_layout, element_layout + required_layout],
                         pad=padding, background_color=bg_col)
 
         return layout
@@ -4600,7 +4638,10 @@ class DataElementMultiline(DataElement):
         Format the elements value for displaying.
         """
         return str(self.value).rstrip('\n\r')
-class DataElement:
+
+
+
+class DataElementOld:
     """
     GUI data element.
 
@@ -4712,9 +4753,70 @@ class DataElement:
             self.required = required
 
         try:
-            self.options = entry['Options']
+            bg_col = entry['BackgroundColor']
         except KeyError:
-            self.options = {}
+            self.bg_col = mod_const.ACTION_COL
+        else:
+            if isinstance(bg_col, str) and (not bg_col.startswith('#') or len(bg_col) != 7):  # hex color codes
+                self.bg_col = mod_const.ACTION_COL
+            else:
+                self.bg_col = bg_col
+
+        try:
+            self.icon = entry['Icon']
+        except KeyError:
+            self.icon = None
+
+        try:
+            self.date_format = entry['DateFormat']
+        except KeyError:
+            self.date_format = settings.display_date_format
+
+        # Dropdown values
+        param_def = settings.fetch_alias_definition(self.name)
+        try:
+            combo_values = entry['Values']
+        except KeyError:
+            self.combo_values = []
+            self.aliases = {}
+        else:
+            self.combo_values = []
+            self.aliases = {}
+            for combo_value in combo_values:
+                try:
+                    self.combo_values.append(settings.format_value(combo_value, self.dtype))
+                except ValueError:
+                    msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
+                    mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                    logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+                # Add alias from parameter definition, if configured in the parameter definitions
+                if combo_value in param_def:
+                    self.aliases[combo_value] = param_def[combo_value]
+                else:
+                    msg = 'value {VAL} is not found in the alias definition'.format(VAL=combo_value)
+                    logger.debug('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+        # Dropdown aliases
+        try:
+            aliases = entry['Aliases']
+        except KeyError:
+            if not self.aliases:
+                self.aliases = {settings.format_value(i, self.dtype): settings.format_value(i, self.dtype) for i in
+                                self.combo_values}
+        else:
+            self.aliases = {}
+            for combo_value in self.combo_values:
+                if combo_value not in aliases:
+                    self.aliases[combo_value] = combo_value
+                else:
+                    alias = aliases[combo_value]
+                    self.aliases[combo_value] = settings.format_value(alias, self.dtype)
+
+        try:
+            self.nrow = int(entry['Rows'])
+        except (KeyError, ValueError):
+            self.nrow = 1
 
         try:
             self.default = entry['DefaultValue']
@@ -4814,19 +4916,18 @@ class DataElement:
         return True
 
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), collapsible: bool = False, editable: bool = True,
-               overwrite_edit: bool = False):
+               overwrite: bool = False):
         """
         GUI layout for the data element.
         """
         etype = self.etype
         dtype = self.dtype
-        is_disabled = False if overwrite_edit is True or (editable is True and self.editable is True) else True
+        is_disabled = False if overwrite is True or (editable is True and self.editable is True) else True
         self.disabled = is_disabled
         is_required = self.required
 
-        element_options = self.options
-        aliases = element_options.get('Aliases', {})
-        background = element_options.get('BackgroundColor', None)
+        aliases = self.aliases
+        background = self.bg_col
         if isinstance(background, str) and (not background.startswith('#') or len(background) != 7):  # hex color codes
             background = None
 
@@ -4845,7 +4946,7 @@ class DataElement:
             text_col = mod_const.TEXT_COL
 
         # Element Icon, if provided
-        icon = element_options.get('Icon', None)
+        icon = self.icon
         if icon is not None:
             icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
@@ -4887,7 +4988,7 @@ class DataElement:
 
         if etype == 'dropdown':
             try:
-                values = element_options['Values']
+                values = self.combo_values
             except KeyError:
                 logger.warning('DataElement {NAME}: dropdown was selected for the data element but no '
                                'values were provided to populate the dropdown'.format(NAME=self.name))
@@ -4929,7 +5030,7 @@ class DataElement:
                                       border_width=1, relief='sunken',
                                       metadata={'disabled': is_disabled, 'value': stored_value})]
         elif etype == 'multiline':
-            nrow = element_options.get('Rows', 1)
+            nrow = self.nrow
             width = size[0]
             element_layout = [sg.Multiline(display_value, key=elem_key, size=(width, nrow), font=font,
                                            background_color=input_col, text_color=text_col, write_only=False,
@@ -4968,7 +5069,6 @@ class DataElement:
         Format element for display.
         """
         elem_key = self.key_lookup('Element')
-        options = self.options
 
         # Update element display value
         logger.debug('DataElement {NAME}: disabled {EDIT}; hidden {VIS}'
@@ -5007,7 +5107,7 @@ class DataElement:
                 display_value = None
 
         # Update element background color
-        bg_col = options.get('BackgroundColor', None)
+        bg_col = self.bg_col
         default_bg_col = mod_const.DISABLED_BG_COL if self.disabled is True else mod_const.INPUT_COL
         if display_value and self.etype in ('input', 'multiline'):
             window[elem_key].update(background_color=bg_col)
@@ -5203,7 +5303,6 @@ class DataElement:
 
         dtype = self.dtype
         value = self.value
-        options = self.options
         if value == '' or value is None:
             return ''
 
@@ -5236,7 +5335,7 @@ class DataElement:
                 display_value = value.strftime(settings.format_date_str(date_str='YYYY-MM-DD'))
 
         else:  # remove newline and carriage return characters created by multiline elements for some reason
-            aliases = options.get('Aliases', {})
+            aliases = self.aliases
             display_value = aliases.get(value, str(value).rstrip('\n\r'))
 
         return display_value
@@ -5253,13 +5352,12 @@ class DataElement:
         group_sep = settings.thousands_sep
 
         dtype = self.dtype
-        options = self.options
 
         if input_value == '' or pd.isna(input_value):
             return self.value
 
         try:  # reverse the alias map
-            aliases = {j: i for i, j in options['Aliases'].items()}
+            aliases = {j: i for i, j in self.aliases.items()}
         except (AttributeError, KeyError):  # no aliases defined
             input_value = input_value
         else:
@@ -5277,7 +5375,7 @@ class DataElement:
         if dtype in settings.supported_date_dtypes:
             if isinstance(input_value, str):
                 try:
-                    date_format = self.options['DateFormat']
+                    date_format = self.date_format
                 except KeyError:
                     logger.warning(
                         'DataElement {NAME}: date was selected for the data element but a date '

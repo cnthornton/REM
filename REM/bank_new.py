@@ -163,8 +163,7 @@ class BankRule:
         # Dynamic Attributes
         self.in_progress = False
         self.current_account = None
-        self.current_panel = self.key_lookup('MainPanel')
-        self.first_panel = self.key_lookup('MainPanel')
+        self.current_panel = None
         self.title = None
 
     def key_lookup(self, component):
@@ -335,8 +334,8 @@ class BankRule:
             return self.name
         else:
             # Reset the current account display
-            current_acct = self.fetch_account(self.current_account)
-            window[current_acct.key_lookup('Panel')].update(visible=False)
+            window[self.panel_keys[self.current_panel]].update(visible=False)
+            self.current_panel = None
 
             panel_title_key = self.key_lookup('Title')
             window[panel_title_key].update(value='')
@@ -425,7 +424,7 @@ class BankRule:
         main_key = self.key_lookup('Panel')
         main_layout = sg.Col([header,
                               [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-                              panel_layout],
+                              [sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True)]],
                              key=main_key, pad=(0, 0), background_color=bg_col, vertical_alignment='t',
                              visible=True, expand_y=True, expand_x=True)
 
@@ -440,7 +439,7 @@ class BankRule:
                        sg.Col([
                            [sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
                                       pad=((pad_el, 0), 0), disabled=True,
-                                      tooltip='Save reconciliation results ({})'.format(save_shortcut),
+                                      tooltip='Save results ({})'.format(save_shortcut),
                                       metadata={'disabled': True})]
                                ], pad=(0, (pad_v, 0)), justification='r', element_justification='r')]
 
@@ -467,6 +466,31 @@ class BankRule:
         else:
             width, height = window.size  # current window size (width, height)
 
+        # For every five-pixel increase in window size, increase frame size by one
+        layout_pad = 100  # default padding between the window and border of the frame
+        win_diff = width - mod_const.WIN_WIDTH
+        layout_pad = layout_pad + int(win_diff / 5)
+
+        frame_width = width - layout_pad if layout_pad > 0 else width
+        panel_width = frame_width - 30
+
+        width_key = self.key_lookup('FrameWidth')
+        window[width_key].set_size((frame_width, None))
+
+        pw_key = self.key_lookup('PanelWidth')
+        window[pw_key].set_size((panel_width, None))
+
+        layout_height = height * 0.85  # height of the container panel, including buttons
+        frame_height = layout_height - 120  # minus the approximate height of the button row and title bar, with padding
+        panel_height = frame_height - 20  # minus top and bottom padding
+
+        height_key = self.key_lookup('FrameHeight')
+        window[height_key].set_size((None, frame_height))
+
+        ph_key = self.key_lookup('PanelHeight')
+        window[ph_key].set_size((None, panel_height))
+
+        # Resize account panels
         accts = self.accts
         for acct in accts:
             acct.resize(window, size=(width, height))
