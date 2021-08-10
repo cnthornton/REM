@@ -157,6 +157,7 @@ class BankRule:
 
             acct = AccountEntry(acct_id, acct_entry, parent=self.name)
             self.accts.append(acct)
+            print('adding panel key {} for account {}'.format(acct.key_lookup('Panel'), acct_id))
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
             self.elements += acct.elements
 
@@ -334,7 +335,7 @@ class BankRule:
             return self.name
         else:
             # Reset the current account display
-            window[self.panel_keys[self.current_panel]].update(visible=False)
+            window[self.current_panel].update(visible=False)
             self.current_panel = None
 
             panel_title_key = self.key_lookup('Title')
@@ -397,15 +398,19 @@ class BankRule:
         acct_text = '' if not self.title else self.title
         title_key = self.key_lookup('Title')
         param_key = self.key_lookup('Parameters')
+        reconcile_key = self.key_lookup('Reconcile')
+        expand_key = self.key_lookup('Expand')
         header = [sg.Col([[sg.Text(acct_text, key=title_key, pad=((0, pad_h), 0), font=font_bold,
                                    background_color=bg_col),
                            sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON,
                                      button_color=(text_col, bg_col), tooltip='Set parameters')]],
                          expand_x=True, justification='l', background_color=bg_col),
-                  sg.Col([[sg.Button('Reconcile', pad=((0, pad_el), 0), button_color=(bttn_text_col, bttn_bg_col),
-                                     disabled=True, disabled_button_color=(disabled_text_col, disabled_bg_col),
+                  sg.Col([[sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
+                                     button_color=(bttn_text_col, bttn_bg_col),
+                                     disabled_button_color=(disabled_text_col, disabled_bg_col),
                                      tooltip='Run reconciliation'),
-                           sg.Checkbox('Expand search', background_color=bg_col, font=font_bold, disabled=True)]],
+                           sg.Checkbox('Expand search', key=expand_key, background_color=bg_col, font=font_bold,
+                                       disabled=True)]],
                          justification='r', background_color=bg_col)]
 
         # Panels
