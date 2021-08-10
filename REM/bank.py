@@ -282,24 +282,25 @@ class BankRule:
             params = mod_win2.parameter_window(acct)
 
             # Load the account records
-            for acct_name in params:
-                acct_params = params[acct_name]
+            if params:  # parameters were saved (selection not cancelled)
+                for acct_name in params:
+                    acct_params = params[acct_name]
 
-                if acct_name == acct.name:
-                    acct.load_data(acct_params)
-                else:
-                    assoc_acct = self.fetch_account(acct_name)
-                    assoc_acct.load_data(acct_params)
+                    if acct_name == acct.name:
+                        acct.load_data(acct_params)
+                    else:
+                        assoc_acct = self.fetch_account(acct_name)
+                        assoc_acct.load_data(acct_params)
 
-            # Update the display
-            self.update_display(window)
+                # Update the display
+                self.update_display(window)
 
-            # Enable the reconciliation button
-            window[reconcile_key].update(disabled=False)
-            window[expand_key].update(disabled=False)
+                # Enable the reconciliation button
+                window[reconcile_key].update(disabled=False)
+                window[expand_key].update(disabled=False)
 
-            # Mark that a reconciliation is currently in progress
-            self.in_progress = True
+                # Mark that a reconciliation is currently in progress
+                self.in_progress = True
 
         # Reconcile button was pressed. Will run the reconcile method to find associations with the current primary
         # account and any associated accounts with data.

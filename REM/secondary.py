@@ -627,7 +627,7 @@ def parameter_window(account, win_size: tuple = None):
     # Associated account parameters
     vis_conditions = {}
     for i, assoc_acct_name in enumerate(transactions):
-        param_group = '-{}-'.format(assoc_acct_name)
+        param_group = assoc_acct_name
         assoc_entry = transactions[assoc_acct_name]
         assoc_title = assoc_entry['Title']
 
@@ -685,13 +685,13 @@ def parameter_window(account, win_size: tuple = None):
             except KeyError:
                 params[assoc_acct_name] = [param]
 
-        params_layout.append([sg.Col(assoc_layout, key=param_group, background_color=bg_col, visible=False,
-                                     expand_x=True, metadata={'visible': False})])
+        params_layout.append([sg.Col(assoc_layout, key='-{}-'.format(param_group), background_color=bg_col,
+                                     visible=False, expand_x=True, metadata={'visible': False})])
 
     # Control elements
     load_key = '-LOAD-'
     bttn_layout = [[sg.Button('', key=load_key, pad=((pad_el, 0), 0), image_data=mod_const.IMPORT_ICON,
-                              image_size=mod_const.BTTN_SIZE, disabled=True,
+                              image_size=mod_const.BTTN_SIZE, disabled=False,
                               tooltip='Load records ({})'.format(load_shortcut))]]
 
     # Window layout
@@ -732,7 +732,7 @@ def parameter_window(account, win_size: tuple = None):
     # Event window
     check_conds = True
     while True:
-        event, values = window.read()
+        event, values = window.read(timeout=1000)
 
         # Cancel parameter selection
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without setting param values
@@ -775,6 +775,8 @@ def parameter_window(account, win_size: tuple = None):
                 acct_params = params[acct_name]
                 has_values = []
                 for acct_param in acct_params:
+                    acct_param.value = acct_param.format_value(values)
+
                     if acct_param.required and not acct_param.value:
                         msg = 'missing value from required account {ACCT} parameter {PARAM}'\
                             .format(ACCT=acct_name, PARAM=acct_param.name)
@@ -821,28 +823,45 @@ def parameter_window(account, win_size: tuple = None):
         # Check value conditions for parameter groups. Enable visibility of groups that meet all conditions and disable
         # groups that do not.
         if check_conds:
-            primary_param_values = {i.name: i.value for i in params[primary_acct_name]}
-            print(primary_param_values)
-            print('parameter groups')
-            for param_group in vis_conditions:
-                print(param_group, vis_conditions[param_group])
-                enabled = True  # default to enabled. Disable if fails to meet conditions
-                pgroup_conds = vis_conditions[param_group]
-                for pid in pgroup_conds:
-                    cond_value = pgroup_conds[pid]
-                    pvalue = primary_param_values[pid]
-                    if cond_value != pvalue:
-                        enabled = False
-                        break
+            primary_param_values = {i.name: i.format_value(values) for i in params[primary_acct_name] if not i.hidden}
+            pgroup_vis = {i: [] for i in transactions}
+            for primary_component_name in vis_conditions:
+                component_conditions = vis_conditions[primary_component_name]
+                for component_value in component_conditions:
+                    try:
+                        primary_value = primary_param_values[primary_component_name]
+                    except KeyError:
+                        print('missing key {} from primary parameter values'.format(primary_component_name))
+                        continue
 
-                if enabled and window[param_group].metadata['visible'] is False:
-                    window[param_group].update(visible=True)
-                    window[param_group].metadata['visible'] = True
-                elif not enabled and window[param_group].metadata['visible'] is True:
-                    window[param_group].update(visible=False)
-                    window[param_group].metadata['visible'] = False
+                    if component_value == primary_value:
+                        success_groups = component_conditions[component_value]
+                    else:
+                        success_groups = []
+
+                    for trans_acct in transactions:
+                        if trans_acct in success_groups:
+                            pgroup_vis[trans_acct].append(True)
+                        else:
+                            pgroup_vis[trans_acct].append(False)
+
+            for pgroup in pgroup_vis:
+                pgroup_key = '-{}-'.format(pgroup)
+                pgroup_success = pgroup_vis[pgroup]
+                if all(pgroup_success) and window[pgroup_key].metadata['visible'] is False:  # to add
+                    window[pgroup_key].update(visible=True)
+                    window[pgroup_key].metadata['visible'] = True
+                elif not all(pgroup_success) and window[pgroup_key].metadata['visible'] is True:  # to remove
+                    window[pgroup_key].update(visible=False)
+                    window[pgroup_key].metadata['visible'] = False
+
+                    # Reset parameters in the parameter groups that are no longer visible
+                    pgroup_params = params[pgroup]
+                    for pgroup_param in pgroup_params:
+                        pgroup_param.reset(window)
 
             check_conds = False
+
             continue
 
     return param_values

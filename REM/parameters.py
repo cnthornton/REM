@@ -635,9 +635,9 @@ class DataParameterInput(DataParameter):
 
         # Parameter size
         width, height = size
-        desc_w = int(width * 0.4)
+        desc_w = int(width * 0.3)
         desc_h = height
-        elem_w = int(width * 0.6) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
+        elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
         elem_h = height
         param_w = width * 10
 
@@ -948,9 +948,9 @@ class DataParameterCombo(DataParameter):
 
         # Parameter size
         width, height = size
-        desc_w = int(width * 0.4)
+        desc_w = int(width * 0.3)
         desc_h = height
-        elem_w = int(width * 0.6)
+        elem_w = int(width * 0.7)
         elem_h = height
         param_w = width * 10
 
@@ -1208,9 +1208,9 @@ class DataParameterRange(DataParameter):
 
         # Parameter size
         width, height = size
-        desc_w = int(width * 0.4)
+        desc_w = int(width * 0.3)
         desc_h = height
-        elem_w = int(width * 0.6) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
+        elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
         elem_h = height
         param_w = width * 10
 
