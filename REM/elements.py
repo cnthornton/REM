@@ -3833,7 +3833,7 @@ class DataElementInput(DataElement):
                     numeric_sign = ''
                 if dec_sep in value:
                     integers, decimals = value.split(dec_sep)
-                    decimals = decimals[0:2]
+                    decimals = decimals[0:2].ljust(2, '0')
                     display_value = '{SIGN}{VAL}{SEP}{DEC}' \
                         .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
                                                                 enumerate(integers[::-1])][::-1]).lstrip(','),
@@ -4343,7 +4343,7 @@ class DataElementReference(DataElement):
                 numeric_sign = ''
             if dec_sep in value:
                 integers, decimals = value.split(dec_sep)
-                decimals = decimals[0:2]
+                decimals = decimals[0:2].ljust(2, '0')
                 display_value = '{SIGN}{VAL}{SEP}{DEC}' \
                     .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
                                                             enumerate(integers[::-1])][::-1]).lstrip(','),
