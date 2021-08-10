@@ -2431,8 +2431,11 @@ class TableElement:
             elif isinstance(dtype, str):
                 try:
                     if dtype in ('date', 'datetime', 'timestamp', 'time'):
-                        df.loc[:, column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format,
-                                                           utc=False)
+                        try:
+                            df.loc[:, column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format,
+                                                               utc=False)
+                        except ValueError:  # need to remove Time Zone information from column values
+                            df.loc[:, column] = df[column].apply(lambda x: x.replace(tzinfo=None))
                     elif dtype in ('int', 'integer', 'bigint'):
                         try:
                             df.loc[:, column] = df[column].astype('Int64')
@@ -3362,6 +3365,8 @@ class DataElement:
         save_key = self.key_lookup('Save')
         cancel_key = self.key_lookup('Cancel')
 
+        success = True
+
         if event == edit_key or (event == '{}+LCLICK+'.format(elem_key) and not self.disabled):
             # Update element to show any current unformatted data
             value_fmt = self.format_display(editing=True)
@@ -3390,9 +3395,11 @@ class DataElement:
                 try:
                     self.value = self.format_value(value)
                 except Exception as e:
-                    msg = 'unable to format {DESC} input value'.format(DESC=self.description)
+                    msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
                     logger.exception('DataElement {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     mod_win2.popup_error(msg)
+
+                    success = False
 
                 self.update_display(window)
 
@@ -3423,7 +3430,7 @@ class DataElement:
 
             self.update_display(window)
 
-        return True
+        return success
 
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
         """
