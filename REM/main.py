@@ -768,7 +768,10 @@ def main():
 
                 # Update the display title
                 panel_title_key = current_rule.key_lookup('Title')
-                window[panel_title_key].update(value=current_acct.title)
+                acct_title = current_acct.title
+                title_w = len(acct_title) + 1
+                window[panel_title_key].set_size(size=(title_w, None))
+                window[panel_title_key].update(value=acct_title)
 
                 # Update the panel-in-display and the account panel
                 window[current_panel].update(visible=False)

@@ -384,9 +384,24 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 window['-DELETE-'].click()
 
         if event == '-OK-':  # selected to accept record changes
-            # Update data element values
+            # Check if any data elements are in edit mode before saving. Attempt to save if so.
+            elements_updated = True
             for param_elem in record.parameters:
-                param_elem.update_display(window, window_values=values)
+                try:
+                    edit_mode = param_elem.edit_mode
+                except AttributeError:
+                    pass
+                else:
+                    if edit_mode:  # element is being edited
+                        # Attempt to save the data element value
+                        success = param_elem.run_event(window, param_elem.key_lookup('Save'), values)
+                        if not success:
+                            elements_updated = False
+
+                            break
+
+            if not elements_updated:
+                continue
 
             # Update modifier values
             for modifier in record.metadata:
@@ -411,9 +426,24 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
                 continue
 
         if event == '-SAVE-':  # selected to save the record (changes) to the database
-            # Update data element values
+            # Check if any data elements are in edit mode before saving. Attempt to save if so.
+            elements_updated = True
             for param_elem in record.parameters:
-                param_elem.update_display(window, window_values=values)
+                try:
+                    edit_mode = param_elem.edit_mode
+                except AttributeError:
+                    pass
+                else:
+                    if edit_mode:  # element is being edited
+                        # Attempt to save the data element value
+                        success = param_elem.run_event(window, param_elem.key_lookup('Save'), values)
+                        if not success:
+                            elements_updated = False
+
+                            break
+
+            if not elements_updated:
+                continue
 
             # Update modifier values
             for modifier in record.metadata:
@@ -516,8 +546,8 @@ def parameter_window(account, win_size: tuple = None):
     else:
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
-    primary_acct = account.name
-    transactions = primary_acct.transactions
+    primary_acct_name = account.name
+    transactions = account.transactions
     param_values = {}
 
     # Element settings
@@ -552,8 +582,8 @@ def parameter_window(account, win_size: tuple = None):
 
     # Primary account acct_params
     acct_param_entry = account.parameters
-    primary_layout = [[sg.Text(account.title, pad=(0, 0), font=bold_font)],
-                      [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, 0))]]
+    primary_layout = [[sg.Text(account.title, pad=(0, 0), font=bold_font, background_color=bg_col)],
+                      [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, pad_el))]]
 
     for param_name in acct_param_entry:
         param_entry = acct_param_entry[param_name]
@@ -561,8 +591,8 @@ def parameter_window(account, win_size: tuple = None):
             param_layout = param_entry['ElementType']
         except KeyError:
             msg = 'no element type specified for primary account {ACCT} parameter {PARAM}' \
-                .format(ACCT=primary_acct, PARAM=param_name)
-            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct, MSG=msg))
+                .format(ACCT=primary_acct_name, PARAM=param_name)
+            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
             continue
 
@@ -576,23 +606,23 @@ def parameter_window(account, win_size: tuple = None):
             param_class = mod_param.DataParameterCheckbox
         else:
             msg = 'unknown element type "{TYPE}" provided to Transaction account {ACCT} import ' \
-                  'parameter {PARAM}'.format(TYPE=param_layout, ACCT=primary_acct, PARAM=param_name)
-            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct, MSG=msg))
+                  'parameter {PARAM}'.format(TYPE=param_layout, ACCT=primary_acct_name, PARAM=param_name)
+            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
             continue
 
         param = param_class(param_name, param_entry)
-        primary_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col))
+        primary_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left'))
         for element in param.elements:
-            param_keys[element] = primary_acct
+            param_keys[element] = primary_acct_name
 
         try:
-            params[primary_acct].append(param)
+            params[primary_acct_name].append(param)
         except KeyError:
-            params[primary_acct] = [param]
+            params[primary_acct_name] = [param]
 
-    params_layout.append([sg.Col(primary_layout, key='-{}-'.format(primary_acct), background_color=bg_col,
-                                 visible=False, expand_x=True, metadata={'visible': False})])
+    params_layout.append([sg.Col(primary_layout, key='-{}-'.format(primary_acct_name), background_color=bg_col,
+                                 element_justification='l', visible=True, expand_x=True, metadata={'visible': True})])
 
     # Associated account parameters
     vis_conditions = {}
@@ -607,7 +637,7 @@ def parameter_window(account, win_size: tuple = None):
         # Check if any configuration parameters for the associated account entry are related to the primary account
         # parameters. These provide the conditions for which parameter groups are visible and which are hidden.
         for component in assoc_entry:
-            if component in [i.name for i in params[primary_acct]]:
+            if component in [i.name for i in params[primary_acct_name]]:
                 vis_condition = assoc_entry[component]
 
                 try:
@@ -627,27 +657,27 @@ def parameter_window(account, win_size: tuple = None):
             except KeyError:
                 msg = 'no element type specified for primary account {ACCT} parameter {PARAM}' \
                     .format(ACCT=assoc_acct_name, PARAM=assoc_param_name)
-                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct, MSG=msg))
+                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
                 continue
 
-            if param_layout == 'dropdown':
+            if param_layout in ('dropdown', 'combo'):
                 param_class = mod_param.DataParameterCombo
-            elif param_layout == 'input':
+            elif param_layout in ('input', 'date'):
                 param_class = mod_param.DataParameterInput
-            elif param_layout == 'range':
+            elif param_layout in ('range', 'date_range'):
                 param_class = mod_param.DataParameterRange
             elif param_layout == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
             else:
                 msg = 'unknown element type "{TYPE}" provided to Transaction account {ACCT} import ' \
                       'parameter {PARAM}'.format(TYPE=param_layout, ACCT=assoc_acct_name, PARAM=assoc_param_name)
-                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct, MSG=msg))
+                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
                 continue
 
             param = param_class(assoc_param_name, assoc_param_entry)
-            assoc_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col))
+            assoc_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left'))
             for element in param.elements:
                 param_keys[element] = assoc_acct_name
             try:
@@ -672,7 +702,7 @@ def parameter_window(account, win_size: tuple = None):
                sg.Col([
                    [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                   [sg.Col(params_layout, pad=(pad_frame, pad_frame), background_color=bg_col, scrollable=True,
+                   [sg.Col(params_layout, pad=(0, 0), background_color=bg_col, scrollable=True,
                            vertical_scroll_only=True, expand_x=True, expand_y=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
                    [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
@@ -772,7 +802,7 @@ def parameter_window(account, win_size: tuple = None):
             # Get the account associated with the parameter key
             event_acct = param_keys[event]
 
-            if event_acct == primary_acct:
+            if event_acct == primary_acct_name:
                 check_conds = True
 
             # Fetch the relevant account parameter
@@ -791,8 +821,11 @@ def parameter_window(account, win_size: tuple = None):
         # Check value conditions for parameter groups. Enable visibility of groups that meet all conditions and disable
         # groups that do not.
         if check_conds:
-            primary_param_values = {i.name: i.value for i in params[primary_acct]}
+            primary_param_values = {i.name: i.value for i in params[primary_acct_name]}
+            print(primary_param_values)
+            print('parameter groups')
             for param_group in vis_conditions:
+                print(param_group, vis_conditions[param_group])
                 enabled = True  # default to enabled. Disable if fails to meet conditions
                 pgroup_conds = vis_conditions[param_group]
                 for pid in pgroup_conds:

@@ -601,6 +601,20 @@ class AuditRule:
 
         # Save results of the audit
         elif event == save_key:
+            # Check if any data elements are in edit mode before saving. Attempt to save if so.
+            for summ_tab in self.summary.tabs:
+                for param_elem in summ_tab.record.parameters:
+                    try:
+                        edit_mode = param_elem.edit_mode
+                    except AttributeError:
+                        pass
+                    else:
+                        if edit_mode:  # element is being edited
+                            # Attempt to save the data element value
+                            success = param_elem.run_event(window, param_elem.key_lookup('Save'), values)
+                            if not success:
+                                return current_rule
+
             # Get output file from user
             title = self.summary.title.replace(' ', '_')
             outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,

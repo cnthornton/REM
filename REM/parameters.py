@@ -125,7 +125,7 @@ class DataParameter:
         try:
             self.justification = entry['Justification']
         except KeyError:
-            self.justification = 'left'
+            self.justification = 'right'
 
         try:
             default = entry['DefaultValue']
@@ -615,12 +615,13 @@ class DataParameterInput(DataParameter):
             window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None):
+               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+        justification = justification if justification else self.justification
 
         visible = not hidden if hidden is not None else not self.hidden
 
@@ -661,10 +662,10 @@ class DataParameterInput(DataParameter):
         width_key = self.key_lookup('Width')
         if auto_size_desc:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
         else:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
 
         if self.editable is True:
             param_layout.append(sg.Input(param_value, key=elem_key, size=(elem_w, elem_h), enable_events=True,
@@ -927,12 +928,13 @@ class DataParameterCombo(DataParameter):
             window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None):
+               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+        justification = justification if justification else self.justification
 
         visible = not hidden if hidden is not None else not self.hidden
 
@@ -979,10 +981,10 @@ class DataParameterCombo(DataParameter):
         width_key = self.key_lookup('Width')
         if auto_size_desc:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
         else:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
 
         if self.editable is True:
             param_layout.append(sg.Combo(values, default_value=param_value, key=elem_key, size=(elem_w, elem_h),
@@ -1184,12 +1186,13 @@ class DataParameterRange(DataParameter):
             window[self.key_lookup('Element')].update(text=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None):
+               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+        justification = justification if justification else self.justification
 
         visible = not hidden if hidden is not None else not self.hidden
 
@@ -1232,10 +1235,10 @@ class DataParameterRange(DataParameter):
         width_key = self.key_lookup('Width')
         if auto_size_desc:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
         else:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
 
         if self.editable is True:
             param_layout.append(sg.Button(button_text=display_value, key=element_key, size=(elem_w, elem_h),
@@ -1462,12 +1465,13 @@ class DataParameterCheckbox(DataParameter):
             window[self.key_lookup('Element')].update(value=display_value)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None):
+               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
         """
         Create a GUI layout for the parameter.
         """
         self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
+        justification = justification if justification else self.justification
 
         disabled = False if self.editable is True else True
         visible = not hidden if hidden is not None else not self.hidden
@@ -1504,10 +1508,10 @@ class DataParameterCheckbox(DataParameter):
         width_key = self.key_lookup('Width')
         if auto_size_desc:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
         else:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification='right')]
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
         param_layout.append(sg.Checkbox('', default=param_value, key=key, pad=padding, enable_events=True,
                                         background_color=bg_col, disabled=disabled, metadata={'disabled': disabled}))
 

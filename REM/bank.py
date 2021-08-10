@@ -318,6 +318,11 @@ class BankRule:
         reconcile_key = self.key_lookup('Reconcile')
         expand_key = self.key_lookup('Expand')
 
+        # Disable current panel
+        window[self.current_panel].update(visible=False)
+        window[panel_key].update(visible=False)
+        window['-HOME-'].update(visible=True)
+
         # Disable the reconciliation button
         window[reconcile_key].update(disabled=True)
         window[expand_key].update(disabled=True)
@@ -330,12 +335,12 @@ class BankRule:
 
         if current:
             window['-HOME-'].update(visible=False)
+            window[self.current_panel].update(visible=True)
             window[panel_key].update(visible=True)
 
             return self.name
         else:
             # Reset the current account display
-            window[self.current_panel].update(visible=False)
             self.current_panel = None
 
             panel_title_key = self.key_lookup('Title')
@@ -364,6 +369,7 @@ class BankRule:
         header_col = mod_const.HEADER_COL
         text_col = mod_const.TEXT_COL
 
+        font = mod_const.MAIN_FONT
         font_h = mod_const.HEADER_FONT
         font_bold = mod_const.BOLD_FONT
 
@@ -391,7 +397,7 @@ class BankRule:
 
         # Layout elements
         # Title
-        panel_title = self.menu_title
+        panel_title = 'Bank Reconciliation: {}'.format(self.menu_title)
         title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
 
         # Header
@@ -400,7 +406,7 @@ class BankRule:
         param_key = self.key_lookup('Parameters')
         reconcile_key = self.key_lookup('Reconcile')
         expand_key = self.key_lookup('Expand')
-        header = [sg.Col([[sg.Text(acct_text, key=title_key, pad=((0, pad_h), 0), font=font_bold,
+        header = [sg.Col([[sg.Text(acct_text, key=title_key, pad=((0, pad_h), 0), size=(20, 1), font=font_bold,
                                    background_color=bg_col),
                            sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON,
                                      button_color=(text_col, bg_col), tooltip='Set parameters')]],
@@ -409,9 +415,9 @@ class BankRule:
                                      button_color=(bttn_text_col, bttn_bg_col),
                                      disabled_button_color=(disabled_text_col, disabled_bg_col),
                                      tooltip='Run reconciliation'),
-                           sg.Checkbox('Expand search', key=expand_key, background_color=bg_col, font=font_bold,
+                           sg.Checkbox('Expand search', key=expand_key, background_color=bg_col, font=font,
                                        disabled=True)]],
-                         justification='r', background_color=bg_col)]
+                         pad=((0, pad_frame), 0), justification='r', background_color=bg_col)]
 
         # Panels
         panels = []
@@ -498,7 +504,7 @@ class BankRule:
         # Resize account panels
         accts = self.accts
         for acct in accts:
-            acct.resize(window, size=(width, height))
+            acct.resize(window, size=(panel_width, panel_height))
 
     def update_display(self, window):
         """
@@ -1045,14 +1051,14 @@ class AccountEntry:
 
         # Element sizes
         tbl_width = width - 30
-        tbl_height = height * 0.9
+        tbl_height = height * 0.60
 
         # Layout
         tbl_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))]]
 
         panel_key = self.key_lookup('Panel')
         layout = sg.Col(tbl_layout, key=panel_key, pad=(pad_frame, pad_frame), justification='c',
-                        vertical_alignment='t', background_color=bg_col, expand_x=True)
+                        vertical_alignment='t', background_color=bg_col, expand_x=True, visible=False)
 
         return layout
 
@@ -1064,7 +1070,7 @@ class AccountEntry:
 
         # Reset table size
         tbl_width = width - 30  # includes padding on both sides and scroll bar
-        tbl_height = int(height * 0.90)
+        tbl_height = int(height * 0.60)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
 
     def update_display(self, window):

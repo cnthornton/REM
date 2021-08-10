@@ -1893,18 +1893,6 @@ class DatabaseRecord:
         """
         record_id = self.record_id()
 
-        # Check if any data elements are in edit mode before saving. Attempt to save if so.
-        for param in self.parameters:
-            try:
-                edit_mode = param.edit_mode
-            except AttributeError:
-                continue
-            else:
-                if edit_mode:
-                    mod_win2.popup_notice('Please save or cancel all changes to record data elements before continuing')
-
-                    return False
-
         try:
             statements = self.prepare_save_statements(statements=statements)
         except Exception as e:
