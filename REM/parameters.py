@@ -623,6 +623,7 @@ class DataParameterInput(DataParameter):
         size = size if size else mod_const.PARAM_SIZE_CHAR
         justification = justification if justification else self.justification
 
+        disabled = False if self.editable is True else True
         visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
@@ -632,6 +633,8 @@ class DataParameterInput(DataParameter):
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
+        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
 
         # Parameter size
         width, height = size
@@ -667,23 +670,25 @@ class DataParameterInput(DataParameter):
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
                                     background_color=bg_col, tooltip=self.description, justification=justification)]
 
-        if self.editable is True:
+        if not disabled:
             param_layout.append(sg.Input(param_value, key=elem_key, size=(elem_w, elem_h), enable_events=True,
-                                         font=font, background_color=in_col,
+                                         font=font, background_color=in_col, text_color=text_col,
                                          tooltip='Input value for {}'.format(self.description),
-                                         metadata={'value': param_value, 'disabled': False}))
+                                         metadata={'value': param_value, 'disabled': disabled}))
             if self.dtype in settings.supported_date_dtypes:
                 calendar_key = self.key_lookup('Calendar')
                 date_ico = mod_const.CALENDAR_ICON
 
                 calendar_bttn = sg.CalendarButton('', target=elem_key, key=calendar_key, format='%Y-%m-%d',
-                                                  image_data=date_ico, pad=((pad_el, 0), 0), font=font, border_width=0,
+                                                  image_data=date_ico, pad=((pad_el, 0), 0), font=font,
+                                                  button_color=(text_col, bg_col), border_width=0,
                                                   tooltip='Select date from calendar menu',
-                                                  metadata={'disabled': False})
+                                                  metadata={'disabled': disabled})
                 param_layout.append(calendar_bttn)
         else:
             param_layout.append(sg.Text(param_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                                        background_color=bg_col, border_width=1))
+                                        text_color=text_col, background_color=bg_col, border_width=1,
+                                        metadata={'value': param_value, 'disabled': disabled}))
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
@@ -936,6 +941,7 @@ class DataParameterCombo(DataParameter):
         size = size if size else mod_const.PARAM_SIZE_CHAR
         justification = justification if justification else self.justification
 
+        disabled = False if self.editable is True else True
         visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
@@ -945,6 +951,8 @@ class DataParameterCombo(DataParameter):
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
+        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
 
         # Parameter size
         width, height = size
@@ -986,14 +994,15 @@ class DataParameterCombo(DataParameter):
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
                                     background_color=bg_col, tooltip=self.description, justification=justification)]
 
-        if self.editable is True:
+        if not disabled:
             param_layout.append(sg.Combo(values, default_value=param_value, key=elem_key, size=(elem_w, elem_h),
-                                         font=font, background_color=in_col, enable_events=True,
-                                         tooltip='Select a value for {}'.format(self.description),
-                                         metadata={'value': param_value, 'disabled': False}))
+                                         font=font, background_color=in_col, text_color=text_col,
+                                         enable_events=True, tooltip='Select a value for {}'.format(self.description),
+                                         metadata={'value': param_value, 'disabled': disabled}))
         else:
             param_layout.append(sg.Text(param_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                                        background_color=bg_col, border_width=1))
+                                        background_color=bg_col, text_color=text_col, border_width=1,
+                                        metadata={'value': param_value, 'disabled': disabled}))
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
@@ -1194,6 +1203,7 @@ class DataParameterRange(DataParameter):
         size = size if size else mod_const.PARAM_SIZE_CHAR
         justification = justification if justification else self.justification
 
+        disabled = False if self.editable is True else True
         visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
@@ -1204,7 +1214,8 @@ class DataParameterRange(DataParameter):
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
-        text_col = mod_const.TEXT_COL
+        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
 
         # Parameter size
         width, height = size
@@ -1240,14 +1251,15 @@ class DataParameterRange(DataParameter):
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
                                     background_color=bg_col, tooltip=self.description, justification=justification)]
 
-        if self.editable is True:
+        if not disabled:
             param_layout.append(sg.Button(button_text=display_value, key=element_key, size=(elem_w, elem_h),
                                           font=bttn_font, button_color=(text_col, in_col),
                                           tooltip='Set value range for {}'.format(self.description),
-                                          metadata={'value': [], 'disabled': False}))
+                                          metadata={'value': [], 'disabled': disabled}))
         else:
             param_layout.append(sg.Text(display_value, key=element_key, size=(elem_w, elem_h), font=font,
-                                        background_color=bg_col, border_width=1))
+                                        background_color=bg_col, text_color=text_col, border_width=1,
+                                        metadata={'value': [], 'disabled': disabled}))
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
@@ -1478,8 +1490,9 @@ class DataParameterCheckbox(DataParameter):
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
-
         bold_font = mod_const.BOLD_FONT
+        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
 
         # Parameter size
         width, height = size
@@ -1508,10 +1521,12 @@ class DataParameterCheckbox(DataParameter):
         width_key = self.key_lookup('Width')
         if auto_size_desc:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
+                                    text_color=text_col, background_color=bg_col, tooltip=self.description,
+                                    justification=justification)]
         else:
             param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
+                                    text_color=text_col, background_color=bg_col, tooltip=self.description,
+                                    justification=justification)]
         param_layout.append(sg.Checkbox('', default=param_value, key=key, pad=padding, enable_events=True,
                                         background_color=bg_col, disabled=disabled, metadata={'disabled': disabled}))
 
