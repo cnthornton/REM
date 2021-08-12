@@ -230,9 +230,32 @@ class TableElement:
             self.defaults = {}
             for default_col in column_defaults:
                 if default_col not in columns:
+                    logger.warning('DataTable {NAME}: default column {COL} not listed in the table columns'
+                                   .format(NAME=self.name, COL=default_col))
                     continue
                 else:
                     self.defaults[default_col] = column_defaults[default_col]
+
+        try:
+            cond_cols = entry['ConditionalColumns']
+        except KeyError:
+            self.conditional_columns = {}
+        else:
+            self.conditional_columns = {}
+            for cond_col in cond_cols:
+                if cond_col not in columns:
+                    logger.warning('DataTable {NAME}: conditional column {COL} not listed in the table columns'
+                                   .format(NAME=self.name, COL=cond_col))
+                    continue
+                else:
+                    cond_entry = cond_cols[cond_col]
+                    if 'DefaultRule' not in cond_entry and 'DefaultCondition' not in cond_entry:
+                        logger.warning('DataTable {NAME}: conditional column "{COL}" is missing required parameter '
+                                       '"DefaultRule" or "DefaultCondition"'.format(NAME=self.name, COL=cond_col))
+
+                        continue
+
+                    self.conditional_columns[cond_col] = cond_entry
 
         try:
             self.aliases = entry['Aliases']
@@ -1101,8 +1124,8 @@ class TableElement:
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
-            #            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
-            #                         .format(NAME=self.name, RULE=annot_code, RES=list(results)))
+            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
+                         .format(NAME=self.name, RULE=annot_code, RES=results.values))
             for row_index, result in results.iteritems():
                 if result:
                     logger.debug('DataTable {NAME}: table row {ROW} annotated on annotation code {CODE}'
@@ -1696,7 +1719,7 @@ class TableElement:
 
     def append(self, add_df, imports: bool = False):
         """
-        Add a new row of data to the data table.
+        Add new rows of data to the data table.
         """
         if imports:  # add new data to the import dataframe instead of the data table
             df = self.import_df.copy()
@@ -1717,15 +1740,21 @@ class TableElement:
             add_df[self.deleted_column] = False
 
         # Make sure the data types of the columns are consistent
+        pd.set_option('display.max_columns', None)
         add_df = self.set_datatypes(add_df)
+        print('added dataframe before setting conditional values')
+        print(add_df)
+        add_df = self.set_conditional_values(add_df)
+        print('added dataframe after setting conditional values')
+        print(add_df)
 
         # Add new data to the table
         logger.debug('DataTable {NAME}: appending {NROW} rows to the {TBL}'
                      .format(NAME=self.name, NROW=add_df.shape[0], TBL=table_name))
         df = df.append(add_df, ignore_index=True)
 
-        #        pd.set_option('display.max_columns', None)
-        #        print(df)
+        print('combined dataframe')
+        print(df)
 
         #        df = df.append(add_df, ignore_index=True)
         #        df = self.set_datatypes(df)
@@ -2140,9 +2169,10 @@ class TableElement:
         # Display the modify row window
         display_map = {j: i for i, j in self.display_columns.items()}
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
+        row_values = self.set_conditional_values(mod_row).squeeze()
 
         # Update record table values
-        df.loc[index] = mod_row
+        df.loc[index] = row_values
         self.df = df
 
         return df
@@ -2222,7 +2252,8 @@ class TableElement:
         except AttributeError:  # user selected to cancel editing the record
             return df
         else:
-            for col_name, col_value in record_values.iteritems():
+            row_values = self.set_conditional_values(record_values).squeeze()
+            for col_name, col_value in row_values.iteritems():
                 if col_name not in header:
                     continue
 
@@ -2333,7 +2364,68 @@ class TableElement:
 
         return row
 
-    def initialize_defaults(self):
+    def set_conditional_values(self, df=None):
+        """
+        Update conditional columns using current
+        """
+        dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64,
+                     'time': np.datetime64,
+                     'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
+                     'int': int, 'integer': int, 'bit': int,
+                     'bool': bool, 'boolean': bool,
+                     'char': str, 'varchar': str, 'binary': str, 'varbinary': str,
+                     'tinytext': str, 'text': str, 'string': str}
+
+        logger.debug('DataTable {NAME}: setting conditional column values'.format(NAME=self.name))
+
+        df = self.df.copy() if df is None else df
+        if isinstance(df, pd.Series):  # need to convert series to dataframe first
+            df = df.as_frame().T
+
+        header = df.columns.tolist()
+        columns = self.conditional_columns
+        if not columns:
+            return df
+
+        for column in columns:
+            try:
+                dtype = self.columns[column]
+            except KeyError:
+                logger.warning('DataTable {NAME}: conditional column "{COL}" not found in available table columns'
+                               .format(NAME=self.name, COL=column))
+                continue
+
+            if column not in header:
+                df[column] = None
+
+            logger.debug('DataTable {NAME}: setting conditional values for column "{COL}"'
+                         .format(NAME=self.name, COL=column))
+
+            entry = columns[column]
+            if 'DefaultConditions' in entry:
+                default_rules = entry['DefaultConditions']
+
+                for default_value in default_rules:
+                    default_rule = default_rules[default_value]
+                    results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
+                    for index, result in results.iteritems():
+                        if result:
+                            df.at[index, column] = dtype_map[dtype](default_value)
+            elif 'DefaultRule' in entry:
+                default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=False)
+                default_values = self.set_column_dtype(default_values, name=column)
+                logger.debug('DataTable {NAME}: assigning conditional values "{VAL}" to column "{COL}"'
+                             .format(NAME=self.name, VAL=default_values.values, COL=column))
+                df[column] = default_values
+            else:
+                logger.warning('DataTable {NAME}: neither the "DefaultCondition" nor "DefaultRule" parameter was '
+                               'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
+
+        df = self.set_datatypes(df)
+
+        return df
+
+    def initialize_defaults(self, df=None):
         """
         Update empty table cells with editable column default values.
         """
@@ -2347,14 +2439,14 @@ class TableElement:
 
         logger.debug('DataTable {NAME}: setting column default values'.format(NAME=self.name))
 
-        df = self.df.copy()
+        df = self.df.copy() if df is None else df
         header = df.columns.tolist()
         columns = self.defaults
         for column in columns:
             try:
                 dtype = self.columns[column]
             except KeyError:
-                logger.warning('DataTable {NAME}: default column {COL} not found in table header'
+                logger.warning('DataTable {NAME}: default column "{COL}" not found in available table columns'
                                .format(NAME=self.name, COL=column))
                 continue
 
@@ -2372,14 +2464,14 @@ class TableElement:
                     results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
                     for index, result in results.iteritems():
                         if result is True and pd.isna(df.at[index, column]) is True:
-                            df.at[index, column] = default_value
+                            df.at[index, column] = dtype_map[dtype](default_value)
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=True)
                 logger.debug('DataTable {NAME}: assigning values "{VAL}" to empty cells in column "{COL}"'
                              .format(NAME=self.name, VAL=default_values, COL=column))
                 for index, default_value in enumerate(default_values):
                     if pd.isna(df.at[index, column]):
-                        df.at[index, column] = default_value
+                        df.at[index, column] = dtype_map[dtype](default_value)
             elif 'DefaultValue' in entry:
                 default_value = entry['DefaultValue']
                 logger.debug('DataTable {NAME}: assigning value "{VAL}" to empty cells in column "{COL}"'
@@ -2401,12 +2493,59 @@ class TableElement:
 
         return df
 
-    def set_datatypes(self, df):
+    def set_column_dtype(self, column, name: str = None, dtype: str = None):
         """
-        Set column data types based on header mapping
+        Set the datatype for table column values based on the datatype map.
         """
-        CategoricalDtype = pd.api.types.CategoricalDtype
+        dtype_map = self.columns
 
+        column_name = column.name if not name else name
+        dtype = dtype_map[column_name] if not dtype else dtype
+        logger.debug('DataTable {NAME}: the data type of column "{COL}" is "{DTYPE}"'
+                     .format(NAME=self.name, COL=column_name, DTYPE=dtype))
+        if dtype in ('date', 'datetime', 'timestamp', 'time'):
+            try:
+                values = pd.to_datetime(column, errors='coerce', format=settings.date_format, utc=False)
+            except ValueError:  # need to remove Time Zone information from column values
+                values = column.apply(lambda x: x.replace(tzinfo=None))
+        elif dtype in ('int', 'integer', 'bigint'):
+            try:
+                values = column.astype('Int64')
+            except TypeError:
+                values = column.astype(float).astype('Int64')
+        elif dtype == 'mediumint':
+            try:
+                values = column.astype('Int32')
+            except TypeError:
+                values = column.astype(float).astype('Int32')
+        elif dtype == 'smallint':
+            try:
+                values = column.astype('Int16')
+            except TypeError:
+                values = column.astype(float).astype('Int16')
+        elif dtype in ('tinyint', 'bit'):
+            try:
+                values = column.astype('Int8')
+            except TypeError:
+                values = column.astype(float).astype('Int8')
+        elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
+            values = pd.to_numeric(column, errors='coerce', downcast='float')
+        elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
+            values = pd.to_numeric(column, errors='coerce')
+        elif dtype in ('bool', 'boolean'):
+            values = column.fillna(False).astype(np.bool, errors='raise')
+        elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
+            values = column.astype(np.object, errors='raise')
+        else:
+            values = column.astype(np.object, errors='raise')
+
+        return values
+
+    def set_datatypes(self, df=None):
+        """
+        Set column_name data types based on header mapping
+        """
+        df = self.df.copy() if df is None else df
         dtype_map = self.columns
         header = df.columns.tolist()
 
@@ -2417,64 +2556,23 @@ class TableElement:
                            'as an object to specify data types'.format(NAME=self.name))
             return df
 
-        for column in dtype_map:
-            if column not in header:
-                logger.warning('DataTable {NAME}: unable to specify the data type for configured column "{COL}" - '
-                               '"{COL}" is not in the dataframe header'.format(NAME=self.name, COL=column))
-                continue
+        for column_name in dtype_map:
+            if column_name not in header:
+                logger.warning('DataTable {NAME}: "{COL}" is not in the dataframe header - setting initial value to NaN'
+                               .format(NAME=self.name, COL=column_name))
+                df[column_name] = None
 
-            dtype = dtype_map[column]
-            if isinstance(dtype, list) or isinstance(dtype, tuple):
-                dtype = dtype.append('')  # categories should contain empty string
-                cat_type = CategoricalDtype(categories=dtype, ordered=False)
-                df[column] = df[column].astype(cat_type)
-            elif isinstance(dtype, str):
-                try:
-                    if dtype in ('date', 'datetime', 'timestamp', 'time'):
-                        try:
-                            df.loc[:, column] = pd.to_datetime(df[column], errors='coerce', format=settings.date_format,
-                                                               utc=False)
-                        except ValueError:  # need to remove Time Zone information from column values
-                            df.loc[:, column] = df[column].apply(lambda x: x.replace(tzinfo=None))
-                    elif dtype in ('int', 'integer', 'bigint'):
-                        try:
-                            df.loc[:, column] = df[column].astype('Int64')
-                        except TypeError:
-                            df.loc[:, column] = df[column].astype(float).astype('Int64')
-                    elif dtype == 'mediumint':
-                        try:
-                            df.loc[:, column] = df[column].astype('Int32')
-                        except TypeError:
-                            df.loc[:, column] = df[column].astype(float).astype('Int32')
-                    elif dtype == 'smallint':
-                        try:
-                            df.loc[:, column] = df[column].astype('Int16')
-                        except TypeError:
-                            df.loc[:, column] = df[column].astype(float).astype('Int16')
-                    elif dtype in ('tinyint', 'bit'):
-                        try:
-                            df.loc[:, column] = df[column].astype('Int8')
-                        except TypeError:
-                            df.loc[:, column] = df[column].astype(float).astype('Int8')
-                    elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-                        df.loc[:, column] = pd.to_numeric(df[column], errors='coerce', downcast='float')
-                    elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-                        df.loc[:, column] = pd.to_numeric(df[column], errors='coerce')
-                    elif dtype in ('bool', 'boolean'):
-                        df.loc[:, column] = df[column].fillna(False).astype(np.bool, errors='raise')
-                    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-                        df.loc[:, column] = df[column].astype(np.object, errors='raise')
-                    else:
-                        df.loc[:, column] = df[column].astype(np.object, errors='raise')
-                except Exception as e:
-                    logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
-                                   .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
-                    logger.debug('DataTable {NAME}: column values are {VALS}'.format(NAME=self.name, VALS=df[column]))
+            dtype = dtype_map[column_name]
+            column = df[column_name]
+            try:
+                column_values = self.set_column_dtype(column)
+            except Exception as e:
+                logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
+                               .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
+                logger.debug('DataTable {NAME}: column "{COL}" values are {VALS}'
+                             .format(NAME=self.name, COL=column_name, VALS=column.values))
             else:
-                logger.warning('DataTable {NAME}: unable to specify the data type for column "{COL}" - data type is '
-                               'provided in an unaccepted format'.format(NAME=self.name, COL=column))
-
-        #        print(df.dtypes)
+                df.loc[:, column_name] = column_values
 
         return df
 

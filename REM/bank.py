@@ -285,8 +285,12 @@ class BankRule:
             if params:  # parameters were saved (selection not cancelled)
                 for acct_name in params:
                     acct_params = params[acct_name]
+                    if not acct_params:
+                        continue
 
                     if acct_name == acct.name:
+                        logger.debug('AuditRule {NAME}: loading database records for account {ACCT}'
+                                     .format(NAME=self.name, ACCT=acct_name))
                         acct.load_data(acct_params)
                     else:
                         assoc_acct = self.fetch_account(acct_name)
@@ -665,15 +669,16 @@ class BankRule:
                     warning = '\n'.join(warning)
 
                     # Add the reference information to the account record's table entry
-                    ref_cols = [refmap['RefID', refmap['RefType'], refmap['RefDate'], refmap['RefNotes']]]
+                    ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate'],
+                                refmap['Warnings']]
                     ref_values = [ref_id, ref_type, datetime.datetime.now(), warning]
                     df.at[index, ref_cols] = ref_values
 
                     # Add the reference information to the referenced record's table entry
                     assoc_acct = self.fetch_account(assoc_acct_name)
                     assoc_refmap = assoc_acct.refmap
-                    assoc_ref_cols = [assoc_refmap['RefID', assoc_refmap['RefType'], assoc_refmap['RefDate'],
-                                      assoc_refmap['RefNotes']]]
+                    assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
+                                      assoc_refmap['ReferenceDate'], assoc_refmap['Warnings']]
                     assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now(), warning]
                     assoc_acct.table.df.loc[assoc_acct.table.id_column == ref_id, assoc_ref_cols] = assoc_ref_values
 
@@ -692,14 +697,15 @@ class BankRule:
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Add the reference information to the account record's table entry
-                ref_cols = [refmap['RefID', refmap['RefType'], refmap['RefDate']]]
+                ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
                 ref_values = [ref_id, ref_type, datetime.datetime.now()]
                 df.at[index, ref_cols] = ref_values
 
                 # Add the reference information to the referenced record's table entry
                 assoc_acct = self.fetch_account(assoc_acct_name)
                 assoc_refmap = assoc_acct.refmap
-                assoc_ref_cols = [assoc_refmap['RefID', assoc_refmap['RefType'], assoc_refmap['RefDate']]]
+                assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
+                                  assoc_refmap['ReferenceDate']]
                 assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
                 assoc_acct.table.df.loc[assoc_acct.table.id_column == ref_id, assoc_ref_cols] = assoc_ref_values
 
@@ -717,14 +723,15 @@ class BankRule:
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Add the reference information to the account record's table entry
-                ref_cols = [refmap['RefID', refmap['RefType'], refmap['RefDate']]]
+                ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
                 ref_values = [ref_id, ref_type, datetime.datetime.now()]
                 df.at[index, ref_cols] = ref_values
 
                 # Add the reference information to the referenced record's table entry
                 assoc_acct = self.fetch_account(assoc_acct_name)
                 assoc_refmap = assoc_acct.refmap
-                assoc_ref_cols = [assoc_refmap['RefID', assoc_refmap['RefType'], assoc_refmap['RefDate']]]
+                assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
+                                  assoc_refmap['ReferenceDate']]
                 assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
                 assoc_acct.table.df.loc[assoc_acct.table.id_column == ref_id, assoc_ref_cols] = assoc_ref_values
 
@@ -1080,6 +1087,10 @@ class AccountEntry:
         """
         self.table.update_display(window)
 
+        pd.set_option('display.max_columns', None)
+        print(self.table.df)
+        print(self.table.df.dtypes)
+
     def load_data(self, parameters):
         """
         Load data from the database.
@@ -1108,7 +1119,6 @@ class AccountEntry:
 
             # Update record table with imported data
             self.table.df = self.table.append(df)
-            self.table.initialize_defaults()
 
         return data_loaded
 

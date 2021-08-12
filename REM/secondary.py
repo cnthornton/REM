@@ -563,6 +563,7 @@ def parameter_window(account, win_size: tuple = None):
     in_col = mod_const.INPUT_COL
     bg_col = mod_const.ACTION_COL
     header_col = mod_const.HEADER_COL
+    frame_col = mod_const.FRAME_COL
     text_col = mod_const.TEXT_COL
 
     # Keyboard shortcuts
@@ -582,7 +583,9 @@ def parameter_window(account, win_size: tuple = None):
 
     # Primary account acct_params
     acct_param_entry = account.parameters
-    primary_layout = [[sg.Text(account.title, pad=(0, 0), font=bold_font, background_color=bg_col)],
+    primary_layout = [[sg.Col([[sg.Text(account.title, pad=(0, 0), font=bold_font, text_color=text_col,
+                                        background_color=frame_col)]],
+                              background_color=frame_col, expand_x=True)],
                       [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, pad_el))]]
 
     for param_name in acct_param_entry:
@@ -621,8 +624,9 @@ def parameter_window(account, win_size: tuple = None):
         except KeyError:
             params[primary_acct_name] = [param]
 
-    params_layout.append([sg.Col(primary_layout, key='-{}-'.format(primary_acct_name), background_color=bg_col,
-                                 element_justification='l', visible=True, expand_x=True, metadata={'visible': True})])
+    params_layout.append([sg.Col(primary_layout, key='-{}-'.format(primary_acct_name), pad=(pad_h, pad_v),
+                                 background_color=bg_col, element_justification='l', visible=True, expand_x=True,
+                                 metadata={'visible': True})])
 
     # Associated account parameters
     vis_conditions = {}
@@ -631,7 +635,9 @@ def parameter_window(account, win_size: tuple = None):
         assoc_entry = transactions[assoc_acct_name]
         assoc_title = assoc_entry['Title']
 
-        assoc_layout = [[sg.Text(assoc_title, pad=(0, 0), font=bold_font)],
+        assoc_layout = [[sg.Col([[sg.Text(assoc_title, pad=(0, 0), font=bold_font, text_color=text_col,
+                                          background_color=frame_col)]],
+                                expand_x=True, background_color=frame_col)],
                         [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, 0))]]
 
         # Check if any configuration parameters for the associated account entry are related to the primary account
@@ -685,8 +691,8 @@ def parameter_window(account, win_size: tuple = None):
             except KeyError:
                 params[assoc_acct_name] = [param]
 
-        params_layout.append([sg.Col(assoc_layout, key='-{}-'.format(param_group), background_color=bg_col,
-                                     visible=False, expand_x=True, metadata={'visible': False})])
+        params_layout.append([sg.Col(assoc_layout, key='-{}-'.format(param_group), pad=(pad_h, pad_v),
+                                     background_color=bg_col, visible=False, expand_x=True, metadata={'visible': False})])
 
     # Control elements
     load_key = '-LOAD-'
@@ -702,11 +708,11 @@ def parameter_window(account, win_size: tuple = None):
                sg.Col([
                    [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                   [sg.Col(params_layout, pad=(0, 0), background_color=bg_col, scrollable=True,
+                   [sg.Col(params_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, scrollable=True,
                            vertical_scroll_only=True, expand_x=True, expand_y=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
                    [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
-               ], pad=(0, 0), expand_y=True, expand_x=True)]]
+               ], key='-FRAME-', pad=(0, 0), expand_y=True, expand_x=True)]]
 
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
@@ -732,7 +738,7 @@ def parameter_window(account, win_size: tuple = None):
     # Event window
     check_conds = True
     while True:
-        event, values = window.read(timeout=1000)
+        event, values = window.read(timeout=500)
 
         # Cancel parameter selection
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without setting param values
@@ -766,7 +772,7 @@ def parameter_window(account, win_size: tuple = None):
             ready_to_save = True
             for acct_name in params:
                 # Ignore parameters from hidden accounts
-                if not window['-{}-'.format(account)].metadata['visible']:
+                if not window['-{}-'.format(acct_name)].metadata['visible']:
                     param_values[acct_name] = None
 
                     continue
@@ -804,9 +810,6 @@ def parameter_window(account, win_size: tuple = None):
             # Get the account associated with the parameter key
             event_acct = param_keys[event]
 
-            if event_acct == primary_acct_name:
-                check_conds = True
-
             # Fetch the relevant account parameter
             event_params = params[event_acct]
             element_type = event[1:-1].split('_')[-1]
@@ -814,6 +817,12 @@ def parameter_window(account, win_size: tuple = None):
 
             index = element_names.index(event)
             parameter = event_params[index]
+
+            # Set check conditions flag to True if parameter belongs to the primary account and is a condition parameter
+            if event_acct == primary_acct_name and parameter.name in vis_conditions:
+                logger.debug('parameter event {EVENT} is a primary account {ACCT} event - will check parameter group '
+                             'conditions'.format(EVENT=event, ACCT=primary_acct_name))
+                check_conds = True
 
             # Run the parameter events
             parameter.run_event(window, event, values)
@@ -823,6 +832,7 @@ def parameter_window(account, win_size: tuple = None):
         # Check value conditions for parameter groups. Enable visibility of groups that meet all conditions and disable
         # groups that do not.
         if check_conds:
+            logger.debug('checking parameter group conditions')
             primary_param_values = {i.name: i.format_value(values) for i in params[primary_acct_name] if not i.hidden}
             pgroup_vis = {i: [] for i in transactions}
             for primary_component_name in vis_conditions:
@@ -831,38 +841,66 @@ def parameter_window(account, win_size: tuple = None):
                     try:
                         primary_value = primary_param_values[primary_component_name]
                     except KeyError:
-                        print('missing key {} from primary parameter values'.format(primary_component_name))
+                        logger.warning('missing condition parameter {KEY} from primary parameter values'
+                                       .format(KEY=primary_component_name))
                         continue
 
-                    if component_value == primary_value:
+                    if component_value == primary_value:  # parameter value matches the given condition
                         success_groups = component_conditions[component_value]
-                    else:
-                        success_groups = []
+                        logger.info('parameter value {VAL} matches {COMP} condition {COND} - enabling parameter groups:'
+                                    ' {PGROUPS}'.format(VAL=primary_value, COMP=primary_component_name,
+                                                       COND=component_value, PGROUPS=', '.join(success_groups)))
 
-                    for trans_acct in transactions:
-                        if trans_acct in success_groups:
-                            pgroup_vis[trans_acct].append(True)
-                        else:
-                            pgroup_vis[trans_acct].append(False)
+                        for trans_acct in transactions:
+                            if trans_acct in success_groups:  # these pgroups passed the parameter condition
+                                pgroup_vis[trans_acct].append(True)
+                            else:  # these pgroups failed the parameter condition
+                                pgroup_vis[trans_acct].append(False)
 
+                        break
+
+            # Set visibility of the parameter groups based on the primary parameter conditions. Set visibility of
+            # failed parameter groups first to prevent layout issues.
+            passed_groups = []
+            failed_groups = []
             for pgroup in pgroup_vis:
+                pgroup_success = all(pgroup_vis[pgroup]) if len(pgroup_vis[pgroup]) > 0 else False
+                logger.debug('parameter group {PGROUP} passed all visibility conditions: {SUC}'
+                             .format(PGROUP=pgroup, SUC=pgroup_success))
+                if pgroup_success:
+                    passed_groups.append(pgroup)
+                else:
+                    failed_groups.append(pgroup)
+
+            for pgroup in failed_groups:
                 pgroup_key = '-{}-'.format(pgroup)
-                pgroup_success = pgroup_vis[pgroup]
-                if all(pgroup_success) and window[pgroup_key].metadata['visible'] is False:  # to add
-                    window[pgroup_key].update(visible=True)
-                    window[pgroup_key].metadata['visible'] = True
-                elif not all(pgroup_success) and window[pgroup_key].metadata['visible'] is True:  # to remove
+                if window[pgroup_key].metadata['visible'] is True:  # set to invisible and reset the parameters
+                    logger.debug('resetting parameter group {PGROUP}'.format(PGROUP=pgroup))
                     window[pgroup_key].update(visible=False)
                     window[pgroup_key].metadata['visible'] = False
+                    window[pgroup_key].hide_row()
 
                     # Reset parameters in the parameter groups that are no longer visible
                     pgroup_params = params[pgroup]
                     for pgroup_param in pgroup_params:
                         pgroup_param.reset(window)
 
+            for pgroup in passed_groups:
+                pgroup_key = '-{}-'.format(pgroup)
+                if window[pgroup_key].metadata['visible'] is False:  # parameter group should be visible to user
+                    logger.debug('setting parameter group {PGROUP} to visible'.format(PGROUP=pgroup))
+                    window[pgroup_key].update(visible=True)
+                    window[pgroup_key].unhide_row()
+                    window[pgroup_key].metadata['visible'] = True
+
             check_conds = False
 
             continue
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
 
     return param_values
 
