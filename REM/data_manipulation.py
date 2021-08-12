@@ -140,11 +140,12 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
         rule_list = [i.strip() for i in
                      re.split('({})'.format('|'.join([' {} '.format(i) for i in chain_operators])), rule_str)]
 
-        for component in rule_list:
-            if component.lower() in chain_operators:  # item is chain operators and / or
+        for component in rule_list:  # evaluation rules should be considered separately at first
+            if component.lower() in chain_operators:  # item is chain operators (and / or)
                 operators.append(component.lower())
-            else:
+            else:  # item is a separate rule
                 try:
+                    logger.debug('dataframe will be evaluated on condition {}'.format(component))
                     cond_results = evaluate_condition(df, component, as_list=False).fillna(False).astype(np.bool,
                                                                                                         errors='raise')
                 except Exception as e:
@@ -158,7 +159,7 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
 
                 eval_results.append(cond_results)
 
-    results = eval_results[0]
+    results = eval_results[0]  # results of first evaluation rule
     for index, cond_results in enumerate(eval_results[1:]):
         try:
             operator = operators[index]
@@ -166,9 +167,9 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
             logger.warning('evaluation failed - not enough operators provided for the number of conditions set')
             break
 
-        if operator == 'and':
+        if operator == 'and':  # must pass all evaluation rules in the set
             results = results & cond_results
-        else:
+        else:  # must pass only one of the evaluation rules in the set
             results = results | cond_results
 
     if as_list is True:
@@ -194,7 +195,7 @@ def evaluate_condition(data, condition, as_list: bool = True):
         raise ValueError('data must be either a pandas DataFrame or Series')
 
     rule = [i.strip() for i in re.split('({})'.format('|'.join([' {} '.format(i) for i in operators])), condition)]
-    if len(rule) == 3:
+    if len(rule) == 3:  # some of the data is being compared to some condition
         left, oper, right = rule
         if oper not in operators:
             raise SyntaxError('unable to parse rule condition {} - operator must separate the operands'
@@ -226,23 +227,23 @@ def evaluate_condition(data, condition, as_list: bool = True):
         except NameError:  # dataframe does not have column
             raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
 
-    elif len(rule) == 1:
+    elif len(rule) == 1:  # a part of the data was selected
         eval_str = rule[0]
-        if eval_str[0] == '!':
+        if eval_str[0] == '!':  # not column values or NaN values
             colname = eval_str.replace(' ', '')[1:]
             if colname in header:
                 if is_bool_dtype(data[colname].dtype) is True:
-                    results = data[colname]
-                else:
+                    results = ~ data[colname]
+                else:  # column values are NaN
                     results = data[colname].isna()
             else:
                 results = pd.Series([False for _ in range(nrow)])
-        else:
+        else:  # column values or values that are not NaN
             colname = eval_str
             if colname in header:
                 if is_bool_dtype(data[colname].dtype) is True:
-                    results = ~ data[colname]
-                else:
+                    results = data[colname]
+                else:  # column values are not NaN
                     results = ~ data[colname].isna()
             else:
                 results = pd.Series([False for _ in range(nrow)])
@@ -294,6 +295,7 @@ def evaluate_rule(data, condition, as_list: bool = True):
 
     eval_str = ' '.join(rule_value)
     try:
+        print(eval_str)
         row_status = eval(eval_str)
     except SyntaxError:
         raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
