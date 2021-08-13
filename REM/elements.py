@@ -1740,21 +1740,13 @@ class TableElement:
             add_df[self.deleted_column] = False
 
         # Make sure the data types of the columns are consistent
-        pd.set_option('display.max_columns', None)
         add_df = self.set_datatypes(add_df)
-        print('added dataframe before setting conditional values')
-        print(add_df)
         add_df = self.set_conditional_values(add_df)
-        print('added dataframe after setting conditional values')
-        print(add_df)
 
         # Add new data to the table
         logger.debug('DataTable {NAME}: appending {NROW} rows to the {TBL}'
                      .format(NAME=self.name, NROW=add_df.shape[0], TBL=table_name))
         df = df.append(add_df, ignore_index=True)
-
-        print('combined dataframe')
-        print(df)
 
         #        df = df.append(add_df, ignore_index=True)
         #        df = self.set_datatypes(df)
