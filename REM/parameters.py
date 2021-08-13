@@ -633,8 +633,7 @@ class DataParameterInput(DataParameter):
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
+        text_col = mod_const.TEXT_COL
 
         # Parameter size
         width, height = size
@@ -951,8 +950,7 @@ class DataParameterCombo(DataParameter):
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
+        text_col = mod_const.TEXT_COL
 
         # Parameter size
         width, height = size
@@ -1214,8 +1212,7 @@ class DataParameterRange(DataParameter):
         bold_font = mod_const.BOLD_FONT
 
         in_col = mod_const.INPUT_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
+        text_col = mod_const.TEXT_COL
 
         # Parameter size
         width, height = size
@@ -1491,8 +1488,7 @@ class DataParameterCheckbox(DataParameter):
         # Element settings
         pad_el = mod_const.ELEM_PAD
         bold_font = mod_const.BOLD_FONT
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-        text_col = mod_const.TEXT_COL if not disabled else disabled_text_col
+        text_col = mod_const.TEXT_COL
 
         # Parameter size
         width, height = size
