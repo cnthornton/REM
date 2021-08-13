@@ -1124,8 +1124,8 @@ class TableElement:
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
-            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
-                         .format(NAME=self.name, RULE=annot_code, RES=results.values))
+#            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
+#                         .format(NAME=self.name, RULE=annot_code, RES=results.values))
             for row_index, result in results.iteritems():
                 if result:
                     logger.debug('DataTable {NAME}: table row {ROW} annotated on annotation code {CODE}'
@@ -2493,8 +2493,8 @@ class TableElement:
 
         column_name = column.name if not name else name
         dtype = dtype_map[column_name] if not dtype else dtype
-        logger.debug('DataTable {NAME}: the data type of column "{COL}" is "{DTYPE}"'
-                     .format(NAME=self.name, COL=column_name, DTYPE=dtype))
+#        logger.debug('DataTable {NAME}: the data type of column "{COL}" is "{DTYPE}"'
+#                     .format(NAME=self.name, COL=column_name, DTYPE=dtype))
         if dtype in ('date', 'datetime', 'timestamp', 'time'):
             try:
                 values = pd.to_datetime(column, errors='coerce', format=settings.date_format, utc=False)

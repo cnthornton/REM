@@ -418,7 +418,7 @@ class BankRule:
         title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
 
         # Header
-        acct_text = '' if not self.title else self.title
+        acct_text = None if not self.title else self.title
         title_key = self.key_lookup('Title')
         param_key = self.key_lookup('Parameters')
         reconcile_key = self.key_lookup('Reconcile')
@@ -527,6 +527,11 @@ class BankRule:
         """
         Update the audit record summary tab's record display.
         """
+        # Resize the account title element
+        title_key = self.key_lookup('Title')
+        title_w = len(self.title) if self.title else 20
+        window[title_key].set_size(size=(title_w, None))
+
         current_acct = self.current_account
         acct = self.fetch_account(current_acct)
 
@@ -630,7 +635,8 @@ class BankRule:
         logger.debug('AuditRule {NAME}: attempting to find associations for account {ACCT} records'
                      .format(NAME=self.name, ACCT=acct.name))
         nfound = 0
-        for index, row in enumerate(df.itertuples()):
+        for row in df.itertuples():
+            index = getattr(row, 'Index')
             record_id = getattr(row, id_column)
 
             # Attempt to find a match for the record to each of the associated transaction accounts
