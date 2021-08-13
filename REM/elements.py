@@ -2860,9 +2860,10 @@ class ReferenceElement2:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        self.etype = 'reference'
+        self.etype = 'reference2'
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'Reference', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag']]
+                         ['Element', 'RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
+                          'ApprovedFlag']]
 
         try:
             self.description = entry['Description']
@@ -2880,6 +2881,11 @@ class ReferenceElement2:
             self.editable = editable
 
         try:
+            self.aliases = entry['Aliases']
+        except KeyError:
+            self.aliases = {}
+
+        try:
             self.refmap = entry['ColumnMap']
         except KeyError:
             raise AttributeError('missing required parameter "ColumnMap"')
@@ -2894,6 +2900,8 @@ class ReferenceElement2:
                 self.refmap['IsParentChild'] = None
             if 'IsHardLink' not in self.refmap:
                 self.refmap['IsHardLink'] = None
+            if 'IsApproved' not in self.refmap:
+                self.refmap['IsApproved'] = None
             if 'Warnings' not in self.refmap:
                 self.refmap['Warnings'] = None
 
@@ -2904,6 +2912,7 @@ class ReferenceElement2:
         self.warnings = None
         self.is_hardlink = False
         self.is_pc = False
+        self.approved = False
         self.referenced = False
 
     def key_lookup(self, component):
@@ -2931,6 +2940,7 @@ class ReferenceElement2:
         self.warnings = None
         self.is_hardlink = False
         self.is_pc = False
+        self.approved = False
         self.referenced = False
 
         self.update_display(window)
@@ -2958,7 +2968,7 @@ class ReferenceElement2:
         result = True
         elem_key = self.key_lookup('Element')
         del_key = self.key_lookup('Unlink')
-        ref_key = self.key_lookup('Reference')
+        ref_key = self.key_lookup('RefID')
 
         # Delete a reference from the record reference database table
         logger.info('ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
@@ -3004,6 +3014,8 @@ class ReferenceElement2:
             logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             return False
+        else:
+            logger.debug('ReferenceBox {NAME}: loading reference {ID}'.format(NAME=self.name, ID=self.reference_id))
 
         date_col = colmap['ReferenceDate']
         try:
@@ -3054,6 +3066,11 @@ class ReferenceElement2:
         except (ValueError, KeyError):
             self.is_hardlink = False
 
+        try:
+            self.approved = bool(int(entry[colmap['IsApproved']]))
+        except (ValueError, KeyError):
+            self.approved = False
+
         self.referenced = True
 
         return True
@@ -3066,6 +3083,8 @@ class ReferenceElement2:
         width, height = size
         is_hl = self.is_hardlink
         is_pc = self.is_pc
+        is_approved = self.approved
+        aliases = self.aliases
         warnings = self.warnings if self.warnings is not None else ''
 
         # Layout options
@@ -3083,34 +3102,45 @@ class ReferenceElement2:
         else:
             select_text_col = mod_const.DISABLED_TEXT_COL
 
-        ref_key = self.key_lookup('Reference')
         elem_key = self.key_lookup('Element')
         height_key = self.key_lookup('Height')
         discard_key = self.key_lookup('Unlink')
         link_key = self.key_lookup('HardLinkFlag')
         parent_key = self.key_lookup('ParentFlag')
+        approved_key = self.key_lookup('ApprovedFlag')
+        ref_key = self.key_lookup('RefID')
+        date_key = self.key_lookup('RefDate')
+
+        ref_date = settings.format_display_date(self.date) if self.date else None
+        ref_id = self.reference_id if self.reference_id else None
         elem_layout = [sg.Canvas(key=height_key, size=(0, height)),
                        sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_el * 2)),
                                         text_color=text_col, font=bold_font, background_color=bg_col,
-                                        tooltip=self.title),
+                                        tooltip=(self.description if 'ReferenceType' not in aliases else
+                                                 aliases['RecordType'])),
                                 sg.Image(data=mod_const.LINK_ICON, key=link_key, visible=is_hl,
-                                         tooltip='Reference record is hard-linked to this record'),
+                                         tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
+                                                  not in aliases else aliases['IsHardLink'])),
                                 sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=is_pc,
-                                         tooltip='Reference record is a parent of this record')],
-                               [sg.Text('ID:', auto_size_text=True, pad=((0, pad_el), 0), text_color=text_col,
-                                        font=font, background_color=bg_col),
-                                sg.Text(self.reference_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
+                                         tooltip=('Reference record is a parent of this record' if 'IsParentChild'
+                                                  not in aliases else aliases['IsParentChild'])),
+                                sg.Image(data=mod_const.APPROVED_ICON, key=approved_key, visible=is_approved,
+                                         tooltip=('Reference record has been approved' if 'IsApproved' not in aliases
+                                                  else aliases['IsApproved']))],
+                               [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
                                         enable_events=editable, text_color=select_text_col, font=font,
                                         background_color=bg_col,
-                                        tooltip='Open reference record'),
-                                sg.Text('Date:', auto_size_text=True, pad=((0, pad_el), 0), text_color=text_col,
-                                        font=font, background_color=bg_col),
-                                sg.Text(settings.format_display_date(self.date), auto_size_text=True,
-                                        enable_events=True, text_color=text_col, font=font, background_color=bg_col)]],
+                                        tooltip=('Reference record' if 'ReferenceID' not in aliases else
+                                                 aliases['ReferenceID'])),
+                                sg.Text(ref_date, key=date_key, auto_size_text=True, enable_events=True,
+                                        text_color=text_col, font=font, background_color=bg_col,
+                                        tooltip=('Date of reference creation' if 'ReferenceDate' not in aliases else
+                                                 aliases['ReferenceDate']))]],
                               pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
                        sg.Col([[sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, disabled=is_disabled,
                                           button_color=(text_col, bg_col), border_width=0,
-                                          tooltip='Remove link to reference')]],
+                                          tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
+                                                   aliases['RemoveLink']))]],
                               pad=((0, pad_h), pad_v), justification='r', vertical_alignment='c',
                               background_color=bg_col)
                        ]
@@ -3129,11 +3159,20 @@ class ReferenceElement2:
         link_key = self.key_lookup('HardLinkFlag')
         parent_key = self.key_lookup('ParentFlag')
         elem_key = self.key_lookup('Element')
+        ref_key = self.key_lookup('RefID')
+        date_key = self.key_lookup('RefDate')
 
         is_hl = self.is_hardlink
         is_pc = self.is_pc
         referenced = self.referenced
         warnings = self.warnings if self.warnings is not None else ''
+
+        # Update the Date and ID elements if no values
+        if not window[ref_key].get():  # current ID and date not set yet
+            ref_id = self.reference_id
+            ref_date = settings.format_display_date(self.date) if self.date else None
+            window[ref_key].update(value=ref_id)
+            window[date_key].update(value=ref_date)
 
         # Update visibility of the element
         if referenced:
@@ -3203,9 +3242,13 @@ class ReferenceElement2:
         hl_col = colmap['IsHardLink']
         pc_col = colmap['IsParentChild']
         warn_col = colmap['Warnings']
+        approved_col = colmap['IsApproved']
 
         indices = [colmap['ReferenceID'], colmap['ReferenceDate'], colmap['ReferenceType']]
         values = [self.reference_id, self.date, self.reference_type]
+        if approved_col:
+            indices.append(approved_col)
+            values.append(self.approved)
         if hl_col:
             indices.append(hl_col)
             values.append(self.is_hardlink)
