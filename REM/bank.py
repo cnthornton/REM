@@ -342,7 +342,7 @@ class BankRule:
 
         # Disable the reconciliation button
         window[reconcile_key].update(disabled=True)
-        window[expand_key].update(disabled=True)
+        window[expand_key].update(disabled=True, value=False)
 
         # Reset account entries
         for acct in self.accts:
