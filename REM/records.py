@@ -1021,10 +1021,10 @@ class DatabaseRecord:
                 for ref_element in ref_elements:
                     element_entry = ref_elements[ref_element]
                     try:
-                        ref_box = mod_elem.ReferenceElement(ref_element, element_entry, self.name)
+                        ref_box = mod_elem.ReferenceElement2(ref_element, element_entry, self.name)
                     except AttributeError as e:
-                        logger.warning('RecordType {NAME}: failed to add reference entry {ID} to list of references - '
-                                       '{ERR}'.format(NAME=self.name, ID=ref_element, ERR=e))
+                        logger.exception('RecordType {NAME}: failed to add reference entry {ID} to list of references '
+                                         '- {ERR}'.format(NAME=self.name, ID=ref_element, ERR=e))
                         continue
                     else:
                         self.references.append(ref_box)
@@ -1230,6 +1230,15 @@ class DatabaseRecord:
                     else:
                         logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
                                      .format(NAME=self.name, PARAM=param_name))
+
+        # Load the reference 2 elements
+        logger.info('RecordType {NAME}: loading references'.format(NAME=self.name))
+        for refbox in self.references:
+            try:
+                logger.debug('RecordType {NAME}: attempting to load reference box {REF}'.format(NAME=self.name, REF=refbox.name))
+                refbox.load_reference(data)
+            except AttributeError:
+                continue
 
         # Import components and references for existing records
         record_id = self.record_id()
@@ -2443,6 +2452,13 @@ class StandardRecord(DatabaseRecord):
         logger.debug('Record {ID}: updating display component tables'.format(ID=record_id))
         for component in self.components:
             component.update_display(window, window_values=window_values)
+
+        # Update the reference boxes
+        for refbox in self.references:
+            try:
+                refbox.update_display(window, window_values=window_values)
+            except AttributeError:  # old reference box class
+                continue
 
         # Update records header
         logger.debug('Record {ID}: updating display header elements'.format(ID=record_id))

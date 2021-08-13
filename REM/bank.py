@@ -290,10 +290,13 @@ class BankRule:
                     if acct_name == acct.name:
                         logger.debug('AuditRule {NAME}: loading database records for account {ACCT}'
                                      .format(NAME=self.name, ACCT=acct_name))
-                        acct.load_data(acct_params)
+                        data_loaded = acct.load_data(acct_params)
                     else:
                         assoc_acct = self.fetch_account(acct_name)
-                        assoc_acct.load_data(acct_params)
+                        data_loaded = assoc_acct.load_data(acct_params)
+
+                    if not data_loaded:
+                        return self.reset_rule(window, current=True)
 
                 # Update the display
                 self.update_display(window)
@@ -693,7 +696,7 @@ class BankRule:
                     assoc_rules = assoc_ref_maps[assoc_acct_name]['RuleMap']
                     warning = ["Potential false positive: the association is the result of an expanded search"]
                     for column in expanded_cols:
-                        if row[column] != results[column]:
+                        if getattr(row, column) != results[column]:
                             try:
                                 warning.append('- {}'.format(assoc_rules[column]['Description']))
                             except KeyError:
@@ -703,9 +706,12 @@ class BankRule:
                     warning = '\n'.join(warning)
 
                     # Add the reference information to the account record's table entry
-                    ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate'],
-                                refmap['Warnings']]
-                    ref_values = [ref_id, ref_type, datetime.datetime.now(), warning]
+                    ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
+                    ref_values = [ref_id, ref_type, datetime.datetime.now()]
+                    if 'Warnings' in refmap and refmap['Warnings']:
+                        ref_cols.append(refmap['Warnings'])
+                        ref_values.append(warning)
+
                     acct.table.df.at[index, ref_cols] = ref_values
 
                     # Add the reference information to the referenced record's table entry
@@ -718,8 +724,11 @@ class BankRule:
                                             assoc_ref_cols] = assoc_ref_values
 
                 elif nmatch > 1:  # too many matches
-                    logger.debug('BankRule {NAME}: found more than one match for account {ACCT} record "{RECORD}"'
-                                 .format(NAME=self.name, ACCT=self.current_account, RECORD=record_id))
+                    msg = 'found more than one expanded match for account {ACCT} record "{RECORD}"'\
+                        .format(ACCT=self.current_account, RECORD=record_id)
+                    logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_notice(msg)
+
                     continue
 
             elif nmatch == 1:  # found one exact match
@@ -739,6 +748,10 @@ class BankRule:
                 # Add the reference information to the account record's table entry
                 ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
                 ref_values = [ref_id, ref_type, datetime.datetime.now()]
+                if 'IsApproved' in refmap and refmap['IsApproved']:
+                    ref_cols.append(refmap['IsApproved'])
+                    ref_values.append(True)
+
                 acct.table.df.at[index, ref_cols] = ref_values
 
                 # Add the reference information to the referenced record's table entry
@@ -752,8 +765,9 @@ class BankRule:
 
             elif nmatch > 1:  # too many matches
                 nfound += 1
-                logger.debug('BankRule {NAME}: found more than one match for account {ACCT} record "{RECORD}"'
-                             .format(NAME=self.name, ACCT=self.current_account, RECORD=record_id))
+                warning = 'found more than one match for account {ACCT} record "{RECORD}"'\
+                    .format(ACCT=self.current_account, RECORD=record_id)
+                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
 
                 # Match the first of the exact matches
                 results = matches.iloc[0]
@@ -767,6 +781,10 @@ class BankRule:
                 # Add the reference information to the account record's table entry
                 ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
                 ref_values = [ref_id, ref_type, datetime.datetime.now()]
+                if 'Warnings' in refmap and refmap['Warnings']:
+                    ref_cols.append(refmap['Warnings'])
+                    ref_values.append(warning)
+
                 acct.table.df.at[index, ref_cols] = ref_values
 
                 # Add the reference information to the referenced record's table entry
@@ -778,8 +796,8 @@ class BankRule:
                 assoc_acct.table.df.loc[assoc_acct.table.df[assoc_acct.table.id_column] == ref_id, assoc_ref_cols] = \
                     assoc_ref_values
 
-        logger.info('AuditRule {NAME}: found {NMATCH} associations to account {ACCT} records'
-                    .format(NAME=self.name, NMATCH=nfound, ACCT=acct.name))
+        logger.info('AuditRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
+                    .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
 
     def save_records(self):
         """
@@ -1150,9 +1168,9 @@ class AccountEntry:
             df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                               prog_db=True)
         except Exception as e:
-            msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
-            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            mod_win2.popup_error(msg)
+            msg = 'failed to import data from the database'
+            logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
             data_loaded = False
         else:
             logger.debug('AccountEntry {NAME}: loaded data for bank reconciliation "{RULE}"'

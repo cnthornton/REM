@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.6.6'
+__version__ = '3.6.7'
 
 import sys
 import tkinter as tk
