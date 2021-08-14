@@ -181,11 +181,15 @@ class BankRule:
 
         return key
 
-    def fetch_account(self, account_id):
+    def fetch_account(self, account_id, by_key: bool = False):
         """
         Fetch a GUI parameter element by name or event key.
         """
-        accounts = [i.name for i in self.accts]
+        if by_key is True:
+            element_type = account_id[1:-1].split('_')[-1]
+            accounts = [i.key_lookup(element_type) for i in self.accts]
+        else:
+            accounts = [i.name for i in self.accts]
 
         if account_id in accounts:
             index = accounts.index(account_id)
@@ -202,7 +206,6 @@ class BankRule:
         """
         # Get elements of current account
         current_acct = self.current_account
-        acct = self.fetch_account(current_acct)
         current_rule = self.name
 
         reconcile_key = self.key_lookup('Reconcile')
@@ -212,10 +215,20 @@ class BankRule:
         save_key = self.key_lookup('Save')
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
-        acct_keys = acct.elements
+        acct_keys = [i for j in self.accts for i in j.elements]
+        tab_bttn_keys = ['-HK_TAB{}-'.format(i) for i in range(1, 10)]
+        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
         # Run event from a current primary account element. Pass on to account class.
         if event in acct_keys:
+            acct = self.fetch_account(event, by_key=True)
+            acct.run_event(window, event, values)
+
+        # Run a table key event. Table event should be sent to the table in the current panel.
+        if event in tbl_bttn_keys:
+            # Determine which panel to act on
+            current_panel = self.current_panel
+            acct = self.fetch_account(current_panel, by_key=True)
             acct.run_event(window, event, values)
 
         # The cancel button or cancel hotkey was pressed. If a reconciliation is in progress, reset the rule but stay
@@ -240,6 +253,7 @@ class BankRule:
         # generate a summary report.
         if event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
             # Get output file from user
+            acct = self.fetch_account(current_acct)
             default_title = acct.title + '.xlsx'
             outfile = sg.popup_get_file('', title='Save As', default_path=default_title, save_as=True,
                                         default_extension='pdf', no_window=True,
@@ -304,11 +318,29 @@ class BankRule:
             # Reset current panel attribute
             self.current_panel = prev_panel
 
+        # Switch directly between panels using the tab button hotkeys
+        if event in tab_bttn_keys:
+            # Determine which panel to act on
+            tab_index = int(event[1:-1][-1]) - 1
+
+            try:
+                select_panel = self.panels[tab_index]
+            except IndexError:
+                return current_rule
+
+            if not window[back_key].metadata['disabled']:
+                # Hide current panel and un-hide the previous panel
+                window[self.current_panel].update(visible=False)
+                window[select_panel].update(visible=True)
+
+                # Reset current panel attribute
+                self.current_panel = select_panel
+
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
         if event == param_key:
             # Get the parameter settings
-            params = mod_win2.parameter_window(acct)
+            params = mod_win2.parameter_window(self.fetch_account(current_acct))
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
@@ -317,13 +349,10 @@ class BankRule:
                     if not acct_params:
                         continue
 
-                    if acct_name == acct.name:  # account is the primary account
-                        logger.debug('AuditRule {NAME}: loading database records for account {ACCT}'
-                                     .format(NAME=self.name, ACCT=acct_name))
-                        data_loaded = acct.load_data(acct_params)
-                    else:  # account is an associated transaction account
-                        assoc_acct = self.fetch_account(acct_name)
-                        data_loaded = assoc_acct.load_data(acct_params)
+                    logger.debug('AuditRule {NAME}: loading database records for account {ACCT}'
+                                 .format(NAME=self.name, ACCT=acct_name))
+                    acct = self.fetch_account(acct_name)
+                    data_loaded = acct.load_data(acct_params)
 
                     if not data_loaded:
                         return self.reset_rule(window, current=True)
@@ -358,7 +387,10 @@ class BankRule:
                 logger.exception('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
-                acct.table.df = acct.table.set_conditional_values()
+                for acct_panel in self.panels:
+                    acct = self.fetch_account(acct_panel, by_key=True)
+                    acct.table.df = acct.table.set_conditional_values()
+
                 self.update_display(window)
 #                pd.set_option('display.max_columns', None)
 #                print(acct.table.df)
