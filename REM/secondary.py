@@ -556,11 +556,9 @@ def parameter_window(account, win_size: tuple = None):
     pad_h = mod_const.HORZ_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    font = mod_const.LARGE_FONT
     font_h = mod_const.HEADER_FONT
     bold_font = mod_const.BOLD_FONT
 
-    in_col = mod_const.INPUT_COL
     bg_col = mod_const.ACTION_COL
     header_col = mod_const.HEADER_COL
     frame_col = mod_const.FRAME_COL
@@ -783,12 +781,13 @@ def parameter_window(account, win_size: tuple = None):
                 for acct_param in acct_params:
                     acct_param.value = acct_param.format_value(values)
 
-                    if acct_param.required and not acct_param.value:
+                    if acct_param.required and not acct_param.has_value():
                         msg = 'missing value from required account {ACCT} parameter {PARAM}'\
                             .format(ACCT=acct_name, PARAM=acct_param.name)
                         logger.warning(msg)
                         popup_error(msg)
                         has_values.append(False)
+
                         break
 
                     try:

@@ -522,6 +522,16 @@ class DataParameter:
 
         return display_value
 
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        value = self.value
+        if not pd.isna(value) and not value == '':
+            return True
+        else:
+            return False
+
     def toggle_elements(self, window, value: str = 'enable'):
         """
         Toggle parameter elements on and off.
@@ -1381,6 +1391,21 @@ class DataParameterRange(DataParameter):
                                .format(NAME=self.name, VAL=to_value))
 
         return df
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        values = self.value
+
+        values_set = []
+        for value in values:
+            if not pd.isna(value) and not value == '':
+                values_set.append(True)
+            else:
+                values_set.append(False)
+
+        return any(values_set)
 
 
 class DataParameterCheckbox(DataParameter):
