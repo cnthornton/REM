@@ -2244,7 +2244,11 @@ class TableElement:
         except AttributeError:  # user selected to cancel editing the record
             return df
         else:
+            print('current values:')
+            print(df.iloc[index])
             row_values = self.set_conditional_values(record_values).squeeze()
+            print('new values:')
+            print(row_values)
             for col_name, col_value in row_values.iteritems():
                 if col_name not in header:
                     continue
@@ -2372,7 +2376,7 @@ class TableElement:
 
         df = self.df.copy() if df is None else df
         if isinstance(df, pd.Series):  # need to convert series to dataframe first
-            df = df.as_frame().T
+            df = df.to_frame().T
 
         header = df.columns.tolist()
         columns = self.conditional_columns
@@ -2845,6 +2849,10 @@ class ReferenceElement2:
 
         elements (list): list of reference box element GUI keys.
 
+        editable (bool): reference is editable [Default: False].
+
+        aliases (dict): layout element aliases.
+
         refmap (dict): required reference parameters mapped to database column names.
     """
 
@@ -2863,7 +2871,7 @@ class ReferenceElement2:
         self.etype = 'reference2'
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ['Element', 'RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
-                          'ApprovedFlag']]
+                          'Approved']]
 
         try:
             self.description = entry['Description']
@@ -2961,7 +2969,7 @@ class ReferenceElement2:
         height_key = self.key_lookup('Height')
         window[height_key].set_size(size=(None, height))
 
-    def run_event(self, window, event, *args):
+    def run_event(self, window, event, values):
         """
         Run a record reference event.
         """
@@ -2969,6 +2977,7 @@ class ReferenceElement2:
         elem_key = self.key_lookup('Element')
         del_key = self.key_lookup('Unlink')
         ref_key = self.key_lookup('RefID')
+        approved_key = self.key_lookup('Approved')
 
         # Delete a reference from the record reference database table
         logger.info('ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
@@ -2983,6 +2992,10 @@ class ReferenceElement2:
                 window[elem_key].metadata['deleted'] = True
 
                 self.reset(window)
+
+        # Update approved element
+        elif event == approved_key:
+            self.approved = bool(values[approved_key])
 
         # Load a reference record in a new window
         elif event == ref_key:
@@ -3075,7 +3088,7 @@ class ReferenceElement2:
 
         return True
 
-    def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), editable: bool = False, overwrite: bool = False):
+    def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), editable: bool = True, overwrite: bool = False):
         """
         GUI layout for the reference box element.
         """
@@ -3107,26 +3120,25 @@ class ReferenceElement2:
         discard_key = self.key_lookup('Unlink')
         link_key = self.key_lookup('HardLinkFlag')
         parent_key = self.key_lookup('ParentFlag')
-        approved_key = self.key_lookup('ApprovedFlag')
+        approved_key = self.key_lookup('Approved')
         ref_key = self.key_lookup('RefID')
         date_key = self.key_lookup('RefDate')
 
         ref_date = settings.format_display_date(self.date) if self.date else None
         ref_id = self.reference_id if self.reference_id else None
+        approved_title = 'Reference approved' if 'IsApproved' not in aliases else aliases['IsApproved']
+        approved_vis = True if self.refmap['IsApproved'] is not None else False
         elem_layout = [sg.Canvas(key=height_key, size=(0, height)),
                        sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_el * 2)),
                                         text_color=text_col, font=bold_font, background_color=bg_col,
                                         tooltip=(self.description if 'ReferenceType' not in aliases else
-                                                 aliases['RecordType'])),
+                                                 aliases['ReferenceType'])),
                                 sg.Image(data=mod_const.LINK_ICON, key=link_key, visible=is_hl,
                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
                                                   not in aliases else aliases['IsHardLink'])),
                                 sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=is_pc,
                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
-                                                  not in aliases else aliases['IsParentChild'])),
-                                sg.Image(data=mod_const.APPROVED_ICON, key=approved_key, visible=is_approved,
-                                         tooltip=('Reference record has been approved' if 'IsApproved' not in aliases
-                                                  else aliases['IsApproved']))],
+                                                  not in aliases else aliases['IsParentChild']))],
                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
                                         enable_events=editable, text_color=select_text_col, font=font,
                                         background_color=bg_col,
@@ -3137,12 +3149,15 @@ class ReferenceElement2:
                                         tooltip=('Date of reference creation' if 'ReferenceDate' not in aliases else
                                                  aliases['ReferenceDate']))]],
                               pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
-                       sg.Col([[sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, disabled=is_disabled,
-                                          button_color=(text_col, bg_col), border_width=0,
+                       sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col),
+                                sg.Checkbox('', default=is_approved, key=approved_key, enable_events=True,
+                                            disabled=is_disabled, visible=approved_vis, background_color=bg_col)],
+                               [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, disabled=is_disabled,
+                                          pad=((0, pad_el * 2), 0), button_color=(text_col, bg_col), border_width=0,
                                           tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
                                                    aliases['RemoveLink']))]],
-                              pad=((0, pad_h), pad_v), justification='r', vertical_alignment='c',
-                              background_color=bg_col)
+                              pad=((0, pad_h), pad_v), justification='r', element_justification='r',
+                              vertical_alignment='t', background_color=bg_col)
                        ]
 
         width_key = self.key_lookup('Width')
@@ -3161,11 +3176,15 @@ class ReferenceElement2:
         elem_key = self.key_lookup('Element')
         ref_key = self.key_lookup('RefID')
         date_key = self.key_lookup('RefDate')
+        approved_key = self.key_lookup('Approved')
 
         is_hl = self.is_hardlink
         is_pc = self.is_pc
         referenced = self.referenced
         warnings = self.warnings if self.warnings is not None else ''
+
+        # Update value of approved checkbox
+        window[approved_key].update(value=self.approved)
 
         # Update the Date and ID elements if no values
         if not window[ref_key].get():  # current ID and date not set yet
@@ -3399,7 +3418,7 @@ class DataElement:
                                                      'Description': annot_rule.get('Description', annot_code),
                                                      'Condition': annot_rule['Condition']}
         try:
-            self.default = self.format_value(entry['DefaultValue'])
+            self.default = entry['DefaultValue']
         except KeyError:
             self.default = None
 
@@ -4056,6 +4075,8 @@ class DataElementCombo(DataElement):
 
         # Dropdown values
         param_def = settings.fetch_alias_definition(self.name)
+        self.combo_values = []
+        self.aliases = {}
         try:
             combo_values = entry['Values']
         except KeyError:
@@ -4063,10 +4084,7 @@ class DataElementCombo(DataElement):
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
-            self.combo_values = []
         else:
-            self.combo_values = []
-            self.aliases = {}
             for combo_value in combo_values:
                 try:
                     self.combo_values.append(settings.format_value(combo_value, self.dtype))
@@ -4090,7 +4108,6 @@ class DataElementCombo(DataElement):
                 self.aliases = {settings.format_value(i, self.dtype): settings.format_value(i, self.dtype) for i in
                                 self.combo_values}
         else:
-            self.aliases = {}
             for combo_value in self.combo_values:
                 if combo_value not in aliases:
                     self.aliases[combo_value] = combo_value

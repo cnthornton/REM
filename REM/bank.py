@@ -1129,7 +1129,7 @@ class AccountEntry:
 
         # Element sizes
         tbl_width = width - 30
-        tbl_height = height * 0.60
+        tbl_height = height * 0.55
 
         # Layout
         tbl_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))]]
@@ -1148,7 +1148,7 @@ class AccountEntry:
 
         # Reset table size
         tbl_width = width - 30  # includes padding on both sides and scroll bar
-        tbl_height = int(height * 0.60)
+        tbl_height = int(height * 0.55)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
 
     def update_display(self, window):

@@ -978,8 +978,9 @@ class DatabaseRecord:
                 try:
                     param_obj = element_class(param, param_entry, parent=self.name)
                 except Exception as e:
-                    raise AttributeError('failed to initialize {NAME} record {ID}, element {PARAM} - {ERR}'
-                                         .format(NAME=self.name, ID=self.record_id, PARAM=param, ERR=e))
+                    msg = 'failed to initialize {NAME} record {ID}, element {PARAM} - {ERR}'.format(NAME=self.name, ID=self.record_id, PARAM=param, ERR=e)
+                    logger.exception(msg)
+                    raise AttributeError(msg)
 
                 # Add the parameter to the record
                 self.parameters.append(param_obj)
@@ -1595,6 +1596,14 @@ class DatabaseRecord:
             else:  # parameter is a data element object
                 columns.append(param.name)
                 values.append(param.value)
+
+        # Add reference element2 values
+        for refbox in self.references:
+            if refbox.etype != 'reference2':
+                continue
+            ref_vals = refbox.as_row()
+            values.extend(ref_vals.values.tolist())
+            columns.extend(ref_vals.index.tolist())
 
         return pd.Series(values, index=columns)
 
