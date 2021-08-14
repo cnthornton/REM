@@ -125,7 +125,7 @@ class BankRule:
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('MainPanel', 'Title', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
-                          'FrameWidth', 'PanelHeight', 'PanelWidth')]
+                          'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next')]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -163,6 +163,7 @@ class BankRule:
         # Dynamic Attributes
         self.in_progress = False
         self.current_account = None
+        self.panels = []
         self.current_panel = None
         self.title = None
 
@@ -210,6 +211,8 @@ class BankRule:
         param_key = self.key_lookup('Parameters')
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
+        next_key = self.key_lookup('Next')
+        back_key = self.key_lookup('Back')
         acct_keys = acct.elements
 
         # Run event from a current primary account element. Pass on to account class.
@@ -274,6 +277,32 @@ class BankRule:
                         # Reset rule elements
                         current_rule = self.reset_rule(window, current=True)
 
+        # Next button pressed - display next panel in transaction workflow
+        if (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
+            current_index = self.panels.index(self.current_panel)
+            next_index = current_index + 1
+            next_panel = self.panels[next_index] if len(self.panels) <= next_index else self.panels[0]
+
+            # Hide current panel and un-hide the following panel
+            window[self.current_panel].update(visible=False)
+            window[self.panel_keys[next_panel]].update(visible=True)
+
+            # Reset current panel attribute
+            self.current_panel = next_panel
+
+        # Back button pressed
+        elif (event == back_key) or (event == '-HK_LEFT-' and not window[back_key].metadata['disabled']):
+            current_index = self.panels.index(self.current_panel)
+            back_index = current_index - 1
+            back_panel = self.panels[back_index]
+
+            # Hide current panel and un-hide the following panel
+            window[self.current_panel].update(visible=False)
+            window[self.panel_keys[back_panel]].update(visible=True)
+
+            # Reset current panel attribute
+            self.current_panel = back_panel
+
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
         if event == param_key:
@@ -287,16 +316,18 @@ class BankRule:
                     if not acct_params:
                         continue
 
-                    if acct_name == acct.name:
+                    if acct_name == acct.name:  # account is the primary account
                         logger.debug('AuditRule {NAME}: loading database records for account {ACCT}'
                                      .format(NAME=self.name, ACCT=acct_name))
                         data_loaded = acct.load_data(acct_params)
-                    else:
+                    else:  # account is an associated transaction account
                         assoc_acct = self.fetch_account(acct_name)
                         data_loaded = assoc_acct.load_data(acct_params)
 
                     if not data_loaded:
                         return self.reset_rule(window, current=True)
+                    else:
+                        self.panels.append(acct_name)
 
                 # Update the display
                 self.update_display(window)
@@ -304,6 +335,12 @@ class BankRule:
                 # Enable the reconciliation button
                 window[reconcile_key].update(disabled=False)
                 window[expand_key].update(disabled=False)
+
+                # Enable the navigation buttons
+                window[next_key].update(disabled=False)
+                window[next_key].metadata['disabled'] = False
+                window[back_key].update(disabled=False)
+                window[back_key].metadata['disabled'] = False
 
                 # Mark that a reconciliation is currently in progress
                 self.in_progress = True
@@ -322,8 +359,8 @@ class BankRule:
             else:
                 acct.table.df = acct.table.set_conditional_values()
                 self.update_display(window)
-                pd.set_option('display.max_columns', None)
-                print(acct.table.df)
+#                pd.set_option('display.max_columns', None)
+#                print(acct.table.df)
 
         return current_rule
 
@@ -332,8 +369,6 @@ class BankRule:
         Reset rule to default.
         """
         panel_key = self.element_key
-        reconcile_key = self.key_lookup('Reconcile')
-        expand_key = self.key_lookup('Expand')
 
         # Disable current panel
         window[self.current_panel].update(visible=False)
@@ -341,10 +376,18 @@ class BankRule:
         window['-HOME-'].update(visible=True)
 
         # Disable the reconciliation button
+        reconcile_key = self.key_lookup('Reconcile')
+        expand_key = self.key_lookup('Expand')
         window[reconcile_key].update(disabled=True)
         window[expand_key].update(disabled=True, value=False)
 
-        # Reset account entries
+        # Disable the navigation buttons
+        next_key = self.key_lookup('Next')
+        back_key = self.key_lookup('Back')
+        window[next_key].update(disabled=True)
+        window[back_key].update(disabled=True)
+
+        # Reset all account entries
         for acct in self.accts:
             acct.reset(window)
 
@@ -352,6 +395,7 @@ class BankRule:
 
         if current:
             window['-HOME-'].update(visible=False)
+            self.current_panel = self.panel_keys[self.current_account]
             window[self.current_panel].update(visible=True)
             window[panel_key].update(visible=True)
 
@@ -364,6 +408,7 @@ class BankRule:
             window[panel_title_key].update(value='')
 
             self.current_account = None
+            self.panels = []
             self.title = None
 
             return None
@@ -411,8 +456,11 @@ class BankRule:
         hotkeys = settings.hotkeys
         cancel_shortcut = hotkeys['-HK_ESCAPE-'][2]
         save_shortcut = hotkeys['-HK_ENTER-'][2]
+        next_shortcut = hotkeys['-HK_RIGHT-'][2]
+        back_shortcut = hotkeys['-HK_LEFT-'][2]
 
         # Layout elements
+
         # Title
         panel_title = 'Bank Reconciliation: {}'.format(self.menu_title)
         title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
@@ -453,8 +501,19 @@ class BankRule:
         main_layout = sg.Col([header,
                               [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
                               [sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True)]],
-                             key=main_key, pad=(0, 0), background_color=bg_col, vertical_alignment='t',
-                             visible=True, expand_y=True, expand_x=True)
+                             key=main_key, pad=((pad_frame, pad_v), pad_v), background_color=bg_col,
+                             vertical_alignment='t', visible=True, expand_y=True, expand_x=True, scrollable=True,
+                             vertical_scroll_only=True)
+
+        # Navigation elements
+        next_key = self.key_lookup('Next')
+        back_key = self.key_lookup('Back')
+        nav_layout = [sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
+                                pad=((0, pad_el), 0), disabled=True,
+                                tooltip='Return to audit ({})'.format(back_shortcut), metadata={'disabled': True}),
+                      sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
+                                pad=(pad_el, 0), disabled=True, tooltip='Review audit ({})'.format(next_shortcut),
+                                metadata={'disabled': True})]
 
         # Control elements
         cancel_key = self.key_lookup('Cancel')
@@ -473,12 +532,20 @@ class BankRule:
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')
+#        frame_layout = [sg.Frame('', [
+#            [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
+#            [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+#            [sg.Col([[sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col)]], vertical_alignment='t'),
+#             sg.Col([[main_layout]], pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
+#                    expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True),
+#             sg.Col([nav_layout], background_color=bg_col, element_justification='c', expand_x=True)]],
+#                                 background_color=bg_col, relief='raised')]
         frame_layout = [sg.Frame('', [
             [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
             [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-            [sg.Col([[sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col)]], vertical_alignment='t'),
-             sg.Col([[main_layout]], pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
-                    expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True)]],
+            [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
+             main_layout,
+             sg.Col([nav_layout], background_color=bg_col, element_justification='c', expand_x=True)]],
                                  background_color=bg_col, relief='raised')]
 
         layout = [frame_layout, bttn_layout]
@@ -532,10 +599,10 @@ class BankRule:
         title_w = len(self.title) if self.title else 20
         window[title_key].set_size(size=(title_w, None))
 
-        current_acct = self.current_account
-        acct = self.fetch_account(current_acct)
-
-        acct.update_display(window)
+        # Update the relevant account panels
+        for acct_name in self.panels:
+            acct = self.fetch_account(acct_name)
+            acct.update_display(window)
 
     def reconcile_statement(self, expand: bool = False):
         """
