@@ -124,7 +124,7 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('MainPanel', 'Title', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
+                         ('MainPanel', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
                           'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next')]
 
         try:
@@ -163,9 +163,8 @@ class BankRule:
         # Dynamic Attributes
         self.in_progress = False
         self.current_account = None
-        self.panels = []
         self.current_panel = None
-        self.title = None
+        self.panels = []
 
     def key_lookup(self, component):
         """
@@ -277,31 +276,33 @@ class BankRule:
                         # Reset rule elements
                         current_rule = self.reset_rule(window, current=True)
 
-        # Next button pressed - display next panel in transaction workflow
+        # Next button pressed - display next panel in transaction workflow. Wrap-around to first panel if next panel
+        # goes beyond the number of items in the panel list
         if (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
             current_index = self.panels.index(self.current_panel)
-            next_index = current_index + 1
-            next_panel = self.panels[next_index] if len(self.panels) <= next_index else self.panels[0]
+            next_index = (current_index + 1) % len(self.panels)
+            next_panel = self.panels[next_index]
 
             # Hide current panel and un-hide the following panel
             window[self.current_panel].update(visible=False)
-            window[self.panel_keys[next_panel]].update(visible=True)
+            window[next_panel].update(visible=True)
 
             # Reset current panel attribute
             self.current_panel = next_panel
 
-        # Back button pressed
+        # Back button pressed - display previous panel. Wrap-around to last panel if previous panel is less than the
+        # number of items in the panel list
         elif (event == back_key) or (event == '-HK_LEFT-' and not window[back_key].metadata['disabled']):
             current_index = self.panels.index(self.current_panel)
             back_index = current_index - 1
-            back_panel = self.panels[back_index]
+            prev_panel = self.panels[back_index]
 
-            # Hide current panel and un-hide the following panel
+            # Hide current panel and un-hide the previous panel
             window[self.current_panel].update(visible=False)
-            window[self.panel_keys[back_panel]].update(visible=True)
+            window[prev_panel].update(visible=True)
 
             # Reset current panel attribute
-            self.current_panel = back_panel
+            self.current_panel = prev_panel
 
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
@@ -327,7 +328,7 @@ class BankRule:
                     if not data_loaded:
                         return self.reset_rule(window, current=True)
                     else:
-                        self.panels.append(acct_name)
+                        self.panels.append(self.panel_keys[acct_name])
 
                 # Update the display
                 self.update_display(window)
@@ -385,13 +386,16 @@ class BankRule:
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         window[next_key].update(disabled=True)
+        window[next_key].metadata['disabled'] = True
         window[back_key].update(disabled=True)
+        window[back_key].metadata['disabled'] = True
 
         # Reset all account entries
         for acct in self.accts:
             acct.reset(window)
 
         self.in_progress = False
+        self.panels = []
 
         if current:
             window['-HOME-'].update(visible=False)
@@ -403,13 +407,7 @@ class BankRule:
         else:
             # Reset the current account display
             self.current_panel = None
-
-            panel_title_key = self.key_lookup('Title')
-            window[panel_title_key].update(value='')
-
             self.current_account = None
-            self.panels = []
-            self.title = None
 
             return None
 
@@ -466,14 +464,10 @@ class BankRule:
         title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
 
         # Header
-        acct_text = None if not self.title else self.title
-        title_key = self.key_lookup('Title')
         param_key = self.key_lookup('Parameters')
         reconcile_key = self.key_lookup('Reconcile')
         expand_key = self.key_lookup('Expand')
-        header = [sg.Col([[sg.Text(acct_text, key=title_key, pad=((0, pad_h), 0), size=(20, 1), font=font_bold,
-                                   background_color=bg_col),
-                           sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON,
+        header = [sg.Col([[sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON,
                                      button_color=(text_col, bg_col), tooltip='Set parameters')]],
                          expand_x=True, justification='l', background_color=bg_col),
                   sg.Col([[sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
@@ -594,11 +588,6 @@ class BankRule:
         """
         Update the audit record summary tab's record display.
         """
-        # Resize the account title element
-        title_key = self.key_lookup('Title')
-        title_w = len(self.title) if self.title else 20
-        window[title_key].set_size(size=(title_w, None))
-
         # Update the relevant account panels
         for acct_name in self.panels:
             acct = self.fetch_account(acct_name)
@@ -1199,7 +1188,7 @@ class AccountEntry:
         tbl_height = height * 0.55
 
         # Layout
-        tbl_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))]]
+        tbl_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0), tooltip=self.title)]]
 
         panel_key = self.key_lookup('Panel')
         layout = sg.Col(tbl_layout, key=panel_key, pad=(pad_frame, pad_frame), justification='c',
