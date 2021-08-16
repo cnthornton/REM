@@ -1128,8 +1128,8 @@ class TableElement:
 #                         .format(NAME=self.name, RULE=annot_code, RES=results.values))
             for row_index, result in results.iteritems():
                 if result:
-                    logger.debug('DataTable {NAME}: table row {ROW} annotated on annotation code {CODE}'
-                                 .format(NAME=self.name, ROW=row_index, CODE=annot_code))
+#                    logger.debug('DataTable {NAME}: table row {ROW} annotated on annotation code {CODE}'
+#                                 .format(NAME=self.name, ROW=row_index, CODE=annot_code))
                     if row_index in rows_annotated:
                         logger.warning('DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
                                        'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))

@@ -1205,7 +1205,7 @@ class AccountEntry:
                                  .format(NAME=table.name, IND=index))
                     if table.actions['open'] is True:
                         view_only = not table.actions['edit']
-                        table.df = table.export_row(index, layout=self.record_layout, view_only=view_only)
+                        table.df = table.export_row(index, layout=self.record_layout, view_only=view_only, level=0)
 
                         table.update_display(window, window_values=values)
 

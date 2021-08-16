@@ -1698,7 +1698,7 @@ class DatabaseRecord:
         # Check if the record contains any child references
         ref_df['IsParentChild'].fillna(False, inplace=True)
         ref_df[settings.delete_field].fillna(False, inplace=True)
-        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field])]
+        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field]) & (ref_df['DocNo'] == record_id)]
 
         nchild = child_df.shape[0]
         if nchild > 0:  # Record contains child records
