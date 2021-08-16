@@ -246,7 +246,7 @@ def debug_window():
     return window
 
 
-def record_window(record, win_size: tuple = None, view_only: bool = False):
+def record_window(record, win_size: tuple = None, view_only: bool = False, is_component: bool = False):
     """
     Display the record window.
     """
@@ -272,9 +272,10 @@ def record_window(record, win_size: tuple = None, view_only: bool = False):
 
     # User permissions
     user_priv = user.access_permissions()
-    savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False else False
+    savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False and \
+                      is_component is False else False
     deletable = True if record.permissions['delete'] in user_priv and record.level < 1 and view_only is False and \
-                        record.new is False else False
+                        is_component is False and record.new is False else False
     printable = True if record.report is not None and record.permissions['report'] in user_priv else False
 
     # Window Title

@@ -2236,7 +2236,7 @@ class TableElement:
                         .format(NAME=self.name, ID=record.record_id(), IND=index))
 
         # Display the record window
-        record = mod_win2.record_window(record, view_only=view_only)
+        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
 
         # Update record table values
         try:
