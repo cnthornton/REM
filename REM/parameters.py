@@ -1514,6 +1514,7 @@ class DataParameterCheckbox(DataParameter):
         pad_el = mod_const.ELEM_PAD
         bold_font = mod_const.BOLD_FONT
         text_col = mod_const.TEXT_COL
+        box_col = bg_col if not disabled else mod_const.DISABLED_BG_COL
 
         # Parameter size
         width, height = size
@@ -1549,7 +1550,8 @@ class DataParameterCheckbox(DataParameter):
                                     text_color=text_col, background_color=bg_col, tooltip=self.description,
                                     justification=justification)]
         param_layout.append(sg.Checkbox('', default=param_value, key=key, pad=padding, enable_events=True,
-                                        background_color=bg_col, disabled=disabled, metadata={'disabled': disabled}))
+                                        background_color=bg_col, checkbox_color=box_col,
+                                        disabled=disabled, metadata={'disabled': disabled}))
 
         layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
 
