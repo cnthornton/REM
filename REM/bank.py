@@ -185,16 +185,18 @@ class BankRule:
         """
         Fetch a GUI parameter element by name or event key.
         """
-        if by_key is True:
-            element_type = account_id[1:-1].split('_')[-1]
-            accounts = [i.key_lookup(element_type) for i in self.accts]
-        else:
-            accounts = [i.name for i in self.accts]
+        account = None
+        for acct in self.accts:
+            if by_key:
+                elements = acct.elements
+            else:
+                elements = [acct.name]
 
-        if account_id in accounts:
-            index = accounts.index(account_id)
-            account = self.accts[index]
-        else:
+            if account_id in elements:
+                account = acct
+                break
+
+        if account is None:
             raise KeyError('account ID {ACCT} not found in list of {NAME} account entries'
                            .format(ACCT=account_id, NAME=self.name))
 
@@ -344,6 +346,7 @@ class BankRule:
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
+                pd.set_option('display.max_columns', None)
                 for acct_name in params:
                     acct_params = params[acct_name]
                     if not acct_params:
@@ -353,6 +356,8 @@ class BankRule:
                                  .format(NAME=self.name, ACCT=acct_name))
                     acct = self.fetch_account(acct_name)
                     data_loaded = acct.load_data(acct_params)
+#                    print(acct.table.df)
+#                    print(acct.table.df.dtypes)
 
                     if not data_loaded:
                         return self.reset_rule(window, current=True)
@@ -387,13 +392,13 @@ class BankRule:
                 logger.exception('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
+#                pd.set_option('display.max_columns', None)
                 for acct_panel in self.panels:
                     acct = self.fetch_account(acct_panel, by_key=True)
                     acct.table.df = acct.table.set_conditional_values()
 
-                self.update_display(window)
-        #                pd.set_option('display.max_columns', None)
-        #                print(acct.table.df)
+                    self.update_display(window)
+ #                   print(acct.table.df)
 
         return current_rule
 
@@ -911,16 +916,10 @@ class BankRule:
         """
         Save any changes to the records made during the reconciliation process.
         """
-        primary = self.fetch_account(self.current_account)
-        transactions = primary.transactions
-
-        accts = [primary]
-        for transaction in transactions:
-            trans_acct = self.fetch_account(transaction)
-            accts.append(trans_acct)
-
         statements = {}
-        for acct in accts:
+        for acct_panel in self.panels:
+            acct = self.fetch_account(acct_panel, by_key=True)
+
             record_type = acct.record_type
             record_entry = settings.records.fetch_rule(record_type)
 
@@ -944,7 +943,9 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+#        success = user.write_db(sstrings, psets)
+        success = True
+        print(statements)
 
         return success
 
