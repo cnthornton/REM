@@ -2568,7 +2568,13 @@ class TableElement:
                 logger.debug('DataTable {NAME}: column "{COL}" values are {VALS}'
                              .format(NAME=self.name, COL=column_name, VALS=column.values))
             else:
-                df.loc[:, column_name] = column_values
+                try:
+                    df.loc[:, column_name] = column_values
+                except ValueError as e:
+                    logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
+                                   .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                    logger.debug('DataTable {NAME}: column values are {VALS}'
+                                 .format(NAME=self.name, VALS=column_values))
 
         return df
 
