@@ -77,7 +77,7 @@ class BankRuleController:
         try:
             index = rule_names.index(name)
         except IndexError:
-            msg = 'rule "{RULE}" is not in the list of configured bank reconciliation definitions ({ALL})'\
+            msg = 'rule "{RULE}" is not in the list of configured bank reconciliation definitions ({ALL})' \
                 .format(RULE=name, ALL=', '.join(self.print_rules()))
             logger.error('BankRuleController {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -392,8 +392,8 @@ class BankRule:
                     acct.table.df = acct.table.set_conditional_values()
 
                 self.update_display(window)
-#                pd.set_option('display.max_columns', None)
-#                print(acct.table.df)
+        #                pd.set_option('display.max_columns', None)
+        #                print(acct.table.df)
 
         return current_rule
 
@@ -480,7 +480,7 @@ class BankRule:
         layout_pad = layout_pad + (win_diff / 5)
 
         frame_width = width - layout_pad if layout_pad > 0 else width
-        panel_width = frame_width - 30
+        panel_width = frame_width - 36
 
         # Keyboard shortcuts
         hotkeys = settings.hotkeys
@@ -499,7 +499,7 @@ class BankRule:
         param_key = self.key_lookup('Parameters')
         reconcile_key = self.key_lookup('Reconcile')
         expand_key = self.key_lookup('Expand')
-        header = [sg.Col([[sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON,
+        header = [sg.Col([[sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
                                      button_color=(text_col, bg_col), tooltip='Set parameters')]],
                          expand_x=True, justification='l', background_color=bg_col),
                   sg.Col([[sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
@@ -508,7 +508,7 @@ class BankRule:
                                      tooltip='Run reconciliation'),
                            sg.Checkbox('Expand search', key=expand_key, background_color=bg_col, font=font,
                                        disabled=True)]],
-                         pad=((0, pad_frame), 0), justification='r', background_color=bg_col)]
+                         pad=(0, 0), justification='r', background_color=bg_col)]
 
         # Panels
         panels = []
@@ -524,54 +524,60 @@ class BankRule:
 
         # Main Panel layout
         main_key = self.key_lookup('Panel')
-        main_layout = sg.Col([header,
-                              [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-                              [sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True)]],
-                             key=main_key, pad=((pad_frame, pad_v), pad_v), background_color=bg_col,
-                             vertical_alignment='t', visible=True, expand_y=True, expand_x=True, scrollable=True,
+#        main_layout = sg.Col([header,
+#                              [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+#                              [sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True)]],
+#                             key=main_key, pad=(0, 0), background_color=bg_col,
+#                             vertical_alignment='t', visible=True, expand_y=True, expand_x=True, scrollable=True,
+#                             vertical_scroll_only=True)
+        main_layout = sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True,
+                             key=main_key, vertical_alignment='t', visible=True, expand_y=True, scrollable=True,
                              vertical_scroll_only=True)
 
         # Navigation elements
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
-        nav_layout = [sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                                pad=((0, pad_el), 0), disabled=True,
-                                tooltip='Return to audit ({})'.format(back_shortcut), metadata={'disabled': True}),
-                      sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                                pad=(pad_el, 0), disabled=True, tooltip='Review audit ({})'.format(next_shortcut),
-                                metadata={'disabled': True})]
+        nav_layout = sg.Col(
+            [[sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
+                        pad=((0, pad_el), 0), disabled=True,
+                        tooltip='Return to audit ({})'.format(back_shortcut), metadata={'disabled': True}),
+              sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
+                        pad=(pad_el, 0), disabled=True, tooltip='Review audit ({})'.format(next_shortcut),
+                        metadata={'disabled': True})]],
+            pad=(0, 0), background_color=bg_col, element_justification='c', expand_x=True)
 
         # Control elements
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
         bttn_layout = [sg.Col([
-                           [sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
-                                      image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
-                                      tooltip='Return to home screen ({})'.format(cancel_shortcut))]
-                              ], pad=(0, (pad_v, 0)), justification='l', expand_x=True),
-                       sg.Col([
-                           [sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                                      pad=((pad_el, 0), 0), disabled=True,
-                                      tooltip='Save results ({})'.format(save_shortcut),
-                                      metadata={'disabled': True})]
-                               ], pad=(0, (pad_v, 0)), justification='r', element_justification='r')]
+            [sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
+                       image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
+                       tooltip='Return to home screen ({})'.format(cancel_shortcut))]
+        ], pad=(0, (pad_v, 0)), justification='l', expand_x=True),
+            sg.Col([
+                [sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                           pad=((pad_el, 0), 0), disabled=True,
+                           tooltip='Save results ({})'.format(save_shortcut),
+                           metadata={'disabled': True})]
+            ], pad=(0, (pad_v, 0)), justification='r', element_justification='r')]
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')
-#        frame_layout = [sg.Frame('', [
-#            [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
-#            [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-#            [sg.Col([[sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col)]], vertical_alignment='t'),
-#             sg.Col([[main_layout]], pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
-#                    expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True),
-#             sg.Col([nav_layout], background_color=bg_col, element_justification='c', expand_x=True)]],
-#                                 background_color=bg_col, relief='raised')]
+        #        frame_layout = [sg.Frame('', [
+        #            [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
+        #            [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+        #            [sg.Col([[sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col)]], vertical_alignment='t'),
+        #             sg.Col([[main_layout]], pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
+        #                    expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True),
+        #             sg.Col([nav_layout], background_color=bg_col, element_justification='c', expand_x=True)]],
+        #                                 background_color=bg_col, relief='raised')]
         frame_layout = [sg.Frame('', [
             [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
             [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
             [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
-             main_layout,
-             sg.Col([nav_layout], background_color=bg_col, element_justification='c', expand_x=True)]],
+             sg.Col([header, [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)], [main_layout],
+                     [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)], [nav_layout]],
+                    pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]],
                                  background_color=bg_col, relief='raised')]
 
         layout = [frame_layout, bttn_layout]
@@ -593,7 +599,7 @@ class BankRule:
         layout_pad = layout_pad + int(win_diff / 5)
 
         frame_width = width - layout_pad if layout_pad > 0 else width
-        panel_width = frame_width - 30
+        panel_width = frame_width - 36  # padding + scrollbar width
 
         width_key = self.key_lookup('FrameWidth')
         window[width_key].set_size((frame_width, None))
@@ -621,8 +627,8 @@ class BankRule:
         Update the audit record summary tab's record display.
         """
         # Update the relevant account panels
-        for acct_name in self.panels:
-            acct = self.fetch_account(acct_name)
+        for acct_panel in self.panels:
+            acct = self.fetch_account(acct_panel, by_key=True)
             acct.update_display(window)
 
     def reconcile_statement(self, expand: bool = False):
@@ -688,7 +694,7 @@ class BankRule:
                 rule_entry = assoc_rules[acct_colname]
                 assoc_colname = rule_entry['Column']
                 if assoc_colname not in assoc_header:
-                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data'\
+                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
                         .format(COL=assoc_colname, ACCT=assoc_acct_name)
                     logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
                     del assoc_rules[acct_colname]
@@ -715,9 +721,9 @@ class BankRule:
             # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)
 
-#        pd.set_option('display.max_columns', None)
-#        print(merged_df)
-#        print(merged_df.dtypes)
+        #        pd.set_option('display.max_columns', None)
+        #        print(merged_df)
+        #        print(merged_df.dtypes)
 
         # Iterate over record rows, attempting to find matches in associated transaction records
         logger.debug('AuditRule {NAME}: attempting to find associations for account {ACCT} records'
@@ -812,13 +818,17 @@ class BankRule:
                     assoc_acct = self.fetch_account(assoc_acct_name)
                     assoc_refmap = assoc_acct.refmap
                     assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
-                                      assoc_refmap['ReferenceDate'], assoc_refmap['Warnings']]
-                    assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now(), warning]
+                                      assoc_refmap['ReferenceDate']]
+                    assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
+                    if 'Warnings' in refmap and refmap['Warnings']:
+                        assoc_ref_cols.append(refmap['Warnings'])
+                        assoc_ref_values.append(warning)
+
                     assoc_acct.table.df.loc[assoc_acct.table.df[assoc_acct.table.id_column] == ref_id,
                                             assoc_ref_cols] = assoc_ref_values
 
                 elif nmatch > 1:  # too many matches
-                    msg = 'found more than one expanded match for account {ACCT} record "{RECORD}"'\
+                    msg = 'found more than one expanded match for account {ACCT} record "{RECORD}"' \
                         .format(ACCT=self.current_account, RECORD=record_id)
                     logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_notice(msg)
@@ -854,12 +864,16 @@ class BankRule:
                 assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
                                   assoc_refmap['ReferenceDate']]
                 assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
+                if 'IsApproved' in assoc_refmap and assoc_refmap['IsApproved']:
+                    assoc_ref_cols.append(refmap['IsApproved'])
+                    assoc_ref_values.append(True)
+
                 assoc_acct.table.df.loc[assoc_acct.table.df[assoc_acct.table.id_column] == ref_id, assoc_ref_cols] = \
                     assoc_ref_values
 
             elif nmatch > 1:  # too many matches
                 nfound += 1
-                warning = 'found more than one match for account {ACCT} record "{RECORD}"'\
+                warning = 'found more than one match for account {ACCT} record "{RECORD}"' \
                     .format(ACCT=self.current_account, RECORD=record_id)
                 logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
 
@@ -916,7 +930,7 @@ class BankRule:
                 statements = record_entry.export_table(acct.table.data(), id_field=acct.table.id_column, exists=True,
                                                        statements=statements)
             except Exception as e:
-                msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}'\
+                msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}' \
                     .format(ACCT=acct.name, ERR=e)
                 logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -1064,7 +1078,7 @@ class AccountEntry:
             try:
                 self.refmap = ref_entry['ColumnMap']
             except KeyError:
-                msg = 'no column mapping specified in the {RTYPE} configuration for reference {REF}'\
+                msg = 'no column mapping specified in the {RTYPE} configuration for reference {REF}' \
                     .format(NAME=name, RTYPE=self.record_type, REF=reference)
                 logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -1275,4 +1289,3 @@ class AccountEntry:
             self.table.df = self.table.append(df)
 
         return data_loaded
-
