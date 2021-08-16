@@ -2247,7 +2247,8 @@ class DatabaseRecord:
                              [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)],
                               [sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
                                sg.Col(details_layout, pad=(0, pad_v), background_color=bg_col, expand_y=True,
-                                      expand_x=True, scrollable=True, vertical_scroll_only=True)]],
+                                      expand_x=True, scrollable=True, vertical_scroll_only=True,
+                                      vertical_alignment='t')]],
                              key=self.key_lookup('DetailsTab'), background_color=bg_col)
 
         # Create layout for record metadata
@@ -2271,7 +2272,8 @@ class DatabaseRecord:
 
         info_tab = sg.Tab('{:^40}'.format('Metadata'),
                           [[sg.Col(annotation_layout, pad=(0, pad_v), background_color=bg_col, scrollable=True,
-                                   vertical_scroll_only=True, expand_x=True, expand_y=True)]],
+                                   vertical_scroll_only=True, expand_x=True, expand_y=True,
+                                   vertical_alignment='t')]],
                           key=self.key_lookup('InfoTab'), background_color=bg_col, visible=metadata_visible)
 
         main_layout = [[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),

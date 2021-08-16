@@ -1239,7 +1239,7 @@ class TableElement:
 
         i = 0
         for parameter in filter_params:
-            param_cols = parameter.layout(padding=(0, pad_el * 2), size=(param_w, 1), bg_col=filter_bg_col,
+            param_cols = parameter.layout(padding=(0, pad_el), size=(param_w, 1), bg_col=filter_bg_col,
                                           auto_size_desc=False)
             for param_layout in param_cols:
                 i += 1
@@ -1271,7 +1271,7 @@ class TableElement:
                     element_justification='c', vertical_alignment='t'),
              sg.Col(right_cols, pad=(0, 0), background_color=filter_bg_col, justification='r',
                     element_justification='c', vertical_alignment='t')],
-            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_h), disabled=disabled,
+            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=disabled,
                                 button_color=(alt_col, filter_head_col),
                                 disabled_button_color=(disabled_text_col, disabled_bg_col),
                                 tooltip='Apply table filters ({})'.format(filter_shortcut))]],

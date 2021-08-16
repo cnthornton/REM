@@ -156,6 +156,7 @@ class BankRule:
             acct_entry = accts[acct_id]
 
             acct = AccountEntry(acct_id, acct_entry, parent=self.name)
+            print(acct.elements)
             self.accts.append(acct)
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
             self.elements += acct.elements
@@ -367,15 +368,17 @@ class BankRule:
                 # Update the display
                 self.update_display(window)
 
-                # Enable the reconciliation button
-                window[reconcile_key].update(disabled=False)
-                window[expand_key].update(disabled=False)
+                # Enable elements
+                window[save_key].update(disabled=False)
+                if len(self.panels) > 1:
+                    window[reconcile_key].update(disabled=False)
+                    window[expand_key].update(disabled=False)
 
-                # Enable the navigation buttons
-                window[next_key].update(disabled=False)
-                window[next_key].metadata['disabled'] = False
-                window[back_key].update(disabled=False)
-                window[back_key].metadata['disabled'] = False
+                    # Enable the navigation buttons
+                    window[next_key].update(disabled=False)
+                    window[next_key].metadata['disabled'] = False
+                    window[back_key].update(disabled=False)
+                    window[back_key].metadata['disabled'] = False
 
                 # Mark that a reconciliation is currently in progress
                 self.in_progress = True
@@ -416,7 +419,9 @@ class BankRule:
         # Disable the reconciliation button
         reconcile_key = self.key_lookup('Reconcile')
         expand_key = self.key_lookup('Expand')
+        save_key = self.key_lookup('Save')
         window[reconcile_key].update(disabled=True)
+        window[save_key].update(disabled=True)
         window[expand_key].update(disabled=True, value=False)
 
         # Disable the navigation buttons
@@ -943,9 +948,7 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-#        success = user.write_db(sstrings, psets)
-        success = True
-        print(statements)
+        success = user.write_db(sstrings, psets)
 
         return success
 
@@ -955,12 +958,12 @@ class BankRule:
         """
         status = []
         with pd.ExcelWriter(filename) as writer:
-            for acct in self.accts:
+            for acct_panel in self.panels:
+                acct = self.fetch_account(acct_panel, by_key=True)
+
                 sheet_name = acct.title
                 table = acct.table
-                df = table.data()
-                if df.empty:
-                    continue
+                df = table.data()  # show all data
 
                 export_df = table.format_display_table(df)
                 annotations = table.annotate_display(df)
