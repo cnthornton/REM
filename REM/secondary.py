@@ -690,7 +690,7 @@ def parameter_window(account, win_size: tuple = None):
                 params[assoc_acct_name] = [param]
 
         params_layout.append([sg.Col(assoc_layout, key='-{}-'.format(param_group), pad=(pad_h, pad_v),
-                                     background_color=bg_col, visible=False, expand_x=True, metadata={'visible': False})])
+                                     background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
 
     # Control elements
     load_key = '-LOAD-'
