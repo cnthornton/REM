@@ -782,14 +782,17 @@ def parameter_window(account, win_size: tuple = None):
                 for acct_param in acct_params:
                     acct_param.value = acct_param.format_value(values)
 
-                    if acct_param.required and not acct_param.has_value():
-                        msg = 'missing value from required account {ACCT} parameter {PARAM}'\
-                            .format(ACCT=acct_name, PARAM=acct_param.name)
-                        logger.warning(msg)
-                        popup_error(msg)
-                        has_values.append(False)
+                    if not acct_param.has_value():  # no value set for parameter
+                        if acct_param.required:  # parameter is required, so notify user that value must be provided
+                            msg = 'missing value from required account {ACCT} parameter {PARAM}'\
+                                .format(ACCT=acct_name, PARAM=acct_param.name)
+                            logger.warning(msg)
+                            popup_error(msg)
+                            has_values.append(False)
 
-                        break
+                            break
+                        else:  # parameter is not required, so can safely ignore
+                            continue
 
                     try:
                         param_values[acct_name].append(acct_param)
