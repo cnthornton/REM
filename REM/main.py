@@ -45,13 +45,9 @@ class ToolBar:
             acct_menu.append(('', account_method.title))
 
             rules = {}
-#            rules = []
             for rule in account_method.rules:
-#                rules.append(('!', rule.menu_title))
                 rule_title = rule.menu_title
                 rules[rule.menu_title] = []
-
-#            acct_menu.append(rules)
 
                 # Add any submenus to the menu definition. Submenus act as flags to main workflow rule.
                 try:

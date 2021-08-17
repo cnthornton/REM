@@ -1116,6 +1116,7 @@ class SettingsManager:
         """
         Format a value as a float.
         """
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         date_format = self.format_date_str(date_format) if date_format else self.date_format
 
         if isinstance(value, str):
@@ -1125,7 +1126,7 @@ class SettingsManager:
                 msg = 'unable to parse the provided date format'.format(VAL=value, TYPE=type(value))
 
                 raise ValueError(msg)
-        elif isinstance(value, datetime.datetime):
+        elif isinstance(value, datetime.datetime) or is_datetime_dtype(value):
             value_fmt = value
         else:
             msg = 'unable to convert value {VAL} of type "{TYPE}" to an datetime value' \

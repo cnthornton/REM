@@ -3052,18 +3052,10 @@ class ReferenceElement2:
 
             return False
         else:
-            if is_datetime_dtype(ref_date) or isinstance(ref_date, datetime.datetime):
-                self.date = ref_date
-            elif isinstance(ref_date, str):
-                try:
-                    self.date = datetime.datetime.strptime(ref_date, settings.date_format)
-                except ValueError:
-                    msg = 'unknown format for "RefDate" value {}'.format(ref_date)
-                    logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    return False
-            else:
-                msg = 'unknown format for "ReferenceDate" value {}'.format(ref_date)
+            try:
+                self.date = settings.format_as_datetime(ref_date)
+            except ValueError as e:
+                msg = 'unable to set reference date {DATE} - {ERR}'.format(DATE=ref_date, ERR=e)
                 logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 return False
