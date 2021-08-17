@@ -2439,6 +2439,83 @@ def range_value_window(dtype, current: list = None, title: str = 'Range', date_f
     return value_range
 
 
+def conditional_value_window(dtype, current: list = None, title: str = 'Conditional'):
+    """
+    Display window for obtaining values for a ranged parameter.
+    """
+    saved_value = current if current and len(current) == 2 else [None, None]
+    operators = ['>', '<', '>=', '<=', '=']
+
+    # Element settings
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+
+    font = mod_const.LARGE_FONT
+    bold_font = mod_const.BOLD_LARGE_FONT
+
+    in_col = mod_const.INPUT_COL
+    bg_col = mod_const.ACTION_COL
+
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    save_shortcut = hotkeys['-HK_ENTER-'][2]
+
+    # Layout
+    current_oper, current_value = saved_value
+    in_layout = [sg.Combo(operators, default_value=current_oper, key='-OPER-', enable_events=True, size=(4, 1),
+                          pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                          tooltip='Select valid operator'),
+                 sg.Input(current_value, key='-VAL-', enable_events=True, size=(14, 1),
+                          pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                          tooltip='Input value'),
+                 ]
+
+    bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                              bind_return_key=True, pad=(pad_el, 0),
+                              tooltip='Save value range ({})'.format(save_shortcut))]]
+
+    layout = [[sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+
+    window = sg.Window(title, layout, modal=True, resizable=False)
+    window.finalize()
+    window = center_window(window)
+
+    # Bind keys to events
+    window = settings.set_shortcuts(window)
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
+            break
+
+        if event in ('-SAVE-', '-HK_ENTER-'):
+            operator = values['-OPER-']
+            if operator not in operators:
+                continue
+
+            value = values['-VAL-']
+            try:
+                saved_value[0] = operator
+                saved_value[1] = settings.format_value(value, dtype)
+            except ValueError:
+                msg = 'failed to format values as "{DTYPE}"'.format(DTYPE=dtype)
+                popup_error(msg)
+
+                continue
+
+            break
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return saved_value
+
+
 def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win_size: tuple = None):
     """
     Display window for user to add or edit a row.

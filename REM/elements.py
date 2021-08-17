@@ -260,7 +260,13 @@ class TableElement:
         try:
             self.aliases = entry['Aliases']
         except KeyError:
-            self.aliases = {}
+            param_def = settings.fetch_alias_definition(self.name)
+            aliases = {}
+            for column in self.columns:
+                if column in param_def:
+                    aliases[column] = param_def[column]
+
+            self.aliases = aliases
 
         try:
             self.tally_rule = entry['TallyRule']
@@ -2638,7 +2644,8 @@ class ReferenceElement:
             elif isinstance(ref_date, str):
                 try:
                     self.ref_date = datetime.datetime.strptime(ref_date, '%Y-%m-%d')
-                except ValueError:
+                except ValueError as e:
+                    logger.exception(e)
                     raise AttributeError('unknown format for "RefDate" value {}'.format(ref_date))
             else:
                 raise AttributeError('unknown format for "RefDate" value {}'.format(ref_date))

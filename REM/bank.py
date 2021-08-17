@@ -156,7 +156,6 @@ class BankRule:
             acct_entry = accts[acct_id]
 
             acct = AccountEntry(acct_id, acct_entry, parent=self.name)
-            print(acct.elements)
             self.accts.append(acct)
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
             self.elements += acct.elements
@@ -259,8 +258,10 @@ class BankRule:
             acct = self.fetch_account(current_acct)
             default_title = acct.title + '.xlsx'
             outfile = sg.popup_get_file('', title='Save As', default_path=default_title, save_as=True,
-                                        default_extension='pdf', no_window=True,
-                                        file_types=(('PDF - Portable Document Format', '*.pdf'),))
+                                        default_extension='xlsx', no_window=True,
+                                        file_types=(
+                                            ('XLS - Microsoft Excel', '*.xlsx'), ('Comma-Separated Values', '*.csv'))
+                                        )
 
             if not outfile:
                 msg = 'Please select an output file before continuing'
@@ -357,8 +358,8 @@ class BankRule:
                                  .format(NAME=self.name, ACCT=acct_name))
                     acct = self.fetch_account(acct_name)
                     data_loaded = acct.load_data(acct_params)
-#                    print(acct.table.df)
-#                    print(acct.table.df.dtypes)
+                    print(acct.table.df)
+                    print(acct.table.df.dtypes)
 
                     if not data_loaded:
                         return self.reset_rule(window, current=True)

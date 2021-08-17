@@ -10,9 +10,8 @@ import PySimpleGUI as sg
 import pandas as pd
 
 import REM.constants as mod_const
-import REM.database as mod_db
 import REM.secondary as mod_win2
-from REM.client import logger, settings, user
+from REM.client import logger, settings
 
 
 class DataParameter:
@@ -734,7 +733,7 @@ class DataParameterInput(DataParameter):
         """
         value = self.value
 
-        if value == '' or pd.isna(value):
+        if not self.has_value():
             return ''
 
         logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
@@ -1652,3 +1651,246 @@ class DataParameterCheckbox(DataParameter):
         df = df[col_values == param_value]
 
         return df
+
+
+class DataParameterCondition(DataParameter):
+    """
+    Data parameter with a condition-picking element.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        id (int): data element number.
+
+        elements (list): list of data element GUI keys.
+
+        description (str): display name of the data element.
+
+        etype (str): GUI element type. Can be dropdown, input, date, date_range, button, or checkbox.
+
+        dtype (str): data type of the parameter's data storage elements [Default: string].
+
+        editable (bool): element is editable. [Default: False]
+
+        hidden (bool): element is not visible to the user. [Default: False]
+
+        required (bool): parameter value is required for an event.
+
+        icon (str): file name of the parameter's icon [Default: None].
+
+        value: value of the parameter's data storage elements.
+    """
+
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+        self._operators = ['>', '<', '>=', '<=', '=']
+
+        # Enforce supported data types for the dropdown parameter
+        supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes
+        if not self.dtype or self.dtype not in supported_dtypes:
+            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
+                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.dtype = 'float'
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        element_key = self.key_lookup('Element')
+        if event == element_key:
+            self.value = mod_win2.conditional_value_window(self.dtype, current=self.value, title=self.description)
+
+            display_value = self.format_display()
+            window[event].update(text=display_value)
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        try:
+            oper, value = self.default
+        except (ValueError, TypeError):
+            oper = value = None
+
+        if oper is not None and value is not None:
+            logger.debug('DataParameter {NAME}: resetting parameter "{VAL}" to "{DEF}"'
+                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = [oper, self.set_datatype(value)]
+
+            display_value = self.format_display()
+            window[self.key_lookup('Element')].update(text=display_value)
+
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
+               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
+        """
+        Create a GUI layout for the parameter.
+        """
+        self.bg_col = bg_col
+        size = size if size else mod_const.PARAM_SIZE_CHAR
+        justification = justification if justification else self.justification
+
+        disabled = False if self.editable is True else True
+        visible = not hidden if hidden is not None else not self.hidden
+
+        # Element settings
+        pad_el = mod_const.ELEM_PAD
+
+        font = mod_const.LARGE_FONT
+        bttn_font = mod_const.MID_FONT
+        bold_font = mod_const.BOLD_FONT
+
+        in_col = mod_const.INPUT_COL
+        text_col = mod_const.TEXT_COL
+
+        # Parameter size
+        width, height = size
+        desc_w = int(width * 0.3)
+        desc_h = height
+        elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
+        elem_h = height
+        param_w = width * 10
+
+        # Parameter settings
+        desc = '{}:'.format(self.description)
+        display_value = self.format_display()
+
+        # Icon layout
+        icon = self.icon
+        if icon is None:
+            icon_layout = []
+        else:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+            else:
+                icon_layout = []
+
+        # Element layout
+        desc_key = self.key_lookup('Description')
+        element_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
+        if auto_size_desc:
+            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
+        else:
+            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
+                                    background_color=bg_col, tooltip=self.description, justification=justification)]
+
+        if not disabled:
+            param_layout.append(sg.Button(button_text=display_value, key=element_key, size=(elem_w, elem_h),
+                                          font=bttn_font, button_color=(text_col, in_col),
+                                          tooltip='Set value range for {}'.format(self.description),
+                                          metadata={'value': [], 'disabled': disabled}))
+        else:
+            param_layout.append(sg.Text(display_value, key=element_key, size=(elem_w, elem_h), font=font,
+                                        background_color=bg_col, text_color=text_col, border_width=1,
+                                        metadata={'value': [], 'disabled': disabled}))
+
+        layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
+
+        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
+
+    def format_value(self, *args, **kwargs):
+        """
+        Set the value of the data element from user input.
+        """
+        return self.value
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        operator, value = self.value
+
+        if not self.has_value():  # no parameter value + operator combo set
+            return ''
+
+        logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
+                     .format(NAME=self.name, VAL=value))
+        display_value = self.format_display_value(value)
+
+        return '{OPER} {VAL}'.format(OPER=operator, VAL=display_value)
+
+    def print_value(self):
+        """
+        Generate printable statement of the parameter's value.
+        """
+        display_value = self.format_display()
+        return display_value.replace(' ', '')
+
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        try:
+            operator, value = self.value
+        except ValueError:
+            statement = None
+        else:
+            if self.has_value():
+                statement = ('{COL} {OPER} ?'.format(COL=column, OPER=operator), (value,))
+            else:
+                statement = None
+
+        return statement
+
+    def filter_table(self, df):
+        """
+        Use the parameter value to filter a dataframe.
+        """
+        operator, value = self.value
+        dtype = self.dtype
+        column = self.name
+
+        if self.has_value():  # don't filter on NA values
+            return df
+
+        try:
+            if dtype in settings.supported_int_dtypes:
+                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
+            elif dtype in settings.supported_float_dtypes:
+                col_values = pd.to_numeric(df[column], errors='coerce')
+            else:
+                col_values = df[column].astype(np.object, errors='raise')
+        except Exception as e:
+            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        logger.debug('DataParameter {NAME}: filtering table on values {OPER} {VAL}'
+                     .format(NAME=self.name, OPER=operator, VAL=value))
+        try:
+            if operator == '<':  # column values are less than value
+                df = df[col_values < value]
+            elif operator == '>':  # column values are greater than value
+                df = df[col_values > value]
+            elif operator == '=':  # column values are equal to value
+                df = df[col_values == value]
+            elif operator == '>=':  # column values are greater than or equal to value
+                df = df[col_values >= value]
+            elif operator == '<=':  # column values are less than or equal to value
+                df = df[col_values <= value]
+        except SyntaxError:
+            logger.warning('DataParameter {TBL}: unable to filter table on values {OPER} {VAL}'
+                           .format(TBL=self.name, OPER=operator, VAL=value))
+
+        return df
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        operator, value = self.value
+
+        if not pd.isna(value) and not value == '' and operator in self._operators:
+            return True
+        else:
+            return False
+
+
