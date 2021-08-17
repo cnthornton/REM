@@ -978,7 +978,9 @@ class DatabaseRecord:
                 try:
                     param_obj = element_class(param, param_entry, parent=self.name)
                 except Exception as e:
-                    msg = 'failed to initialize {NAME} record {ID}, element {PARAM} - {ERR}'.format(NAME=self.name, ID=self.record_id, PARAM=param, ERR=e)
+                    msg = 'failed to initialize {NAME} record {ID}, element {PARAM} - {ERR}'.format(NAME=self.name,
+                                                                                                    ID=self.record_id,
+                                                                                                    PARAM=param, ERR=e)
                     logger.exception(msg)
                     raise AttributeError(msg)
 
@@ -1236,7 +1238,8 @@ class DatabaseRecord:
         logger.info('RecordType {NAME}: loading references'.format(NAME=self.name))
         for refbox in self.references:
             try:
-                logger.debug('RecordType {NAME}: attempting to load reference box {REF}'.format(NAME=self.name, REF=refbox.name))
+                logger.debug(
+                    'RecordType {NAME}: attempting to load reference box {REF}'.format(NAME=self.name, REF=refbox.name))
                 refbox.load_reference(data)
             except AttributeError:
                 continue
@@ -2128,6 +2131,7 @@ class DatabaseRecord:
         text_col = mod_const.TEXT_COL
         inactive_col = mod_const.INACTIVE_COL
         select_col = mod_const.SELECT_TEXT_COL
+        frame_col = mod_const.FRAME_COL
 
         bold_font = mod_const.BOLD_HEADER_FONT
         main_font = mod_const.MAIN_FONT
@@ -2180,31 +2184,33 @@ class DatabaseRecord:
         details_layout = []
 
         # Create layout for record details
-        details_panel_key = self.key_lookup('DetailsButton')
-        info_layout = [[sg.Image(data=mod_const.INFO_ICON, pad=((0, pad_el), 0), background_color=bg_col),
-                       sg.Text(details_title, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                       sg.Button('', image_data=mod_const.HIDE_ICON, key=details_panel_key,
-                                 button_color=(text_col, bg_col), border_width=0, disabled=False, visible=True,
-                                 metadata={'visible': True, 'disabled': False})]]
+        details_bttn_key = self.key_lookup('DetailsButton')
+        info_layout = [[sg.Col([[sg.Text(details_title, pad=((0, pad_h), 0), background_color=frame_col,
+                                         font=bold_font),
+                                 sg.Button('', image_data=mod_const.HIDE_ICON, key=details_bttn_key, disabled=False,
+                                           button_color=(text_col, frame_col), border_width=0, visible=True,
+                                           metadata={'visible': True, 'disabled': False})
+                                 ]], background_color=frame_col, expand_x=True)]]
 
         de_elements = []
+        details_panel_key = self.key_lookup('DetailsFrame')
         for data_elem in self.parameters:
-#            details_layout.append([data_elem.layout(padding=(0, pad_el), editable=editable, collapsible=True, overwrite=self.new)])
             de_elements.append([data_elem.layout(padding=(0, pad_el), editable=editable, overwrite=self.new)])
 
-        info_layout.append([sg.pin(sg.Col(de_elements, key=self.key_lookup('DetailsFrame'), background_color=bg_col,
+        info_layout.append([sg.pin(sg.Col(de_elements, key=details_panel_key, background_color=bg_col,
                                           visible=True, expand_x=True, metadata={'visible': True}))])
 
         if has_details is True:
             details_layout.append([sg.Col(info_layout, expand_x=True, pad=(0, pad_el), background_color=bg_col)])
 
         # Add reference boxes to the record information panel
-        ref_key = self.key_lookup('ReferencesButton')
-        ref_layout = [[sg.Image(data=mod_const.NETWORK_ICON, pad=((0, pad_el), 0), background_color=bg_col),
-                       sg.Text(reference_title, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                       sg.Button('', image_data=mod_const.HIDE_ICON, key=ref_key, button_color=(text_col, bg_col),
-                                 border_width=0, disabled=False, visible=True,
-                                 metadata={'visible': True, 'disabled': False})]]
+        ref_bttn_key = self.key_lookup('ReferencesButton')
+        ref_layout = [[sg.Col([[sg.Text(reference_title, pad=((0, pad_h), 0), background_color=frame_col,
+                                        font=bold_font),
+                                sg.Button('', image_data=mod_const.HIDE_ICON, key=ref_bttn_key, disabled=False,
+                                          button_color=(text_col, frame_col), border_width=0, visible=True,
+                                          metadata={'visible': True, 'disabled': False})
+                                ]], background_color=frame_col, expand_x=True)]]
 
         ref_boxes = []
         modify_reference = True if editable is True and self.level < 1 and self.permissions['references'] in ugroup \
@@ -2212,19 +2218,21 @@ class DatabaseRecord:
         for ref_box in self.references:
             ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=modify_reference)])
 
-        ref_layout.append([sg.pin(sg.Col(ref_boxes, key=self.key_lookup('ReferencesFrame'), background_color=bg_col,
+        ref_panel_key = self.key_lookup('ReferencesFrame')
+        ref_layout.append([sg.pin(sg.Col(ref_boxes, key=ref_panel_key, background_color=bg_col,
                                          visible=True, expand_x=True, metadata={'visible': True}))])
 
         if has_references is True and self.new is False:
             details_layout.append([sg.Col(ref_layout, expand_x=True, pad=(0, pad_el), background_color=bg_col)])
 
         # Add components to the details section
-        comp_key = self.key_lookup('ComponentsButton')
-        comp_layout = [[sg.Image(data=mod_const.COMPONENTS_ICON, pad=((0, pad_el), 0), background_color=bg_col),
-                        sg.Text(components_title, pad=((0, pad_el), 0), background_color=bg_col, font=bold_font),
-                        sg.Button('', image_data=mod_const.HIDE_ICON, key=comp_key, button_color=(text_col, bg_col),
-                                  border_width=0, visible=True, disabled=False,
-                                  metadata={'visible': True, 'disabled': False})]]
+        comp_bttn_key = self.key_lookup('ComponentsButton')
+        comp_layout = [[sg.Col([[sg.Text(components_title, pad=((0, pad_h), 0), background_color=frame_col,
+                                         font=bold_font),
+                                 sg.Button('', image_data=mod_const.HIDE_ICON, key=comp_bttn_key, disabled=False,
+                                           button_color=(text_col, frame_col), border_width=0, visible=True,
+                                           metadata={'visible': True, 'disabled': False})
+                                 ]], background_color=frame_col, expand_x=True)]]
 
         modify_component = True if editable is True and self.level < 1 and self.permissions['components'] in ugroup \
             else False
@@ -2235,7 +2243,8 @@ class DatabaseRecord:
             comp_tables.append([comp_table.layout(padding=(0, pad_v), width=width, height=height,
                                                   editable=modify_component)])
 
-        comp_layout.append([sg.pin(sg.Col(comp_tables, key=self.key_lookup('ComponentsFrame'), background_color=bg_col,
+        comp_panel_key = self.key_lookup('ComponentsFrame')
+        comp_layout.append([sg.pin(sg.Col(comp_tables, key=comp_panel_key, background_color=bg_col,
                                           visible=True, expand_x=True, metadata={'visible': False}))])
 
         if has_components is True:
