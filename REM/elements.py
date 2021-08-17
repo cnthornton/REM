@@ -845,6 +845,8 @@ class TableElement:
                 if pd.notnull(x) else '')
             elif is_string_dtype(dtype):
                 col_to_add = col_to_add.fillna('')
+            elif is_bool_dtype(dtype):
+                col_to_add = col_to_add.apply(lambda x: '✓' if x is True else '')
 
             display_df[col_name] = col_to_add
 
@@ -860,8 +862,8 @@ class TableElement:
                 col_dtype = display_df[alias_col].dtype
                 if is_integer_dtype(col_dtype):  # convert integer-type alias keys to integer values
                     alias_map = {int(i): j for i, j in alias_map.items()}
-                elif is_bool_dtype(col_dtype):  # convert boolean-type alias keys to boolean values
-                    alias_map = {bool(i): j for i, j in alias_map.items()}
+#                elif is_bool_dtype(col_dtype):  # convert boolean-type alias keys to boolean values
+#                    alias_map = {bool(i): j for i, j in alias_map.items()}
             except KeyError:
                 logger.warning('DataTable {TBL}: alias {ALIAS} not found in the list of display columns'
                                .format(TBL=self.name, ALIAS=alias_col))
