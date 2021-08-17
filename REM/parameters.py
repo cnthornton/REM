@@ -55,7 +55,7 @@ class DataParameter:
         self.name = name
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'Description', 'Width']]
+                         ['Element', 'Header', 'Value', 'Description', 'Width']]
 
         try:
             self.description = entry['Description']
@@ -179,20 +179,130 @@ class DataParameter:
 
         # Resize description at 40% of total width and the value element to take up the remaining space
         if pixels:
-            desc_w = int(width * 0.4 / 10)
-            elem_w = int(width * 0.6 / 10)
-            desc_h = elem_h = int(height / 10) if height else None
-        else:
             desc_w = int(width * 0.4)
             elem_w = int(width * 0.6)
-            desc_h = elem_h = height if height else None
+            desc_h = elem_h = height
+        else:
+            desc_w = int(width * 0.4) * 10
+            elem_w = int(width * 0.6) * 10
+            desc_h = elem_h = int(height * 10) if height else None
 
-        desc_key = self.key_lookup('Description')
-        window[desc_key].set_size(size=(desc_w, desc_h))
+        header_key = self.key_lookup('Header')
+        window[header_key].set_size(size=(desc_w, desc_h))
+
+        value_key = self.key_lookup('Value')
+        window[value_key].set_size(size=(elem_w, elem_h))
 
         elem_key = self.key_lookup('Element')
-        window[elem_key].set_size(size=(elem_w, elem_h))
         window[elem_key].expand(expand_x=True)
+
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
+               auto_size_desc: bool = True, hidden: bool = None, justification: str = None, border: bool = False):
+        """
+        Create a GUI layout for the parameter.
+        """
+        if bg_col:  # set custom background different from configuration or default
+            self.bg_col = bg_col
+
+        size = size if size else mod_const.PARAM_SIZE_CHAR
+        justification = justification if justification else self.justification
+
+        is_required = self.required
+        visible = not hidden if hidden is not None else not self.hidden
+
+        # Element settings
+        pad_el = mod_const.ELEM_PAD
+        bold_font = mod_const.BOLD_FONT
+        relief = 'flat' if not border else None
+
+        # Parameter size
+        width, height = size
+        if auto_size_desc:
+            desc_w = 1
+            param_w = width
+        else:
+            desc_w = int(width * 0.4) * 10
+            param_w = int(width * 0.6)
+
+        # Parameter settings
+        desc = '{}:'.format(self.description)
+
+        # Icon layout
+        icon = self.icon
+        if icon is None:
+            icon_layout = []
+        else:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+            else:
+                icon_layout = []
+
+        # Required symbol
+        if is_required is True:
+            required_layout = [sg.Text('*', font=bold_font, background_color=bg_col,
+                                       text_color=mod_const.WARNING_COL, tooltip='required')]
+        else:
+            required_layout = []
+
+        # Element layout
+        desc_key = self.key_lookup('Description')
+        desc_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, font=bold_font, background_color=bg_col,
+                               tooltip=self.description)]
+
+        header_key = self.key_lookup('Header')
+        header_layout = sg.Col([[sg.Canvas(key=header_key, size=(desc_w, 0), background_color=bg_col)],
+                               required_layout + icon_layout + desc_layout],
+                               pad=(0, (0, pad_el)), background_color=bg_col, element_justification=justification,
+                               expand_y=True)
+
+        value_key = self.key_lookup('Value')
+        param_layout = sg.Col([[sg.Canvas(key=value_key, size=(param_w, 0), background_color=bg_col)],
+                               self.element_layout(size=(param_w, height), bg_col=bg_col)],
+                              background_color=bg_col, expand_y=True)
+
+        width_key = self.key_lookup('Width')
+        elem_layout = [header_layout, param_layout]
+        layout = [[sg.Canvas(key=width_key, size=(width * 10, 0), background_color=bg_col)], elem_layout]
+
+        return [sg.Frame('', layout, pad=padding, visible=visible, background_color=bg_col, relief=relief,
+                         border_width=1)]
+
+    def element_layout(self, size: tuple = None, bg_col: str = None):
+        """
+        Create the type-specific layout for the value element of the parameter.
+        """
+        size = size if size else mod_const.PARAM_SIZE_CHAR
+
+        disabled = False if self.editable is True else True
+
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
+        text_col = mod_const.TEXT_COL
+
+        elem_key = self.key_lookup('Element')
+        display_value = self.format_display()
+
+        layout = [sg.Text(display_value, key=elem_key, size=size, pad=(0, 0), background_color=bg_col,
+                          text_color=text_col, font=font, enable_events=True, border_width=1,
+                          metadata={'name': self.name, 'disabled': disabled})]
+
+        return layout
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        value = self.value
+
+        if not self.has_value():
+            return ''
+
+        logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
+                     .format(NAME=self.name, VAL=value))
+        display_value = self.format_display_value(value)
+
+        return display_value
 
     def enforce_formatting(self, window, values, elem_key):
         """
@@ -623,66 +733,33 @@ class DataParameterInput(DataParameter):
 
             window[self.key_lookup('Element')].update(value=display_value)
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
+    def element_layout(self, size: tuple = None, bg_col: str = None):
         """
-        Create a GUI layout for the parameter.
+        Create the type-specific layout for the value element of the parameter.
         """
-        self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
-        justification = justification if justification else self.justification
 
         disabled = False if self.editable is True else True
-        visible = not hidden if hidden is not None else not self.hidden
 
-        # Element settings
         pad_el = mod_const.ELEM_PAD
-
         font = mod_const.LARGE_FONT
-        bold_font = mod_const.BOLD_FONT
-
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         in_col = mod_const.INPUT_COL
         text_col = mod_const.TEXT_COL
 
-        # Parameter size
         width, height = size
-        desc_w = int(width * 0.3)
-        desc_h = height
         elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
         elem_h = height
-        param_w = width * 10
 
-        # Parameter settings
-        desc = '{}:'.format(self.description)
-        param_value = self.format_display()
-
-        # Icon layout
-        icon = self.icon
-        if icon is None:
-            icon_layout = []
-        else:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-
-        # Element layout
         elem_key = self.key_lookup('Element')
-        desc_key = self.key_lookup('Description')
-        width_key = self.key_lookup('Width')
-        if auto_size_desc:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
-        else:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
+        display_value = self.format_display()
 
         if not disabled:
-            param_layout.append(sg.Input(param_value, key=elem_key, size=(elem_w, elem_h), enable_events=True,
-                                         font=font, background_color=in_col, text_color=text_col,
-                                         tooltip='Input value for {}'.format(self.description),
-                                         metadata={'value': param_value, 'disabled': disabled}))
+            layout = [sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True, font=font,
+                               background_color=in_col, text_color=text_col,
+                               tooltip='Input value for {}'.format(self.description),
+                               metadata={'value': display_value, 'disabled': disabled})]
+
             if self.dtype in settings.supported_date_dtypes:
                 calendar_key = self.key_lookup('Calendar')
                 date_ico = mod_const.CALENDAR_ICON
@@ -692,15 +769,13 @@ class DataParameterInput(DataParameter):
                                                   button_color=(text_col, bg_col), border_width=0,
                                                   tooltip='Select date from calendar menu',
                                                   metadata={'disabled': disabled})
-                param_layout.append(calendar_bttn)
+                layout.append(calendar_bttn)
         else:
-            param_layout.append(sg.Text(param_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                                        text_color=text_col, background_color=bg_col, border_width=1,
-                                        metadata={'value': param_value, 'disabled': disabled}))
+            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font, text_color=text_col,
+                              background_color=bg_col, border_width=1,
+                              metadata={'value': display_value, 'disabled': disabled})]
 
-        layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
-
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
+        return layout
 
     def format_value(self, values):
         """
@@ -940,80 +1015,45 @@ class DataParameterCombo(DataParameter):
 
             window[self.key_lookup('Element')].update(value=display_value)
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
+    def element_layout(self, size: tuple = None, bg_col: str = None):
         """
-        Create a GUI layout for the parameter.
+        Create the type-specific layout for the value element of the parameter.
         """
-        self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
-        justification = justification if justification else self.justification
-
         disabled = False if self.editable is True else True
-        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
-        pad_el = mod_const.ELEM_PAD
-
         font = mod_const.LARGE_FONT
-        bold_font = mod_const.BOLD_FONT
-
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         in_col = mod_const.INPUT_COL
         text_col = mod_const.TEXT_COL
 
         # Parameter size
         width, height = size
-        desc_w = int(width * 0.3)
-        desc_h = height
-        elem_w = int(width * 0.7)
+        elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
         elem_h = height
-        param_w = width * 10
 
         # Parameter settings
         aliases = self.aliases
         combo_values = self.combo_values
-        desc = '{}:'.format(self.description)
-        param_value = self.format_display()
+        display_value = self.format_display()
 
         values = [aliases[i] for i in combo_values if i in aliases]
         if '' not in values:  # the no selection option
             values.insert(0, '')
 
-        # Icon layout
-        icon = self.icon
-        if icon is None:
-            icon_layout = []
-        else:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-
-        # Element layout
         elem_key = self.key_lookup('Element')
-        desc_key = self.key_lookup('Description')
-        width_key = self.key_lookup('Width')
-        if auto_size_desc:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
-        else:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
-
         if not disabled:
-            param_layout.append(sg.Combo(values, default_value=param_value, key=elem_key, size=(elem_w, elem_h),
-                                         font=font, background_color=in_col, text_color=text_col,
-                                         enable_events=True, tooltip='Select a value for {}'.format(self.description),
-                                         metadata={'value': param_value, 'disabled': disabled}))
+            layout = [sg.Combo(values, default_value=display_value, key=elem_key, size=(elem_w, elem_h), font=font,
+                               background_color=in_col, text_color=text_col, enable_events=True,
+                               tooltip='Select a value for {}'.format(self.description),
+                               metadata={'value': display_value, 'disabled': disabled})]
         else:
-            param_layout.append(sg.Text(param_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                                        background_color=bg_col, text_color=text_col, border_width=1,
-                                        metadata={'value': param_value, 'disabled': disabled}))
+            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font, text_color=text_col,
+                              background_color=bg_col, border_width=1,
+                              metadata={'value': display_value, 'disabled': disabled})]
 
-        layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
-
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
+        return layout
 
     def format_value(self, values):
         """
@@ -1201,75 +1241,40 @@ class DataParameterRange(DataParameter):
             display_value = self.format_display()
             window[self.key_lookup('Element')].update(text=display_value)
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
+    def element_layout(self, size: tuple = None, bg_col: str = None):
         """
-        Create a GUI layout for the parameter.
+        Create the type-specific layout for the value element of the parameter.
         """
-        self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
-        justification = justification if justification else self.justification
-
         disabled = False if self.editable is True else True
-        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
-        pad_el = mod_const.ELEM_PAD
-
         font = mod_const.LARGE_FONT
         bttn_font = mod_const.MID_FONT
-        bold_font = mod_const.BOLD_FONT
-
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         in_col = mod_const.INPUT_COL
         text_col = mod_const.TEXT_COL
 
         # Parameter size
         width, height = size
-        desc_w = int(width * 0.3)
-        desc_h = height
-        elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
+        elem_w = int(width * 0.7)
         elem_h = height
-        param_w = width * 10
 
         # Parameter settings
-        desc = '{}:'.format(self.description)
         display_value = self.format_display()
 
-        # Icon layout
-        icon = self.icon
-        if icon is None:
-            icon_layout = []
-        else:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-
-        # Element layout
-        desc_key = self.key_lookup('Description')
-        element_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
-        if auto_size_desc:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
-        else:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
-
+        elem_key = self.key_lookup('Element')
         if not disabled:
-            param_layout.append(sg.Button(button_text=display_value, key=element_key, size=(elem_w, elem_h),
-                                          font=bttn_font, button_color=(text_col, in_col),
-                                          tooltip='Set value range for {}'.format(self.description),
-                                          metadata={'value': [], 'disabled': disabled}))
+            layout = [sg.Button(button_text=display_value, key=elem_key, size=(elem_w, elem_h),
+                                font=bttn_font, button_color=(text_col, in_col),
+                                tooltip='Set value range for {}'.format(self.description),
+                                metadata={'value': [], 'disabled': disabled})]
         else:
-            param_layout.append(sg.Text(display_value, key=element_key, size=(elem_w, elem_h), font=font,
-                                        background_color=bg_col, text_color=text_col, border_width=1,
-                                        metadata={'value': [], 'disabled': disabled}))
+            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
+                              background_color=bg_col, text_color=text_col, border_width=1,
+                              metadata={'value': [], 'disabled': disabled})]
 
-        layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
-
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
+        return layout
 
     def format_value(self, *args, **kwargs):
         """
@@ -1442,6 +1447,8 @@ class DataParameterCheckbox(DataParameter):
         if pd.isna(self.default):  # the default for checkbox elements is always False if not set in config
             self.default = False
 
+        self.justification = 'right'
+
         # Data type check
         supported_dtypes = settings.supported_bool_dtypes
         if self.dtype not in supported_dtypes:
@@ -1472,15 +1479,18 @@ class DataParameterCheckbox(DataParameter):
         window[width_key].set_size(size=(param_w, None))
 
         # Resize description at 40% of total width and the value element to take up the remaining space
-        desc_w = int((width - 20) / 10) if pixels else width - 2
-        if height:
-            desc_h = int(height / 10) if pixels else height
+        if pixels:
+            desc_w = width - 26
+            desc_h = int(height / 10) if height else None
         else:
-            desc_h = None
+            desc_w = width - 2
+            desc_h = height
 
-        desc_key = self.key_lookup('Description')
-        window[desc_key].set_size(size=(desc_w, desc_h))
-        window[desc_key].expand(expand_x=True)
+        header_key = self.key_lookup('Header')
+        window[header_key].set_size(size=(desc_w, desc_h))
+
+#        desc_key = self.key_lookup('Description')
+#        window[desc_key].expand(expand_x=True)
 
     def reset(self, window):
         """
@@ -1497,64 +1507,31 @@ class DataParameterCheckbox(DataParameter):
 
             window[self.key_lookup('Element')].update(value=display_value)
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
+    def element_layout(self, size: tuple = None, bg_col: str = None):
         """
-        Create a GUI layout for the parameter.
+        Create the type-specific layout for the value element of the parameter.
         """
-        self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
-        justification = justification if justification else self.justification
-
         disabled = False if self.editable is True else True
-        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
-        pad_el = mod_const.ELEM_PAD
-        bold_font = mod_const.BOLD_FONT
-        text_col = mod_const.TEXT_COL
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         box_col = bg_col if not disabled else mod_const.DISABLED_BG_COL
 
         # Parameter size
         width, height = size
-        desc_w = width - 2  # full width minus rough size of checkbox in characters
-        desc_h = height
-        param_w = width * 10
+        elem_w = 0
+        elem_h = height
 
         # Parameter settings
-        desc = self.description
-        param_value = self.format_display()
+        display_value = self.format_display()
 
-        # Icon layout
-        icon = self.icon
-        if icon is None:
-            icon_layout = []
-        else:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
+        elem_key = self.key_lookup('Element')
+        layout = [sg.Checkbox('', default=display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True,
+                              disabled=disabled, background_color=bg_col, checkbox_color=box_col,
+                              metadata={'value': display_value, 'disabled': disabled})]
 
-        # Parameter layout
-        key = self.key_lookup('Element')
-        desc_key = self.key_lookup('Description')
-        width_key = self.key_lookup('Width')
-        if auto_size_desc:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    text_color=text_col, background_color=bg_col, tooltip=self.description,
-                                    justification=justification)]
-        else:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    text_color=text_col, background_color=bg_col, tooltip=self.description,
-                                    justification=justification)]
-        param_layout.append(sg.Checkbox('', default=param_value, key=key, pad=padding, enable_events=True,
-                                        background_color=bg_col, checkbox_color=box_col,
-                                        disabled=disabled, metadata={'disabled': disabled}))
-
-        layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
-
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
+        return layout
 
     def format_value(self, values):
         """
@@ -1726,75 +1703,40 @@ class DataParameterCondition(DataParameter):
             display_value = self.format_display()
             window[self.key_lookup('Element')].update(text=display_value)
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
-               auto_size_desc: bool = True, hidden: bool = None, justification: str = None):
+    def element_layout(self, size: tuple = None, bg_col: str = None):
         """
-        Create a GUI layout for the parameter.
+        Create the type-specific layout for the value element of the parameter.
         """
-        self.bg_col = bg_col
         size = size if size else mod_const.PARAM_SIZE_CHAR
-        justification = justification if justification else self.justification
-
         disabled = False if self.editable is True else True
-        visible = not hidden if hidden is not None else not self.hidden
 
         # Element settings
-        pad_el = mod_const.ELEM_PAD
-
         font = mod_const.LARGE_FONT
         bttn_font = mod_const.MID_FONT
-        bold_font = mod_const.BOLD_FONT
-
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         in_col = mod_const.INPUT_COL
         text_col = mod_const.TEXT_COL
 
         # Parameter size
         width, height = size
-        desc_w = int(width * 0.3)
-        desc_h = height
-        elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
+        elem_w = int(width * 0.7)
         elem_h = height
-        param_w = width * 10
 
         # Parameter settings
-        desc = '{}:'.format(self.description)
         display_value = self.format_display()
 
-        # Icon layout
-        icon = self.icon
-        if icon is None:
-            icon_layout = []
-        else:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-
-        # Element layout
-        desc_key = self.key_lookup('Description')
-        element_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
-        if auto_size_desc:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), auto_size_text=True, font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
-        else:
-            param_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), size=(desc_w, desc_h), font=bold_font,
-                                    background_color=bg_col, tooltip=self.description, justification=justification)]
-
+        elem_key = self.key_lookup('Element')
         if not disabled:
-            param_layout.append(sg.Button(button_text=display_value, key=element_key, size=(elem_w, elem_h),
-                                          font=bttn_font, button_color=(text_col, in_col),
-                                          tooltip='Set value range for {}'.format(self.description),
-                                          metadata={'value': [], 'disabled': disabled}))
+            layout = [sg.Button(button_text=display_value, key=elem_key, size=(elem_w, elem_h),
+                                font=bttn_font, button_color=(text_col, in_col),
+                                tooltip='Set value range for {}'.format(self.description),
+                                metadata={'value': [], 'disabled': disabled})]
         else:
-            param_layout.append(sg.Text(display_value, key=element_key, size=(elem_w, elem_h), font=font,
-                                        background_color=bg_col, text_color=text_col, border_width=1,
-                                        metadata={'value': [], 'disabled': disabled}))
+            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
+                              background_color=bg_col, text_color=text_col, border_width=1,
+                              metadata={'value': [], 'disabled': disabled})]
 
-        layout = [[sg.Canvas(key=width_key, size=(param_w, 0), background_color=bg_col)], icon_layout + param_layout]
-
-        return [sg.Col(layout, pad=padding, background_color=bg_col, visible=visible)]
+        return layout
 
     def format_value(self, *args, **kwargs):
         """
@@ -1892,5 +1834,3 @@ class DataParameterCondition(DataParameter):
             return True
         else:
             return False
-
-
