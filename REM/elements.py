@@ -3131,7 +3131,7 @@ class ReferenceElement2:
         ref_key = self.key_lookup('RefID')
         date_key = self.key_lookup('RefDate')
 
-        ref_date = settings.format_display_date(self.date) if self.date else None
+        ref_date = settings.format_display_date(self.date) if not pd.isna(self.date) else None
         ref_id = self.reference_id if self.reference_id else None
         approved_title = 'Reference approved' if 'IsApproved' not in aliases else aliases['IsApproved']
         approved_vis = True if self.refmap['IsApproved'] is not None else False

@@ -1005,8 +1005,9 @@ def database_importer_window(win_size: tuple = None):
 
             # Prepare the insertion statement
             try:
-                statements = record_entry.export_table(subset_df.replace({np.nan: None}), id_field=settings.id_field,
-                                                       id_exists=False, export_columns=False)
+                statements = record_entry.save_database_records(subset_df.replace({np.nan: None}),
+                                                                id_field=settings.id_field, id_exists=False,
+                                                                export_columns=False)
             except Exception as e:
                 msg = 'failed to upload entries to the database - {ERR}'.format(ERR=e)
                 logger.exception(msg)

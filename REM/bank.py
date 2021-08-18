@@ -932,8 +932,8 @@ class BankRule:
             # Prepare to save the record
             logger.debug('BankRule {NAME}: preparing account {ACCT} statements'.format(NAME=self.name, ACCT=acct.name))
             try:
-                statements = record_entry.export_table(acct.table.data(), id_field=acct.table.id_column, exists=True,
-                                                       statements=statements)
+                statements = record_entry.save_database_records(acct.table.data(), id_field=acct.table.id_column,
+                                                                exists=True, statements=statements)
             except Exception as e:
                 msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}' \
                     .format(ACCT=acct.name, ERR=e)

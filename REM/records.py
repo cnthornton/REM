@@ -182,6 +182,9 @@ class RecordEntry:
 
                 self.export_rules[export_table] = export_rule
 
+        print('record type {} has export rules:'.format(self.name))
+        print(self.export_rules)
+
         # Record association rules
         try:
             association_rules = entry['AssociationRules']
@@ -355,8 +358,7 @@ class RecordEntry:
             export_columns (bool): use import column mapping to transform column names to database names before
                 exporting [Default: True]
         """
-        import_rules = self.import_rules
-        assoc_rules = self.association_rules
+        export_rules = self.export_rules
 
         if not statements:
             statements = {}
@@ -386,11 +388,11 @@ class RecordEntry:
 
         # Prepare a separate database transaction statement for each database table containing the record's data
         columns = df.columns.values.tolist()
-        for table in import_rules:
-            table_entry = import_rules[table]
+        for table in export_rules:
+            table_entry = export_rules[table]
 
             if export_columns:
-                references = self.export_rules['Column']
+                references = table_entry['Columns']
             else:
                 references = {i: i for i in table_entry['Columns']}
 
@@ -442,46 +444,48 @@ class RecordEntry:
                 current_df = export_df[exists]
 
                 # Prepare update statements for the existing records
-                export_values = [tuple(i) for i in current_df.values.tolist()]
+                if not current_df.empty:
+                    export_values = [tuple(i) for i in current_df.values.tolist()]
 
-                record_ids = current_df[id_field]
-                if not isinstance(record_ids, pd.Series):
-                    record_ids = [record_ids]
-                else:
-                    record_ids = record_ids.values.tolist()
-                filter_params = [(i,) for i in record_ids]
-                filter_clause = '{COL} = ?'.format(COL=id_col)
-                statement, param = user.prepare_update_statement(table, export_columns, export_values,
-                                                                 filter_clause, filter_params)
+                    record_ids = current_df[id_field]
+                    if not isinstance(record_ids, pd.Series):
+                        record_ids = [record_ids]
+                    else:
+                        record_ids = record_ids.values.tolist()
+                    filter_params = [(i,) for i in record_ids]
+                    filter_clause = '{COL} = ?'.format(COL=id_col)
+                    statement, param = user.prepare_update_statement(table, export_columns, export_values,
+                                                                     filter_clause, filter_params)
 
-                if isinstance(param, list):
-                    try:
-                        statements[statement].extend(param)
-                    except KeyError:
-                        statements[statement] = param
-                elif isinstance(param, tuple):
-                    try:
-                        statements[statement].append(param)
-                    except KeyError:
-                        statements[statement] = [param]
+                    if isinstance(param, list):
+                        try:
+                            statements[statement].extend(param)
+                        except KeyError:
+                            statements[statement] = param
+                    elif isinstance(param, tuple):
+                        try:
+                            statements[statement].append(param)
+                        except KeyError:
+                            statements[statement] = [param]
 
                 # Extract all new records from the table
                 new_df = export_df[[not i for i in exists]]
 
                 # Prepare insertion statements for the new records
-                export_values = [tuple(i) for i in new_df.values.tolist()]
-                statement, param = user.prepare_insert_statement(table, export_columns, export_values)
+                if not new_df.empty:
+                    export_values = [tuple(i) for i in new_df.values.tolist()]
+                    statement, param = user.prepare_insert_statement(table, export_columns, export_values)
 
-                if isinstance(param, list):
-                    try:
-                        statements[statement].extend(param)
-                    except KeyError:
-                        statements[statement] = param
-                elif isinstance(param, tuple):
-                    try:
-                        statements[statement].append(param)
-                    except KeyError:
-                        statements[statement] = [param]
+                    if isinstance(param, list):
+                        try:
+                            statements[statement].extend(param)
+                        except KeyError:
+                            statements[statement] = param
+                    elif isinstance(param, tuple):
+                        try:
+                            statements[statement].append(param)
+                        except KeyError:
+                            statements[statement] = [param]
 
         return statements
 
@@ -501,10 +505,10 @@ class RecordEntry:
         record_ids = list(set(record_ids))
 
         # Set record as deleted in the database
-        import_rules = self.import_rules
+        export_rules = self.export_rules
 
-        for table in import_rules:
-            table_entry = import_rules[table]
+        for table in export_rules:
+            table_entry = export_rules[table]
 
             references = {j: i for i, j in table_entry['Columns'].items()}
             id_col = references[id_field]

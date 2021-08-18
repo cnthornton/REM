@@ -2210,7 +2210,8 @@ class AuditRecordTab:
             logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         deposit_df['RecordID'] = deposit_ids
-        statements = record_entry.export_table(deposit_df, id_field='RecordID', exists=False, statements=statements)
+        statements = record_entry.save_database_records(deposit_df, id_field='RecordID', exists=False,
+                                                        statements=statements)
 
         # Save the associations to the references database table
         for index, row in deposit_df.iterrows():
