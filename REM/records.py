@@ -162,6 +162,47 @@ class RecordEntry:
 
         self.import_rules = import_rules
 
+        # Database export rules
+        try:
+            export_rules = entry['ExportRules']
+        except KeyError:
+            self.export_rules = {}
+            for table in self.import_rules:
+                table_entry = self.import_rules[table]
+                self.export_rules[table] = {'Columns': {j: i for i, j in table_entry['Columns'].items()}}
+        else:
+            self.export_rules = {}
+            for export_table in export_rules:
+                export_rule = export_rules[export_table]
+
+                if 'Columns' not in export_rule:
+                    mod_win2.popup_error('RecordsEntry {NAME}: configuration missing required "ExportRules" {TBL} '
+                                         'parameter "Columns"'.format(NAME=name, TBL=export_table))
+                    sys.exit(1)
+
+                self.export_rules[export_table] = export_rule
+
+        # Record association rules
+        try:
+            association_rules = entry['AssociationRules']
+        except KeyError:
+            logger.info('RecordsEntry {NAME}: no association rules specified for the record entry'
+                        .format(NAME=self.name))
+            self.association_rules = {}
+        else:
+            self.association_rules = {}
+            for record_type in association_rules:
+                assoc_rule = association_rules[record_type]
+
+                if 'ReferenceMap' not in assoc_rule:
+                    mod_win2.popup_error('RecordsEntry {NAME}: configuration missing required "AssociationRules" '
+                                         '{ASSOC} parameter "ReferenceMap"'.format(NAME=name, ASSOC=record_type))
+                    sys.exit(1)
+                if 'Description' not in assoc_rule:
+                    assoc_rule['Description'] = record_type
+
+                self.association_rules[record_type] = assoc_rule
+
         # Import table layout configuration
         try:
             self.import_table = entry['ImportTable']
@@ -297,13 +338,13 @@ class RecordEntry:
 
         return import_df
 
-    def export_table(self, df, id_field: str = 'RecordID', exists: bool = None, statements: dict = None,
-                     export_columns: bool = True):
+    def save_database_records(self, records, id_field: str = 'RecordID', exists: bool = None, statements: dict = None,
+                              export_columns: bool = True):
         """
-        Create export statement for the dataframe records.
+        Create insert and update database transaction statements for records.
 
         Arguments:
-            df (DataFrame): table containing the record data that will be exported to the database.
+            records (DataFrame): table containing the record data that will be exported to the database.
 
             id_field (str): name of the column containing the record IDs.
 
@@ -315,12 +356,19 @@ class RecordEntry:
                 exporting [Default: True]
         """
         import_rules = self.import_rules
+        assoc_rules = self.association_rules
 
         if not statements:
             statements = {}
 
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError('df must be a DataFrame or Series')
+        if isinstance(records, pd.DataFrame):
+            df = records
+        elif isinstance(records, pd.Series):
+            df = records.to_frame().transpose()
+        elif isinstance(records, dict):
+            df = pd.DataFrame(records)
+        else:
+            raise ValueError(' must be one of DataFrame, Series, or dictionary')
 
         if df.empty:
             return statements
@@ -342,7 +390,7 @@ class RecordEntry:
             table_entry = import_rules[table]
 
             if export_columns:
-                references = {j: i for i, j in table_entry['Columns'].items()}
+                references = self.export_rules['Column']
             else:
                 references = {i: i for i in table_entry['Columns']}
 
@@ -360,7 +408,7 @@ class RecordEntry:
 
             export_columns = [references[i] for i in include_columns]
 
-            if isinstance(exists, bool):  # all records in table either exist in db already or not
+            if isinstance(exists, bool):  # existence of all records is already known
                 # Prepare either insert or update statements depending on truth value of exists
                 export_values = [tuple(i) for i in export_df.values.tolist()]
 
@@ -387,12 +435,13 @@ class RecordEntry:
                         statements[statement].append(param)
                     except KeyError:
                         statements[statement] = [param]
-            else:
+            else:  # existence was determined for records individually
                 # Prepare separate update and insert statements depending on whether an individual record exists
+
                 # Extract all currently existing records from the table
                 current_df = export_df[exists]
 
-                # Prepare either update statement for the existing records
+                # Prepare update statements for the existing records
                 export_values = [tuple(i) for i in current_df.values.tolist()]
 
                 record_ids = current_df[id_field]
@@ -419,7 +468,7 @@ class RecordEntry:
                 # Extract all new records from the table
                 new_df = export_df[[not i for i in exists]]
 
-                # Prepare either update statement for the existing records
+                # Prepare insertion statements for the new records
                 export_values = [tuple(i) for i in new_df.values.tolist()]
                 statement, param = user.prepare_insert_statement(table, export_columns, export_values)
 
@@ -436,9 +485,9 @@ class RecordEntry:
 
         return statements
 
-    def delete_record(self, record_ids, statements: dict = None, id_field: str = 'RecordID'):
+    def delete_database_records(self, record_ids, statements: dict = None, id_field: str = 'RecordID'):
         """
-        Delete a record from the database.
+        Delete records from the database.
         """
         ref_table = settings.reference_lookup
         delete_code = settings.delete_field
@@ -1670,7 +1719,7 @@ class DatabaseRecord:
 
                 raise AttributeError(msg)
 
-            statements = ref_entry.delete_record(ref_ids, statements=statements)
+            statements = ref_entry.delete_database_records(ref_ids, statements=statements)
 
         # Prepare statement for the removal of the record
         try:
@@ -1684,7 +1733,7 @@ class DatabaseRecord:
 
         if record_id not in unsaved_record_ids:
             logger.info('Record {ID}: preparing to delete the record'.format(ID=record_id))
-            statements = record_entry.delete_record(record_id, statements=statements)
+            statements = record_entry.delete_database_records(record_id, statements=statements)
         else:
             logger.debug('Record {ID}: will not delete record from database - record does not exist in the database yet'
                          .format(ID=record_id))
@@ -1758,10 +1807,8 @@ class DatabaseRecord:
         # Prepare to save the record
         logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
-            id_exists = record_entry.confirm_saved(record_id, id_field=self.id_field)
-            record_data = self.table_values().to_frame().transpose()
-            statements = record_entry.export_table(record_data, id_field=self.id_field, exists=id_exists,
-                                                   statements=statements)
+            record_data = self.table_values()
+            statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
             logger.exception(msg)
@@ -1771,8 +1818,8 @@ class DatabaseRecord:
             del record_data
 
         # Prepare to save record references
-        for reference in self.references:
-            ref_data = reference.as_row()
+        for refbox in self.references:
+            ref_data = refbox.as_row()
             ref_id = ref_data['DocNo']  # reference record ID
             logger.debug('Record {ID}: preparing reference statement for reference {REF}'
                          .format(ID=record_id, REF=ref_id))
@@ -1874,37 +1921,44 @@ class DatabaseRecord:
 
             # Prepare the record entries for the components
             comp_entry = settings.records.fetch_rule(comp_type)
-            #            unsaved_ids = comp_entry.get_unsaved_ids()
-            comp_ids = comp_df[comp_table.id_column].values.tolist()
-            saved_records = comp_entry.confirm_saved(comp_ids, id_field=comp_table.id_column)
+#            comp_ids = comp_df[comp_table.id_column].values.tolist()
+#            saved_records = comp_entry.confirm_saved(comp_ids, id_field=comp_table.id_column)
 
             # Update the delete field
             if pc:  # removed records should be deleted if parent-child is true
                 comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
 
-            # Prepare update statements for existing record components
-            #            existing_comps = comp_df[~comp_df[comp_table.id_column].isin(unsaved_ids)]
-            existing_comps = comp_df[saved_records]
+            # Prepare transaction statements for the component records
             try:
-                statements = comp_entry.export_table(existing_comps, id_field=comp_table.id_column, exists=True,
-                                                     statements=statements)
+                statements = comp_entry.save_database_records(comp_df, id_field=comp_table.id_column,
+                                                              statements=statements)
             except Exception as e:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)
 
                 raise
 
-            # Prepare insert statements for new record components
-            #            new_comps = comp_df[comp_df[comp_table.id_column].isin(unsaved_ids)]
-            new_comps = comp_df[[not x for x in saved_records]]
-            try:
-                statements = comp_entry.export_table(new_comps, id_field=comp_table.id_column, exists=False,
-                                                     statements=statements)
-            except Exception as e:
-                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
-                logger.error(msg)
-
-                raise
+#            # Prepare update statements for existing record components
+#            existing_comps = comp_df[saved_records]
+#            try:
+#                statements = comp_entry.save_database_records(existing_comps, id_field=comp_table.id_column,
+#                                                              exists=True, statements=statements)
+#            except Exception as e:
+#                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
+#                logger.error(msg)
+#
+#                raise
+#
+#            # Prepare insert statements for new record components
+#            new_comps = comp_df[[not x for x in saved_records]]
+#            try:
+#                statements = comp_entry.save_database_records(new_comps, id_field=comp_table.id_column, exists=False,
+#                                                              statements=statements)
+#            except Exception as e:
+#                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
+#                logger.error(msg)
+#
+#                raise
 
         return statements
 
