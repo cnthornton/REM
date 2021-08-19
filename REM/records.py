@@ -510,7 +510,8 @@ class RecordEntry:
         for table in export_rules:
             table_entry = export_rules[table]
 
-            references = {j: i for i, j in table_entry['Columns'].items()}
+            references = table_entry['Columns']
+            print(references)
             id_col = references[id_field]
 
             # Remove record from the export table
@@ -1768,7 +1769,10 @@ class DatabaseRecord:
         try:
             statements = self.prepare_delete_statements(statements=statements)
         except Exception as e:
-            mod_win2.popup_error(e)
+            msg = 'Record {ID}: failed to prepare database transaction statements for deletion - {ERR}'\
+                .format(ID=record_id, ERR=e)
+            logger.exception(msg)
+            mod_win2.popup_error(msg)
         else:
             if len(statements) < 1:
                 logger.debug('Record {ID}: no records needed deleting from the database'.format(ID=record_id))
