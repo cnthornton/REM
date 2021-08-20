@@ -2095,6 +2095,21 @@ class AuditRecordTab:
 
                 return False
 
+    def save_record_new(self, statements: dict = None):
+        """
+        Save audit record to the program database defined in the configuration file.
+        """
+        record = self.record
+
+        # Prepare to export associated deposit records for the relevant account records
+        if not statements:
+            statements = {}
+
+        # Export audit record
+        statements = record.prepare_save_statements(statements)
+
+        return statements
+
     def save_record(self, statements: dict = None):
         """
         Save audit record to the program database defined in the configuration file.

@@ -2055,8 +2055,7 @@ class TableElement:
         """
         import_df = self.import_df.copy()
         reference_col = self.reference_column
-        print('importing rows')
-        print('will import unreferenced records on column: {}'.format(reference_col))
+        logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
         import_rules = import_rules if import_rules is None else self.import_rules
         record_type = self.record_type
         id_col = self.id_column
@@ -2071,38 +2070,27 @@ class TableElement:
         elif record_entry is not None and import_rules is None:
             import_rules = record_entry.import_rules
 
-        # Initialize the import table
-#        if record_entry is not None:
-#            table_layout = record_entry.import_table
-#            table_layout['RecordType'] = record_type
-#            table_layout['Actions'] = {'filter': 1, 'search': 1, 'export': 1, 'options': 1, 'sort': 1}
-#        else:
-#            table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
-#                            'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
-#                            'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
-#                            'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
-#                            'FilterParameters': self.parameters}
-
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
                         'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
-                        'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1}}
+                        'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
+                        'SortBy': self.sort_on}
 
         import_table = TableElement(self.name, table_layout)
-        import_table.parameters = self.parameters
+        import_table.parameters = [i for i in self.parameters]
 
         if reference_col:  # search for records without an existing reference to provided reference type
+            logger.debug('DataTable {NAME}: importing unreferenced records on column "{COL}"'
+                         .format(NAME=self.name, COL=reference_col))
+
             # Prepare query arguments
             import_filters = mod_db.format_import_filters(import_rules)
             table_statement = mod_db.format_tables(import_rules)
             import_columns = mod_db.format_import_columns(import_rules)
 
             import_ref_col = mod_db.get_import_column(import_rules, reference_col)
-            print(import_rules)
-            print('import ref col is {}'.format(import_ref_col))
             ref_filter = '{REFCOL} IS NULL'.format(REFCOL=import_ref_col)
             import_filters.append(ref_filter)
-            print(import_filters)
 
             try:
                 df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
@@ -2111,7 +2099,6 @@ class TableElement:
                 logger.exception('DataTable {NAME}: failed to import data from the database - {ERR}'
                                  .format(NAME=self.name, ERR=e))
             else:
-                print(df)
                 # Subset on table columns
                 df = df[[i for i in df.columns.values if i in import_df.columns]]
 
@@ -2143,10 +2130,11 @@ class TableElement:
         import_table.sort()
 
         # Get table of user selected import records
-        print(import_table.display_columns)
-        print(self.display_columns)
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
+#        pd.set_option('display.max_columns', None)
+#        print('selected records:')
+#        print(select_df)
 
         # Verify that selected records are not already in table
         current_ids = self.df[id_col].tolist()
@@ -2169,6 +2157,8 @@ class TableElement:
                      .format(NAME=self.name, N=select_df.shape[0]))
         df = self.append(select_df)
         self.df = df
+#        print('table dataframe after appending selected records:')
+#        print(self.df)
 
         # Remove selected rows from the table of available import rows
         self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
@@ -3453,6 +3443,17 @@ class DataElement:
                                                                                        mod_const.FAIL_COL),
                                                      'Description': annot_rule.get('Description', annot_code),
                                                      'Condition': annot_rule['Condition']}
+
+        # Aliases
+        try:
+            self.aliases = entry['Aliases']
+        except KeyError:
+            param_def = settings.fetch_alias_definition(self.name)
+            try:
+                self.aliases = param_def[self.name]
+            except KeyError:
+                self.aliases = {}
+
         try:
             self.default = entry['DefaultValue']
         except KeyError:
@@ -3760,7 +3761,8 @@ class DataElement:
         if pd.isna(display_value) or not rules:
             return None
 
-        logger.debug('DataElement {NAME}: annotating display value on configured annotation rules'.format(NAME=self.name))
+        logger.debug('DataElement {NAME}: annotating display value on configured annotation rules'
+                     .format(NAME=self.name))
 
         annotation = None
         for annot_code in rules:
@@ -3795,16 +3797,21 @@ class DataElement:
 
             input_value: value input into the GUI element.
         """
+        aliases = {j: i for i, j in self.aliases.items()}
+
         if input_value == '' or pd.isna(input_value):
             return None
 
-        try:  # remove newline automatically added by the multiline element
-            value_fmt = str(input_value)
-        except ValueError:
-            msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
-            logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+        try:
+            value_fmt = aliases[input_value]
+        except KeyError:
+            try:
+                value_fmt = str(input_value)
+            except ValueError:
+                msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
+                logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-            raise ValueError(msg)
+                raise ValueError(msg)
 
         logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
                      .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
@@ -3815,11 +3822,16 @@ class DataElement:
         """
         Format the elements value for displaying.
         """
+        aliases = self.aliases
+
         value = self.value
         if pd.isna(value):
             display_value = ''
         else:
-            display_value = str(value)
+            try:
+                display_value = aliases[value]
+            except KeyError:
+                display_value = str(value)
 
         return display_value
 

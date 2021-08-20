@@ -2866,6 +2866,167 @@ class AuditRecord(DatabaseRecord):
             display_value = header.format_display()
             window[elem_key].update(value=display_value)
 
+    def prepare_save_statements(self, statements: dict = None):
+        """
+        Prepare to the statements for saving the record to the database.
+        """
+        ref_table = settings.reference_lookup
+
+        if not statements:
+            statements = {}
+
+        record_entry = self.record_entry
+        record_id = self.record_id()
+        import_df = self.ref_df
+
+        # Verify that required parameters have values
+        for param in self.parameters:
+            if param.required is True and param.has_value() is False:
+                msg = 'no value provided for the required field {FIELD}'.format(FIELD=param.description)
+                logger.warning('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+
+                raise AttributeError(msg)
+
+        # Prepare to save the record
+        logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
+        try:
+            record_data = self.table_values()
+            statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
+        except Exception as e:
+            msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
+            logger.exception(msg)
+
+            raise
+        else:
+            del record_data
+
+        # Prepare to save record references
+        for refbox in self.references:
+            ref_data = refbox.as_row()
+            ref_id = ref_data['DocNo']  # reference record ID
+            logger.debug('Record {ID}: preparing reference statement for reference {REF}'
+                         .format(ID=record_id, REF=ref_id))
+            if ref_id == record_id:
+                logger.error('RecordType {NAME}, Record {ID}: oops ... got the order wrong'
+                             .format(NAME=self.name, ID=record_id))
+
+                raise AssertionError('reference IDs were found in the wrong order')
+
+            # Determine if reference entry already exists in the database
+            nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) &
+                             (import_df['RefNo'].isin([ref_id, record_id]))].shape[0]
+            comp_columns = ref_data.index.tolist()
+            comp_values = tuple(ref_data.values.tolist() + [user.uid, datetime.datetime.now()])
+            if nrow > 0:  # reference already exists in the database
+                # Prepare the update statement for the existing reference entry in the references table
+                # If mutually referenced, deleting one entry will also delete its partner
+                comp_columns.extend([settings.editor_code, settings.edit_date])
+                update_filters = '(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)'
+                filter_params = (ref_id, record_id, record_id, ref_id)
+
+                logger.info('RecordType {NAME}, Record {ID}: updating reference {REF}'
+                            .format(NAME=self.name, ID=record_id, REF=ref_id))
+                statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values, update_filters,
+                                                                  filter_params)
+            else:
+                # Prepare the insert statement for the existing reference entry to the references table
+                comp_columns.extend([settings.creator_code, settings.creation_date])
+
+                logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
+                            .format(NAME=self.name, ID=record_id, REF=ref_id))
+                statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
+
+            try:
+                statements[statement].append(params)
+            except KeyError:
+                statements[statement] = [params]
+
+        # Prepare to save record components
+        comp_tables = self.components
+        for comp_table in comp_tables:
+            logger.debug('Record {ID}: preparing statements for component table "{TBL}"'
+                         .format(ID=record_id, TBL=comp_table.name))
+            comp_df = comp_table.df
+            if comp_df.empty:
+                continue
+
+            comp_type = comp_table.record_type
+            if comp_type is None:
+                logger.warning('RecordEntry {NAME}: component table "{TBL}" has no record type assigned'
+                               .format(NAME=self.name, TBL=comp_table.name))
+                continue
+
+            try:
+                import_ids = import_df[(import_df['DocNo'] == record_id) &
+                                       (import_df['RefType'] == comp_type)]['RefNo'].tolist()
+            except Exception as e:
+                logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
+                               '"{TBL}" - {ERR}'.format(NAME=self.name, TBL=comp_table.name, ERR=e))
+                continue
+
+            if comp_table.actions['add']:  # component records can be created and deleted through parent record
+                pc = True  # parent-child relationship
+            else:
+                pc = False
+
+            # Prepare the reference entries for the components
+            for index, row in comp_df.iterrows():
+                comp_id = row[comp_table.id_column]
+                is_deleted = row[comp_table.deleted_column]
+                comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild', 'IsDeleted']
+                comp_values = (record_id, self.name, comp_id, comp_type, datetime.datetime.now(), pc, is_deleted,
+                               datetime.datetime.now(), user.uid)
+                if comp_id in import_ids:  # existing reference
+                    comp_columns.extend([settings.edit_date, settings.editor_code])
+                    update_filters = 'DocNo = ? AND RefNo = ?'
+                    filter_params = (record_id, comp_id)
+                    statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values,
+                                                                      update_filters,
+                                                                      filter_params)
+                else:  # new reference
+                    if is_deleted:  # don't add reference for new associations that were removed.
+                        logger.warning('Record {ID}: new component "{REF}" from component table "{TBL}" was deleted '
+                                       'and therefore will not be saved'
+                                       .format(ID=record_id, REF=comp_id, TBL=comp_table.name))
+                        continue
+
+                    # Prepare the insert statement for the existing reference entry to the references table
+                    comp_columns.extend([settings.creation_date, settings.creator_code])
+
+                    logger.info('RecordType {NAME}, Record {ID}: saving reference to "{REF}" from component table '
+                                '"{TBL}"'.format(NAME=self.name, ID=record_id, REF=comp_id, TBL=comp_table.name))
+                    statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
+
+                try:
+                    statements[statement].append(params)
+                except KeyError:
+                    statements[statement] = [params]
+
+            # Prepare the record entries for the components
+            comp_entry = settings.records.fetch_rule(comp_type)
+
+            # Update the delete field
+            if pc:  # removed records should be deleted if parent-child is true
+                comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
+
+            # Prepare transaction statements for the component records
+            try:
+                statements = comp_entry.save_database_records(comp_df, id_field=comp_table.id_column,
+                                                              statements=statements)
+            except Exception as e:
+                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
+                logger.error(msg)
+
+                raise
+
+            # Prepare hard-linked deposit records for account records where account number does not equal to resting
+#            if comp_table.name == 'account':
+#                refdf = comp_df[comp_df['Account'] != 'resting']
+#
+#                # Subset on shared columns
+
+        return statements
+
 
 def replace_nth(s, sub, new, ns):
     """
