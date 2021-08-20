@@ -75,6 +75,8 @@ class TableElement:
 
         dimensions (tuple): size of the data table in pixels.
 
+        reference_column (str): column used for importing unreferenced records.
+
         tooltip (str): table tooltip.
     """
 
@@ -403,11 +405,23 @@ class TableElement:
         except KeyError:
             self.required = False
         except ValueError:
-            logger.warning('DataElement {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
+            logger.warning('DataTable {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
                            .format(NAME=name))
             sys.exit(1)
         else:
             self.required = required
+
+        try:
+            reference_column = entry['ReferenceColumn']
+        except KeyError:
+            self.reference_column = None
+        else:
+            if reference_column in self.columns:
+                self.reference_column = reference_column
+            else:
+                logger.warning('DataTable {NAME}: reference column "{COL}" is missing from table columns'
+                               .format(NAME=name, COL=reference_column))
+                self.reference_column = None
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
 
@@ -1667,9 +1681,11 @@ class TableElement:
         # Reset table column sizes
         columns = self.display_columns
         header = list(columns.keys())
+        print(header)
 
         tbl_width = width - 16  # for border sizes on either side of the table
         lengths = self._calc_column_widths(width=tbl_width, pixels=True)
+        print(lengths)
         for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
             window[tbl_key].Widget.column(col_name, width=col_width)
@@ -2033,11 +2049,14 @@ class TableElement:
 
         return df
 
-    def import_rows(self, import_rules: dict = None, reftype: str = None, program_database: bool = False):
+    def import_rows(self, import_rules: dict = None, program_database: bool = False):
         """
         Import one or more records from a table of records.
         """
         import_df = self.import_df.copy()
+        reference_col = self.reference_column
+        print('importing rows')
+        print('will import unreferenced records on column: {}'.format(reference_col))
         import_rules = import_rules if import_rules is None else self.import_rules
         record_type = self.record_type
         id_col = self.id_column
@@ -2053,40 +2072,48 @@ class TableElement:
             import_rules = record_entry.import_rules
 
         # Initialize the import table
-        if record_entry is not None:
-            table_layout = record_entry.import_table
-            table_layout['RecordType'] = record_type
-            table_layout['Actions'] = {'filter': 1, 'search': 1, 'export': 1, 'options': 1, 'sort': 1}
-        else:
-            table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
-                            'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
-                            'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
-                            'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
-                            'FilterParameters': self.parameters}
+#        if record_entry is not None:
+#            table_layout = record_entry.import_table
+#            table_layout['RecordType'] = record_type
+#            table_layout['Actions'] = {'filter': 1, 'search': 1, 'export': 1, 'options': 1, 'sort': 1}
+#        else:
+#            table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
+#                            'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
+#                            'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
+#                            'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
+#                            'FilterParameters': self.parameters}
+
+        table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
+                        'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
+                        'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
+                        'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1}}
 
         import_table = TableElement(self.name, table_layout)
+        import_table.parameters = self.parameters
 
-        if reftype is not None:  # search for records without an existing reference to provided reference type
+        if reference_col:  # search for records without an existing reference to provided reference type
             # Prepare query arguments
             import_filters = mod_db.format_import_filters(import_rules)
             table_statement = mod_db.format_tables(import_rules)
             import_columns = mod_db.format_import_columns(import_rules)
 
-            # Search for records in record reference table with associations
-            ref_table = settings.reference_lookup
-            ref_filter = ('RefType = ? AND DocType = ? AND IsDeleted = ?', (record_type, reftype, 0))
-            references = user.read_db(*user.prepare_query_statement(ref_table, filter_rules=ref_filter), prog_db=True)
+            import_ref_col = mod_db.get_import_column(import_rules, reference_col)
+            print(import_rules)
+            print('import ref col is {}'.format(import_ref_col))
+            ref_filter = '{REFCOL} IS NULL'.format(REFCOL=import_ref_col)
+            import_filters.append(ref_filter)
+            print(import_filters)
 
             try:
                 df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
                                                                 filter_rules=import_filters), prog_db=True)
             except Exception as e:
-                logger.warning('DataTable {NAME}: failed to import data from the database - {ERR}'
-                               .format(NAME=self.name, ERR=e))
+                logger.exception('DataTable {NAME}: failed to import data from the database - {ERR}'
+                                 .format(NAME=self.name, ERR=e))
             else:
-                # Drop records that already have associations to reference type records
-                ids_with_reference = references['RefNo'].tolist()
-                df.drop(df[df[id_col].isin(ids_with_reference)].index, inplace=True)
+                print(df)
+                # Subset on table columns
+                df = df[[i for i in df.columns.values if i in import_df.columns]]
 
                 # Drop records that are already in the import table
                 import_ids = import_df[id_col].tolist()
@@ -2116,6 +2143,8 @@ class TableElement:
         import_table.sort()
 
         # Get table of user selected import records
+        print(import_table.display_columns)
+        print(self.display_columns)
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
 

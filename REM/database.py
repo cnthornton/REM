@@ -152,13 +152,17 @@ def get_import_column(import_rules, column):
     Format a table column for querying.
     """
     query_column = None
+    print('querying on column: {}'.format(column))
 
     for import_table in import_rules:
         import_rule = import_rules[import_table]
+        print('checking import table: {}'.format(import_table))
 
         import_columns = import_rule['Columns']
         for import_column in import_columns:
+
             column_alias = import_columns[import_column]
+            print('table {} column {} has alias {}'.format(import_table, import_column, column_alias))
             if isinstance(column_alias, list):
                 if import_column == column:
                     column_alias = ['{TBL}.{COL}'.format(TBL=import_table, COL=i) for i in column_alias]
@@ -167,7 +171,7 @@ def get_import_column(import_rules, column):
                 if column_alias == column:
                     query_column = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
 
-        return query_column
+    return query_column
 
 
 def format_tables(import_rules):

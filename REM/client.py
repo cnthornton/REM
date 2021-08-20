@@ -1710,28 +1710,38 @@ def construct_where_clause(filter_rules):
     # Construct filtering rules
     if isinstance(filter_rules, list):  # multiple filter parameters
         all_params = []
+        statements = []
         for rule in filter_rules:
-            try:
-                statement, params = rule
-            except ValueError:
-                msg = 'incorrect data type for filter rule {}'.format(rule)
-                raise SQLStatementError(msg)
+            if isinstance(rule, tuple):
+                try:
+                    statement, params = rule
+                except ValueError:
+                    msg = 'incorrect data type for filter rule {}'.format(rule)
+                    raise SQLStatementError(msg)
 
-            if type(params) in (type(tuple()), type(list())):
-                # Unpack parameters
-                for param_value in params:
-                    all_params.append(param_value)
-            elif type(params) in (type(str()), type(int()), type(float())):
-                all_params.append(params)
+                if type(params) in (type(tuple()), type(list())):
+                    # Unpack parameters
+                    for param_value in params:
+                        all_params.append(param_value)
+                elif type(params) in (type(str()), type(int()), type(float())):
+                    all_params.append(params)
+                else:
+                    msg = 'unknown parameter type {} in rule {}'.format(params, rule)
+                    raise SQLStatementError(msg)
+
+                statements.append(statement)
             else:
-                msg = 'unknown parameter type {} in rule {}'.format(params, rule)
-                raise SQLStatementError(msg)
+                statements.append(rule)
 
-        params = tuple(all_params)
-        where = 'WHERE {}'.format(' AND '.join([i[0] for i in filter_rules]))
+        params = tuple(all_params) if len(all_params) > 0 else None
+        where = 'WHERE {}'.format(' AND '.join(statements))
 
     elif isinstance(filter_rules, tuple):  # single filter parameter
-        statement, params = filter_rules
+        try:
+            statement, params = filter_rules
+        except ValueError:
+            statement = filter_rules[0]
+
         where = 'WHERE {COND}'.format(COND=statement)
 
     else:  # unaccepted data type provided

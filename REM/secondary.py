@@ -2146,9 +2146,9 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     window[height_key].set_size((None, tbl_h))
 
     table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
-    current_w, current_h = window.size
 
     window = center_window(window)
+    current_w, current_h = window.size
 
     # Start event loop
     table_statement = mod_db.format_tables(import_rules)
