@@ -1979,7 +1979,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 if record:
                     import_df = record_entry.import_records(params=table.parameters)
 
-                    table.df = pd.DataFrame(columns=list(table.columns))
+                    table.reset(window)
                     table.df = table.append(import_df)
                     display_df = table.update_display(window)
 
@@ -2024,7 +2024,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                         if record:
                             import_df = record_entry.import_records(params=table.parameters)
 
-                            table.df = pd.DataFrame(columns=list(table.columns))
+                            table.reset(window)
                             table.df = table.append(import_df)
                             display_df = table.update_display(window)
 

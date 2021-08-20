@@ -13,6 +13,7 @@ import dateutil
 import pandas as pd
 
 import REM.constants as mod_const
+import REM.data_manipulation as mod_dm
 import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.parameters as mod_param
@@ -3020,10 +3021,20 @@ class AuditRecord(DatabaseRecord):
                 raise
 
             # Prepare hard-linked deposit records for account records where account number does not equal to resting
-#            if comp_table.name == 'account':
-#                refdf = comp_df[comp_df['Account'] != 'resting']
-#
-#                # Subset on shared columns
+#            link_rules = comp_table.links
+#            if link_rules:
+#                for record_type in link_rules:
+#                    ref_entry = settings.records.fetch_rule(record_type)
+#                    link_rule = link_rules[record_type]
+#                    condition = link_rule['Condition']
+#                    colmap = link_rules['ColumnMap']
+#                    df_sub = comp_df[mod_dm.evaluate_condition(comp_df, condition)]
+#                    refdates = df_sub['RecordDate']
+#                    ref_df = df_sub[list(colmap)].rename(columns=colmap)
+#                    refids = ref_entry.create_record_ids(refdates)
+#                    ref_df['RecordID'] = refids
+#                    ref_df['RecordDate'] = refdates
+#                    statements = ref_entry.save_database_records(ref_df, statements=statements)
 
         return statements
 

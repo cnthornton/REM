@@ -413,6 +413,11 @@ class TableElement:
             self.required = required
 
         try:
+            self.links = entry['Links']
+        except KeyError:
+            self.links = None
+
+        try:
             reference_column = entry['ReferenceColumn']
         except KeyError:
             self.reference_column = None
