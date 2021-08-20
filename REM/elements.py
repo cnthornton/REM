@@ -170,13 +170,14 @@ class TableElement:
                 self.search_field = search_field
 
         try:
-            params = entry['FilterParameters']
+            self.filter_entry = entry['FilterParameters']
         except KeyError:
+            self.filter_entry = {}
             self.parameters = []
         else:
             self.parameters = []
-            for param in params:
-                param_entry = params[param]
+            for param in self.filter_entry:
+                param_entry = self.filter_entry[param]
 
                 try:
                     param_layout = param_entry['ElementType']
@@ -2074,10 +2075,9 @@ class TableElement:
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
                         'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
                         'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
-                        'SortBy': self.sort_on}
+                        'SortBy': self.sort_on, 'FilterParameters': self.filter_entry}
 
         import_table = TableElement(self.name, table_layout)
-        import_table.parameters = [i for i in self.parameters]
 
         if reference_col:  # search for records without an existing reference to provided reference type
             logger.debug('DataTable {NAME}: importing unreferenced records on column "{COL}"'
