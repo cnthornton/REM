@@ -490,7 +490,7 @@ class RecordEntry:
 
         return statements
 
-    def delete_database_records(self, record_ids, statements: dict = None, id_field: str = 'RecordID'):
+    def delete_database_records(self, records, statements: dict = None, id_field: str = 'RecordID'):
         """
         Delete records from the database.
         """
@@ -500,19 +500,25 @@ class RecordEntry:
         if not statements:
             statements = {}
 
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
+        if isinstance(records, str):
+            records = [records]
 
-        record_ids = list(set(record_ids))
+        records = list(set(records))  # duplicate filtering
+
+        # Check existence of record in the database
+        exists = self.confirm_saved(records, id_field=id_field)
+        record_ids = []
+        for index, record_id in enumerate(records):
+            record_exists = exists[index]
+            if record_exists:  # only attempt to delete records that already exist in the database
+                record_ids.append(record_id)
 
         # Set record as deleted in the database
         export_rules = self.export_rules
-
         for table in export_rules:
             table_entry = export_rules[table]
 
             references = table_entry['Columns']
-            print(references)
             id_col = references[id_field]
 
             # Remove record from the export table
@@ -1682,37 +1688,61 @@ class DatabaseRecord:
         # Get a list of record IDs that have yet to be saved in the database
         unsaved_ids = settings.get_unsaved_ids()
 
-        # Determine any records associations to delete as well
+        # Determine any record associations to delete as well
+
+        # Child records
         ref_df['IsParentChild'].fillna(False, inplace=True)
         ref_df[settings.delete_field].fillna(False, inplace=True)
-        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field])]
+        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field] & (ref_df['DocNo'] == record_id))]
+
+        # Linked records
+        ref_df['IsHardLink'].fillna(False, inplace=True)
+        link_df = ref_df[(ref_df['IsHardLink']) & (~ref_df[settings.delete_field])]
 
         # Prepare statements to remove any child references
-        marked = {}
+        marked = {}  # records to delete grouped by their record type
         for index, row in child_df.iterrows():
             if record_id != row['DocNo']:  # only remove entries where primary record is the parent
                 continue
 
             ref_id = row['RefNo']
             ref_type = row['RefType']
+            logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
+                         .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
             try:
-                unsaved_ref_ids = unsaved_ids[ref_type]
+                marked[ref_type].append(ref_id)
             except KeyError:
-                logger.debug('Record {ID}: will not delete dependant record {REFID} from database - reference '
-                             'type "{TYPE}" has no representation in the database of unsaved record IDs'
-                             .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
-                continue
+                marked[ref_type] = [ref_id]
 
-            if ref_id in unsaved_ref_ids:
-                logger.debug('Record {ID}: will not delete dependant record {REFID} from database - '
-                             'record does not exist in the database yet'.format(ID=record_id, REFID=ref_id))
-            else:
-                logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
-                             .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
-                try:
-                    marked[ref_type].append(ref_id)
-                except KeyError:
-                    marked[ref_type] = [ref_id]
+        for ref_type in marked:
+            ref_ids = marked[ref_type]
+
+            ref_entry = settings.records.fetch_rule(ref_type)
+            if ref_entry is None:
+                msg = 'unable to delete record {ID} dependant records {REFID} - invalid record type "{TYPE}"' \
+                    .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
+                logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+
+                raise AttributeError(msg)
+
+            statements = ref_entry.delete_database_records(ref_ids, statements=statements)
+
+        # Prepare statements to remove any hard-linked references
+        marked = {}  # records to delete grouped by their record type
+        for index, row in link_df.iterrows():
+            if row['RefNo'] == record_id:  # record serves as the reference in the references table
+                ref_id = row['DocNo']
+                ref_type = row['DocType']
+            else:  # record serves as the primary in the references table
+                ref_id = row['RefNo']
+                ref_type = row['DocType']
+
+            logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
+                         .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+            try:
+                marked[ref_type].append(ref_id)
+            except KeyError:
+                marked[ref_type] = [ref_id]
 
         for ref_type in marked:
             ref_ids = marked[ref_type]
@@ -1750,23 +1780,9 @@ class DatabaseRecord:
         """
         Delete the record and child records from the database.
         """
-        ref_df = self.ref_df
         record_id = self.record_id()
 
-        # Check if the record contains any child references
-        ref_df['IsParentChild'].fillna(False, inplace=True)
-        ref_df[settings.delete_field].fillna(False, inplace=True)
-        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field]) & (ref_df['DocNo'] == record_id)]
-
-        nchild = child_df.shape[0]
-        if nchild > 0:  # Record contains child records
-            msg = 'Deleting record {ID} will also delete {N} dependant records as well. Would you like to continue ' \
-                  'with record deletion?'.format(ID=record_id, N=nchild)
-            user_input = mod_win2.popup_confirm(msg)
-            if user_input != 'OK':
-                return False
-
-        # Prepare deletion statements for the record and any child records
+        # Prepare deletion statements for the record and any child and hard-linked records
         try:
             statements = self.prepare_delete_statements(statements=statements)
         except Exception as e:
@@ -1930,8 +1946,6 @@ class DatabaseRecord:
 
             # Prepare the record entries for the components
             comp_entry = settings.records.fetch_rule(comp_type)
-#            comp_ids = comp_df[comp_table.id_column].values.tolist()
-#            saved_records = comp_entry.confirm_saved(comp_ids, id_field=comp_table.id_column)
 
             # Update the delete field
             if pc:  # removed records should be deleted if parent-child is true
@@ -1946,28 +1960,6 @@ class DatabaseRecord:
                 logger.error(msg)
 
                 raise
-
-#            # Prepare update statements for existing record components
-#            existing_comps = comp_df[saved_records]
-#            try:
-#                statements = comp_entry.save_database_records(existing_comps, id_field=comp_table.id_column,
-#                                                              exists=True, statements=statements)
-#            except Exception as e:
-#                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
-#                logger.error(msg)
-#
-#                raise
-#
-#            # Prepare insert statements for new record components
-#            new_comps = comp_df[[not x for x in saved_records]]
-#            try:
-#                statements = comp_entry.save_database_records(new_comps, id_field=comp_table.id_column, exists=False,
-#                                                              statements=statements)
-#            except Exception as e:
-#                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
-#                logger.error(msg)
-#
-#                raise
 
         return statements
 
