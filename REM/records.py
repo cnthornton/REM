@@ -342,8 +342,8 @@ class RecordEntry:
 
         return import_df
 
-    def save_database_records(self, records, id_field: str = 'RecordID', exists: bool = None, statements: dict = None,
-                              export_columns: bool = True):
+    def save_database_records_old(self, records, id_field: str = 'RecordID', exists: bool = None, statements: dict = None,
+                                  export_columns: bool = True):
         """
         Create insert and update database transaction statements for records.
 
@@ -458,12 +458,12 @@ class RecordEntry:
                     statement, param = user.prepare_update_statement(table, export_columns, export_values,
                                                                      filter_clause, filter_params)
 
-                    if isinstance(param, list):
+                    if isinstance(param, list):  # contains multiple sets of parameters already
                         try:
                             statements[statement].extend(param)
                         except KeyError:
                             statements[statement] = param
-                    elif isinstance(param, tuple):
+                    elif isinstance(param, tuple):  # single set of parameters
                         try:
                             statements[statement].append(param)
                         except KeyError:
@@ -487,6 +487,129 @@ class RecordEntry:
                             statements[statement].append(param)
                         except KeyError:
                             statements[statement] = [param]
+
+        return statements
+
+    def save_database_records(self, records, id_field: str = 'RecordID', statements: dict = None,
+                              export_columns: bool = True):
+        """
+        Create insert and update database transaction statements for records.
+
+        Arguments:
+            records (DataFrame): table containing the record data that will be exported to the database.
+
+            id_field (str): name of the column containing the record IDs.
+
+            statements (dict): dictionary of existing database transaction statements to append the results to.
+
+            export_columns (bool): use import column mapping to transform column names to database names before
+                exporting [Default: True]
+        """
+        export_rules = self.export_rules
+        ref_table = settings.reference_lookup
+
+        if not statements:
+            statements = {}
+
+        if isinstance(records, pd.DataFrame):
+            df = records
+        elif isinstance(records, pd.Series):
+            df = records.to_frame().transpose()
+        elif isinstance(records, dict):
+            df = pd.DataFrame(records)
+        else:
+            raise ValueError(' must be one of DataFrame, Series, or dictionary')
+
+        if df.empty:
+            return statements
+
+        exists = self.confirm_saved(df[id_field].values.tolist(), id_field=id_field)
+
+        # Prepare a separate database transaction statement for each database table containing the record's data
+        columns = df.columns.values.tolist()
+        for table in export_rules:
+            table_entry = export_rules[table]
+
+            if export_columns:
+                references = table_entry['Columns']
+            else:
+                references = {i: i for i in table_entry['Columns']}
+
+            try:
+                id_col = references[id_field]
+            except KeyError:
+                msg = 'missing ID column "{COL}" from record import columns {COLS}' \
+                    .format(COL=id_field, COLS=list(references.keys()))
+                logger.error(msg)
+                raise KeyError(msg)
+
+            # Prepare column value updates
+            include_columns = [i for i in columns if i in references]
+            export_df = df[include_columns]
+
+            export_columns = [references[i] for i in include_columns]
+
+            # Prepare separate update and insert statements depending on whether an individual record exists
+
+            # Extract all currently existing records from the table
+            current_df = export_df[exists]
+
+            # Prepare update statements for the existing records
+            if not current_df.empty:
+                export_values = [tuple(i) for i in current_df.values.tolist()]
+
+                record_ids = current_df[id_field]
+                if not isinstance(record_ids, pd.Series):
+                    record_ids = [record_ids]
+                else:
+                    record_ids = record_ids.values.tolist()
+                filter_params = [(i,) for i in record_ids]
+                filter_clause = '{COL} = ?'.format(COL=id_col)
+                statements = user.prepare_update_statement(table, export_columns, export_values, filter_clause,
+                                                           filter_params, statements=statements)
+
+            # Extract all new records from the table
+            new_df = export_df[[not i for i in exists]]
+
+            # Prepare insertion statements for the new records
+            if not new_df.empty:
+                export_values = [tuple(i) for i in new_df.values.tolist()]
+                statements = user.prepare_insert_statement(table, export_columns, export_values, statements=statements)
+
+                # Create any hard-linked records
+                if 'HardLinks' in export_rules:
+                    record_type = self.name
+
+                    link_rules = export_rules['HardLinks']
+                    for ref_type in link_rules:
+                        ref_entry = settings.records.fetch_rule(ref_type)
+                        link_rule = link_rules[ref_type]
+                        condition = link_rule['Condition']
+                        colmap = link_rules['ColumnMap']
+
+                        df_sub = new_df[mod_dm.evaluate_condition(new_df, condition)]
+
+                        primary_ids = df_sub['RecordID'].values.tolist()
+                        ref_dates = df_sub['RecordDate']
+                        ref_ids = ref_entry.create_record_ids(ref_dates)
+
+                        ref_df = df_sub[list(colmap)].rename(columns=colmap)
+                        ref_df['RecordID'] = ref_ids
+                        ref_df['RecordDate'] = ref_dates
+                        statements = ref_entry.save_database_records(ref_df, statements=statements)
+
+                        # Create record references
+                        for index, ref_id in enumerate(ref_ids):
+                            primary_id = primary_ids[index]
+
+                            # Save reference to the account record
+                            ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
+                                           settings.creation_date, 'IsParentChild', 'IsHardLink', 'IsApproved']
+                            ref_values = (primary_id, record_type, ref_id, ref_type, datetime.datetime.now(),
+                                          user.uid, datetime.datetime.now(), False, True, True)
+
+                            statements = user.prepare_insert_statement(ref_table, ref_columns, ref_values,
+                                                                       statements=statements)
 
         return statements
 
@@ -526,18 +649,8 @@ class RecordEntry:
                 sub_ids = record_ids[i: i + 1000]
                 filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
                 filters = tuple(sub_ids)
-                statement, param = user.prepare_update_statement(table, [delete_code], (1,), filter_clause, filters)
-
-                if isinstance(param, list):
-                    try:
-                        statements[statement].extend(param)
-                    except KeyError:
-                        statements[statement] = param
-                elif isinstance(param, tuple):
-                    try:
-                        statements[statement].append(param)
-                    except KeyError:
-                        statements[statement] = [param]
+                statements = user.prepare_update_statement(table, [delete_code], (1,), filter_clause, filters,
+                                                           statements=statements)
 
         # Remove all record associations
         for record_id in record_ids:
@@ -545,18 +658,8 @@ class RecordEntry:
             ref_filters = (record_id, record_id)
             ref_cols = [settings.editor_code, settings.edit_date, delete_code]
             ref_params = (user.uid, datetime.datetime.now(), 1)
-            statement, param = user.prepare_update_statement(ref_table, ref_cols, ref_params, filter_clause,
-                                                             ref_filters)
-            if isinstance(param, list):
-                try:
-                    statements[statement].extend(param)
-                except KeyError:
-                    statements[statement] = param
-            elif isinstance(param, tuple):
-                try:
-                    statements[statement].append(param)
-                except KeyError:
-                    statements[statement] = [param]
+            statements = user.prepare_update_statement(ref_table, ref_cols, ref_params, filter_clause, ref_filters,
+                                                       statements=statements)
 
         return statements
 
@@ -1868,20 +1971,15 @@ class DatabaseRecord:
 
                 logger.info('RecordType {NAME}, Record {ID}: updating reference {REF}'
                             .format(NAME=self.name, ID=record_id, REF=ref_id))
-                statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values, update_filters,
-                                                                  filter_params)
+                statements = user.prepare_update_statement(ref_table, comp_columns, comp_values, update_filters,
+                                                                  filter_params, statements=statements)
             else:
                 # Prepare the insert statement for the existing reference entry to the references table
                 comp_columns.extend([settings.creator_code, settings.creation_date])
 
                 logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
                             .format(NAME=self.name, ID=record_id, REF=ref_id))
-                statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
-
-            try:
-                statements[statement].append(params)
-            except KeyError:
-                statements[statement] = [params]
+                statements = user.prepare_insert_statement(ref_table, comp_columns, comp_values, statements=statements)
 
         # Prepare to save record components
         comp_tables = self.components
@@ -1922,9 +2020,8 @@ class DatabaseRecord:
                     comp_columns.extend([settings.edit_date, settings.editor_code])
                     update_filters = 'DocNo = ? AND RefNo = ?'
                     filter_params = (record_id, comp_id)
-                    statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values,
-                                                                      update_filters,
-                                                                      filter_params)
+                    statements = user.prepare_update_statement(ref_table, comp_columns, comp_values, update_filters,
+                                                               filter_params, statements=statements)
                 else:  # new reference
                     if is_deleted:  # don't add reference for new associations that were removed.
                         logger.warning('Record {ID}: new component "{REF}" from component table "{TBL}" was deleted '
@@ -1937,12 +2034,8 @@ class DatabaseRecord:
 
                     logger.info('RecordType {NAME}, Record {ID}: saving reference to "{REF}" from component table '
                                 '"{TBL}"'.format(NAME=self.name, ID=record_id, REF=comp_id, TBL=comp_table.name))
-                    statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
-
-                try:
-                    statements[statement].append(params)
-                except KeyError:
-                    statements[statement] = [params]
+                    statements = user.prepare_insert_statement(ref_table, comp_columns, comp_values,
+                                                               statements=statements)
 
             # Prepare the record entries for the components
             comp_entry = settings.records.fetch_rule(comp_type)
@@ -2858,177 +2951,6 @@ class AuditRecord(DatabaseRecord):
             elem_key = header.key_lookup('Element')
             display_value = header.format_display()
             window[elem_key].update(value=display_value)
-
-    def prepare_save_statements(self, statements: dict = None):
-        """
-        Prepare to the statements for saving the record to the database.
-        """
-        ref_table = settings.reference_lookup
-
-        if not statements:
-            statements = {}
-
-        record_entry = self.record_entry
-        record_id = self.record_id()
-        import_df = self.ref_df
-
-        # Verify that required parameters have values
-        for param in self.parameters:
-            if param.required is True and param.has_value() is False:
-                msg = 'no value provided for the required field {FIELD}'.format(FIELD=param.description)
-                logger.warning('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
-
-                raise AttributeError(msg)
-
-        # Prepare to save the record
-        logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
-        try:
-            record_data = self.table_values()
-            statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
-        except Exception as e:
-            msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
-            logger.exception(msg)
-
-            raise
-        else:
-            del record_data
-
-        # Prepare to save record references
-        for refbox in self.references:
-            ref_data = refbox.as_row()
-            ref_id = ref_data['DocNo']  # reference record ID
-            logger.debug('Record {ID}: preparing reference statement for reference {REF}'
-                         .format(ID=record_id, REF=ref_id))
-            if ref_id == record_id:
-                logger.error('RecordType {NAME}, Record {ID}: oops ... got the order wrong'
-                             .format(NAME=self.name, ID=record_id))
-
-                raise AssertionError('reference IDs were found in the wrong order')
-
-            # Determine if reference entry already exists in the database
-            nrow = import_df[(import_df['DocNo'].isin([ref_id, record_id])) &
-                             (import_df['RefNo'].isin([ref_id, record_id]))].shape[0]
-            comp_columns = ref_data.index.tolist()
-            comp_values = tuple(ref_data.values.tolist() + [user.uid, datetime.datetime.now()])
-            if nrow > 0:  # reference already exists in the database
-                # Prepare the update statement for the existing reference entry in the references table
-                # If mutually referenced, deleting one entry will also delete its partner
-                comp_columns.extend([settings.editor_code, settings.edit_date])
-                update_filters = '(DocNo = ? AND RefNo = ?) OR (DocNo = ? AND RefNo = ?)'
-                filter_params = (ref_id, record_id, record_id, ref_id)
-
-                logger.info('RecordType {NAME}, Record {ID}: updating reference {REF}'
-                            .format(NAME=self.name, ID=record_id, REF=ref_id))
-                statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values, update_filters,
-                                                                  filter_params)
-            else:
-                # Prepare the insert statement for the existing reference entry to the references table
-                comp_columns.extend([settings.creator_code, settings.creation_date])
-
-                logger.info('RecordType {NAME}, Record {ID}: saving reference to {REF}'
-                            .format(NAME=self.name, ID=record_id, REF=ref_id))
-                statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
-
-            try:
-                statements[statement].append(params)
-            except KeyError:
-                statements[statement] = [params]
-
-        # Prepare to save record components
-        comp_tables = self.components
-        for comp_table in comp_tables:
-            logger.debug('Record {ID}: preparing statements for component table "{TBL}"'
-                         .format(ID=record_id, TBL=comp_table.name))
-            comp_df = comp_table.df
-            if comp_df.empty:
-                continue
-
-            comp_type = comp_table.record_type
-            if comp_type is None:
-                logger.warning('RecordEntry {NAME}: component table "{TBL}" has no record type assigned'
-                               .format(NAME=self.name, TBL=comp_table.name))
-                continue
-
-            try:
-                import_ids = import_df[(import_df['DocNo'] == record_id) &
-                                       (import_df['RefType'] == comp_type)]['RefNo'].tolist()
-            except Exception as e:
-                logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
-                               '"{TBL}" - {ERR}'.format(NAME=self.name, TBL=comp_table.name, ERR=e))
-                continue
-
-            if comp_table.actions['add']:  # component records can be created and deleted through parent record
-                pc = True  # parent-child relationship
-            else:
-                pc = False
-
-            # Prepare the reference entries for the components
-            for index, row in comp_df.iterrows():
-                comp_id = row[comp_table.id_column]
-                is_deleted = row[comp_table.deleted_column]
-                comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild', 'IsDeleted']
-                comp_values = (record_id, self.name, comp_id, comp_type, datetime.datetime.now(), pc, is_deleted,
-                               datetime.datetime.now(), user.uid)
-                if comp_id in import_ids:  # existing reference
-                    comp_columns.extend([settings.edit_date, settings.editor_code])
-                    update_filters = 'DocNo = ? AND RefNo = ?'
-                    filter_params = (record_id, comp_id)
-                    statement, params = user.prepare_update_statement(ref_table, comp_columns, comp_values,
-                                                                      update_filters,
-                                                                      filter_params)
-                else:  # new reference
-                    if is_deleted:  # don't add reference for new associations that were removed.
-                        logger.warning('Record {ID}: new component "{REF}" from component table "{TBL}" was deleted '
-                                       'and therefore will not be saved'
-                                       .format(ID=record_id, REF=comp_id, TBL=comp_table.name))
-                        continue
-
-                    # Prepare the insert statement for the existing reference entry to the references table
-                    comp_columns.extend([settings.creation_date, settings.creator_code])
-
-                    logger.info('RecordType {NAME}, Record {ID}: saving reference to "{REF}" from component table '
-                                '"{TBL}"'.format(NAME=self.name, ID=record_id, REF=comp_id, TBL=comp_table.name))
-                    statement, params = user.prepare_insert_statement(ref_table, comp_columns, comp_values)
-
-                try:
-                    statements[statement].append(params)
-                except KeyError:
-                    statements[statement] = [params]
-
-            # Prepare the record entries for the components
-            comp_entry = settings.records.fetch_rule(comp_type)
-
-            # Update the delete field
-            if pc:  # removed records should be deleted if parent-child is true
-                comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
-
-            # Prepare transaction statements for the component records
-            try:
-                statements = comp_entry.save_database_records(comp_df, id_field=comp_table.id_column,
-                                                              statements=statements)
-            except Exception as e:
-                msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
-                logger.error(msg)
-
-                raise
-
-            # Prepare hard-linked deposit records for account records where account number does not equal to resting
-#            link_rules = comp_table.links
-#            if link_rules:
-#                for record_type in link_rules:
-#                    ref_entry = settings.records.fetch_rule(record_type)
-#                    link_rule = link_rules[record_type]
-#                    condition = link_rule['Condition']
-#                    colmap = link_rules['ColumnMap']
-#                    df_sub = comp_df[mod_dm.evaluate_condition(comp_df, condition)]
-#                    refdates = df_sub['RecordDate']
-#                    ref_df = df_sub[list(colmap)].rename(columns=colmap)
-#                    refids = ref_entry.create_record_ids(refdates)
-#                    ref_df['RecordID'] = refids
-#                    ref_df['RecordDate'] = refdates
-#                    statements = ref_entry.save_database_records(ref_df, statements=statements)
-
-        return statements
 
 
 def replace_nth(s, sub, new, ns):

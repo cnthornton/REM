@@ -2239,11 +2239,7 @@ class AuditRecordTab:
             ref_values = (deposit_id, record_type, account_id, ref_type, datetime.datetime.now(), user.uid,
                           datetime.datetime.now(), True)
 
-            statement, params = user.prepare_insert_statement(ref_table, ref_columns, ref_values)
-            try:
-                statements[statement].append(params)
-            except KeyError:
-                statements[statement] = [params]
+            statements = user.prepare_insert_statement(ref_table, ref_columns, ref_values, statements=statements)
 
             # Save reference to the audit record
             audit_id = record.record_id()
@@ -2253,11 +2249,7 @@ class AuditRecordTab:
             ref_values = (audit_id, audit_record_type, deposit_id, record_type, datetime.datetime.now(), user.uid,
                           datetime.datetime.now(), True)
 
-            statement, params = user.prepare_insert_statement(ref_table, ref_columns, ref_values)
-            try:
-                statements[statement].append(params)
-            except KeyError:
-                statements[statement] = [params]
+            statements = user.prepare_insert_statement(ref_table, ref_columns, ref_values, statements=statements)
 
         # Export audit record
         statements = record.prepare_save_statements(statements)

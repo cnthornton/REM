@@ -1417,10 +1417,13 @@ class AccountManager:
 
         return (query_str, params)
 
-    def prepare_insert_statement(self, table, columns, values):
+    def prepare_insert_statement(self, table, columns, values, statements: dict = None):
         """
         Prepare a statement and parameters for inserting a new entry into an ODBC database.
         """
+        if not statements:
+            statements = {}
+
         if isinstance(columns, str):
             columns = [columns]
 
@@ -1474,12 +1477,26 @@ class AccountManager:
             .format(TABLE=table, COLS='({})'.format(','.join(columns)), VALS=markers)
         logger.debug('insertion string is "{STR}" with parameters "{PARAMS}"'.format(STR=insert_str, PARAMS=params))
 
-        return (insert_str, params)
+        if isinstance(params, list):  # contains multiple sets of parameters already
+            try:
+                statements[insert_str].extend(params)
+            except KeyError:
+                statements[insert_str] = params
+        elif isinstance(params, tuple):  # single set of parameters
+            try:
+                statements[insert_str].append(params)
+            except KeyError:
+                statements[insert_str] = [params]
 
-    def prepare_update_statement(self, table, columns, values, where_clause, filter_values):
+        return statements
+
+    def prepare_update_statement(self, table, columns, values, where_clause, filter_values, statements: dict = None):
         """
         Prepare a statement and parameters for updating an existing entry in an ODBC dataabase.
         """
+        if not statements:
+            statements = {}
+
         # Format parameters
         if isinstance(values, list):  # multiple updates requested
             if not all([isinstance(i, tuple) for i in values]):
@@ -1553,12 +1570,26 @@ class AccountManager:
             .format(TABLE=table, PAIRS=','.join(pair_list), WHERE=where_clause)
         logger.debug('update string is "{STR}" with parameters "{PARAMS}"'.format(STR=update_str, PARAMS=params))
 
-        return (update_str, params)
+        if isinstance(params, list):  # contains multiple sets of parameters already
+            try:
+                statements[update_str].extend(params)
+            except KeyError:
+                statements[update_str] = params
+        elif isinstance(params, tuple):  # single set of parameters
+            try:
+                statements[update_str].append(params)
+            except KeyError:
+                statements[update_str] = [params]
 
-    def prepare_delete_statement(self, table, columns, values):
+        return statements
+
+    def prepare_delete_statement(self, table, columns, values, statements: dict = None):
         """
         Prepare a statement and parameters for deleting an existing entry from an ODBC database.
         """
+        if not statements:
+            statements = {}
+
         if isinstance(columns, str):
             columns = [columns]
 
@@ -1630,7 +1661,18 @@ class AccountManager:
         delete_str = 'DELETE FROM {TABLE} WHERE {PAIRS}'.format(TABLE=table, PAIRS=' AND '.join(pair_list))
         logger.debug('deletion string is "{STR}" with parameters "{PARAMS}"'.format(STR=delete_str, PARAMS=params))
 
-        return (delete_str, params)
+        if isinstance(params, list):  # contains multiple sets of parameters already
+            try:
+                statements[delete_str].extend(params)
+            except KeyError:
+                statements[delete_str] = params
+        elif isinstance(params, tuple):  # single set of parameters
+            try:
+                statements[delete_str].append(params)
+            except KeyError:
+                statements[delete_str] = [params]
+
+        return statements
 
     def read_db(self, statement, params, prog_db: bool = False):
         """
