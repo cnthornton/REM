@@ -2686,6 +2686,16 @@ class ReferenceElement:
         except KeyError:
             self.warnings = None
 
+        try:
+            self.hard_link = entry['IsHardLink']
+        except KeyError:
+            self.hard_link = None
+
+        try:
+            self.approved = entry['IsApproved']
+        except KeyError:
+            self.approved = None
+
         record_entry = settings.records.fetch_rule(self.record_type)
         record_data = record_entry.load_record_data(self.record_id)
         nrow = record_data.shape[0]
@@ -3062,6 +3072,9 @@ class ReferenceElement2:
 
             return False
         else:
+            if pd.isna(self.reference_id):
+                return False
+
             logger.debug('ReferenceBox {NAME}: loading reference {ID}'.format(NAME=self.name, ID=self.reference_id))
 
         date_col = colmap['ReferenceDate']
@@ -3085,7 +3098,7 @@ class ReferenceElement2:
         try:
             self.reference_type = entry[ref_type_col]
         except KeyError:
-            msg = ''
+            msg = 'Reference ReferenceType column "{COL} not found in entry"'.format(COL=ref_type_col)
             logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             return False
@@ -3705,7 +3718,7 @@ class DataElement:
 
         layout = [sg.Text(display_value, key=elem_key, size=size, pad=(0, 0), background_color=bg_col,
                           text_color=disabled_text_col, font=font, enable_events=True, border_width=1,
-                          metadata={'name': self.name, 'disabled': is_disabled})]
+                          relief='sunken', metadata={'name': self.name, 'disabled': is_disabled})]
 
         return layout
 
