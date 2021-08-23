@@ -1903,7 +1903,9 @@ class AuditSummary:
             try:
                 statements = tab.save_record(statements=statements)
             except Exception as e:
-                mod_win2.popup_error(e)
+                msg = 'failed to save {AUDIT} record {ID}'.format(AUDIT=tab.name, ID=tab.record.record_id())
+                logger.exception('AuditRuleSummary {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                mod_win2.popup_error(msg)
 
                 return False
 
@@ -2095,7 +2097,7 @@ class AuditRecordTab:
 
                 return False
 
-    def save_record_new(self, statements: dict = None):
+    def save_record(self, statements: dict = None):
         """
         Save audit record to the program database defined in the configuration file.
         """
@@ -2110,7 +2112,7 @@ class AuditRecordTab:
 
         return statements
 
-    def save_record(self, statements: dict = None):
+    def save_record_old(self, statements: dict = None):
         """
         Save audit record to the program database defined in the configuration file.
         """
