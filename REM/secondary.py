@@ -262,6 +262,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
 
     # Element parameters
     pad_el = mod_const.ELEM_PAD
+    pad_v = mod_const.VERT_PAD
     pad_frame = mod_const.FRAME_PAD
 
     bg_col = mod_const.ACTION_COL
@@ -310,7 +311,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
                                   tooltip='Save record changes to the database')]]
 
     # Window layout
-    bffr_height = 230  # window height minus space reserved for the title and buttons
+    bffr_height = 240  # window height minus space reserved for the title and buttons
     height_key = '-HEIGHT-'
     layout = [[sg.Col([[sg.Canvas(key=height_key, size=(1, height))]]),
                sg.Col([

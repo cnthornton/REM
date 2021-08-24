@@ -504,7 +504,7 @@ class RecordEntry:
         """
         export_rules = self.export_rules
         ref_table = settings.reference_lookup
-        pd.set_option('display.max_columns', None)
+#        pd.set_option('display.max_columns', None)
 
         if not statements:
             statements = {}
@@ -516,7 +516,7 @@ class RecordEntry:
         elif isinstance(records, dict):
             df = pd.DataFrame(records)
         else:
-            raise ValueError(' must be one of DataFrame, Series, or dictionary')
+            raise ValueError('records argument must be one of DataFrame, Series, or dictionary')
 
         if df.empty:
             return statements
@@ -536,9 +536,10 @@ class RecordEntry:
             try:
                 id_col = references[id_field]
             except KeyError:
-                msg = 'missing ID column "{COL}" from record import columns {COLS}' \
-                    .format(COL=id_field, COLS=list(references.keys()))
+                msg = 'RecordEntry {NAME}: missing ID column "{COL}" from record import columns {COLS}' \
+                    .format(NAME=self.name, COL=id_field, COLS=list(references.keys()))
                 logger.error(msg)
+
                 raise KeyError(msg)
 
             # Prepare column value updates
@@ -581,11 +582,9 @@ class RecordEntry:
                 export_columns = new_df.rename(columns=references).columns.tolist()
                 export_values = [tuple(i) for i in new_df.values.tolist()]
                 statements = user.prepare_insert_statement(table, export_columns, export_values, statements=statements)
-                print(export_rules)
 
                 # Create any hard-linked records
                 if 'HardLink' in table_entry:
-                    print('{} records have hard link conditions'.format(self.name))
                     record_type = self.name
 
                     link_rules = table_entry['HardLink']
@@ -596,8 +595,10 @@ class RecordEntry:
                             condition = link_rule['Condition']
                             colmap = link_rule['ColumnMap']
                         except KeyError:
-                            print(link_rule)
-                            raise
+                            msg = 'missing required HardLink parameters "Condition" and "ColumnMap"'
+                            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                            raise KeyError(msg)
 
                         df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
                         if df_sub.empty:
@@ -610,7 +611,7 @@ class RecordEntry:
                         except KeyError:
                             msg = 'failed to create IDs for the new records - failed to create associated "{TYPE}" ' \
                                   'records'.format(TYPE=record_type, RTYPE=ref_type)
-                            logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                             raise KeyError(msg)
                         else:
@@ -628,25 +629,32 @@ class RecordEntry:
                             primary_id = primary_ids[index]
 
                             # Save reference to the account record
-                            ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
-                                           settings.creation_date, 'IsParentChild', 'IsHardLink', 'IsApproved']
+                            ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild',
+                                           'IsHardLink', 'IsApproved', 'IsDeleted', settings.creator_code,
+                                           settings.creation_date]
                             ref_values = (primary_id, record_type, ref_id, ref_type, datetime.datetime.now(),
-                                          user.uid, datetime.datetime.now(), False, True, True)
+                                          0, 1, 1, 0, user.uid, datetime.datetime.now())
 
                             statements = user.prepare_insert_statement(ref_table, ref_columns, ref_values,
                                                                        statements=statements)
 
         return statements
 
-    def delete_database_records(self, records, statements: dict = None, id_field: str = 'RecordID'):
+    def delete_database_records(self, records, statements: dict = None, id_field: str = 'RecordID',
+                                ref_ids: list = None):
         """
         Delete records from the database.
         """
         ref_table = settings.reference_lookup
         delete_code = settings.delete_field
 
+        pd.set_option('display.max_columns', None)
+
         if not statements:
             statements = {}
+
+        if ref_ids is None:
+            ref_ids = []
 
         if isinstance(records, str):
             records = [records]
@@ -679,7 +687,7 @@ class RecordEntry:
             delete_col = references['Deleted']
 
             export_columns = [delete_col, settings.editor_code, settings.edit_date]
-            export_values = [(1, user.id, datetime.datetime.now().strftime(settings.date_format)) for _ in record_ids]
+            export_values = [(1, user.uid, datetime.datetime.now().strftime(settings.date_format)) for _ in record_ids]
 
             filter_params = [(i,) for i in record_ids]
             filter_clause = '{COL} = ?'.format(COL=id_col)
@@ -699,23 +707,29 @@ class RecordEntry:
             filters = ('(DocNo IN ({VALS})) AND (IsHardLink = ? OR IsParentChild = ?) AND (IsDeleted = ?)'
                        .format(VALS=sub_vals), tuple(sub_ids + [1, 1, 0]))
 
-            import_df.append(user.read_db(*user.prepare_query_statement(ref_table, columns=import_columns,
-                                                                        filter_rules=filters, prog_db=True)),
-                             ignore_index=True)
+            hl_pc_df = user.read_db(*user.prepare_query_statement(ref_table, columns=import_columns,
+                                                                  filter_rules=filters), prog_db=True)
+            import_df = import_df.append(hl_pc_df, ignore_index=True)
 
             # Import hard-linked references where references are primary
             import_columns = ['DocNo AS ReferenceID', 'DocType AS ReferenceType']
             filters = ('RefNo IN ({VALS}) AND IsHardLink = ? AND IsDeleted = ?'
                        .format(VALS=sub_vals), tuple(sub_ids + [1, 0]))
-            import_df.append(user.read_db(*user.prepare_query_statement(ref_table, columns=import_columns,
-                                                                        filter_rules=filters, prog_db=True)),
-                             ignore_index=True)
+            rev_hl_df = user.read_db(*user.prepare_query_statement(ref_table, columns=import_columns,
+                                                                   filter_rules=filters), prog_db=True)
+
+            import_df = import_df.append(rev_hl_df, ignore_index=True)
 
         # Remove duplicate entries
         import_df.drop_duplicates(inplace=True, ignore_index=True)
 
+        # Remove already used references
+        import_df.drop(import_df[import_df['ReferenceID'].isin(ref_ids)].index, inplace=True)
+        ignore_ids = list(set(ref_ids + record_ids))
+
         # Remove linked-records
         record_types = import_df['ReferenceType'].unique()
+
         for record_type in record_types:
             record_entry = settings.records.fetch_rule(record_type)
             if record_entry is None:
@@ -730,7 +744,7 @@ class RecordEntry:
 
             # Prepare deletion statements for reference records
             ref_ids = sub_df['ReferenceID'].values.tolist()
-            statements = record_entry.delete_database_records(ref_ids, statements=statements)
+            statements = record_entry.delete_database_records(ref_ids, statements=statements, ref_ids=ignore_ids)
 
         # Remove all record associations
         for record_id in record_ids:
@@ -1306,7 +1320,8 @@ class DatabaseRecord:
                     self.elements += comp_table.elements
 
         self.ref_df = pd.DataFrame(
-            columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
+            columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild', 'IsHardLink',
+                     'IsApproved'])
 
         # Record behavior modifiers
         supported_modifers = settings.supported_modifiers
@@ -1600,7 +1615,8 @@ class DatabaseRecord:
         self.references = []
 
         self.ref_df = pd.DataFrame(
-            columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild'])
+            columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild', 'IsHardLink',
+                     'IsApproved'])
 
     def remove_unsaved_ids(self):
         """
@@ -2093,8 +2109,9 @@ class DatabaseRecord:
             for index, row in comp_df.iterrows():
                 comp_id = row[comp_table.id_column]
                 is_deleted = row[comp_table.deleted_column]
-                comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild', 'IsDeleted']
-                comp_values = (record_id, self.name, comp_id, comp_type, datetime.datetime.now(), pc, is_deleted,
+                comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild', 'IsHardLink',
+                                'IsApproved', 'IsDeleted']
+                comp_values = (record_id, self.name, comp_id, comp_type, datetime.datetime.now(), pc, 0, 1, is_deleted,
                                datetime.datetime.now(), user.uid)
                 if comp_id in import_ids:  # existing reference
                     comp_columns.extend([settings.edit_date, settings.editor_code])
@@ -2129,8 +2146,9 @@ class DatabaseRecord:
 #                comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
 
             # Prepare transaction statements for the component records
+            exist_df = comp_df[~comp_df[comp_table.deleted_column]]  # don't update removed references
             try:
-                statements = comp_entry.save_database_records(comp_df, id_field=comp_table.id_column,
+                statements = comp_entry.save_database_records(exist_df, id_field=comp_table.id_column,
                                                               statements=statements)
             except Exception as e:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
@@ -2149,7 +2167,9 @@ class DatabaseRecord:
         try:
             statements = self.prepare_save_statements(statements=statements)
         except Exception as e:
-            mod_win2.popup_error(e)
+            msg = 'failed to save record {ID}'.format(ID=record_id)
+            logger.exception('Record {ID}: {MSG} - {ERR}'.format(ID=record_id, MSG=msg, ERR=e))
+            mod_win2.popup_error(msg)
 
             return False
         else:
@@ -3090,7 +3110,8 @@ def import_references(record_id):
     """
     # Define query parameters
     ref_table = settings.reference_lookup
-    columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings', 'IsParentChild']
+    columns = ['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings', 'IsParentChild',
+               'IsHardLink', 'IsApproved']
     filters = ('{COL1} = ? OR {COL2} = ?'.format(COL1='DocNo', COL2='RefNo'), (record_id, record_id))
 
     # Import reference entries related to record_id
