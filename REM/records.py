@@ -1861,7 +1861,7 @@ class DatabaseRecord:
         record_entry = self.record_entry
         record_type = record_entry.name
         record_id = self.record_id()
-        ref_df = self.ref_df
+#        ref_df = self.ref_df
 
         if not statements:
             statements = {}

@@ -1454,7 +1454,7 @@ class AccountManager:
 
                 raise SQLStatementError(msg)
 
-            params = tuple([convert_datatypes(i) for i in values])
+            params = [tuple([convert_datatypes(i) for i in values])]
 
         elif isinstance(values, str):  # single insertion for single column
             if len(columns) > 1:
@@ -1464,7 +1464,7 @@ class AccountManager:
 
                 raise SQLStatementError(msg)
 
-            params = (convert_datatypes(values),)
+            params = [(convert_datatypes(values),)]
         else:
             msg = 'failed to generate insertion statement - unknown values type {}'.format(type(values))
             logger.error(msg)
@@ -1477,16 +1477,12 @@ class AccountManager:
             .format(TABLE=table, COLS='({})'.format(','.join(columns)), VALS=markers)
         logger.debug('insertion string is "{STR}" with parameters "{PARAMS}"'.format(STR=insert_str, PARAMS=params))
 
-        if isinstance(params, list):  # contains multiple sets of parameters already
-            try:
-                statements[insert_str].extend(params)
-            except KeyError:
-                statements[insert_str] = params
-        elif isinstance(params, tuple):  # single set of parameters
-            try:
-                statements[insert_str].append(params)
-            except KeyError:
-                statements[insert_str] = [params]
+        if insert_str not in statements:  # new transaction statement
+            statements[insert_str] = []
+
+        for param_tuple in params:  # only append unique parameter sets
+            if param_tuple not in statements[insert_str]:
+                statements[insert_str].append(param_tuple)
 
         return statements
 
@@ -1546,7 +1542,7 @@ class AccountManager:
 
                 raise SQLStatementError(msg)
 
-            params = tuple([convert_datatypes(i) for i in values] + [convert_datatypes(j) for j in filter_values])
+            params = [tuple([convert_datatypes(i) for i in values] + [convert_datatypes(j) for j in filter_values])]
 
         elif isinstance(values, str) or pd.isna(values):  # single update of one column is requested
             if not isinstance(columns, str):
@@ -1556,7 +1552,7 @@ class AccountManager:
 
                 raise SQLStatementError(msg)
 
-            params = tuple([convert_datatypes(values)] + [convert_datatypes(j) for j in filter_values])
+            params = [tuple([convert_datatypes(values)] + [convert_datatypes(j) for j in filter_values])]
         else:
             msg = 'failed to generate update statement - unknown values type {}'.format(type(values))
             logger.error(msg)
@@ -1570,16 +1566,12 @@ class AccountManager:
             .format(TABLE=table, PAIRS=','.join(pair_list), WHERE=where_clause)
         logger.debug('update string is "{STR}" with parameters "{PARAMS}"'.format(STR=update_str, PARAMS=params))
 
-        if isinstance(params, list):  # contains multiple sets of parameters already
-            try:
-                statements[update_str].extend(params)
-            except KeyError:
-                statements[update_str] = params
-        elif isinstance(params, tuple):  # single set of parameters
-            try:
-                statements[update_str].append(params)
-            except KeyError:
-                statements[update_str] = [params]
+        if update_str not in statements:  # new transaction statement
+            statements[update_str] = []
+
+        for param_tuple in params:  # only append unique parameter sets
+            if param_tuple not in statements[update_str]:
+                statements[update_str].append(param_tuple)
 
         return statements
 
@@ -1620,7 +1612,7 @@ class AccountManager:
 
                 raise SQLStatementError(msg)
 
-            params = tuple([convert_datatypes(i) for i in values])
+            params = [tuple([convert_datatypes(i) for i in values])]
 
         elif isinstance(values, str):
             if len(columns) > 1:
@@ -1630,7 +1622,7 @@ class AccountManager:
 
                 raise SQLStatementError(msg)
 
-            params = (convert_datatypes(values),)
+            params = [(convert_datatypes(values),)]
 
         else:
             msg = 'failed to generate deletion statement - unknown values type {}'.format(type(values))
@@ -1661,16 +1653,12 @@ class AccountManager:
         delete_str = 'DELETE FROM {TABLE} WHERE {PAIRS}'.format(TABLE=table, PAIRS=' AND '.join(pair_list))
         logger.debug('deletion string is "{STR}" with parameters "{PARAMS}"'.format(STR=delete_str, PARAMS=params))
 
-        if isinstance(params, list):  # contains multiple sets of parameters already
-            try:
-                statements[delete_str].extend(params)
-            except KeyError:
-                statements[delete_str] = params
-        elif isinstance(params, tuple):  # single set of parameters
-            try:
-                statements[delete_str].append(params)
-            except KeyError:
-                statements[delete_str] = [params]
+        if delete_str not in statements:  # new transaction statement
+            statements[delete_str] = []
+
+        for param_tuple in params:  # only append unique parameter sets
+            if param_tuple not in statements[delete_str]:
+                statements[delete_str].append(param_tuple)
 
         return statements
 
