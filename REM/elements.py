@@ -3059,8 +3059,6 @@ class ReferenceElement2:
         """
         Initialize a record reference.
         """
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
         colmap = self.refmap
 
         ref_id_col = colmap['ReferenceID']
@@ -3188,7 +3186,8 @@ class ReferenceElement2:
                                         tooltip=('Date of reference creation' if 'ReferenceDate' not in aliases else
                                                  aliases['ReferenceDate']))]],
                               pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
-                       sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col),
+                       sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col,
+                                        visible=approved_vis),
                                 sg.Checkbox('', default=is_approved, key=approved_key, enable_events=True,
                                             disabled=is_disabled, visible=approved_vis, background_color=bg_col)],
                                [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, disabled=is_disabled,
@@ -3216,9 +3215,12 @@ class ReferenceElement2:
         ref_key = self.key_lookup('RefID')
         date_key = self.key_lookup('RefDate')
         approved_key = self.key_lookup('Approved')
+        print('updating reference box {}'.format(self.name))
 
         is_hl = self.is_hardlink
         is_pc = self.is_pc
+        print('reference has hard-link: {}'.format(is_hl))
+        print('reference has parent: {}'.format(is_pc))
         referenced = self.referenced
         warnings = self.warnings if self.warnings is not None else ''
 

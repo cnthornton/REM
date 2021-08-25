@@ -137,6 +137,17 @@ class RecordEntry:
             sys.exit(1)
 
         try:
+            self.program_record = bool(int(entry['ProgramRecord']))
+        except KeyError:  # parameter not specified
+            self.program_record = False
+        except ValueError:  # wrong data type provided to parameter
+            msg = 'Configuration Error: "ProgramRecord" must be either 0 (False) or 1 (True)'
+            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            mod_win2.popup_error(msg)
+
+            self.program_record = False
+
+        try:
             self.id_code = entry['IDCode']
         except KeyError:
             mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "IDCode"'

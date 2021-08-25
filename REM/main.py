@@ -73,6 +73,9 @@ class ToolBar:
         acct_records = {}
         record_rules = records.rules
         for record_entry in record_rules:
+            if not record_entry.program_record:  # only display program records
+                continue
+
             record_type = record_entry.group
             record_title = record_entry.menu_title
             try:
