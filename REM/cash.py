@@ -124,7 +124,7 @@ class CashRule:
         try:
             self.menu_flags = entry['MenuFlags']
         except KeyError:
-            self.menu_flags = {}
+            self.menu_flags = None
 
         try:
             self.permissions = entry['AccessPermissions']

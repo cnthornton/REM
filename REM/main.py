@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.6.25'
+__version__ = '3.6.26'
 
 import sys
 import tkinter as tk
@@ -35,66 +35,71 @@ class ToolBar:
         self.name = 'toolbar'
         self.elements = ['-{ELEM}-'.format(ELEM=i) for i in ['amenu', 'rmenu', 'umenu', 'mmenu']]
 
-        record_map = {'account': '&Account Records', 'bank_deposit': 'Bank &Deposit Records',
-                      'bank_statement': '&Bank Statement Records', 'audit': 'Audi&t Records',
-                      'transaction': '&Transaction Records', 'cash_expense': '&Expense Records'}
-
         # Accounting method menu items
+        self.account_menus = {}
         acct_menu = []
         for account_method in account_methods:
             acct_menu.append(('', account_method.title))
 
-            rules = {}
-            for rule in account_method.rules:
-                rule_title = rule.menu_title
-                rules[rule.menu_title] = []
+            menu_groups = {}
+            rule_menu = []
+            for rule_entry in account_method.rules:
+                menu_title = rule_entry.menu_title
+                user_access = rule_entry.permissions
 
                 # Add any submenus to the menu definition. Submenus act as flags to main workflow rule.
-                try:
-                    rule_submenu = rule.menu_flags
-                except AttributeError:
+                rule_submenu = rule_entry.menu_flags
+
+                if not rule_submenu:
+                    rule_menu.append(('!', menu_title))
+                    self.account_menus[menu_title] = user_access
+                else:
+                    menu_groups[menu_title] = []
+
+                    for submenu in rule_submenu:
+                        menu_groups[menu_title].append(submenu)
+                        self.account_menus[submenu] = user_access
+
+            for menu_group in menu_groups:
+                rule_menu.append(('', menu_group))
+
+                menu_titles = menu_groups[menu_group]
+                if not menu_titles:
                     continue
 
-                for submenu in rule_submenu:
-                    rules[rule_title].append(submenu)
-
-            rule_menu = []
-            for rule in rules:
-                rule_menu.append(('!', rule))
-
-                menu_items = rules[rule]
-                if not menu_items:
-                    continue
-                rule_menu.append([('', i) for i in menu_items])
+                rule_menu.append([('', i) for i in menu_titles])
 
             acct_menu.append(rule_menu)
 
-        # Program records menu items
-        acct_records = {}
+        # Program record menu items
+        menu_groups = {}
+        record_menu = []
+        self.record_menus = {}
+
         record_rules = records.rules
         for record_entry in record_rules:
             if not record_entry.program_record:  # only display program records
                 continue
 
-            record_type = record_entry.group
-            record_title = record_entry.menu_title
-            try:
-                record_group = record_map[record_type]
-            except KeyError:
-                msg = 'record type {TYPE} not an accepted program record type'.format(TYPE=record_type)
-                logger.error(msg)
-                continue
-            try:
-                acct_records[record_group].append(record_title)
-            except KeyError:
-                acct_records[record_group] = [record_title]
+            menu_title = record_entry.menu_title
+            menu_group = record_entry.menu_group
+            user_access = record_entry.permissions
 
-        record_menu = []
-        for record_group in acct_records:
-            record_menu.append(('', record_group))
+            if menu_group:  # menu title will be a sub menu
+                try:
+                    menu_groups[menu_group].append(menu_title)
+                except KeyError:
+                    menu_groups[menu_group] = [menu_title]
+            else:  # no menu group specified for the record entry - top level menu.
+                record_menu.append(('!', menu_title))
 
-            menu_items = acct_records[record_group]
-            record_menu.append([('!', i) for i in menu_items])
+            self.record_menus[menu_title] = user_access
+
+        for menu_group in menu_groups:
+            record_menu.append(('', menu_group))
+
+            menu_titles = menu_groups[menu_group]
+            record_menu.append([('!', i) for i in menu_titles])
 
         self.acct_menu = {'name': '&Validation', 'items': acct_menu}
         self.reports_menu = {'name': '&Records', 'items': record_menu}
@@ -106,6 +111,43 @@ class ToolBar:
                                     ('', 'Ab&out'), ('', '---'), ('', '&Quit')]}
 
         self.records_title = records.title
+
+    def _define_menu(self, menu_item, menu=None):
+        """
+        Return the menu definition for a menu.
+        """
+        menus = {'amenu': self.acct_menu, 'rmenu': self.reports_menu,
+                 'umenu': self.user_menu, 'mmenu': self.menu_menu}
+
+        if menu is None:
+            try:
+                menu_object = menus[menu_item.lower()]
+            except KeyError:
+                msg = 'selected menu {} not list of available menus'.format(menu_item)
+                logger.error(msg)
+                return None
+        else:
+            menu_object = menu
+
+        menu_items = []
+        for item in menu_object['items']:
+            if isinstance(item, tuple):
+                menu_items.append('{}{}'.format(*item))
+            elif isinstance(item, list):
+                sub_list = []
+                for sub_item in item:
+                    if isinstance(sub_item, tuple):
+                        sub_list.append('{}{}'.format(*sub_item))
+                    elif isinstance(sub_item, list):
+                        sub_sub_list = []
+                        for sub_sub_item in sub_item:
+                            sub_sub_list.append('{}{}'.format(*sub_sub_item))
+                        sub_list.append(sub_sub_list)
+                menu_items.append(sub_list)
+
+        menu_def = [menu_object['name'], menu_items]
+
+        return menu_def
 
     def key_lookup(self, element):
         """
@@ -130,10 +172,10 @@ class ToolBar:
             width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
         # Menu items
-        menu_audit = self.menu_definition('amenu')
-        menu_reports = self.menu_definition('rmenu')
-        menu_user = self.menu_definition('umenu')
-        menu_menu = self.menu_definition('mmenu')
+        menu_audit = self._define_menu('amenu')
+        menu_reports = self._define_menu('rmenu')
+        menu_user = self._define_menu('umenu')
+        menu_menu = self._define_menu('mmenu')
 
         # Layout settings
         audit_ico = mod_const.AUDIT_ICON
@@ -172,34 +214,64 @@ class ToolBar:
 
         return layout
 
-    def disable(self, window, rules):
+#    def disable(self, window, rules: list = None):
+    def disable(self, window):
         """
-        Disable toolbar buttons
+        Disable toolbar buttons.
+
+        Arguments:
+            window (Window): GUI window.
         """
-        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
+#        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
+#
+#        if not rules:
+#            rules = []
+        logger.info('Toolbar: disabling toolbar menus')
 
         # Database administration
         window['-DBMENU-'].update(disabled=True)
 
         # User administration
-        self.toggle_menu(window, 'umenu', 'manage accounts', value='disable')
+        self.toggle_menu(window, 'umenu', 'manage accounts', disabled=True)
+        self.toggle_menu(window, 'umenu', 'sign in', disabled=False)
+        self.toggle_menu(window, 'umenu', 'sign out', disabled=True)
 
         # Disable settings modification
-        self.toggle_menu(window, 'mmenu', 'settings', value='disable')
+        self.toggle_menu(window, 'mmenu', 'settings', disabled=True)
+
+        # Disable record menus
+        for menu in self.record_menus:
+            logger.debug('Toolbar: disabling record menu item {}'.format(menu))
+            self.toggle_menu(window, 'rmenu', menu, disabled=True)
+
+        # Disable accounting method menus
+        for menu in self.account_menus:
+            logger.debug('Toolbar: disabling accounting method menu item {}'.format(menu))
+            self.toggle_menu(window, 'amenu', menu, disabled=True)
 
         # Disable all menu items
-        for rule_group in rules:
-            for rule in rule_group.rules:
-                menu_group = menu_groups[rule_group.name]
-                self.toggle_menu(window, menu_group, rule.menu_title, value='disable')
+#        for rule_group in rules:
+#            for rule in rule_group.rules:
+#                menu_group = menu_groups[rule_group.name]
+#                self.toggle_menu(window, menu_group, rule.menu_title, disabled=True)
 
-    def enable(self, window, rules):
+#    def enable(self, window, rules: list = None):
+    def enable(self, window):
         """
         Enable toolbar buttons
         """
         admin = user.admin
 
-        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
+        record_menus = self.record_menus
+        account_menus = self.account_menus
+
+#        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
+#
+#        if not rules:
+#            rules = []
+        logger.info('Toolbar: enabling toolbar menus')
+
+        # User administration
 
         # Enable admin-only privileges
         if admin is True:
@@ -207,76 +279,36 @@ class ToolBar:
             window['-DBMENU-'].update(disabled=False)
 
             # User administration
-            self.toggle_menu(window, 'umenu', 'manage accounts', value='enable')
+            self.toggle_menu(window, 'umenu', 'manage accounts', disabled=False)
+
+        self.toggle_menu(window, 'umenu', 'sign in', disabled=True)
+        self.toggle_menu(window, 'umenu', 'sign out', disabled=False)
 
         # Allow user to modify user-settings
-        self.toggle_menu(window, 'mmenu', 'settings', value='enable')
+        self.toggle_menu(window, 'mmenu', 'settings', disabled=False)
+
+        # Disable record menus
+        for menu in record_menus:
+            user_access = record_menus[menu]
+            if admin is True or user_access in user.access_permissions():
+                logger.debug('Toolbar: enabling record menu item {}'.format(menu))
+                self.toggle_menu(window, 'rmenu', menu, disabled=False)
+
+        # Disable accounting method menus
+        for menu in account_menus:
+            user_access = account_menus[menu]
+            if admin is True or user_access in user.access_permissions():
+                logger.debug('Toolbar: enabling accounting method menu item {}'.format(menu))
+                self.toggle_menu(window, 'amenu', menu, disabled=False)
 
         # Enable menu items based on configured permissions
-        for rule_group in rules:
-            for rule in rule_group.rules:
-                if admin is True or rule.permissions in user.access_permissions():
-                    menu_group = menu_groups[rule_group.name]
-                    self.toggle_menu(window, menu_group, rule.menu_title, value='enable')
+#        for rule_group in rules:
+#            for rule in rule_group.rules:
+#                if admin is True or rule.permissions in user.access_permissions():
+#                    menu_group = menu_groups[rule_group.name]
+#                    self.toggle_menu(window, menu_group, rule.menu_title, disabled=False)
 
-    def update_username(self, window, username):
-        """
-        Update user menu to display username after a user is logged in.
-        """
-        select_col = mod_const.SELECT_TEXT_COL
-
-        element_key = '-UMENU-'
-
-        # Update menu list to include the username
-        user_items = [('', username), ('', '---')] + self.user_menu['items']
-        user_menu = {'name': '&User', 'items': user_items}
-
-        menu_def = self.menu_definition('umenu', menu=user_menu)
-
-        window[element_key].update(menu_def)
-
-        # Change username color
-        window[element_key].TKMenu.entryconfig(0, foreground=select_col)
-        window[element_key].TKButtonMenu.configure(menu=window[element_key].TKMenu)
-
-    def menu_definition(self, menu_item, menu=None):
-        """
-        Return the menu definition for a menu.
-        """
-        menus = {'amenu': self.acct_menu, 'rmenu': self.reports_menu,
-                 'umenu': self.user_menu, 'mmenu': self.menu_menu}
-
-        if menu is None:
-            try:
-                menu_object = menus[menu_item.lower()]
-            except KeyError:
-                msg = 'selected menu {} not list of available menus'.format(menu_item)
-                logger.error(msg)
-                return None
-        else:
-            menu_object = menu
-
-        menu_items = []
-        for item in menu_object['items']:
-            if isinstance(item, tuple):
-                menu_items.append('{}{}'.format(*item))
-            elif isinstance(item, list):
-                sub_list = []
-                for sub_item in item:
-                    if isinstance(sub_item, tuple):
-                        sub_list.append('{}{}'.format(*sub_item))
-                    elif isinstance(sub_item, list):
-                        sub_sub_list = []
-                        for sub_sub_item in sub_item:
-                            sub_sub_list.append('{}{}'.format(*sub_sub_item))
-                        sub_list.append(sub_sub_list)
-                menu_items.append(sub_list)
-
-        menu_def = [menu_object['name'], menu_items]
-
-        return menu_def
-
-    def toggle_menu(self, window, menu, menu_item, value: str = 'enable'):
+    def toggle_menu(self, window, menu, menu_item, disabled: bool = False):
         """
         Enable / disable menu items.
         """
@@ -288,9 +320,10 @@ class ToolBar:
         except KeyError:
             msg = 'selected menu {} not list of available menus'.format(menu)
             logger.error(msg)
+
             return False
 
-        status = '' if value == 'enable' else '!'
+        status = '' if not disabled else '!'
 
         new_menu = []
         menu_items = select_menu['items']
@@ -332,15 +365,34 @@ class ToolBar:
 
                 new_menu.append(sub_menu)
 
-        # Replace menu item with updated status
+        # Replace the menu item with updated status
         select_menu['items'] = new_menu
-        name = select_menu['name']
 
         # Update window to reflect updated status of the menu item
         element_key = self.key_lookup(menu.lower())
-        window[element_key].update(self.menu_definition(menu))
+        window[element_key].update(self._define_menu(menu))
 
         return True
+
+    def update_username(self, window, username):
+        """
+        Update user menu to display username after a user is logged in.
+        """
+        select_col = mod_const.SELECT_TEXT_COL
+
+        element_key = '-UMENU-'
+
+        # Update the menu item list of the user menu to include the username
+        user_items = [('', username), ('', '---')] + self.user_menu['items']
+        user_menu = {'name': '&User', 'items': user_items}
+
+        menu_def = self._define_menu('umenu', menu=user_menu)
+
+        window[element_key].update(menu_def)
+
+        # Highlight username
+        window[element_key].TKMenu.entryconfig(0, foreground=select_col)
+        window[element_key].TKButtonMenu.configure(menu=window[element_key].TKMenu)
 
 
 # General functions
@@ -549,15 +601,12 @@ def main():
 
             if user.logged_in is True:  # logged on successfully
                 logger.info('user signed in as "{}"'.format(user.uid))
-                # Disable sign-in and enable sign-off
-                toolbar.toggle_menu(window, 'umenu', 'sign in', value='disable')
-                toolbar.toggle_menu(window, 'umenu', 'sign out', value='enable')
 
                 # Switch user icon
                 window['-UMENU-'].Widget.configure(image=userin_image)
 
                 # Enable permission specific actions and menus
-                toolbar.enable(window, all_rules)
+                toolbar.enable(window)
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
@@ -610,12 +659,8 @@ def main():
             # Switch user icon
             window['-UMENU-'].Widget.configure(image=user_image)
 
-            # Disable sign-out and enable sign-in
-            toolbar.toggle_menu(window, 'umenu', 'sign in', value='enable')
-            toolbar.toggle_menu(window, 'umenu', 'sign out', value='disable')
-
             # Disable all actions and menus
-            toolbar.disable(window, all_rules)
+            toolbar.disable(window)
 
             continue
 
@@ -717,7 +762,7 @@ def main():
                 logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
 
                 # Disable the toolbar
-                toolbar.disable(window, all_rules)
+                toolbar.disable(window)
 
                 continue
 
@@ -773,7 +818,7 @@ def main():
                 window[current_rule.current_panel].update(visible=True)
 
                 # Disable toolbar
-                toolbar.disable(window, all_rules)
+                toolbar.disable(window)
 
                 logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
                 continue
@@ -802,7 +847,7 @@ def main():
                     tab.table.collapse_expand(window, frame='filter')
 
                 # Disable toolbar
-                toolbar.disable(window, all_rules)
+                toolbar.disable(window)
 
                 logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
                 continue
@@ -822,7 +867,7 @@ def main():
 
             if current_rule_name is None:
                 # Enable toolbar
-                toolbar.enable(window, all_rules)
+                toolbar.enable(window)
 
                 # Reset current_rule
                 current_rule = None

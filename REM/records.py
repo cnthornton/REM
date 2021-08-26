@@ -119,15 +119,45 @@ class RecordEntry:
         """
         self.name = name
 
+        # Specify whether a record entry is a program record or an external record
         try:
-            self.permissions = entry['AccessPermissions']
-        except KeyError:
-            self.permissions = 'admin'
+            self.program_record = bool(int(entry['ProgramRecord']))
+        except KeyError:  # parameter not specified
+            self.program_record = True
+        except ValueError:  # wrong data type provided to parameter
+            msg = 'Configuration Error: "ProgramRecord" must be either 0 (False) or 1 (True)'
+            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            mod_win2.popup_error(msg)
 
+            self.program_record = True
+
+        # Set record menu parameters
         try:
-            self.menu_title = entry['MenuTitle']
+            menu = entry['Menu']
         except KeyError:
-            self.menu_title = name
+            menu = {'MenuTitle': self.name, 'MenuGroup': None, 'AccessPermissions': 'admin'}
+        else:
+            if 'MenuGroup' not in menu:
+                menu['MenuGroup'] = None
+            if 'MenuTitle' not in menu:
+                menu['MenuTitle'] = self.name
+            if 'AccessPermissions' not in menu:
+                menu['AccessPermissions'] = 'admin'
+
+        self.permissions = menu['AccessPermissions']
+        self.menu_title = menu['MenuTitle']
+#        self.menu_group = menu['MenuGroup']
+
+#        try:
+#            self.permissions = entry['AccessPermissions']
+#        except KeyError:
+#            self.permissions = 'admin'
+
+#        try:
+#            self.menu_title = entry['MenuTitle']
+#        except KeyError:
+#            self.menu_title = name
+#
 
         try:
             self.group = entry['RecordGroup']
@@ -136,16 +166,7 @@ class RecordEntry:
                                  .format(NAME=name))
             sys.exit(1)
 
-        try:
-            self.program_record = bool(int(entry['ProgramRecord']))
-        except KeyError:  # parameter not specified
-            self.program_record = False
-        except ValueError:  # wrong data type provided to parameter
-            msg = 'Configuration Error: "ProgramRecord" must be either 0 (False) or 1 (True)'
-            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            mod_win2.popup_error(msg)
-
-            self.program_record = False
+        self.menu_group = self.group
 
         try:
             self.id_code = entry['IDCode']
