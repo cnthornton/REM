@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.6.27'
+__version__ = '3.6.28'
 
 import sys
 import tkinter as tk
@@ -27,16 +27,23 @@ class ConfigurationManager:
     """
     Class to store and manage configured transaction audit definitions.
 
-    Arguments:
-
-        audit_param (dict): configuration for the audit rule definitions.
-
     Attributes:
+
+        name (str): name of the configuration document.
+
+        title (str): toolbar menu display name.
 
         rules (list): list of transaction audit definitions as AuditRule objects.
     """
 
     def __init__(self, document):
+        """
+        Configuration manager.
+
+        Arguments:
+
+            document (dict): configuration document.
+        """
 
         doc_id = document["_id"]
 
@@ -90,6 +97,10 @@ class ConfigurationManager:
     def print_rules(self, by_title: bool = False):
         """
         Print rules of a the rule set by its name or title.
+
+        Arguments:
+            by_title (bool): print the rules managed by the configuration manager by their title instead of their
+              name [Default: False]
         """
         if by_title is True:
             rule_names = [i.menu_title for i in self.rules]
@@ -98,9 +109,12 @@ class ConfigurationManager:
 
         return rule_names
 
-    def fetch_rule(self, name, by_title: bool = False):
+    def fetch_rule(self, rule, by_title: bool = False):
         """
         Fetch a given rule from the rule set by its name or title.
+
+        Arguments:
+            by_title (bool): fetch a rule managed by the configuration manager by title instead of name [Default: False]
         """
         if by_title is True:
             rule_names = [i.menu_title for i in self.rules]
@@ -108,10 +122,10 @@ class ConfigurationManager:
             rule_names = [i.name for i in self.rules]
 
         try:
-            index = rule_names.index(name)
+            index = rule_names.index(rule)
         except ValueError:
             logger.warning('record entry {NAME} not in Records configuration. Available record entries are {ALL}'
-                           .format(NAME=name, ALL=', '.join(rule_names)))
+                           .format(NAME=rule, ALL=', '.join(rule_names)))
             rule = None
         else:
             rule = self.rules[index]
@@ -121,18 +135,40 @@ class ConfigurationManager:
 
 class ToolBar:
     """
-    Toolbar object.
+    Program toolbar.
+
+    Attributes:
+        name (str): object name.
+
+        elements (list): list of GUI element keys.
+
+        account_items (dict): account menu items with their access permissions.
+
+        record_items (dict): record menu items with their access permissions.
+
+        acct_menu (dict): menu definition for the accounting method menu button.
+
+        record_menu (dict): menu definition for the records menu button.
+
+        user_menu (dict): menu definition for the user management menu button.
+
+        menu_menu (dict): menu definition for the program options menu button.
     """
 
     def __init__(self, account_methods, records):
         """
-        Initialize toolbar parameters.
+        Initialize toolbar attributes.
+
+        Arguments:
+            account_methods (list): list of accounting method rules.
+
+            records (list): list of records rules.
         """
         self.name = 'toolbar'
         self.elements = ['-{ELEM}-'.format(ELEM=i) for i in ['amenu', 'rmenu', 'umenu', 'mmenu']]
 
         # Accounting method menu items
-        self.account_menus = {}
+        self.account_items = {}
         acct_menu = []
         for account_method in account_methods:
             acct_menu.append(('', account_method.title))
@@ -148,13 +184,13 @@ class ToolBar:
 
                 if not rule_submenu:
                     rule_menu.append(('!', menu_title))
-                    self.account_menus[menu_title] = user_access
+                    self.account_items[menu_title] = user_access
                 else:
                     menu_groups[menu_title] = []
 
                     for submenu in rule_submenu:
                         menu_groups[menu_title].append(submenu)
-                        self.account_menus[submenu] = user_access
+                        self.account_items[submenu] = user_access
 
             for menu_group in menu_groups:
                 rule_menu.append(('', menu_group))
@@ -170,11 +206,11 @@ class ToolBar:
         # Program record menu items
         menu_groups = {}
         record_menu = []
-        self.record_menus = {}
+        self.record_items = {}
 
         record_rules = records.rules
         for record_entry in record_rules:
-            if not record_entry.program_record:  # only display program records
+            if not record_entry.program_record or not record_entry.show_menu:  # only display program records
                 continue
 
             menu_title = record_entry.menu_title
@@ -189,7 +225,7 @@ class ToolBar:
             else:  # no menu group specified for the record entry - top level menu.
                 record_menu.append(('!', menu_title))
 
-            self.record_menus[menu_title] = user_access
+            self.record_items[menu_title] = user_access
 
         for menu_group in menu_groups:
             record_menu.append(('', menu_group))
@@ -198,7 +234,7 @@ class ToolBar:
             record_menu.append([('!', i) for i in menu_titles])
 
         self.acct_menu = {'name': '&Validation', 'items': acct_menu}
-        self.reports_menu = {'name': '&Records', 'items': record_menu}
+        self.record_menu = {'name': '&Records', 'items': record_menu}
         self.user_menu = {'name': '&User',
                           'items': [('!', 'Manage &Users'), ('!', '&Messages'), ('', '---'), ('', 'Sign &In'),
                                     ('!', 'Sign &Out')]}
@@ -212,7 +248,7 @@ class ToolBar:
         """
         Return the menu definition for a menu.
         """
-        menus = {'amenu': self.acct_menu, 'rmenu': self.reports_menu,
+        menus = {'amenu': self.acct_menu, 'rmenu': self.record_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
         if menu is None:
@@ -310,7 +346,6 @@ class ToolBar:
 
         return layout
 
-#    def disable(self, window, rules: list = None):
     def disable(self, window):
         """
         Disable toolbar buttons.
@@ -318,10 +353,6 @@ class ToolBar:
         Arguments:
             window (Window): GUI window.
         """
-#        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
-#
-#        if not rules:
-#            rules = []
         logger.info('Toolbar: disabling toolbar menus')
 
         # Database administration
@@ -336,35 +367,24 @@ class ToolBar:
         self.toggle_menu(window, 'mmenu', 'settings', disabled=True)
 
         # Disable record menus
-        for menu in self.record_menus:
+        for menu in self.record_items:
             logger.debug('Toolbar: disabling record menu item {}'.format(menu))
             self.toggle_menu(window, 'rmenu', menu, disabled=True)
 
         # Disable accounting method menus
-        for menu in self.account_menus:
+        for menu in self.account_items:
             logger.debug('Toolbar: disabling accounting method menu item {}'.format(menu))
             self.toggle_menu(window, 'amenu', menu, disabled=True)
 
-        # Disable all menu items
-#        for rule_group in rules:
-#            for rule in rule_group.rules:
-#                menu_group = menu_groups[rule_group.name]
-#                self.toggle_menu(window, menu_group, rule.menu_title, disabled=True)
-
-#    def enable(self, window, rules: list = None):
     def enable(self, window):
         """
         Enable toolbar buttons
         """
         admin = user.admin
 
-        record_menus = self.record_menus
-        account_menus = self.account_menus
+        record_menus = self.record_items
+        account_menus = self.account_items
 
-#        menu_groups = {'audit_rules': 'amenu', 'bank_rules': 'amenu', 'cash_rules': 'amenu', 'records': 'rmenu'}
-#
-#        if not rules:
-#            rules = []
         logger.info('Toolbar: enabling toolbar menus')
 
         # User administration
@@ -397,18 +417,11 @@ class ToolBar:
                 logger.debug('Toolbar: enabling accounting method menu item {}'.format(menu))
                 self.toggle_menu(window, 'amenu', menu, disabled=False)
 
-        # Enable menu items based on configured permissions
-#        for rule_group in rules:
-#            for rule in rule_group.rules:
-#                if admin is True or rule.permissions in user.access_permissions():
-#                    menu_group = menu_groups[rule_group.name]
-#                    self.toggle_menu(window, menu_group, rule.menu_title, disabled=False)
-
     def toggle_menu(self, window, menu, menu_item, disabled: bool = False):
         """
         Enable / disable menu items.
         """
-        menus = {'amenu': self.acct_menu, 'rmenu': self.reports_menu,
+        menus = {'amenu': self.acct_menu, 'rmenu': self.record_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
 
         try:
@@ -494,6 +507,7 @@ class ToolBar:
 # General functions
 def get_panels(account_methods, win_size: tuple = None):
     """
+    Get the GUI layouts for the configuration-dependant panels.
     """
     if win_size:
         width, height = win_size
@@ -519,9 +533,9 @@ def get_panels(account_methods, win_size: tuple = None):
     return pane
 
 
-def resize_elements(window, rules):
+def resize_panels(window, rules):
     """
-    Resize GUI elements when window is resized
+    Resize GUI elements when the window is resized.
     """
     width, height = window.size
 
@@ -534,7 +548,7 @@ def resize_elements(window, rules):
         try:
             rule.resize_elements(window)
         except Exception as e:
-            msg = 'failed to resize window - {}'.format(e)
+            msg = 'failed to resize window - {ERR}'.format(ERR=e)
             logger.error(msg)
 
             continue
@@ -633,7 +647,7 @@ def main():
     userin_image = tk.PhotoImage(data=mod_const.USERIN_ICON)
 
     acct_rules = [i for acct_method in acct_methods for i in acct_method.rules]
-    resize_elements(window, acct_rules)
+    resize_panels(window, acct_rules)
     resized = False
 
     # Event Loop
@@ -682,7 +696,7 @@ def main():
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            resize_elements(window, acct_rules)
+            resize_panels(window, acct_rules)
 
             current_w, current_h = (win_w, win_h)
             resized = True

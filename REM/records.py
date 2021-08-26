@@ -46,7 +46,9 @@ class RecordEntry:
             menu = entry['Menu']
         except KeyError:
             menu = {'MenuTitle': self.name, 'MenuGroup': None, 'AccessPermissions': 'admin'}
+            self.show_menu = False
         else:
+            self.show_menu = True
             if 'MenuGroup' not in menu:
                 menu['MenuGroup'] = None
             if 'MenuTitle' not in menu:
@@ -56,7 +58,7 @@ class RecordEntry:
 
         self.permissions = menu['AccessPermissions']
         self.menu_title = menu['MenuTitle']
-#        self.menu_group = menu['MenuGroup']
+        self.menu_group = menu['MenuGroup']
 
 #        try:
 #            self.permissions = entry['AccessPermissions']
@@ -76,7 +78,7 @@ class RecordEntry:
                                  .format(NAME=name))
             sys.exit(1)
 
-        self.menu_group = self.group
+#        self.menu_group = self.group
 
         try:
             self.id_code = entry['IDCode']
@@ -1063,16 +1065,16 @@ class DatabaseRecord:
         try:
             permissions = entry['Permissions']
         except KeyError:
-            self.permissions = {'edit': 'admin', 'delete': 'admin', 'mark': 'admin', 'references': 'admin',
-                                'components': 'admin', 'approve': 'admin', 'report': 'admin'}
+            self.permissions = {'edit': None, 'delete': None, 'mark': None, 'references': None,
+                                'components': None, 'approve': None, 'report': None}
         else:
-            self.permissions = {'edit': permissions.get('Edit', 'admin'),
-                                'delete': permissions.get('Delete', 'admin'),
-                                'mark': permissions.get('MarkForDeletion', 'admin'),
-                                'references': permissions.get('ModifyReferences', 'admin'),
-                                'components': permissions.get('ModifyComponents', 'admin'),
-                                'approve': permissions.get('Approve', 'admin'),
-                                'report': permissions.get('Report', 'admin')}
+            self.permissions = {'edit': permissions.get('Edit', None),
+                                'delete': permissions.get('Delete', None),
+                                'mark': permissions.get('MarkForDeletion', None),
+                                'references': permissions.get('ModifyReferences', None),
+                                'components': permissions.get('ModifyComponents', None),
+                                'approve': permissions.get('Approve', None),
+                                'report': permissions.get('Report', None)}
 
         try:
             self.title = entry['Title']
