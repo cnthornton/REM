@@ -21,96 +21,6 @@ import REM.secondary as mod_win2
 from REM.client import logger, server_conn, settings, user
 
 
-class RecordsConfiguration:
-    """
-    Class to store and manage program records configuration settings.
-
-    Attributes:
-
-        name (str): name of the configuration document.
-
-        title (str): descriptive name of the configuration document.
-
-        rules (list): List of record entries.
-    """
-
-    def __init__(self, records_doc):
-        """
-        Class to store and manage program records configuration settings.
-
-        Arguments:
-
-            records_doc: records document.
-        """
-
-        if records_doc is None:
-            mod_win2.popup_error('missing required configuration document Records')
-            sys.exit(1)
-
-        try:
-            audit_name = records_doc['name']
-        except KeyError:
-            mod_win2.popup_error('the "Records" parameter configuration "name" is a required field')
-            sys.exit(1)
-        else:
-            self.name = audit_name
-
-        try:
-            self.title = records_doc['title']
-        except KeyError:
-            self.title = audit_name
-
-        try:
-            record_entries = records_doc['rules']
-        except KeyError:
-            mod_win2.popup_error('the "Records" configuration parameter "rules" is a required field')
-            sys.exit(1)
-
-        self.rules = []
-        for record_group in record_entries:
-            record_entry = record_entries[record_group]
-            self.rules.append(RecordEntry(record_group, record_entry))
-
-        self.approved_groups = ['account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
-
-    def print_rules(self, by_title: bool = False):
-        """
-        Print rules of a the rule set by its name or title.
-        """
-        if by_title is True:
-            rule_names = [i.menu_title for i in self.rules]
-        else:
-            rule_names = [i.name for i in self.rules]
-
-        return rule_names
-
-    def fetch_rule(self, name, by_title: bool = False):
-        """
-        Fetch a given rule from the rule set by its name or title.
-        """
-        if by_title is True:
-            rule_names = [i.menu_title for i in self.rules]
-        else:
-            rule_names = [i.name for i in self.rules]
-
-        try:
-            index = rule_names.index(name)
-        except ValueError:
-            logger.warning('record entry {NAME} not in Records configuration. Available record entries are {ALL}'
-                           .format(NAME=name, ALL=', '.join(rule_names)))
-            rule = None
-        else:
-            rule = self.rules[index]
-
-        return rule
-
-    def get_approved_groups(self):
-        """
-        Return a list of approved record-type groups
-        """
-        return self.approved_groups
-
-
 class RecordEntry:
 
     def __init__(self, name, entry):
@@ -1337,7 +1247,7 @@ class DatabaseRecord:
                 logger.warning('RecordEntry {NAME}: unable to add components - missing required parameter "Elements"'
                                .format(NAME=self.name))
             else:
-                supported_record_types = settings.records.get_approved_groups()
+                supported_record_types = ['account', 'bank_deposit', 'bank_statement', 'audit', 'cash_expense']
 
                 for comp_element in comp_elements:
                     if comp_element not in supported_record_types:

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.6.26'
+__version__ = '3.6.27'
 
 import sys
 import tkinter as tk
@@ -23,6 +23,102 @@ from REM.client import logger, server_conn, settings, user
 
 
 # Classes
+class ConfigurationManager:
+    """
+    Class to store and manage configured transaction audit definitions.
+
+    Arguments:
+
+        audit_param (dict): configuration for the audit rule definitions.
+
+    Attributes:
+
+        rules (list): list of transaction audit definitions as AuditRule objects.
+    """
+
+    def __init__(self, document):
+
+        doc_id = document["_id"]
+
+        self.rules = []
+        if document is not None:
+            try:
+                rule_name = document['name']
+            except KeyError:
+                msg = 'configuration document {ID} is missing required field "name"'.format(ID=doc_id)
+                logger.error('ConfigurationManager: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error('Configuration Error: {MSG}'.format(MSG=msg))
+
+                raise AttributeError(msg)
+            else:
+                self.name = rule_name
+
+            try:
+                self.title = document['title']
+            except KeyError:
+                self.title = rule_name
+
+            try:
+                rules = document['rules']
+            except KeyError:
+                msg = '{TYPE} configuration is missing required field "rules"'.format(TYPE=self.name)
+                logger.error('ConfigurationManager: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error('Configuration Error: {MSG}'.format(MSG=msg))
+
+                raise AttributeError(msg)
+
+            if rule_name == 'records':
+                manager = mod_records.RecordEntry
+            elif rule_name == 'audit_rules':
+                manager = mod_audit.AuditRule
+            elif rule_name == 'bank_rules':
+                manager = mod_bank.BankRule
+            elif rule_name == 'cash_rules':
+                manager = mod_cash.CashRule
+            else:
+                msg = 'unknown document type {TYPE} provided'.format(TYPE=self.name)
+                logger.error('ConfigurationManager: {MSG}'.format(MSG=msg))
+                mod_win2.popup_error('Configuration Error: {MSG}'.format(MSG=msg))
+
+                raise AttributeError(msg)
+
+            for rule_name in rules:
+                rule = rules[rule_name]
+
+                self.rules.append(manager(rule_name, rule))
+
+    def print_rules(self, by_title: bool = False):
+        """
+        Print rules of a the rule set by its name or title.
+        """
+        if by_title is True:
+            rule_names = [i.menu_title for i in self.rules]
+        else:
+            rule_names = [i.name for i in self.rules]
+
+        return rule_names
+
+    def fetch_rule(self, name, by_title: bool = False):
+        """
+        Fetch a given rule from the rule set by its name or title.
+        """
+        if by_title is True:
+            rule_names = [i.menu_title for i in self.rules]
+        else:
+            rule_names = [i.name for i in self.rules]
+
+        try:
+            index = rule_names.index(name)
+        except ValueError:
+            logger.warning('record entry {NAME} not in Records configuration. Available record entries are {ALL}'
+                           .format(NAME=name, ALL=', '.join(rule_names)))
+            rule = None
+        else:
+            rule = self.rules[index]
+
+        return rule
+
+
 class ToolBar:
     """
     Toolbar object.
@@ -482,15 +578,14 @@ def main():
         current_h = screen_h
 
     # Load the program configuration
-    record_rules = mod_records.RecordsConfiguration(settings.record_rules)
+    record_rules = ConfigurationManager(settings.record_rules)
     settings.records = record_rules
 
-    audit_rules = mod_audit.AuditRuleController(settings.audit_rules)
-    cash_rules = mod_cash.CashRuleController(settings.cash_rules)
-    bank_rules = mod_bank.BankRuleController(settings.bank_rules)
+    audit_rules = ConfigurationManager(settings.audit_rules)
+    cash_rules = ConfigurationManager(settings.cash_rules)
+    bank_rules = ConfigurationManager(settings.bank_rules)
 
     acct_methods = [audit_rules, bank_rules]
-    all_rules = [audit_rules, cash_rules, bank_rules, record_rules]
 
     # Configure GUI layout
     toolbar = ToolBar([audit_rules, cash_rules, bank_rules], record_rules)
@@ -508,13 +603,13 @@ def main():
         try:
             rule_submenu = rule.menu_flags
         except AttributeError:
-            menu_mapper[rule.menu_title] = rule.menu_title
+            menu_mapper[rule.menu_title] = rule.name
         else:
             if not rule_submenu:
-                menu_mapper[rule.menu_title] = rule.menu_title
+                menu_mapper[rule.menu_title] = rule.name
             else:
                 for menu_title in rule_submenu:
-                    menu_mapper[menu_title] = rule.menu_title
+                    menu_mapper[menu_title] = rule.name
 
     # Event metadata
     current_rule = None
@@ -701,6 +796,7 @@ def main():
         # Display the edit settings window
         if values['-MMENU-'] == 'Settings':
             mod_win2.edit_settings(win_size=window.size)
+
             continue
 
         # Display "About" window
@@ -745,7 +841,9 @@ def main():
         # Activate appropriate accounting workflow method panel
         selected_menu = values['-AMENU-']
         if selected_menu in menu_mapper:
+            print('menu {} was selected'.format(selected_menu))
             selected_rule = menu_mapper[selected_menu]
+            print('selected rule is {}'.format(selected_rule))
 
             if selected_rule in audit_names:  # workflow method is a transaction audit
                 # Obtain the selected rule object
