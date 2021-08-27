@@ -103,7 +103,18 @@ class RecordEntry:
             self.export_rules = {}
             for table in self.import_rules:
                 table_entry = self.import_rules[table]
-                self.export_rules[table] = {'Columns': {j: i for i, j in table_entry['Columns'].items()}}
+                import_columns = table_entry['Columns']
+
+                export_columns = {}
+                for import_column in import_columns:
+                    import_alias = import_columns[import_column]
+                    if isinstance(import_alias, list):
+                        for export_column in import_alias:
+                            export_columns[export_column] = import_column
+                    else:
+                        export_columns[import_alias] = import_column
+
+                self.export_rules[table] = {'Columns': export_columns}
         else:
             self.export_rules = {}
             for export_table in export_rules:
@@ -141,8 +152,9 @@ class RecordEntry:
         try:
             self.import_table = entry['ImportTable']
         except KeyError:
-            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "ImportTable"'
-                                 .format(NAME=name))
+            msg = 'RecordEntry {NAME}: missing configuration parameter "ImportTable"'.format(NAME=self.name)
+            logger.warning(msg)
+
             self.import_table = {}
 
         # Record layout configuration

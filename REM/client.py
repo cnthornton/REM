@@ -606,7 +606,7 @@ class SettingsManager:
         """
         Remove unsaved record IDs for all record entry types.
         """
-        value = {'ids': None, 'record_type': None, 'instance': self.instance_id}
+        value = {'ids': None, 'id_code': None, 'instance': self.instance_id}
         content = {'action': 'remove_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)
@@ -619,10 +619,6 @@ class SettingsManager:
         else:
             msg = 'successfully removed IDs created during the program instance from the list of unsaved record IDs'
             logger.debug(msg)
-
-    #        entries = self.records.rules
-    #        for entry in entries:
-    #            entry.remove_unsaved_ids(internal_only=internal)
 
     def fetch_alias_definition(self, parameter):
         """

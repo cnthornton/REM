@@ -2247,8 +2247,8 @@ class TableElement:
         except IndexError:
             msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
-                         .format(NAME=self.name, IND=index + 1, MSG=msg))
+            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
+                             .format(NAME=self.name, IND=index + 1, MSG=msg))
 
             return df
 
@@ -2264,7 +2264,7 @@ class TableElement:
         except Exception as e:
             msg = 'failed to open record at row {IND}'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             return df
         else:
