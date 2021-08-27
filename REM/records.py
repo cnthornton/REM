@@ -2114,7 +2114,7 @@ class DatabaseRecord:
                                '"{TBL}" - {ERR}'.format(NAME=self.name, TBL=comp_table.name, ERR=e))
                 continue
 
-            if comp_table.actions['add']:  # component records can be created and deleted through parent record
+            if comp_table.modifiers['add']:  # component records can be created and deleted through parent record
                 pc = True  # parent-child relationship
             else:
                 pc = False

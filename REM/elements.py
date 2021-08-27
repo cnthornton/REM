@@ -36,7 +36,7 @@ class TableElement:
 
         title (str): display title.
 
-        actions (dict): allowed table actions.
+        modifiers (dict): flags to alter the table's behavior.
 
         record_type (str): table is composed of records of this type.
 
@@ -106,27 +106,27 @@ class TableElement:
             self.title = name
 
         try:
-            actions = entry['Actions']
+            modifiers = entry['Modifiers']
         except KeyError:
-            self.actions = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
-                            'import': False, 'add': False, 'delete': False, 'fill': False, 'options': False,
-                            'sort': False}
+            self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
+                              'import': False, 'add': False, 'delete': False, 'fill': False, 'options': False,
+                              'sort': False}
         else:
-            self.actions = {'open': actions.get('open', 0), 'edit': actions.get('edit', 0),
-                            'export': actions.get('export', 0), 'import': actions.get('import', 0),
-                            'search': actions.get('search', 0), 'filter': actions.get('filter', 0),
-                            'add': actions.get('add', 0), 'delete': actions.get('delete', 0),
-                            'fill': actions.get('fill', 0), 'options': actions.get('options', 0),
-                            'sort': actions.get('sort', 0)}
-            for action in self.actions.keys():
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
+                              'export': modifiers.get('export', 0), 'import': modifiers.get('import', 0),
+                              'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
+                              'add': modifiers.get('add', 0), 'delete': modifiers.get('delete', 0),
+                              'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
+                              'sort': modifiers.get('sort', 0)}
+            for modifier in self.modifiers:
                 try:
-                    action_val = bool(int(self.actions[action]))
+                    flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
-                    logger.warning('DataTable {TBL}: action {ACT} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, ACT=action))
-                    action_val = False
+                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, MOD=modifier))
+                    flag = False
 
-                self.actions[action] = action_val
+                self.modifiers[modifier] = flag
 
         try:
             columns = entry['Columns']
@@ -528,9 +528,9 @@ class TableElement:
                     index = select_row_index
 
                 logger.debug('DataTable {NAME}: opening record at real index {IND}'.format(NAME=self.name, IND=index))
-                if self.actions['open'] is True:
+                if self.modifiers['open'] is True:
                     self.df = self.export_row(index)
-                elif self.actions['open'] is False and self.actions['edit'] is True:
+                elif self.modifiers['open'] is False and self.modifiers['edit'] is True:
                     self.edit_row(index)
 
         elif event == self.key_lookup('CollapseButton'):
@@ -724,7 +724,7 @@ class TableElement:
 
         self.sort(self.sort_on)
 
-        if self.actions['sort'] is True:
+        if self.modifiers['sort'] is True:
             for menu_index, display_col in enumerate(display_map):
                 display_val = display_map[display_col]
                 if display_val in self.sort_on:
@@ -1301,7 +1301,7 @@ class TableElement:
                     element_justification='c', background_color=filter_bg_col, expand_x=True)]],
                              border_width=1, background_color=filter_bg_col)]]
 
-        if len(filter_params) > 0 and self.actions['filter'] is True:
+        if len(filter_params) > 0 and self.modifiers['filter'] is True:
             visible_filter = True
         else:
             visible_filter = False
@@ -1320,7 +1320,7 @@ class TableElement:
 
         # Table title
         row3 = []
-        if self.actions['search'] is True and self.search_field is not None:
+        if self.modifiers['search'] is True and self.search_field is not None:
             row3.append(sg.Col([
                 [sg.Frame('', [[sg.Image(data=mod_const.SEARCH_ICON, background_color=bg_col, pad=((0, pad_h), 0)),
                                 sg.Input(default_text='', key=search_key, size=(isize - 2, 1),
@@ -1341,7 +1341,7 @@ class TableElement:
             row3.append(sg.Col([[sg.Canvas(size=(0, 0), background_color=header_col)]],
                                justification='c', background_color=header_col, expand_x=True))
 
-        if self.actions['options'] is True:
+        if self.modifiers['options'] is True:
             row3.append(sg.Col([
                 [sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                 [sg.Button('', key=options_key, image_data=mod_const.OPTIONS_ICON, border_width=0,
@@ -1357,7 +1357,7 @@ class TableElement:
         row4 = []
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
-        bind = True if (self.actions['edit'] is True or self.actions['open'] is True) and editable is True else False
+        bind = True if (self.modifiers['edit'] is True or self.modifiers['open'] is True) and editable is True else False
         events = False
 
         col_widths = self._calc_column_widths(width=width - 16, size=font_size, pixels=False)
@@ -1383,18 +1383,18 @@ class TableElement:
                              element_justification='r', vertical_alignment='c')]],
                     pad=(0, (0, pad_v)), background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
 
-        if self.actions['fill'] is True:
+        if self.modifiers['fill'] is True:
             fill_menu = ['&Fill', list(self.display_columns)]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
                                           image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                           button_color=(text_col, bg_col), tooltip='Fill NA values')])
 
-        if self.actions['export'] is True:
+        if self.modifiers['export'] is True:
             options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON,
                                       image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                       button_color=(text_col, bg_col), tooltip='Export to spreadsheet')])
 
-        if self.actions['sort'] is True:
+        if self.modifiers['sort'] is True:
             sort_menu = ['&Sort', list(self.display_columns)]
             options.append(
                 [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON,
@@ -1408,17 +1408,17 @@ class TableElement:
         row5 = []
 
         mod_row = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
-                             button_color=(text_col, header_col), disabled=disabled, visible=self.actions['import'],
+                             button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['import'],
                              tooltip='Add an existing database record to the table ({})'.format(import_shortcut),
-                             metadata={'visible': self.actions['import'], 'disabled': disabled}),
+                             metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
                    sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
-                             button_color=(text_col, header_col), disabled=disabled, visible=self.actions['add'],
+                             button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['add'],
                              tooltip='Add a new row to the table ({})'.format(add_shortcut),
-                             metadata={'visible': self.actions['add'], 'disabled': disabled}),
+                             metadata={'visible': self.modifiers['add'], 'disabled': disabled}),
                    sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
-                             button_color=(text_col, header_col), disabled=disabled, visible=self.actions['delete'],
+                             button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['delete'],
                              tooltip='Remove the selected row(s) from the table ({})'.format(delete_shortcut),
-                             metadata={'visible': self.actions['delete'], 'disabled': disabled})]
+                             metadata={'visible': self.modifiers['delete'], 'disabled': disabled})]
 
         row5.append(sg.Col([mod_row], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
                            background_color=header_col, expand_x=True))
@@ -1524,7 +1524,7 @@ class TableElement:
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
         # Enable filter parameters
-        if len(params) > 0 and self.actions['filter'] is True:
+        if len(params) > 0 and self.modifiers['filter'] is True:
             # Enable the apply button
             filter_key = self.key_lookup('Filter')
             window[filter_key].update(disabled=False)
@@ -1551,7 +1551,7 @@ class TableElement:
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
 
         # Enable filter parameters
-        if len(params) > 0 and self.actions['filter'] is True:
+        if len(params) > 0 and self.modifiers['filter'] is True:
             # Enable the apply button
             filter_key = self.key_lookup('Filter')
             window[filter_key].update(disabled=True)
@@ -1707,7 +1707,7 @@ class TableElement:
 
         # Expand the table frames
         filter_params = self.parameters
-        if len(filter_params) > 0 and self.actions['filter'] is True:
+        if len(filter_params) > 0 and self.modifiers['filter'] is True:
             width_key = self.key_lookup('Width')
             window[width_key].set_size((width, None))
 
@@ -3852,7 +3852,7 @@ class DataElement:
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                result = mod_dm.evaluate_condition({self.name, display_value}, annot_condition)
+                result = mod_dm.evaluate_condition({self.name: display_value}, annot_condition)
             except Exception as e:
                 logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
@@ -4609,7 +4609,7 @@ class ElementReference:
         try:
             self.operation = entry['Operation']
         except KeyError:
-            msg = 'Configuration Error: DataElement {NAME}: reference element is missing required parameter ' \
+            msg = 'Configuration Error: ElementReference {NAME}: reference element is missing required parameter ' \
                   '"Operation".'.format(NAME=name)
             logger.error(msg)
             mod_win2.popup_error(msg)
@@ -4622,8 +4622,8 @@ class ElementReference:
             self.default = None
 
         self.value = self.default
-        logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
-                     'and formatted value {VAL}'
+        logger.debug('ElementReference {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value '
+                     '{DEF} and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
         self.editable = False
@@ -4638,10 +4638,10 @@ class ElementReference:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            msg = 'DataElement {NAME}: component "{COMP}" not found in list of element components' \
+            msg = 'ElementReference {NAME}: component "{COMP}" not found in list of element components' \
                 .format(NAME=self.name, COMP=component)
             logger.warning(msg)
-            logger.debug('DataElement {NAME}: data element contains components {COMP}'
+            logger.debug('ElementReference {NAME}: data element contains components {COMP}'
                          .format(NAME=self.name, COMP=element_names))
 
             raise KeyError(msg)
@@ -4660,7 +4660,7 @@ class ElementReference:
         """
         # Reset to default
         if not pd.isna(self.default) and not pd.isna(self.value):
-            logger.debug('DataElement {NAME}: resetting data element value "{VAL}" to default "{DEF}"'
+            logger.debug('ElementReference {NAME}: resetting data element value "{VAL}" to default "{DEF}"'
                          .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
         self.value = self.default
@@ -4785,7 +4785,7 @@ class ElementReference:
         else:  # boolean
             value_fmt = settings.format_as_bool(input_value)
 
-        logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
+        logger.debug('ElementReference {NAME}: input value "{VAL}" formatted as "{FMT}"'
                      .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
 
         return value_fmt
@@ -4871,28 +4871,28 @@ class ElementReference:
         if pd.isna(display_value) or not rules:
             return None
 
-        logger.debug('DataElement {NAME}: annotating display value on configured annotation rules'
+        logger.debug('ElementReference {NAME}: annotating display value on configured annotation rules'
                      .format(NAME=self.name))
 
         annotation = None
         for annot_code in rules:
-            logger.debug('DataElement {NAME}: annotating element based on configured annotation rule "{CODE}"'
+            logger.debug('ElementReference {NAME}: annotating element based on configured annotation rule "{CODE}"'
                          .format(NAME=self.name, CODE=annot_code))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                result = mod_dm.evaluate_condition({self.name, display_value}, annot_condition)
+                result = mod_dm.evaluate_condition({self.name: display_value}, annot_condition)
             except Exception as e:
-                logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
+                logger.error('ElementReference {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
             if result:
-                logger.debug('DataElement {NAME}: element value {VAL} annotated on annotation code {CODE}'
+                logger.debug('ElementReference {NAME}: element value {VAL} annotated on annotation code {CODE}'
                              .format(NAME=self.name, VAL=display_value, CODE=annot_code))
                 if annotation:
-                    logger.warning('DataElement {NAME}: element value {VAL} has passed two or more annotation '
-                                   'rules ... defaulting to the first passed "{CODE}"'
+                    logger.warning('ElementReference {NAME}: element value {VAL} has passed two or more annotation '
+                                   'rules ... defaulting to the first evaluated "{CODE}"'
                                    .format(NAME=self.name, VAL=display_value, CODE=annotation))
                 else:
                     annotation = annot_code

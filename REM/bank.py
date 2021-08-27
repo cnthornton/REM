@@ -1135,8 +1135,8 @@ class AccountEntry:
 
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
-                    if table.actions['open'] is True:
-                        view_only = not table.actions['edit']
+                    if table.modifiers['open'] is True:
+                        view_only = not table.modifiers['edit']
                         table.df = table.export_row(index, layout=self.record_layout, view_only=view_only, level=0)
 
                         table.update_display(window, window_values=values)

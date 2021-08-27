@@ -2029,7 +2029,7 @@ class RecordTable(TableElement):
 
         etype (str): GUI element type.
 
-        actions (dict): allowed table actions.
+        actions (dict): allowed table modifiers.
 
         record_type (str): table is composed of records of this type.
 

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.6.29'
+__version__ = '3.6.30'
 
 import sys
 import tkinter as tk
@@ -25,7 +25,7 @@ from REM.client import logger, server_conn, settings, user
 # Classes
 class ConfigurationManager:
     """
-    Class to store and manage configured transaction audit definitions.
+    Class to store and manage configuration documents.
 
     Attributes:
 
@@ -33,7 +33,7 @@ class ConfigurationManager:
 
         title (str): toolbar menu display name.
 
-        rules (list): list of transaction audit definitions as AuditRule objects.
+        rules (list): list of major program objects defined by the configuration.
     """
 
     def __init__(self, document):
@@ -96,7 +96,7 @@ class ConfigurationManager:
 
     def print_rules(self, by_title: bool = False):
         """
-        Print rules of a the rule set by its name or title.
+        Print rules of the rule set by either its name (default) or title.
 
         Arguments:
             by_title (bool): print the rules managed by the configuration manager by their title instead of their
@@ -111,7 +111,7 @@ class ConfigurationManager:
 
     def fetch_rule(self, rule, by_title: bool = False):
         """
-        Fetch a given rule from the rule set by its name or title.
+        Fetch a given rule from the rule set by its name (default) or title.
 
         Arguments:
             by_title (bool): fetch a rule managed by the configuration manager by title instead of name [Default: False]
@@ -378,7 +378,7 @@ class ToolBar:
 
     def enable(self, window):
         """
-        Enable toolbar buttons
+        Enable toolbar buttons.
         """
         admin = user.admin
 
@@ -419,7 +419,7 @@ class ToolBar:
 
     def toggle_menu(self, window, menu, menu_item, disabled: bool = False):
         """
-        Enable / disable menu items.
+        Enable or disable a specific menu item.
         """
         menus = {'amenu': self.acct_menu, 'rmenu': self.record_menu,
                  'umenu': self.user_menu, 'mmenu': self.menu_menu}
