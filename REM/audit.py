@@ -98,15 +98,11 @@ class AuditRule:
             param_entry = params[param_name]
 
             param_layout = param_entry['ElementType']
-            if param_layout == 'dropdown':
+            if param_layout in ('dropdown', 'combo'):
                 param_class = mod_param.DataParameterCombo
-            elif param_layout == 'input':
+            elif param_layout in ('input', 'date'):
                 param_class = mod_param.DataParameterInput
-            elif param_layout == 'date':
-                param_class = mod_param.DataParameterDate
-            elif param_layout == 'date_range':
-                param_class = mod_param.DataParameterDateRange
-            elif param_layout == 'range':
+            elif param_layout in ('range', 'date_range'):
                 param_class = mod_param.DataParameterRange
             elif param_layout == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
@@ -135,7 +131,6 @@ class AuditRule:
 
             self.tabs.append(tab_rule)
             self.elements += tab_rule.elements
-#            self.elements.append('-HK_TAB{}-'.format(tab_i+1))
 
         self.current_tab = 0
         self.final_tab = len(self.tabs)
@@ -892,29 +887,41 @@ class AuditTransactionTab:
             self.title = name
 
         try:
-            import_rules = entry['ImportRules']
+            self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required field "ImportRules".' \
+            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required parameter "RecordType"' \
                 .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
-        else:
-            self.import_rules = import_rules
+            logger.error(msg)
+
+            raise AttributeError(msg)
 
         try:
             self.table = mod_elem.TableElement(name, entry['DisplayTable'])
         except KeyError:
             msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required parameter "DisplayTable"' \
                 .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            logger.error(msg)
+
+            raise AttributeError(msg)
         except AttributeError as e:
             msg = 'Configuration Error: AuditTransactionTab {NAME}: unable to initialize DisplayTable - {ERR}' \
                 .format(NAME=name, ERR=e)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            logger.error(msg)
+
+            raise AttributeError(msg)
         else:
             self.elements += self.table.elements
+
+        try:
+            import_rules = entry['ImportRules']
+        except KeyError:
+            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required field "ImportRules".' \
+                .format(NAME=name)
+            logger.error(msg)
+
+            raise AttributeError(msg)
+        else:
+            self.import_rules = import_rules
 
         try:
             self.record_layout = entry['RecordLayout']
@@ -1063,35 +1070,38 @@ class AuditTransactionTab:
         if event in table_keys:
             table = self.table
 
-            tbl_key = self.table.key_lookup('Element')
-            import_key = self.table.key_lookup('Import')
-            if event == tbl_key:  # user clicked to open a table record
-                if self.record_layout is not None:
-                    # Find index of row
-                    try:
-                        select_row_index = values[event][0]
-                    except IndexError:  # user double-clicked too quickly
-                        logger.warning('AuditTransactionTab {NAME}: no row selected for exporting'
-                                       .format(NAME=self.name))
-                    else:
-                        # Get the real index of the column
-                        try:
-                            row_index = table.index_map[select_row_index]
-                        except KeyError:
-                            row_index = select_row_index
-
-                        table.export_row(row_index, layout=self.record_layout, custom=True)
-                else:
-                    logger.warning('AuditTransactionTab {NAME}: no layout specified for the transaction type'
-                                   .format(NAME=self.name))
-
-            elif event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
-                                                                   window[import_key].metadata['visible'])):
-                table.import_rows(import_rules=self.import_rules)
-                table.update_display(window, window_values=values)
-
-            else:
-                table.run_event(window, event, values)
+            table.run_event(window, event, values)
+#
+#            tbl_key = self.table.key_lookup('Element')
+#            import_key = self.table.key_lookup('Import')
+#            if event == tbl_key:  # user clicked to open a table record
+#                if self.record_layout is not None:
+#                    # Find index of row
+#                    try:
+#                        select_row_index = values[event][0]
+#                    except IndexError:  # user double-clicked too quickly
+#                        logger.warning('AuditTransactionTab {NAME}: no row selected for exporting'
+#                                       .format(NAME=self.name))
+#                    else:
+#                        # Get the real index of the column
+#                        try:
+#                            row_index = table.index_map[select_row_index]
+#                        except KeyError:
+#                            row_index = select_row_index
+#
+#                        table.export_row(row_index, layout=self.record_layout, custom=True)
+#                else:
+#                    logger.warning('AuditTransactionTab {NAME}: no layout specified for the transaction type'
+#                                   .format(NAME=self.name))
+#
+#            elif event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
+#                                                                   window[import_key].metadata['visible'])):
+##                table.import_rows(import_rules=self.import_rules)
+#                table.import_rows()
+#                table.update_display(window, window_values=values)
+#
+#            else:
+#                table.run_event(window, event, values)
 
         # Run a transaction audit
         elif event == audit_key:
@@ -1116,7 +1126,10 @@ class AuditTransactionTab:
         Load data from the database.
         """
         # Prepare the database query statement
-        import_rules = self.import_rules
+        record_type = self.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+        import_rules = record_entry.import_rules
+#        import_rules = self.import_rules
 
         param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in self.parameters]
         filters = param_filters + mod_db.format_import_filters(import_rules)
@@ -1148,9 +1161,12 @@ class AuditTransactionTab:
         strptime = datetime.datetime.strptime
 
         # Class attributes
-        import_rules = self.import_rules
-        table = self.table
+        record_type = self.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+        import_rules = record_entry.import_rules
 
+#        import_rules = self.import_rules
+        table = self.table
         pkey = table.id_column
         df = table.data()
         id_list = sorted(table.row_ids(), reverse=False)
@@ -1367,7 +1383,8 @@ class AuditTransactionTab:
         # Display import window with potentially missing data
         table.import_df = table.append(missing_df, imports=True)
         if not table.import_df.empty:
-            table.import_rows(import_rules=self.import_rules, program_database=False)
+#            table.import_rows(import_rules=self.import_rules, program_database=False)
+            table.import_rows()
 
     def update_id_components(self):
         """
@@ -2033,152 +2050,6 @@ class AuditRecordTab:
         # Prepare to export associated deposit records for the relevant account records
         if not statements:
             statements = {}
-
-        # Export audit record
-        statements = record.prepare_save_statements(statements)
-
-        return statements
-
-    def save_record_old(self, statements: dict = None):
-        """
-        Save audit record to the program database defined in the configuration file.
-        """
-        record = self.record
-        ref_table = settings.reference_lookup
-
-        # Prepare to export associated deposit records for the relevant account records
-        if not statements:
-            statements = {}
-
-        account_table = self.record.fetch_component('account')
-        ref_type = account_table.record_type
-        account_df = account_table.data()
-        account_header = account_df.columns.tolist()
-        if 'Account' not in account_header:
-            msg = 'required column "Account" not found in the account table header'
-            logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise AttributeError(msg)
-
-        record_entry = settings.records.fetch_rule(self.deposit_type)
-        if not record_entry:
-            msg = 'a deposit record type was not configured for the audit record. No deposit records will be ' \
-                  'automatically created for the account records.'
-            logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise TypeError(msg)
-        else:
-            record_type = record_entry.name
-
-        # Create deposit records for current account records
-        deposit_header = mod_db.format_record_columns(record_entry.import_rules)
-        deposit_df = pd.DataFrame(columns=deposit_header)
-        for index, row in account_df.iterrows():
-            deposit_data = pd.Series(index=deposit_header)
-
-            account_id = row[account_table.id_column]
-            deposit_data['AccountID'] = account_id
-
-            try:
-                account_no = row['Account']
-            except KeyError:
-                msg = 'missing the required column "Account" from the "{TYPE}" table'.format(TYPE=ref_type)
-                logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise KeyError(msg)
-
-            if account_no == 'resting':  # do not create deposit records for account records in the resting account
-                continue
-
-            # Add value to new deposit record based on account record values
-            for colname in account_header:
-                if colname in deposit_header:
-                    deposit_data[colname] = row[colname]
-
-            try:
-                payment_date = row['PaymentDate']
-            except KeyError:
-                msg = 'missing the column "PaymentDate" from the "{TYPE}" table'.format(TYPE=ref_type)
-                logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
-            else:
-                if payment_date:
-                    deposit_data['DepositDate'] = payment_date
-                else:
-                    msg = 'no deposit date set for the new "{TYPE}" record associated with "{RTYPE}" record "{ID}"'\
-                        .format(TYPE=record_type, RTYPE=ref_type, ID=account_id)
-                    logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_error(msg)
-
-            # Add the deposit amount
-            try:
-                deposit_amount = row['CorrectedAmount']
-            except KeyError:
-                msg = 'missing deposit amount for new "{TYPE}" record associated with "{RTYPE}" record "{ID}"'\
-                    .format(TYPE=record_type, RTYPE=ref_type, ID=account_id)
-                logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
-            else:
-                if deposit_amount is not None:
-                    deposit_data['DepositAmount'] = deposit_amount
-                else:
-                    msg = 'no deposit amount set for new "{TYPE}" record associated with "{RTYPE}" record "{ID}"'\
-                        .format(TYPE=record_type, RTYPE=ref_type, ID=account_id)
-                    logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_error(msg)
-
-            deposit_df = deposit_df.append(deposit_data, ignore_index=True)
-
-        # Create new record IDs for the deposit records
-        try:
-            date_list = pd.to_datetime(deposit_df[account_table.date_column], errors='coerce')
-        except KeyError:
-            msg = 'failed to create IDs for the new records - failed to create "{TYPE}" records associated with ' \
-                  '"{RTYPE}" records'.format(TYPE=record_type, RTYPE=ref_type)
-            logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise KeyError(msg)
-        else:
-            date_list = date_list.tolist()
-
-        deposit_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
-        if deposit_ids is None:
-            msg = 'failed to create "{TYPE}" records associated with the "{RTYPE}" record IDs' \
-                .format(NAME=self.name, TYPE=record_type, RTYPE=ref_type)
-            logger.error('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            mod_win2.popup_error(msg)
-
-            raise AssertionError(msg)
-        elif len(deposit_ids) < 1:
-            msg = 'no records of type "{TYPE}" records will be created'.format(NAME=self.name, TYPE=record_type)
-            logger.warning('AuditRecordTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-        deposit_df['RecordID'] = deposit_ids
-        statements = record_entry.save_database_records(deposit_df, id_field='RecordID', exists=False,
-                                                        statements=statements)
-
-        # Save the associations to the references database table
-        for index, row in deposit_df.iterrows():
-            deposit_id = row['RecordID']
-            account_id = row['AccountID']
-
-            # Save reference to the account record
-            ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
-                           settings.creation_date, 'IsParentChild']
-            ref_values = (deposit_id, record_type, account_id, ref_type, datetime.datetime.now(), user.uid,
-                          datetime.datetime.now(), True)
-
-            statements = user.prepare_insert_statement(ref_table, ref_columns, ref_values, statements=statements)
-
-            # Save reference to the audit record
-            audit_id = record.record_id()
-            audit_record_type = record.name
-            ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', settings.creator_code,
-                           settings.creation_date, 'IsParentChild']
-            ref_values = (audit_id, audit_record_type, deposit_id, record_type, datetime.datetime.now(), user.uid,
-                          datetime.datetime.now(), True)
-
-            statements = user.prepare_insert_statement(ref_table, ref_columns, ref_values, statements=statements)
 
         # Export audit record
         statements = record.prepare_save_statements(statements)

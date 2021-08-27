@@ -887,7 +887,7 @@ class RecordEntry:
         logger.debug('RecordEntry {NAME}: attempting to remove IDs {ID} from the list of unsaved record IDs'
                      .format(NAME=self.name, ID=record_ids))
 
-        value = {'ids': record_ids, 'record_type': self.name}
+        value = {'ids': record_ids, 'id_code': self.id_code}
         content = {'action': 'remove_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)
@@ -916,7 +916,7 @@ class RecordEntry:
             logger.debug('RecordEntry {NAME}: attempting to obtain list of unsaved record IDs associated with the '
                          'record entry'.format(NAME=self.name))
 
-        value = {'instance': instance, 'record_type': self.name}
+        value = {'instance': instance, 'id_code': self.id_code}
         content = {'action': 'request_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)
@@ -947,7 +947,7 @@ class RecordEntry:
         else:
             id_set = [(i, settings.instance_id) for i in record_ids]
 
-        value = {'ids': id_set, 'record_type': self.name}
+        value = {'ids': id_set, 'id_code': self.id_code}
         content = {'action': 'add_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)
@@ -1315,34 +1315,6 @@ class DatabaseRecord:
         self.ref_df = pd.DataFrame(
             columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild', 'IsHardLink',
                      'IsApproved'])
-
-        # Record behavior modifiers
-        supported_modifers = settings.supported_modifiers
-        try:
-            modifiers = entry['Modifiers']
-        except KeyError:
-            self.modifiers = {}
-        else:
-            self.modifiers = {}
-            for modifier in modifiers:
-                if modifier not in supported_modifers:
-                    logger.warning('RecordEntry {NAME}: unknown modifier "{MOD}" set in the configuration'
-                                   .format(NAME=self.name, MOD=modifier))
-                    continue
-                try:
-                    mod_val = bool(int(modifiers[modifier]))
-                except ValueError:
-                    msg = 'the value provided to modifier "{MOD}" must be either 0 (False) or 1 (True) ... setting ' \
-                          'to default "False"'.format(MOD=modifier)
-                    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    mod_val = False
-
-                self.modifiers[modifier] = mod_val
-
-        for modifier in supported_modifers:
-            if modifier not in self.modifiers:
-                self.modifiers[modifier] = False
 
         # Record report layout definition
         try:
@@ -1763,70 +1735,6 @@ class DatabaseRecord:
                            .format(ELEM=component, NAME=self.name))
 
         return comp_tbl
-
-    def get_original_components(self, table):
-        """
-        Return a list of record IDs of the original records imported from the database.
-        """
-        record_id = self.record_id()
-
-        try:
-            comp_table = self.fetch_component(table)
-        except KeyError:
-            logger.warning('RecordEntry {NAME}: component table {TBL} not found'.format(NAME=self.name, TBL=table))
-            return []
-
-        import_df = self.ref_df
-        if import_df.empty:
-            return []
-
-        comp_type = comp_table.record_type
-        if comp_type is None:
-            logger.warning('RecordEntry {NAME}: component table {TBL} has no record type assigned'
-                           .format(NAME=self.name, TBL=comp_table.name))
-            return []
-
-        try:
-            orig_ids = import_df[(import_df['DocNo'] == record_id) &
-                                 (import_df['RefType'] == comp_type)]['RefNo'].tolist()
-        except Exception as e:
-            logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
-                           '{TBL} - {ERR}'.format(NAME=self.name, TBL=comp_table.name, ERR=e))
-            orig_ids = []
-
-        return orig_ids
-
-    def get_added_components(self, table):
-        """
-        Return a list of record IDs added to a component table post-record initialization.
-        """
-        try:
-            comp_table = self.fetch_component(table)
-        except KeyError:
-            logger.warning('RecordEntry {NAME}: component table {TBL} not found'.format(NAME=self.name, TBL=table))
-            return []
-
-        orig_ids = self.get_original_components(table)
-        current_ids = comp_table.df[comp_table.id_column].tolist()
-        added_ids = list(set(current_ids).difference(set(orig_ids)))
-
-        return added_ids
-
-    def get_deleted_components(self, table):
-        """
-        Return a list of original record IDs deleted from component table post-record initialization.
-        """
-        try:
-            comp_table = self.fetch_component(table)
-        except KeyError:
-            logger.warning('RecordEntry {NAME}: component table {TBL} not found'.format(NAME=self.name, TBL=table))
-            return []
-
-        orig_ids = self.get_original_components(table)
-        current_ids = comp_table.df[comp_table.id_column].tolist()
-        deleted_ids = list(set(orig_ids).difference(set(current_ids)))
-
-        return deleted_ids
 
     def table_values(self):
         """

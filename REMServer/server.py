@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.4'
+__version__ = '0.3.5'
 
 import logging
 import logging.handlers as handlers
@@ -304,6 +304,7 @@ class ClientConnection:
                         logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                         content = {'success': False, 'value': msg}
                     db_manager.disconnect()
+
             elif action == 'db_schema':
                 try:
                     conn_str = value.get('connection_string')
@@ -323,39 +324,45 @@ class ClientConnection:
                     else:
                         content = db_manager.table_schema(table)
                     db_manager.disconnect()
+
             elif action == 'constants':
                 content = configuration.format_attrs(value)
-            elif action == 'remove_ids':
-                try:
-                    record_type = value.get('record_type')
-                    ids = value.get('ids')
-                    instance = value.get('instance')
-                except TypeError:
-                    msg = 'request value formatted incorrectly'
-                    logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
-                    content = {'success': False, 'value': msg}
-                else:
-                    content = configuration.remove_unsaved_ids(record_ids=ids, rt=record_type, instance_id=instance)
+
             elif action == 'add_ids':
                 try:
-                    record_type = value.get('record_type')
+                    id_code = value.get('id_code')
                     ids = value.get('ids')
                 except TypeError:
                     msg = 'request value formatted incorrectly'
                     logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                     content = {'success': False, 'value': msg}
                 else:
-                    content = configuration.add_unsaved_ids(record_type, ids)
-            elif action == 'request_ids':
+                    content = configuration.add_unsaved_ids(id_code, ids)
+
+            elif action == 'remove_ids':
                 try:
-                    record_type = value.get('record_type')
+                    id_code = value.get('id_code')
+                    ids = value.get('ids')
                     instance = value.get('instance')
                 except TypeError:
                     msg = 'request value formatted incorrectly'
                     logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
                     content = {'success': False, 'value': msg}
                 else:
-                    content = configuration.get_unsaved_ids(record_type, instance_id=instance)
+                    content = configuration.remove_unsaved_ids(record_ids=ids, id_code=id_code,
+                                                               instance_id=instance)
+
+            elif action == 'request_ids':
+                try:
+                    id_code = value.get('id_code')
+                    instance = value.get('instance')
+                except TypeError:
+                    msg = 'request value formatted incorrectly'
+                    logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
+                    content = {'success': False, 'value': msg}
+                else:
+                    content = configuration.get_unsaved_ids(id_code, instance_id=instance)
+
             else:
                 msg = 'invalid action {ACTION}'.format(ACTION=action)
                 logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
@@ -729,6 +736,48 @@ class ConfigManager:
 
         return collection
 
+    def _add_unsaved_ids(self, record_type, record_ids):
+        """
+        Add record IDs to the dictionary of unsaved record IDs.
+        """
+        logger.debug('adding record IDs {IDS} of type "{TYPE}" to the database of unsaved record IDs'
+                     .format(IDS=record_ids, TYPE=record_type))
+
+        success = True
+        current_ids = self._get_unsaved_ids(record_type)
+        for index, id_tup in enumerate(record_ids):
+            unsaved_id = id_tup[0]
+            if (not unsaved_id) or (unsaved_id in current_ids):
+                continue
+
+            try:
+                self.unsaved_ids[record_type].append(id_tup)
+            except KeyError:
+                self.unsaved_ids[record_type] = [id_tup]
+
+        logger.debug('current unsaved IDs with record type "{TYPE}" from all instances are: {IDS}'
+                     .format(IDS=self.unsaved_ids[record_type], TYPE=record_type))
+
+        return success
+
+    def _get_unsaved_ids(self, record_type, instance_id: int = None):
+        id_tups = self.unsaved_ids.get(record_type, None)
+        if id_tups:
+            if instance_id is not None:
+                unsaved_ids = [i[0] for i in id_tups if i[1] == instance_id]
+                logger.debug('current unsaved IDs with record type "{TYPE}" from instance "{ID}" are: {IDS}'
+                             .format(TYPE=record_type, ID=instance_id, IDS=unsaved_ids))
+            else:
+                unsaved_ids = [i[0] for i in id_tups]
+                logger.debug('current unsaved IDs with record type "{TYPE}" from all instances are: {IDS}'
+                             .format(IDS=unsaved_ids, TYPE=record_type))
+        else:
+            logger.debug('there are no unsaved IDs with record type "{TYPE}" from any instance'
+                         .format(TYPE=record_type))
+            unsaved_ids = []
+
+        return unsaved_ids
+
     def load_configuration(self, cnfg):
         """
         Load the configuration documents.
@@ -742,10 +791,6 @@ class ConfigManager:
             logger.error('unable to load configuration from the configuration database')
             sys.exit(1)
 
-#        self.audit_rules = self._sanitize(collection.find_one({'name': 'audit_rules'}))
-#        self.cash_rules = self._sanitize(collection.find_one({'name': 'cash_rules'}))
-#        self.bank_rules = self._sanitize(collection.find_one({'name': 'bank_rules'}))
-#        self.records = self._sanitize(collection.find_one({'name': 'records'}))
         self.audit_rules = collection.find_one({'name': 'audit_rules'})
         self.cash_rules = collection.find_one({'name': 'cash_rules'})
         self.bank_rules = collection.find_one({'name': 'bank_rules'})
@@ -780,12 +825,12 @@ class ConfigManager:
 
         return {'success': True, 'value': attrs}
 
-    def add_unsaved_ids(self, record_type, record_ids):
+    def add_unsaved_ids(self, id_code, record_ids):
         """
         Add record IDs to the dictionary of unsaved record IDs.
         """
         try:
-            success = self._add_unsaved_ids(record_type, record_ids)
+            success = self._add_unsaved_ids(id_code, record_ids)
         except Exception as e:
             value = e
             success = False
@@ -794,50 +839,26 @@ class ConfigManager:
 
         return {'success': success, 'value': value}
 
-    def _add_unsaved_ids(self, record_type, record_ids):
-        """
-        Add record IDs to the dictionary of unsaved record IDs.
-        """
-        logger.debug('adding record IDs {IDS} of type "{TYPE}" to the database of unsaved record IDs'
-                     .format(IDS=record_ids, TYPE=record_type))
-
-        success = True
-        current_ids = self._get_unsaved_ids(record_type)
-        for index, id_tup in enumerate(record_ids):
-            unsaved_id = id_tup[0]
-            if (not unsaved_id) or (unsaved_id in current_ids):
-                continue
-
-            try:
-                self.unsaved_ids[record_type].append(id_tup)
-            except KeyError:
-                self.unsaved_ids[record_type] = [id_tup]
-
-        logger.debug('current unsaved IDs with record type "{TYPE}" from all instances are: {IDS}'
-                     .format(IDS=self.unsaved_ids[record_type], TYPE=record_type))
-
-        return success
-
-    def remove_unsaved_ids(self, record_ids: list = None, rt: str = None, instance_id: int = None):
+    def remove_unsaved_ids(self, record_ids: list = None, id_code: str = None, instance_id: int = None):
         """
         Remove record IDs from the dictionary of unsaved record IDs.
         """
-        if instance_id is not None and record_ids is None and rt is None:
+        if instance_id is not None and record_ids is None and id_code is None:
             logger.debug('attempting to remove all unsaved record IDs associated with program instance "{ID}"'
                          .format(ID=instance_id))
 
             record_ids = []
             internal = True
-        elif record_ids is None and rt is not None and instance_id is not None:
+        elif record_ids is None and id_code is not None and instance_id is not None:
             logger.debug('attempting to remove all unsaved record IDs of type "{TYPE}" associated with program '
-                         'instance "{ID}"'.format(TYPE=rt, ID=instance_id))
+                         'instance "{ID}"'.format(TYPE=id_code, ID=instance_id))
             internal = True
-        elif record_ids is not None and rt is not None:
+        elif record_ids is not None and id_code is not None:
             if isinstance(record_ids, str):
                 record_ids = [record_ids]
 
             logger.debug('attempting to remove record IDs {ID} of type "{TYPE}" from the database of unsaved record IDs'
-                         .format(ID=record_ids, TYPE=rt))
+                         .format(ID=record_ids, TYPE=id_code))
 
             internal = False
         else:
@@ -850,7 +871,7 @@ class ConfigManager:
         success = True
         value = None
         for record_type in self.unsaved_ids:
-            if rt and rt != record_type:
+            if id_code and id_code != record_type:
                 continue
 
             if internal:
@@ -881,31 +902,13 @@ class ConfigManager:
 
         return {'success': success, 'value': value}
 
-    def _get_unsaved_ids(self, record_type, instance_id: int = None):
-        id_tups = self.unsaved_ids.get(record_type, None)
-        if id_tups:
-            if instance_id is not None:
-                unsaved_ids = [i[0] for i in id_tups if i[1] == instance_id]
-                logger.debug('current unsaved IDs with record type "{TYPE}" from instance "{ID}" are: {IDS}'
-                             .format(TYPE=record_type, ID=instance_id, IDS=unsaved_ids))
-            else:
-                unsaved_ids = [i[0] for i in id_tups]
-                logger.debug('current unsaved IDs with record type "{TYPE}" from all instances are: {IDS}'
-                             .format(IDS=unsaved_ids, TYPE=record_type))
-        else:
-            logger.debug('there are no unsaved IDs with record type "{TYPE}" from any instance'
-                         .format(TYPE=record_type))
-            unsaved_ids = []
-
-        return unsaved_ids
-
-    def get_unsaved_ids(self, record_type, instance_id: int = None):
+    def get_unsaved_ids(self, id_code, instance_id: int = None):
         """
         Return a list of record IDs from the dictionary of unsaved record IDs by record type.
         """
         logger.debug('retrieving list of IDs of type "{TYPE}" from the database of unsaved record IDs'
-                     .format(TYPE=record_type))
-        return {'success': True, 'value': self._get_unsaved_ids(record_type, instance_id)}
+                     .format(TYPE=id_code))
+        return {'success': True, 'value': self._get_unsaved_ids(id_code, instance_id)}
 
 
 class SQLTransactManager:
