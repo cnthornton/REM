@@ -1969,6 +1969,7 @@ class AuditRecordTab:
         # Prepare the database query statement
         record_entry = settings.records.fetch_rule(self.name)
         import_rules = record_entry.import_rules
+        program_records = record_entry.program_record
 
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
@@ -1983,7 +1984,7 @@ class AuditRecordTab:
         # Import record from database
         try:
             import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
-                                                                   filter_rules=filters), prog_db=True)
+                                                                   filter_rules=filters), prog_db=program_records)
         except Exception as e:
             mod_win2.popup_error('Attempt to import data from the database failed. Use the debug window for more '
                                  'information')
@@ -1999,7 +2000,6 @@ class AuditRecordTab:
                 logger.info('AuditSummaryTab {NAME}: no existing audit record for the supplied parameters ... '
                             'creating a new record'.format(NAME=self.name))
 
-                record_entry = settings.records.fetch_rule(self.name)
                 param_types = [i.dtype for i in params]
                 try:
                     date_index = param_types.index('date')

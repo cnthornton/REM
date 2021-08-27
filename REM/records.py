@@ -60,17 +60,6 @@ class RecordEntry:
         self.menu_title = menu['MenuTitle']
         self.menu_group = menu['MenuGroup']
 
-#        try:
-#            self.permissions = entry['AccessPermissions']
-#        except KeyError:
-#            self.permissions = 'admin'
-
-#        try:
-#            self.menu_title = entry['MenuTitle']
-#        except KeyError:
-#            self.menu_title = name
-#
-
         try:
             self.group = entry['RecordGroup']
         except KeyError:
@@ -154,7 +143,7 @@ class RecordEntry:
         except KeyError:
             mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "ImportTable"'
                                  .format(NAME=name))
-            sys.exit(1)
+            self.import_table = {}
 
         # Record layout configuration
         try:
@@ -1143,6 +1132,66 @@ class DatabaseRecord:
                 self.elements += param.elements
 
         # Record data elements
+        self.sections = {}
+        self.modules = []
+        try:
+            sections = entry['Sections']
+        except KeyError:
+            msg = 'missing required configuration parameter "Sections"'
+            logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+#            raise AttributeError('missing required configuration parameter "Sections"')
+        else:
+            for i, section in enumerate(sections):
+                section_entry = sections[section]
+                self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
+                self.sections[section] = {'Title': section_entry.get('Title', section),
+                                          'Elements': []}
+
+                try:
+                    section_elements = section_entry['Elements']
+                except KeyError:
+                    raise AttributeError('Record section {} is missing required parameter "Elements"'.format(section))
+                for element_name in section_elements:
+                    self.sections[section]['Elements'].append(element_name)
+                    elem_entry = section_elements[element_name]
+                    try:
+                        etype = elem_entry['ElementType']
+                    except KeyError:
+                        raise AttributeError('"Details" element {NAME} is missing the required field "ElementType"'
+                                             .format(NAME=element_name))
+
+                    # Set the object type of the record element.
+                    if etype == 'table':
+                        element_class = mod_elem.TableElement
+                    elif etype == 'refbox':
+                        element_class = mod_elem.ReferenceElement
+                    elif etype == 'reference':
+                        element_class = mod_elem.ElementReference
+                    elif etype == 'text':
+                        element_class = mod_elem.DataElement
+                    elif etype == 'input':
+                        element_class = mod_elem.DataElementInput
+                    elif etype == 'dropdown':
+                        element_class = mod_elem.DataElementCombo
+                    elif etype == 'mulitline':
+                        element_class = mod_elem.DataElementMultiline
+                    else:
+                        raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
+                                             .format(ETYPE=etype, ELEM=element_name))
+
+                    # Initialize parameter object
+                    try:
+                        elem_obj = element_class(element_name, elem_entry, parent=self.name)
+                    except Exception as e:
+                        raise AttributeError('failed to initialize {NAME} element {ELEM} - {ERR}'
+                                             .format(NAME=self.name, ELEM=element_name, ERR=e))
+
+                    # Add the parameter to the record
+                    self.modules.append(elem_obj)
+                    self.elements += elem_obj.elements
+
+        # Record data elements
         self.parameters = []
         try:
             details = entry['Details']
@@ -1171,8 +1220,8 @@ class DatabaseRecord:
                     element_class = mod_elem.DataElementCombo
                 elif param_type in ('multi', 'multiline'):
                     element_class = mod_elem.DataElementMultiline
-                elif param_type == 'data_reference':
-                    element_class = mod_elem.DataElementReference
+                elif param_type == 'reference':
+                    element_class = mod_elem.ElementReference
                 else:
                     element_class = mod_elem.DataElement
 
@@ -1226,7 +1275,7 @@ class DatabaseRecord:
                 for ref_element in ref_elements:
                     element_entry = ref_elements[ref_element]
                     try:
-                        ref_box = mod_elem.ReferenceElement2(ref_element, element_entry, self.name)
+                        ref_box = mod_elem.Referencebox(ref_element, element_entry, self.name)
                     except AttributeError as e:
                         logger.exception('RecordType {NAME}: failed to add reference entry {ID} to list of references '
                                          '- {ERR}'.format(NAME=self.name, ID=ref_element, ERR=e))
@@ -1673,6 +1722,27 @@ class DatabaseRecord:
 
         return ref_elem
 
+    def fetch_module(self, module, by_key: bool = False, by_type: bool = False):
+        """
+        Fetch a record module.
+        """
+        if by_key is True:
+            element_type = module[1:-1].split('_')[-1]
+            modules = [i.key_lookup(element_type) for i in self.modules]
+        elif by_type is True:
+            modules = [i.etype for i in self.modules]
+        else:
+            modules = [i.name for i in self.modules]
+
+        if module in modules:
+            index = modules.index(module)
+            element = self.modules[index]
+        else:
+            raise KeyError('module {ELEM} not found in list of record {NAME} modules'
+                           .format(ELEM=module, NAME=self.name))
+
+        return element
+
     def fetch_component(self, component, by_key: bool = False, by_type: bool = False):
         """
         Fetch a component table by name.
@@ -1806,7 +1876,7 @@ class DatabaseRecord:
 
         # Add reference element2 values
         for refbox in self.references:
-            if refbox.etype != 'reference2':
+            if refbox.etype != 'refbox':
                 continue
             ref_vals = refbox.as_row()
             values.extend(ref_vals.values.tolist())

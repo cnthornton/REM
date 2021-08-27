@@ -1436,7 +1436,8 @@ class TableElement:
         row5.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
                                      background_color=header_col),
                              sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
-                                     font=font, background_color=bg_col, justification='r', relief='sunken')]],
+                                     font=font, background_color=bg_col, justification='r', relief='sunken',
+                                     metadata={'name': self.name})]],
                            pad=(pad_el, int(pad_el / 2)), vertical_alignment='b', justification='r',
                            background_color=header_col))
 
@@ -1974,6 +1975,12 @@ class TableElement:
 
         return row_ids
 
+    def value(self):
+        """
+        Return element value.
+        """
+        return self.calculate_total()
+
     def has_value(self):
         """
         Return True if no NAs in the table else return False.
@@ -2070,6 +2077,7 @@ class TableElement:
             return self.df
         elif record_entry is not None and import_rules is None:
             import_rules = record_entry.import_rules
+            program_database = record_entry.program_record
 
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
@@ -2079,7 +2087,8 @@ class TableElement:
 
         import_table = TableElement(self.name, table_layout)
 
-        if reference_col:  # search for records without an existing reference to provided reference type
+        # Search for records without an existing reference to the provided reference type
+        if reference_col and program_database:  # option only available for program records
             logger.debug('DataTable {NAME}: importing unreferenced records on column "{COL}"'
                          .format(NAME=self.name, COL=reference_col))
 
@@ -2879,7 +2888,7 @@ class ReferenceElement:
         return reference
 
 
-class ReferenceElement2:
+class Referencebox:
     """
     GUI reference box element.
 
@@ -2912,7 +2921,7 @@ class ReferenceElement2:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        self.etype = 'reference2'
+        self.etype = 'refbox'
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ['Element', 'RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
                           'Approved']]
@@ -3326,6 +3335,12 @@ class ReferenceElement2:
     def has_value(self):
         """
         True if the reference box contains a record reference else False.
+        """
+        return self.referenced
+
+    def value(self):
+        """
+        Return element value.
         """
         return self.referenced
 
@@ -4415,7 +4430,8 @@ class DataElementMultiline(DataElement):
         return display_value
 
 
-class DataElementReference(DataElement):
+# Element references
+class ElementReference:
     """
     Data element that references the values of other data elements.
 
@@ -4435,8 +4451,6 @@ class DataElementReference(DataElement):
 
         hidden (bool): element is not visible to the user. [Default: False]
 
-        references (tuple): list of record elements referenced in the operation.
-
         operation (str): reference operation.
 
         icon (str): file name of the parameter's icon [Default: None].
@@ -4455,42 +4469,139 @@ class DataElementReference(DataElement):
 
             parent (str): name of the parent element.
         """
-        super().__init__(name, entry, parent)
-        self.etype = 'data_reference'
+        self.name = name
+        self.parent = parent
+        self.id = randint(0, 1000000000)
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                         ['Element', 'Description']]
+        self.etype = 'reference'
 
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
                            settings.supported_bool_dtypes
-        if self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
-                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-
+        try:
+            self.dtype = entry['DataType']
+        except KeyError:
             self.dtype = 'int'
+        else:
+            if self.dtype not in supported_dtypes:
+                msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
+                    .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
+                logger.warning('ElementReference {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+
+                self.dtype = 'int'
+
+        try:
+            self.description = entry['Description']
+        except KeyError:
+            self.description = self.name
+
+        # Element modifier flags
+        try:
+            hidden = bool(int(entry['IsHidden']))
+        except KeyError:
+            self.hidden = False
+        except ValueError:
+            logger.warning('ElementReference {NAME}: configuration parameter "IsHidden" must be either 0 (False) or 1 '
+                           '(True)'.format(NAME=name))
+            sys.exit(1)
+        else:
+            self.hidden = hidden
+
+        try:
+            required = bool(int(entry['IsRequired']))
+        except KeyError:
+            self.required = False
+        except ValueError:
+            logger.warning('ElementReference {NAME}: configuration parameter "IsRequired" must be either 0 (False) or '
+                           '1 (True)'.format(NAME=name))
+            sys.exit(1)
+        else:
+            self.required = required
+
+        # Layout options
+        try:
+            bg_col = entry['BackgroundColor']
+        except KeyError:
+            self.bg_col = mod_const.ACTION_COL
+        else:
+            if isinstance(bg_col, str) and (not bg_col.startswith('#') or len(bg_col) != 7):  # hex color codes
+                self.bg_col = mod_const.ACTION_COL
+            else:
+                self.bg_col = bg_col
+
+        try:
+            self.icon = entry['Icon']
+        except KeyError:
+            self.icon = None
+
+        try:
+            annot_rules = entry['AnnotationRules']
+        except KeyError:
+            self.annotation_rules = {}
+        else:
+            self.annotation_rules = {}
+            for annot_code in annot_rules:
+                annot_rule = annot_rules[annot_code]
+
+                if 'Condition' not in annot_rule:
+                    mod_win2.popup_notice('No condition set for configured annotation rule {RULE}'
+                                          .format(RULE=annot_code))
+                    continue
+
+                self.annotation_rules[annot_code] = {'BackgroundColor': annot_rule.get('BackgroundColor',
+                                                                                       mod_const.FAIL_COL),
+                                                     'Description': annot_rule.get('Description', annot_code),
+                                                     'Condition': annot_rule['Condition']}
 
         # Reference parameter information
         try:
-            self.references = entry['References']
-        except KeyError:
-            msg = 'Configuration Error: DataParameter {NAME}: reference element is missing required parameter ' \
-                  '"Reference".'.format(NAME=name)
-            logger.error(msg)
-            mod_win2.popup_error(msg)
-
-            sys.exit(1)
-
-        try:
             self.operation = entry['Operation']
         except KeyError:
-            msg = 'Configuration Error: DataParameter {NAME}: reference element is missing required parameter ' \
+            msg = 'Configuration Error: DataElement {NAME}: reference element is missing required parameter ' \
                   '"Operation".'.format(NAME=name)
             logger.error(msg)
             mod_win2.popup_error(msg)
 
             sys.exit(1)
 
+        try:
+            self.default = entry['DefaultValue']
+        except KeyError:
+            self.default = None
+
+        self.value = self.default
+        logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
+                     'and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
         self.editable = False
         self.disabled = True
+
+    def key_lookup(self, component):
+        """
+        Lookup a component's GUI element key using the component's name.
+        """
+        element_names = [i[1: -1].split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            msg = 'DataElement {NAME}: component "{COMP}" not found in list of element components' \
+                .format(NAME=self.name, COMP=component)
+            logger.warning(msg)
+            logger.debug('DataElement {NAME}: data element contains components {COMP}'
+                         .format(NAME=self.name, COMP=element_names))
+
+            raise KeyError(msg)
+
+        return key
+
+    def value(self):
+        """
+        Return element value.
+        """
+        return self.value
 
     def reset(self, window):
         """
@@ -4506,6 +4617,100 @@ class DataElementReference(DataElement):
         # Update the parameter window element
         display_value = self.format_display()
         window[self.key_lookup('Element')].update(value=display_value)
+
+    def run_event(self, window, event, values):
+        """
+        Run an element reference event.
+        """
+        pass
+
+    def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
+        """
+        GUI layout for the data element.
+        """
+        is_disabled = False if overwrite is True or (editable is True and self.editable is True) else True
+        self.disabled = is_disabled
+        is_required = self.required
+
+        background = self.bg_col
+
+        # Layout options
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+
+        bold_font = mod_const.BOLD_HEADER_FONT
+
+        bg_col = mod_const.ACTION_COL if background is None else background
+        text_col = mod_const.TEXT_COL
+
+        # Element Icon, if provided
+        icon = self.icon
+        if icon is not None:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+            else:
+                icon_layout = []
+        else:
+            icon_layout = []
+
+        # Required symbol
+        if is_required is True:
+            required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
+                                       text_color=mod_const.WARNING_COL, tooltip='required')]
+        else:
+            required_layout = []
+
+        # Element description and actions
+        desc_key = self.key_lookup('Description')
+        edit_key = self.key_lookup('Edit')
+        update_key = self.key_lookup('Update')
+        save_key = self.key_lookup('Save')
+        cancel_key = self.key_lookup('Cancel')
+        bttn_vis = False if is_disabled is True else True
+        description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=bg_col,
+                                      font=bold_font, auto_size_text=True, tooltip=self.description),
+                              sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
+                                        button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
+                                        border_width=0, tooltip='Edit value'),
+                              sg.pin(
+                                  sg.Col([[sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
+                                                     pad=((0, pad_el), 0), button_color=(text_col, bg_col),
+                                                     border_width=0, tooltip='Save changes'),
+                                           sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
+                                                     pad=((0, pad_el), 0), button_color=(text_col, bg_col),
+                                                     border_width=0, tooltip='Cancel changes')
+                                           ]],
+                                         key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
+
+        # Element layout
+        element_layout = self.element_layout(size=size, bg_col=bg_col, is_disabled=is_disabled)
+
+        # Layout
+        row1 = icon_layout + description_layout
+        row2 = element_layout + required_layout
+
+        frame_key = self.key_lookup('Frame')
+        layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col)
+
+        return layout
+
+    def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
+        """
+        Generate the layout for the data component of the data element.
+        """
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
+        text_col = mod_const.TEXT_COL
+
+        elem_key = self.key_lookup('Element')
+        display_value = self.format_display()
+
+        layout = [sg.Text(display_value, key=elem_key, size=size, pad=(0, 0), background_color=bg_col,
+                          text_color=text_col, font=font, enable_events=True, border_width=1,
+                          relief='sunken', metadata={'name': self.name, 'disabled': is_disabled})]
+
+        return layout
 
     def format_value(self, input_value):
         """
@@ -4570,7 +4775,7 @@ class DataElementReference(DataElement):
 
         return display_value
 
-    def update_display(self, window, window_values: dict = {}):
+    def update_display(self, window, elements):
         """
         Format element for display.
         """
@@ -4582,16 +4787,8 @@ class DataElementReference(DataElement):
 
         # Get values of the reference elements
         values = {}
-        for elem_key in window_values:
-            elem_name = window[elem_key].metadata['name']
-            if elem_name in self.references:
-                elem_value = values[elem_key]
-                try:
-                    values[elem_name] = self.format_value(elem_value)
-                except (ValueError, KeyError):
-                    msg = 'failed to format reference {REF} value'.format(REF=elem_name)
-
-                    raise ValueError(msg)
+        for element in elements:
+            values[element.name] = element.value()
 
         # Update element display value
         if values:
@@ -4610,3 +4807,53 @@ class DataElementReference(DataElement):
 
         window[desc_key].update(background_color=bg_col)
         window[desc_key].SetTooltip(tooltip)
+
+    def annotate_display(self, display_value=None):
+        """
+        Annotate the display element using configured annotation rules.
+        """
+        rules = self.annotation_rules
+
+        if not display_value:
+            display_value = self.format_display()
+
+        if pd.isna(display_value) or not rules:
+            return None
+
+        logger.debug('DataElement {NAME}: annotating display value on configured annotation rules'
+                     .format(NAME=self.name))
+
+        annotation = None
+        for annot_code in rules:
+            logger.debug('DataElement {NAME}: annotating element based on configured annotation rule "{CODE}"'
+                         .format(NAME=self.name, CODE=annot_code))
+            rule = rules[annot_code]
+            annot_condition = rule['Condition']
+            try:
+                result = mod_dm.evaluate_condition({self.name, display_value}, annot_condition)
+            except Exception as e:
+                logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
+                             .format(NAME=self.name, CODE=annot_code, ERR=e))
+                continue
+
+            if result:
+                logger.debug('DataElement {NAME}: element value {VAL} annotated on annotation code {CODE}'
+                             .format(NAME=self.name, VAL=display_value, CODE=annot_code))
+                if annotation:
+                    logger.warning('DataElement {NAME}: element value {VAL} has passed two or more annotation '
+                                   'rules ... defaulting to the first passed "{CODE}"'
+                                   .format(NAME=self.name, VAL=display_value, CODE=annotation))
+                else:
+                    annotation = annot_code
+
+        return annotation
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        value = self.value
+        if not pd.isna(value) and not value == '':
+            return True
+        else:
+            return False
