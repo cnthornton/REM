@@ -2888,7 +2888,7 @@ class ReferenceElement:
         return reference
 
 
-class Referencebox:
+class ReferenceBox:
     """
     GUI reference box element.
 
@@ -2932,14 +2932,21 @@ class Referencebox:
             self.description = name
 
         try:
-            editable = bool(int(entry['IsEditable']))
+            modifiers = entry['Modifiers']
         except KeyError:
-            self.editable = True
-        except ValueError:
-            logger.warning('DataElement {NAME}: "IsEditable" must be either 0 (False) or 1 (True)'.format(NAME=name))
-            self.editable = False
+            self.modifiers = {'open': False, 'delete': False, 'approve': False}
         else:
-            self.editable = editable
+            self.modifiers = {'open': modifiers.get('open', 0), 'delete': modifiers.get('delete', 0),
+                              'approve': modifiers.get('export', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning('ReferenceBox {NAME}: element modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(NAME=self.name, MOD=modifier))
+                    flag = False
+
+                self.modifiers[modifier] = flag
 
         try:
             self.aliases = entry['Aliases']
@@ -2952,11 +2959,11 @@ class Referencebox:
             raise AttributeError('missing required parameter "ColumnMap"')
         else:
             if 'ReferenceID' not in self.refmap:
-                raise AttributeError('ReferenceElement parameter "ColumnMap" is missing required entry "ReferenceID"')
+                raise AttributeError('ReferenceBox parameter "ColumnMap" is missing required entry "ReferenceID"')
             if 'ReferenceType' not in self.refmap:
-                raise AttributeError('ReferenceElement parameter "ColumnMap" is missing required entry "ReferenceType"')
+                raise AttributeError('ReferenceBox parameter "ColumnMap" is missing required entry "ReferenceType"')
             if 'ReferenceDate' not in self.refmap:
-                raise AttributeError('ReferenceElement parameter "ColumnMap" is missing required entry "ReferenceDate"')
+                raise AttributeError('ReferenceBox parameter "ColumnMap" is missing required entry "ReferenceDate"')
             if 'IsParentChild' not in self.refmap:
                 self.refmap['IsParentChild'] = None
             if 'IsHardLink' not in self.refmap:
@@ -2985,7 +2992,7 @@ class Referencebox:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            logger.warning('ReferenceElement {NAME}: component "{COMP}" not found in list of element components'
+            logger.warning('ReferenceBox {NAME}: component "{COMP}" not found in list of element components'
                            .format(NAME=self.name, COMP=component))
             key = None
 
@@ -3006,6 +3013,55 @@ class Referencebox:
 
         self.update_display(window)
 
+    def run_event(self, window, event, values):
+        """
+        Run a record reference event.
+        """
+        result = True
+        elem_key = self.key_lookup('Element')
+        del_key = self.key_lookup('Unlink')
+        ref_key = self.key_lookup('RefID')
+        approved_key = self.key_lookup('Approved')
+
+        logger.info('ReferenceBox {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
+
+        # Delete a reference from the record reference database table
+        if event == del_key:
+            if self.is_hardlink:  # hard-linked records can be deleted, but not the association between them
+                msg = 'failed to remove the association - the association between hard-linked records cannot be deleted'
+                mod_win2.popup_notice(msg)
+                logger.warning('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return False
+
+            msg = 'Are you sure that you would like to disassociate reference {REF} from the record? Disassociating ' \
+                  'records does not delete either record involved.'.format(REF=self.reference_id)
+            user_action = mod_win2.popup_confirm(msg)
+
+            if user_action.upper() == 'OK':
+                # Set element to deleted in metadata
+                window[elem_key].metadata['deleted'] = True
+
+                self.reset(window)
+
+        # Update approved element
+        elif event == approved_key:
+            self.approved = bool(values[approved_key])
+
+        # Open reference record in a new record window
+        elif event == ref_key:
+            try:
+                record = self.load_record()
+            except Exception as e:
+                msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.reference_id, ERR=e)
+                mod_win2.popup_error(msg)
+                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            else:
+                # Display the record window
+                mod_win2.record_window(record, view_only=True)
+
+        return result
+
     def resize(self, window, size: tuple = None):
         """
         Resize the reference box element.
@@ -3022,128 +3078,14 @@ class Referencebox:
         height_key = self.key_lookup('Height')
         window[height_key].set_size(size=(None, height))
 
-    def run_event(self, window, event, values):
-        """
-        Run a record reference event.
-        """
-        result = True
-        elem_key = self.key_lookup('Element')
-        del_key = self.key_lookup('Unlink')
-        ref_key = self.key_lookup('RefID')
-        approved_key = self.key_lookup('Approved')
-
-        # Delete a reference from the record reference database table
-        logger.info('ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
-        if event == del_key:
-            msg = 'Are you sure that you would like to disassociate reference {REF} from the record? This action ' \
-                  'cannot be undone. Disassociating a reference does not delete the reference record.' \
-                .format(REF=self.reference_id)
-            user_action = mod_win2.popup_confirm(msg)
-
-            if user_action.upper() == 'OK':
-                # Set element to deleted in metadata
-                window[elem_key].metadata['deleted'] = True
-
-                self.reset(window)
-
-        # Update approved element
-        elif event == approved_key:
-            self.approved = bool(values[approved_key])
-
-        # Load a reference record in a new window
-        elif event == ref_key:
-            try:
-                record = self.load_record()
-            except Exception as e:
-                msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.reference_id, ERR=e)
-                mod_win2.popup_error(msg)
-                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            else:
-                # Display the record window
-                mod_win2.record_window(record, view_only=True)
-
-        return result
-
-    def load_reference(self, entry):
-        """
-        Initialize a record reference.
-        """
-        colmap = self.refmap
-
-        ref_id_col = colmap['ReferenceID']
-        try:
-            self.reference_id = entry[ref_id_col]
-        except KeyError:
-            msg = 'Record ID column "{COL}" not found in provided entry'.format(COL=ref_id_col)
-            logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return False
-        else:
-            if pd.isna(self.reference_id):
-                return False
-
-            logger.debug('ReferenceBox {NAME}: loading reference {ID}'.format(NAME=self.name, ID=self.reference_id))
-
-        date_col = colmap['ReferenceDate']
-        try:
-            ref_date = entry[date_col]
-        except KeyError:
-            msg = 'Reference Date column "{COL}" not found in provided entry'.format(COL=date_col)
-            logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return False
-        else:
-            try:
-                self.date = settings.format_as_datetime(ref_date)
-            except ValueError as e:
-                msg = 'unable to set reference date {DATE} - {ERR}'.format(DATE=ref_date, ERR=e)
-                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return False
-
-        ref_type_col = colmap['ReferenceType']
-        try:
-            self.reference_type = entry[ref_type_col]
-        except KeyError:
-            msg = 'Reference ReferenceType column "{COL} not found in entry"'.format(COL=ref_type_col)
-            logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return False
-
-        try:
-            self.warnings = entry[colmap['Warnings']]
-        except KeyError:
-            self.warnings = None
-
-        try:
-            self.is_hardlink = bool(int(entry[colmap['IsHardLink']]))
-        except (ValueError, KeyError):
-            self.is_hardlink = False
-
-        try:
-            self.is_pc = bool(int(entry[colmap['IsParentChild']]))
-        except (ValueError, KeyError):
-            self.is_hardlink = False
-
-        try:
-            self.approved = bool(int(entry[colmap['IsApproved']]))
-        except (ValueError, KeyError):
-            self.approved = False
-
-        self.referenced = True
-
-        return True
-
     def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), editable: bool = True, overwrite: bool = False):
         """
         GUI layout for the reference box element.
         """
-        is_disabled = False if overwrite is True or (editable is True and self.editable is True) else True
         width, height = size
-        is_hl = self.is_hardlink
-        is_pc = self.is_pc
         is_approved = self.approved
         aliases = self.aliases
+        modifiers = self.modifiers
         warnings = self.warnings if self.warnings is not None else ''
 
         # Layout options
@@ -3156,11 +3098,20 @@ class Referencebox:
 
         bg_col = mod_const.ACTION_COL if not warnings else mod_const.WARNING_COL
         text_col = mod_const.TEXT_COL
-        if editable is True:
-            select_text_col = mod_const.SELECT_TEXT_COL
-        else:
-            select_text_col = mod_const.DISABLED_TEXT_COL
 
+        # Allowed actions and visibility of component elements
+        is_disabled = False if editable is True else True
+        can_approve = True if (modifiers['approve'] is True and not is_disabled) or (overwrite is True) else False
+        can_delete = True if (modifiers['delete'] is True and not is_disabled) or (overwrite is True) else False
+        can_open = True if (modifiers['open'] is True and not is_disabled) or (overwrite is True) else False
+
+        select_text_col = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
+
+        approved_vis = True if self.refmap['IsApproved'] is not None else False
+        hl_vis = True if self.is_hardlink is True else False
+        pc_vis = True if self.is_pc is True else False
+
+        # Element layout
         elem_key = self.key_lookup('Element')
         height_key = self.key_lookup('Height')
         discard_key = self.key_lookup('Unlink')
@@ -3173,20 +3124,21 @@ class Referencebox:
         ref_date = settings.format_display_date(self.date) if not pd.isna(self.date) else None
         ref_id = self.reference_id if self.reference_id else None
         approved_title = 'Reference approved' if 'IsApproved' not in aliases else aliases['IsApproved']
-        approved_vis = True if self.refmap['IsApproved'] is not None else False
         elem_layout = [sg.Canvas(key=height_key, size=(0, height)),
-                       sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_el * 2)),
+                       sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
                                         text_color=text_col, font=bold_font, background_color=bg_col,
                                         tooltip=(self.description if 'ReferenceType' not in aliases else
                                                  aliases['ReferenceType'])),
-                                sg.Image(data=mod_const.LINK_ICON, key=link_key, visible=is_hl,
+                                sg.Image(data=mod_const.LINK_ICON, key=link_key, visible=hl_vis,
+                                         pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
                                                   not in aliases else aliases['IsHardLink'])),
-                                sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=is_pc,
+                                sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
+                                         pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
                                                   not in aliases else aliases['IsParentChild']))],
                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
-                                        enable_events=editable, text_color=select_text_col, font=font,
+                                        enable_events=can_open, text_color=select_text_col, font=font,
                                         background_color=bg_col,
                                         tooltip=('Reference record' if 'ReferenceID' not in aliases else
                                                  aliases['ReferenceID'])),
@@ -3198,9 +3150,9 @@ class Referencebox:
                        sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col,
                                         visible=approved_vis),
                                 sg.Checkbox('', default=is_approved, key=approved_key, enable_events=True,
-                                            disabled=is_disabled, visible=approved_vis, background_color=bg_col)],
-                               [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, disabled=is_disabled,
-                                          pad=((0, pad_el * 2), 0), button_color=(text_col, bg_col), border_width=0,
+                                            disabled=(not can_approve), visible=approved_vis, background_color=bg_col)],
+                               [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, pad=((0, pad_el * 2), 0),
+                                          disabled=(not can_delete), button_color=(text_col, bg_col), border_width=0,
                                           tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
                                                    aliases['RemoveLink']))]],
                               pad=((0, pad_h), pad_v), justification='r', element_justification='r',
@@ -3224,7 +3176,8 @@ class Referencebox:
         ref_key = self.key_lookup('RefID')
         date_key = self.key_lookup('RefDate')
         approved_key = self.key_lookup('Approved')
-        print('updating reference box {}'.format(self.name))
+
+        logger.debug('ReferenceBox {NAME}: updating reference box display'.format(NAME=self.name))
 
         is_hl = self.is_hardlink
         is_pc = self.is_pc
@@ -3268,6 +3221,105 @@ class Referencebox:
 
         window.Element(elem_key).SetTooltip(warnings)
 
+    def load_reference(self, entry):
+        """
+        Initialize a record reference.
+        """
+        colmap = self.refmap
+
+        ref_id_col = colmap['ReferenceID']
+        try:
+            self.reference_id = entry[ref_id_col]
+        except KeyError:
+            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=ref_id_col)
+            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return False
+        else:
+            if pd.isna(self.reference_id):
+                return False
+
+        logger.info('ReferenceBox {NAME}: loading reference {ID}'.format(NAME=self.name, ID=self.reference_id))
+
+        date_col = colmap['ReferenceDate']
+        try:
+            ref_date = entry[date_col]
+        except KeyError:
+            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=date_col)
+            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return False
+        else:
+            try:
+                self.date = settings.format_as_datetime(ref_date)
+            except ValueError as e:
+                msg = 'unable to set reference date {DATE} - {ERR}'.format(DATE=ref_date, ERR=e)
+                logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return False
+
+        ref_type_col = colmap['ReferenceType']
+        try:
+            self.reference_type = entry[ref_type_col]
+        except KeyError:
+            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=ref_type_col)
+            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return False
+
+        warn_col = colmap['Warnings']
+        if warn_col:
+            try:
+                self.warnings = entry[warn_col]
+            except KeyError:
+                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=warn_col)
+                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                self.warnings = None
+
+        hl_col = colmap['IsHardLink']
+        if hl_col:
+            try:
+                self.is_hardlink = bool(int(entry[hl_col]))
+            except KeyError:
+                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=hl_col)
+                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                self.is_hardlink = False
+            except ValueError:
+                msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[hl_col], COL=hl_col)
+                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                self.is_hardlink = False
+
+        pc_col = colmap['IsParentChild']
+        if pc_col:
+            try:
+                self.is_pc = bool(int(entry[pc_col]))
+            except KeyError:
+                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=pc_col)
+                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                self.is_pc = False
+            except ValueError:
+                msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[pc_col], COL=pc_col)
+                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                self.is_pc = False
+
+        approved_col = colmap['IsApproved']
+        if approved_col:
+            try:
+                self.approved = bool(int(entry[approved_col]))
+            except KeyError:
+                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=approved_col)
+                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                self.approved = False
+            except ValueError:
+                msg = 'parameter "{COL}" was provided unknown value type {VAL}' \
+                    .format(VAL=entry[approved_col], COL=approved_col)
+                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                self.approved = False
+
+        self.referenced = True
+
+        return True
+
     def load_record(self, level: int = 1):
         """
         Load the reference record from the database.
@@ -3297,7 +3349,6 @@ class Referencebox:
                            .format(NAME=self.name, REF=self.reference_id))
             record_data = imports.iloc[0]
 
-        #        record = record_class(self.reference_type, record_entry, level=level)
         record = record_class(record_entry, level=level)
         record.initialize(record_data, new=False)
 

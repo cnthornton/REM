@@ -1165,7 +1165,7 @@ class DatabaseRecord:
                     if etype == 'table':
                         element_class = mod_elem.TableElement
                     elif etype == 'refbox':
-                        element_class = mod_elem.ReferenceElement
+                        element_class = mod_elem.ReferenceBox
                     elif etype == 'reference':
                         element_class = mod_elem.ElementReference
                     elif etype == 'text':
@@ -1275,7 +1275,7 @@ class DatabaseRecord:
                 for ref_element in ref_elements:
                     element_entry = ref_elements[ref_element]
                     try:
-                        ref_box = mod_elem.Referencebox(ref_element, element_entry, self.name)
+                        ref_box = mod_elem.ReferenceBox(ref_element, element_entry, self.name)
                     except AttributeError as e:
                         logger.exception('RecordType {NAME}: failed to add reference entry {ID} to list of references '
                                          '- {ERR}'.format(NAME=self.name, ID=ref_element, ERR=e))
@@ -2914,6 +2914,13 @@ class DepositRecord(DatabaseRecord):
             display_value = header.format_display()
             window[elem_key].update(value=display_value)
 
+        # Update the reference boxes
+        for refbox in self.references:
+            try:
+                refbox.update_display(window, window_values=window_values)
+            except AttributeError:  # old reference box class
+                continue
+
 
 class AuditRecord(DatabaseRecord):
     """
@@ -3069,6 +3076,13 @@ class AuditRecord(DatabaseRecord):
             elem_key = header.key_lookup('Element')
             display_value = header.format_display()
             window[elem_key].update(value=display_value)
+
+        # Update the reference boxes
+        for refbox in self.references:
+            try:
+                refbox.update_display(window, window_values=window_values)
+            except AttributeError:  # old reference box class
+                continue
 
 
 def replace_nth(s, sub, new, ns):
