@@ -2035,7 +2035,7 @@ class TableElement:
         record_data = self.set_defaults(record_data)
 
         try:
-            record = mod_records.create_record(record_entry, record_data)
+            record = self._translate_row(record_data, level=1, new_record=True)
         except Exception as e:
             msg = 'failed to add record at row {IND} - {ERR}'.format(IND=df.shape[0] + 2, ERR=e)
             mod_win2.popup_error(msg)
@@ -2205,20 +2205,15 @@ class TableElement:
 
         return df
 
-    def translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False,
-                      references: pd.DataFrame = None, custom: bool = False):
+    def _translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False):
         """
         Translate row data into a record object.
         """
-        # Create a record object from the row data
-        if custom is True:
-            if layout is None:
-                raise AttributeError('a layout must be provided when custom is set to True')
-            record_entry = mod_records.CustomRecordEntry({'RecordLayout': layout})
-            record_group = 'custom'
-        else:
-            record_entry = settings.records.fetch_rule(self.record_type)
+        record_entry = settings.records.fetch_rule(self.record_type)
+        try:
             record_group = record_entry.group
+        except AttributeError:
+            record_group = 'custom'
 
         if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
             record_class = mod_records.StandardRecord
@@ -2227,15 +2222,17 @@ class TableElement:
         elif record_group == 'audit':
             record_class = mod_records.AuditRecord
         else:
-            raise AttributeError('unknown record group provided {GROUP}'.format(NAME=self.name, GROUP=record_group))
+            msg = 'unknown record group provided {GROUP}'.format(GROUP=record_group)
+            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            record_class = mod_records.StandardRecord
 
         record = record_class(record_entry, level=level, record_layout=layout)
-        record.initialize(row, new=new_record, references=references)
+        record.initialize(row, new=new_record)
 
         return record
 
-    def export_row(self, index, layout: dict = None, view_only: bool = False, new_record: bool = False,
-                   level: int = 1, references: pd.DataFrame = None, custom: bool = False):
+    def export_row(self, index, layout: dict = None, level: int = 1):
         """
         Open selected record in new record window.
         """
@@ -2243,7 +2240,7 @@ class TableElement:
         modifiers = self.modifiers
         header = df.columns.values.tolist()
 
-        view_only = True if view_only is True or (not modifiers['edit']) else False
+        view_only = False if modifiers['edit'] is True else True
 
         try:
             row = df.loc[index]
@@ -2262,8 +2259,7 @@ class TableElement:
             row['Warnings'] = self.annotation_rules[annot_code]['Description']
 
         try:
-            record = self.translate_row(row, layout, level=level, new_record=new_record, references=references,
-                                        custom=custom)
+            record = self._translate_row(row, layout, level=level)
         except Exception as e:
             msg = 'failed to open record at row {IND}'.format(IND=index + 1)
             mod_win2.popup_error(msg)

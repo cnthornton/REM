@@ -2857,7 +2857,7 @@ class RecordTable(TableElement):
         record_data = self.set_defaults(record_data)
 
         try:
-            record = mod_records.create_record(record_entry, record_data)
+            record = self._translate_row(record_data, level=1, new_record=True)
         except Exception as e:
             msg = 'failed to add record at row {IND} - {ERR}'.format(IND=df.shape[0] + 2, ERR=e)
             mod_win2.popup_error(msg)

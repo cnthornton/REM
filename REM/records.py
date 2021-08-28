@@ -979,41 +979,6 @@ class RecordEntry:
         return success
 
 
-class CustomRecordEntry:
-    """
-    Custom record entry object.
-    """
-
-    def __init__(self, entry):
-        """
-        Arguments:
-
-            entry (dict): dictionary of parameters for the custom record entry.
-        """
-        self.name = 'CustomRecord'
-        self.group = 'custom'
-
-        # Record layout configuration
-        try:
-            self.record_layout = entry['RecordLayout']
-        except KeyError:
-            raise AttributeError('missing required parameter "RecordLayout"')
-
-    #        self.ids = []
-
-    def remove_unsaved_ids(self, record_id):
-        """
-        Remove record ID from the list of unsaved IDs
-        """
-        return True
-
-    def import_references(self, *args, **kwargs):
-        """
-        Dummy method.
-        """
-        return pd.DataFrame()
-
-
 class DatabaseRecord:
     """
     Generic database record account.
@@ -3033,27 +2998,6 @@ def replace_nth(s, sub, new, ns):
         new_s = before + after
 
     return new_s
-
-
-def create_record(record_entry, record_data, level: int = 1):
-    """
-    Create a new database record.
-    """
-    record_type = record_entry.group
-    if record_type in ('account', 'transaction', 'bank_statement', 'cash_expense'):
-        record_class = StandardRecord
-    elif record_type == 'bank_deposit':
-        record_class = DepositRecord
-    elif record_type == 'audit':
-        record_class = AuditRecord
-    else:
-        logger.warning('unknown record layout type provided {}'.format(record_type))
-        return None
-
-    record = record_class(record_entry, level=level)
-    record.initialize(record_data, new=True)
-
-    return record
 
 
 def import_references(record_id):
