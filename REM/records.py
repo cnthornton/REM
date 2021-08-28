@@ -2469,15 +2469,15 @@ class DatabaseRecord:
         height_key = self.key_lookup('Height')
         window.bind("<Configure>", window[height_key].Widget.config(height=int(height)))
 
-        # Expand the size of multiline parameters
+        # Expand the size of the parameters
         for param in self.parameters:
             param_type = param.etype
-            if param_type == 'multiline':
-                param_size = (int((width - width % 9) / 9) - int((64 - 64 % 9) / 9), None)
-            elif param_type == 'table':
-                param_size = (width - 64, 1)
-            else:
-                param_size = None
+            if param_type == 'multiline':  # multiline data elements
+                param_size = (width - 60, 1)
+            elif param_type == 'table':  # data table elements
+                param_size = (width - 60, 1)
+            else:  # other data element types
+                param_size = (int(width * 0.5), None)
             param.resize(window, size=param_size)
 
         # Resize the reference boxes

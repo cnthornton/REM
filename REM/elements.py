@@ -431,6 +431,145 @@ class TableElement:
         self.import_df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
 
+    def _apply_filter(self):
+        """
+        Filter the table based on values supplied to the table filter parameters.
+        """
+        parameters = self.parameters
+        df = self.data()
+
+        if df.empty:
+            return df
+
+        logger.debug('DataTable {NAME}: filtering the display table based on user-supplied parameter values'
+                     .format(NAME=self.name))
+
+        for param in parameters:
+            df = param.filter_table(df)
+
+        return df
+
+    def _calc_column_widths(self, width: int = 1200, size: int = 13, pixels: bool = False):
+        """
+        Calculate the width of the table columns based on the number of columns displayed.
+        """
+        header = list(self.display_columns.keys())
+        widths = self.widths
+
+        logger.debug('DataTable {NAME}: calculating table column widths'.format(NAME=self.name))
+
+        # Size of data
+        ncol = len(header)
+
+        if ncol < 1:  # no columns in table
+            return []
+
+        # Set table width based on whether size in pixels or characters
+        if pixels:
+            tbl_width = width
+        else:
+            tbl_width = width / size
+
+        if widths is not None:
+            # Set an average width for unspecified columns
+            avg_width = sum(widths.values()) / len(widths.values())
+            col_widths = []
+            for colname in header:
+                try:
+                    col_widths.append(float(widths[colname]))
+                except (ValueError, KeyError):  # unsupported type or column not specified
+                    col_widths.append(avg_width)
+
+            # Adjust widths to the sum total
+            width_sum = sum(col_widths)
+            adj_widths = [i / width_sum for i in col_widths]
+
+            # Calculate column lengths
+            lengths = [int(tbl_width * i) for i in adj_widths]
+        else:
+            # When table columns not long enough, need to adjust so that the
+            # table fills the empty space.
+            try:
+                max_size_per_col = int(tbl_width / ncol)
+            except ZeroDivisionError:
+                logger.warning('DataTable {NAME}: division by zero error encountered while attempting to calculate '
+                               'column widths'.format(NAME=self.name))
+                max_size_per_col = int(tbl_width / 10)
+
+            # Each column has size == max characters per column
+            lengths = [max_size_per_col for _ in header]
+
+        # Add any remainder evenly between columns
+        remainder = tbl_width - sum(lengths)
+
+        index = 0
+        for one in [1 for _ in range(int(remainder))]:
+            if index > ncol - 1:
+                index = 0
+            lengths[index] += one
+            index += one
+
+        return lengths
+
+    def _filter_deleted(self, df):
+        """
+        Filter deleted rows from the table dataframe.
+        """
+        is_bool_dtype = pd.api.types.is_bool_dtype
+
+        column = self.deleted_column
+
+        if df.empty:
+            return df
+
+        if column not in df.columns.values:
+            df[column] = False
+
+        df[column].fillna(False, inplace=True)
+        if not is_bool_dtype(df[column].dtype):
+            logger.debug('DataTable {NAME}: setting datatype of deleted column "{COL}" to boolean'
+                         .format(NAME=self.name, COL=column))
+            try:
+                df = df.astype({column: 'bool'})
+            except ValueError:
+                logger.warning('DataTable {NAME}: unable to set the datatype of delete column "{COL}" to boolean'
+                               .format(NAME=self.name, COL=column))
+                return df
+
+        logger.debug('DataTable {NAME}: filtering deleted rows on deleted column "{COL}"'
+                     .format(NAME=self.name, COL=column))
+
+        df = df[~df[self.deleted_column]]
+
+        return df
+
+    def _translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False):
+        """
+        Translate row data into a record object.
+        """
+        record_entry = settings.records.fetch_rule(self.record_type)
+        try:
+            record_group = record_entry.group
+        except AttributeError:
+            record_group = 'custom'
+
+        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
+            record_class = mod_records.StandardRecord
+        elif record_group == 'bank_deposit':
+            record_class = mod_records.DepositRecord
+        elif record_group == 'audit':
+            record_class = mod_records.AuditRecord
+        else:
+            msg = 'unknown record group provided {GROUP}'.format(GROUP=record_group)
+            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            record_class = mod_records.StandardRecord
+
+        record = record_class(record_entry, level=level, record_layout=layout)
+        record.initialize(row, new=new_record)
+
+        return record
+
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -671,38 +810,6 @@ class TableElement:
         result = self.update_display(window, values)
 
         return result
-
-    def _filter_deleted(self, df):
-        """
-        Filter deleted rows from the table dataframe.
-        """
-        is_bool_dtype = pd.api.types.is_bool_dtype
-
-        column = self.deleted_column
-
-        if df.empty:
-            return df
-
-        if column not in df.columns.values:
-            df[column] = False
-
-        df[column].fillna(False, inplace=True)
-        if not is_bool_dtype(df[column].dtype):
-            logger.debug('DataTable {NAME}: setting datatype of deleted column "{COL}" to boolean'
-                         .format(NAME=self.name, COL=column))
-            try:
-                df = df.astype({column: 'bool'})
-            except ValueError:
-                logger.warning('DataTable {NAME}: unable to set the datatype of delete column "{COL}" to boolean'
-                               .format(NAME=self.name, COL=column))
-                return df
-
-        logger.debug('DataTable {NAME}: filtering deleted rows on deleted column "{COL}"'
-                     .format(NAME=self.name, COL=column))
-
-        df = df[~df[self.deleted_column]]
-
-        return df
 
     def update_display(self, window, window_values: dict = None):
         """
@@ -1104,24 +1211,6 @@ class TableElement:
             outputs.append((rule_name, summary_total))
 
         return outputs
-
-    def _apply_filter(self):
-        """
-        Filter the table based on values supplied to the table filter parameters.
-        """
-        parameters = self.parameters
-        df = self.data()
-
-        if df.empty:
-            return df
-
-        logger.debug('DataTable {NAME}: filtering the display table based on user-supplied parameter values'
-                     .format(NAME=self.name))
-
-        for param in parameters:
-            df = param.filter_table(df)
-
-        return df
 
     def annotate_display(self, df):
         """
@@ -1567,68 +1656,6 @@ class TableElement:
 
         window[import_key].update(disabled=True)
         window[import_key].metadata['disabled'] = True
-
-    def _calc_column_widths(self, width: int = 1200, size: int = 13, pixels: bool = False):
-        """
-        Calculate the width of the table columns based on the number of columns displayed.
-        """
-        header = list(self.display_columns.keys())
-        widths = self.widths
-
-        logger.debug('DataTable {NAME}: calculating table column widths'.format(NAME=self.name))
-
-        # Size of data
-        ncol = len(header)
-
-        if ncol < 1:  # no columns in table
-            return []
-
-        # Set table width based on whether size in pixels or characters
-        if pixels:
-            tbl_width = width
-        else:
-            tbl_width = width / size
-
-        if widths is not None:
-            # Set an average width for unspecified columns
-            avg_width = sum(widths.values()) / len(widths.values())
-            col_widths = []
-            for colname in header:
-                try:
-                    col_widths.append(float(widths[colname]))
-                except (ValueError, KeyError):  # unsupported type or column not specified
-                    col_widths.append(avg_width)
-
-            # Adjust widths to the sum total
-            width_sum = sum(col_widths)
-            adj_widths = [i / width_sum for i in col_widths]
-
-            # Calculate column lengths
-            lengths = [int(tbl_width * i) for i in adj_widths]
-        else:
-            # When table columns not long enough, need to adjust so that the
-            # table fills the empty space.
-            try:
-                max_size_per_col = int(tbl_width / ncol)
-            except ZeroDivisionError:
-                logger.warning('DataTable {NAME}: division by zero error encountered while attempting to calculate '
-                               'column widths'.format(NAME=self.name))
-                max_size_per_col = int(tbl_width / 10)
-
-            # Each column has size == max characters per column
-            lengths = [max_size_per_col for _ in header]
-
-        # Add any remainder evenly between columns
-        remainder = tbl_width - sum(lengths)
-
-        index = 0
-        for one in [1 for _ in range(int(remainder))]:
-            if index > ncol - 1:
-                index = 0
-            lengths[index] += one
-            index += one
-
-        return lengths
 
     def collapse_expand(self, window, frame: str = None):
         """
@@ -2205,33 +2232,6 @@ class TableElement:
 
         return df
 
-    def _translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False):
-        """
-        Translate row data into a record object.
-        """
-        record_entry = settings.records.fetch_rule(self.record_type)
-        try:
-            record_group = record_entry.group
-        except AttributeError:
-            record_group = 'custom'
-
-        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
-            record_class = mod_records.StandardRecord
-        elif record_group == 'bank_deposit':
-            record_class = mod_records.DepositRecord
-        elif record_group == 'audit':
-            record_class = mod_records.AuditRecord
-        else:
-            msg = 'unknown record group provided {GROUP}'.format(GROUP=record_group)
-            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            record_class = mod_records.StandardRecord
-
-        record = record_class(record_entry, level=level, record_layout=layout)
-        record.initialize(row, new=new_record)
-
-        return record
-
     def export_row(self, index, layout: dict = None, level: int = 1):
         """
         Open selected record in new record window.
@@ -2259,7 +2259,7 @@ class TableElement:
             row['Warnings'] = self.annotation_rules[annot_code]['Description']
 
         try:
-            record = self._translate_row(row, layout, level=level)
+            record = self._translate_row(row, layout=layout, level=level, new_record=False)
         except Exception as e:
             msg = 'failed to open record at row {IND}'.format(IND=index + 1)
             mod_win2.popup_error(msg)
@@ -3443,7 +3443,7 @@ class DataElement:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update']]
+                         ['Element', 'Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']]
         elem_key = self.key_lookup('Element')
         self.elements.append('{}+LCLICK+'.format(elem_key))
 
@@ -3465,6 +3465,10 @@ class DataElement:
             else:
                 self.dtype = dtype
 
+        # Add additional calendar element for input with datetime data types to list of editable elements
+        if self.dtype in settings.supported_date_dtypes:
+            self.elements.append('-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id))
+
         try:
             self.description = entry['Description']
         except KeyError:
@@ -3472,36 +3476,30 @@ class DataElement:
 
         # Modifiers
         try:
-            editable = bool(int(entry['IsEditable']))
+            self.editable = bool(int(entry['IsEditable']))
         except KeyError:
             self.editable = True
         except ValueError:
             logger.warning('DataElement {NAME}: "IsEditable" must be either 0 (False) or 1 (True)'.format(NAME=name))
             self.editable = False
-        else:
-            self.editable = editable
 
         try:
-            hidden = bool(int(entry['IsHidden']))
+            self.hidden = bool(int(entry['IsHidden']))
         except KeyError:
             self.hidden = False
         except ValueError:
             logger.warning('DataElement {NAME}: configuration parameter "IsHidden" must be either 0 (False) or 1 (True)'
                            .format(NAME=name))
             sys.exit(1)
-        else:
-            self.hidden = hidden
 
         try:
-            required = bool(int(entry['IsRequired']))
+            self.required = bool(int(entry['IsRequired']))
         except KeyError:
             self.required = False
         except ValueError:
             logger.warning('DataElement {NAME}: configuration parameter "IsRequired" must be either 0 (False) or 1 '
                            '(True)'.format(NAME=name))
             sys.exit(1)
-        else:
-            self.required = required
 
         # Layout styling options
         try:
@@ -3608,6 +3606,7 @@ class DataElement:
         elem_key = self.key_lookup('Element')
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
+        aux_key = self.key_lookup('Auxiliary')
 
         # Reset element value to its default
         if not pd.isna(self.default) and not pd.isna(self.value):
@@ -3620,6 +3619,7 @@ class DataElement:
         self.edit_mode = False
         window[edit_key].update(disabled=False)
         window[update_key].update(visible=False)
+        window[aux_key].update(visible=False)
         window[elem_key].update(disabled=True)
 
         # Update the element display
@@ -3629,23 +3629,15 @@ class DataElement:
         """
         Resize the data element.
         """
-        if size is None:
-            width = int(window.size[0] * 0.5)
+        if not size:
+            width = 200  # default size in characters * 10
             height = 1
-            # Remove width of the combobox from element width, if needed
-            if self.etype == 'dropdown':  # remove width of combobox from element width
-                width_offset = 10
-                height = 10
-            else:
-                width_offset = 0
-
-            # Convert from pixels to characters
-            width = int(((width - width % 9) / 9) - ((width_offset - width_offset % 9) / 9))
         else:
             width, height = size
 
         elem_key = self.key_lookup('Element')
-        window[elem_key].set_size(size=(width, height))
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(width, height))
         window[elem_key].expand(expand_x=True)
 
     def run_event(self, window, event, values):
@@ -3660,6 +3652,7 @@ class DataElement:
         update_key = self.key_lookup('Update')
         save_key = self.key_lookup('Save')
         cancel_key = self.key_lookup('Cancel')
+        aux_key = self.key_lookup('Auxiliary')
 
         success = True
 
@@ -3671,6 +3664,7 @@ class DataElement:
             window[edit_key].update(disabled=True)
             window[elem_key].update(disabled=False, value=value_fmt)
             window[update_key].update(visible=True)
+            window[aux_key].update(visible=True)
 
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=text_col)
@@ -3703,6 +3697,7 @@ class DataElement:
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
             window[update_key].update(visible=False)
+            window[aux_key].update(visible=False)
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=disabled_text_col)
             if self.dtype in settings.supported_date_dtypes:
@@ -3716,6 +3711,7 @@ class DataElement:
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
             window[update_key].update(visible=False)
+            window[aux_key].update(visible=False)
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=disabled_text_col)
             if self.dtype in settings.supported_date_dtypes:
@@ -3765,6 +3761,18 @@ class DataElement:
         else:
             required_layout = []
 
+        # Add auxiliary elements to the layout, such as a calendar button for datetime elements.
+        accessory_layout = []
+        if self.dtype in settings.supported_date_dtypes and not is_disabled:
+            date_key = self.key_lookup('Calendar')
+            accessory_layout.append(sg.CalendarButton('', key=date_key, format='%Y-%m-%d', pad=(pad_el, 0),
+                                                      image_data=mod_const.CALENDAR_ICON,
+                                                      button_color=(text_col, bg_col), border_width=0,
+                                                      tooltip='Select the date from the calendar menu'))
+
+        aux_key = self.key_lookup('Auxiliary')
+        aux_layout = [sg.pin(sg.Col([accessory_layout], key=aux_key, background_color=bg_col, visible=False))]
+
         # Element description and actions
         desc_key = self.key_lookup('Description')
         edit_key = self.key_lookup('Edit')
@@ -3788,11 +3796,14 @@ class DataElement:
                                          key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
 
         # Element layout
-        element_layout = self.element_layout(size=size, bg_col=bg_col, is_disabled=is_disabled)
+        width_key = self.key_lookup('Width')
+        element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
+                                  self.element_layout(size=size, bg_col=bg_col, is_disabled=is_disabled)],
+                                 background_color=bg_col)]
 
         # Layout
         row1 = icon_layout + description_layout
-        row2 = element_layout + required_layout
+        row2 = element_layout + aux_layout + required_layout
 
         frame_key = self.key_lookup('Frame')
         layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col)
@@ -4050,23 +4061,14 @@ class DataElementInput(DataElement):
 
         self.etype = 'input'
 
-        # Add additional calendar element for input with datetime data types to list of editable elements
-        if self.dtype in settings.supported_date_dtypes:
-            self.elements.append('-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id))
-
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
         GUI layout for the data element.
         """
-        dtype = self.dtype
-
         # Layout options
-        pad_el = mod_const.ELEM_PAD
-
         font = mod_const.LARGE_FONT
 
         bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        text_col = mod_const.TEXT_COL
         disabled_bg_col = mod_const.ACTION_COL
         disabled_text_col = mod_const.DISABLED_TEXT_COL
 
@@ -4074,76 +4076,14 @@ class DataElementInput(DataElement):
         display_value = self.format_display()
         elem_key = self.key_lookup('Element')
 
-        if dtype in settings.supported_date_dtypes and not is_disabled:
-            date_key = self.key_lookup('Calendar')
-            layout = [sg.Input(display_value, key=elem_key, size=size, enable_events=True, font=font,
-                               background_color=bg_col, text_color=text_col, disabled=True,
-                               disabled_readonly_background_color=disabled_bg_col,
-                               disabled_readonly_text_color=disabled_text_col,
-                               tooltip='Input value for {}'.format(self.description),
-                               metadata={'disabled': is_disabled, 'name': self.name}),
-                      sg.pin(sg.CalendarButton('', target=elem_key, key=date_key, format='%Y-%m-%d',
-                                               image_data=mod_const.CALENDAR_ICON, button_color=(text_col, bg_col),
-                                               pad=((pad_el, 0), 0), font=font, border_width=0, disabled=True,
-                                               tooltip='Select the date from the calendar menu'))]
-        else:
-            layout = [sg.Input(display_value, key=elem_key, size=size, enable_events=True, font=font,
-                               background_color=bg_col, text_color='black', disabled=True,
-                               disabled_readonly_background_color=disabled_bg_col,
-                               disabled_readonly_text_color=disabled_text_col,
-                               tooltip='Input value for {}'.format(self.description),
-                               metadata={'disabled': is_disabled, 'name': self.name})]
+        layout = [sg.Input(display_value, key=elem_key, size=size, enable_events=True, font=font,
+                           background_color=bg_col, text_color='black', disabled=True,
+                           disabled_readonly_background_color=disabled_bg_col,
+                           disabled_readonly_text_color=disabled_text_col,
+                           tooltip='Input value for {}'.format(self.description),
+                           metadata={'disabled': is_disabled, 'name': self.name})]
 
         return layout
-
-    def format_display(self, editing: bool = False):
-        """
-        Format the elements value for displaying.
-        """
-        dec_sep = settings.decimal_sep
-        group_sep = settings.thousands_sep
-
-        dtype = self.dtype
-        value = self.value
-
-        if value == '' or pd.isna(value):
-            return ''
-
-        if dtype == 'money':
-            value = str(value)
-            if not editing:
-                if value[0] in ('-', '+'):  # sign of the number
-                    numeric_sign = value[0]
-                    value = value[1:]
-                else:
-                    numeric_sign = ''
-                if dec_sep in value:
-                    integers, decimals = value.split(dec_sep)
-                    decimals = decimals[0:2].ljust(2, '0')
-                    display_value = '{SIGN}{VAL}{SEP}{DEC}' \
-                        .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                                enumerate(integers[::-1])][::-1]).lstrip(','),
-                                SEP=dec_sep, DEC=decimals)
-                else:
-                    display_value = '{SIGN}{VAL}' \
-                        .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                                enumerate(value[::-1])][::-1]).lstrip(','))
-            else:
-                display_value = value.replace(group_sep, '').replace(dec_sep, '.')
-
-        elif isinstance(value, float):
-            display_value = str(value)
-
-        elif isinstance(value, datetime.datetime):
-            if not editing:  # use global settings to determine how to format date
-                display_value = settings.format_display_date(value)
-            else:  # enforce ISO formatting if element is editable
-                display_value = value.strftime(settings.format_date_str(date_str=self.date_format))
-
-        else:
-            display_value = str(value)
-
-        return display_value
 
 
 class DataElementCombo(DataElement):
@@ -4257,22 +4197,6 @@ class DataElementCombo(DataElement):
 
         return layout
 
-    def format_display(self, editing: bool = False):
-        """
-        Format the elements value for displaying.
-        """
-        aliases = self.aliases
-        value = self.value
-
-        try:
-            display_value = aliases[value]
-        except KeyError:
-            logger.debug('DataElement {NAME}: failed to find an display alias for value "{VAL}"'
-                         .format(NAME=self.name, VAL=value))
-            display_value = value
-
-        return display_value
-
 
 class DataElementMultiline(DataElement):
     """
@@ -4354,18 +4278,6 @@ class DataElementMultiline(DataElement):
                                metadata={'disabled': is_disabled, 'name': self.name})]
 
         return layout
-
-    def format_display(self, editing: bool = False):
-        """
-        Format the elements value for displaying.
-        """
-        value = self.value
-        if pd.isna(value):
-            display_value = ''
-        else:
-            display_value = str(self.value).rstrip('\n\r')
-
-        return display_value
 
 
 # Element references
