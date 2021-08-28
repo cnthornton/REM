@@ -36,7 +36,7 @@ class TableElement:
 
         title (str): display title.
 
-        modifiers (dict): flags to alter the table's behavior.
+        modifiers (dict): flags that alter the element's behavior.
 
         record_type (str): table is composed of records of this type.
 
@@ -2909,7 +2909,7 @@ class ReferenceBox:
 
         elements (list): list of reference box element GUI keys.
 
-        editable (bool): reference is editable [Default: False].
+        modifiers (dict): flags that alter the element's behavior.
 
         aliases (dict): layout element aliases.
 
@@ -3457,9 +3457,17 @@ class DataElement:
             raise AttributeError('missing required parameter "ElementType".')
 
         try:
-            self.dtype = entry['DataType']
+            dtype = entry['DataType']
         except KeyError:
             self.dtype = 'varchar'
+        else:
+            supported_dtypes = settings.get_supported_dtypes()
+            if dtype not in supported_dtypes:
+                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types '
+                               'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
+                self.dtype = 'varchar'
+            else:
+                self.dtype = dtype
 
         try:
             self.description = entry['Description']
@@ -3544,6 +3552,13 @@ class DataElement:
             except KeyError:
                 self.aliases = {}
 
+        if self.dtype in settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_bool_dtypes:
+            for alias in self.aliases:  # alias values should have same datatype as the element
+                alias_value = self.aliases[alias]
+                self.aliases[alias] = self.format_value(alias_value)
+        else:  # only string and integer types can have aliases, as aliases dict is reversed during value formatting
+            self.aliases = {}
+
         try:
             self.date_format = entry['DateFormat']
         except KeyError:
@@ -3551,11 +3566,18 @@ class DataElement:
 
         # Dynamic variables
         try:
-            self.default = entry['DefaultValue']
+            self.default = self.format_value(entry['DefaultValue'])
         except KeyError:
+            self.default = None
+        except TypeError as e:
+            msg = 'failed to format configured default value {DEF} - {ERR}'\
+                .format(DEF=entry['DefaultValue'], ERR=e)
+            logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
             self.default = None
 
         self.value = self.default
+
         logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
                      'and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
@@ -3973,7 +3995,7 @@ class DataElement:
                 display_value = value.strftime(settings.format_date_str(date_str=self.date_format))
 
         else:
-            display_value = str(value)
+            display_value = str(value).rstrip('\n\r')
 
         # Set display value alias, if applicable
         aliases = self.aliases
@@ -4040,21 +4062,6 @@ class DataElementInput(DataElement):
         # Add additional calendar element for input with datetime data types to list of editable elements
         if self.dtype in settings.supported_date_dtypes:
             self.elements.append('-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id))
-
-        # Data type check
-        if not self.dtype:
-            self.dtype = 'varchar'
-
-        try:
-            self.value = self.format_value(self.default)
-        except (KeyError, TypeError):
-            self.value = self.format_value(None)
-
-        logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
-                     'and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-        self.disabled = False
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
@@ -4196,10 +4203,6 @@ class DataElementCombo(DataElement):
 
         self.etype = 'dropdown'
 
-        # Data type check
-        if not self.dtype:
-            self.dtype = 'varchar'
-
         # Enforce supported data types for the dropdown parameter
         supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + settings.supported_cat_dtypes
         if not self.dtype or self.dtype not in supported_dtypes:
@@ -4212,7 +4215,6 @@ class DataElementCombo(DataElement):
         # Dropdown values
         param_def = settings.fetch_alias_definition(self.name)
         self.combo_values = []
-        self.aliases = {}
         try:
             combo_values = entry['Values']
         except KeyError:
@@ -4223,7 +4225,7 @@ class DataElementCombo(DataElement):
         else:
             for combo_value in combo_values:
                 try:
-                    self.combo_values.append(settings.format_value(combo_value, self.dtype))
+                    self.combo_values.append(self.format_value(combo_value))
                 except ValueError:
                     msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
@@ -4250,27 +4252,6 @@ class DataElementCombo(DataElement):
                 else:
                     alias = aliases[combo_value]
                     self.aliases[combo_value] = settings.format_value(alias, self.dtype)
-
-        # Set the default value
-        if self.default in self.combo_values:
-            self.default = self.aliases.get(self.default, self.default)
-        else:  # set default to None
-            if not pd.isna(self.default):
-                msg = 'default value "{VAL}" not found in the list of available values for the parameter' \
-                    .format(VAL=self.default)
-                mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-
-            self.default = None
-
-        try:
-            self.value = self.format_value(self.default)
-        except (KeyError, TypeError):
-            self.value = None
-
-        logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
-                     'and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
@@ -4369,13 +4350,9 @@ class DataElementMultiline(DataElement):
 
         self.etype = 'multiline'
 
-        # Data type check
-        if not self.dtype:
-            self.dtype = 'varchar'
-
         # Enforce supported data types for the dropdown parameter
         supported_dtypes = settings.supported_str_dtypes
-        if not self.dtype or self.dtype not in supported_dtypes:
+        if self.dtype not in supported_dtypes:
             msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
                 .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
@@ -4387,17 +4364,6 @@ class DataElementMultiline(DataElement):
             self.nrow = int(entry['Nrow'])
         except (KeyError, ValueError):
             self.nrow = None
-
-        try:
-            self.value = self.format_value(self.default)
-        except (KeyError, TypeError):
-            self.value = None
-
-        logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
-                     'and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-        self.disabled = False
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
