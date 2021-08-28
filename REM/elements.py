@@ -3544,20 +3544,15 @@ class DataElement:
 
         # Formatting options
         try:
-            self.aliases = entry['Aliases']
+            aliases = entry['Aliases']
         except KeyError:
-            param_def = settings.fetch_alias_definition(self.name)
-            try:
-                self.aliases = param_def[self.name]
-            except KeyError:
-                self.aliases = {}
+            aliases = settings.fetch_alias_definition(self.name)
 
-        if self.dtype in settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_bool_dtypes:
-            for alias in self.aliases:  # alias values should have same datatype as the element
-                alias_value = self.aliases[alias]
-                self.aliases[alias] = self.format_value(alias_value)
-        else:  # only string and integer types can have aliases, as aliases dict is reversed during value formatting
-            self.aliases = {}
+        self.aliases = {}  # only str and int types can have aliases - aliases dict reversed during value formatting
+        if self.dtype in settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes:
+            for alias in aliases:  # alias should have same datatype as the element
+                alias_value = aliases[alias]
+                self.aliases[settings.format_value(alias, self.dtype)] = alias_value
 
         try:
             self.date_format = entry['DateFormat']
@@ -4213,7 +4208,6 @@ class DataElementCombo(DataElement):
             self.dtype = 'varchar'
 
         # Dropdown values
-        param_def = settings.fetch_alias_definition(self.name)
         self.combo_values = []
         try:
             combo_values = entry['Values']
@@ -4230,28 +4224,6 @@ class DataElementCombo(DataElement):
                     msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-
-                # Add alias from parameter definition, if configured in the parameter definitions
-                if combo_value in param_def:
-                    self.aliases[combo_value] = param_def[combo_value]
-                else:
-                    msg = 'value {VAL} is not found in the alias definition'.format(VAL=combo_value)
-                    logger.debug('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-
-        # Dropdown aliases
-        try:
-            aliases = entry['Aliases']
-        except KeyError:
-            if not self.aliases:
-                self.aliases = {settings.format_value(i, self.dtype): settings.format_value(i, self.dtype) for i in
-                                self.combo_values}
-        else:
-            for combo_value in self.combo_values:
-                if combo_value not in aliases:
-                    self.aliases[combo_value] = combo_value
-                else:
-                    alias = aliases[combo_value]
-                    self.aliases[combo_value] = settings.format_value(alias, self.dtype)
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
