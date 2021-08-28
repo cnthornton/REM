@@ -2650,6 +2650,8 @@ class ReferenceElement:
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ['Element', 'Reference', 'Unlink', 'Width', 'Height']]
 
+        self.etype = 'refbox1'
+
         if inverted is True:
             colmap = {'DocNo': 'RecordID', 'RefNo': 'ReferenceID', 'DocType': 'RecordType', 'RefType': 'ReferenceType'}
             self.inverted = True
@@ -3594,23 +3596,21 @@ class DataElement:
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
 
-        # Reset to default
+        # Reset element value to its default
         if not pd.isna(self.default) and not pd.isna(self.value):
             logger.debug('DataElement {NAME}: resetting data element value "{VAL}" to default "{DEF}"'
                          .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
         self.value = self.default
 
-        # Update the parameter window element
-        display_value = self.format_display()
-        window[self.key_lookup('Element')].update(value=display_value)
-
-        # Hide save and cancel buttons and enable edit button
+        # Reset element editing
+        self.edit_mode = False
         window[edit_key].update(disabled=False)
         window[update_key].update(visible=False)
         window[elem_key].update(disabled=True)
 
-        self.edit_mode = False
+        # Update the element display
+        self.update_display(window)
 
     def resize(self, window, size: tuple = None):
         """
@@ -3812,6 +3812,7 @@ class DataElement:
 
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
+        frame_key = self.key_lookup('Frame')
 
         # Update element display value
         logger.debug('DataElement {NAME}: disabled {EDIT}; hidden {VIS}'
@@ -3840,11 +3841,7 @@ class DataElement:
             bg_col = rule['BackgroundColor']
             tooltip = rule['Description']
 
-        frame_key = self.key_lookup('Frame')
-        window[frame_key].Widget.config(background=bg_col)
-        window[frame_key].Widget.config(highlightcolor=bg_col)
-        window[frame_key].Widget.config(highlightbackground=bg_col)
-#        window[frame_key].update(background_color=bg_col)
+        window[desc_key].update(background_color=bg_col)
         window[frame_key].SetTooltip(tooltip)
 
     def annotate_display(self, display_value=None):
@@ -3895,44 +3892,37 @@ class DataElement:
 
             input_value: value input into the GUI element.
         """
-        aliases = {j: i for i, j in self.aliases.items()}
-        dtype = self.dtype
-        date_format = self.date_format
-
         if input_value == '' or pd.isna(input_value):
             return None
 
+        # Format the input value as the element datatype
+        dtype = self.dtype
         if dtype in settings.supported_date_dtypes:
-            if isinstance(input_value, str):
-                year_first = True if date_format[0] == 'Y' else False
+            date_format = self.date_format
+            value_fmt = settings.format_as_datetime(input_value, date_format=date_format)
 
-                try:
-                    value_fmt = dparse(input_value, yearfirst=year_first)
-                except (ValueError, TypeError):
-                    msg = 'failed to format input {VAL} as "{DTYPE}" - unable to parse the value as a datetime object' \
-                        .format(VAL=input_value, DTYPE=dtype)
-                    logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+        elif dtype in settings.supported_float_dtypes:
+            value_fmt = settings.format_as_float(input_value)
 
-                    raise ValueError(msg)
-            elif isinstance(input_value, datetime.datetime):  # value is already formatted properly
-                value_fmt = input_value
-            else:
-                msg = 'failed to format input {VAL} as "{DTYPE}" - unsupported object type passed as the input value' \
-                    .format(VAL=input_value, DTYPE=dtype)
+        elif dtype in settings.supported_int_dtypes:
+            value_fmt = settings.format_as_int(input_value)
+
+        elif dtype in settings.supported_bool_dtypes:
+            value_fmt = settings.format_as_bool(input_value)
+
+        else:
+            try:
+                value_fmt = str(input_value).strip()  # trailing newline sometimes added for multiline elements
+            except ValueError:
+                msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
                 logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 raise ValueError(msg)
-        else:
-            try:
-                value_fmt = aliases[input_value]
-            except KeyError:
-                try:
-                    value_fmt = str(input_value)
-                except ValueError:
-                    msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
-                    logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                    raise ValueError(msg)
+        # Set the value alias, if applicable
+        aliases = {j: i for i, j in self.aliases.items()}
+        if value_fmt in aliases:
+            value_fmt = aliases[value_fmt]
 
         logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
                      .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
@@ -3943,16 +3933,52 @@ class DataElement:
         """
         Format the elements value for displaying.
         """
-        aliases = self.aliases
-
         value = self.value
-        if pd.isna(value):
-            display_value = ''
+        if value == '' or pd.isna(value):
+            return ''
+
+        dtype = self.dtype
+        if dtype == 'money':
+            dec_sep = settings.decimal_sep
+            group_sep = settings.thousands_sep
+
+            value = str(value)
+            if not editing:
+                if value[0] in ('-', '+'):  # sign of the number
+                    numeric_sign = value[0]
+                    value = value[1:]
+                else:
+                    numeric_sign = ''
+                if dec_sep in value:
+                    integers, decimals = value.split(dec_sep)
+                    decimals = decimals[0:2].ljust(2, '0')
+                    display_value = '{SIGN}{VAL}{SEP}{DEC}' \
+                        .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                                enumerate(integers[::-1])][::-1]).lstrip(','),
+                                SEP=dec_sep, DEC=decimals)
+                else:
+                    display_value = '{SIGN}{VAL}' \
+                        .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                                enumerate(value[::-1])][::-1]).lstrip(','))
+            else:
+                display_value = value.replace(group_sep, '').replace(dec_sep, '.')
+
+        elif isinstance(value, float):
+            display_value = str(value)
+
+        elif isinstance(value, datetime.datetime):
+            if not editing:  # use global settings to determine how to format date
+                display_value = settings.format_display_date(value)  # default format is ISO
+            else:  # enforce ISO formatting if element is editable
+                display_value = value.strftime(settings.format_date_str(date_str=self.date_format))
+
         else:
-            try:
-                display_value = aliases[value]
-            except KeyError:
-                display_value = str(value)
+            display_value = str(value)
+
+        # Set display value alias, if applicable
+        aliases = self.aliases
+        if display_value in aliases:
+            display_value = aliases[display_value]
 
         return display_value
 
@@ -4071,60 +4097,6 @@ class DataElementInput(DataElement):
                                metadata={'disabled': is_disabled, 'name': self.name})]
 
         return layout
-
-    def format_value(self, input_value):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-
-            input_value: value input into the GUI element.
-        """
-        dparse = dateutil.parser.parse
-        date_format = self.date_format
-
-        dtype = self.dtype
-
-        if pd.isna(input_value) or input_value == '':
-            return None
-
-        if dtype in settings.supported_date_dtypes:
-            if isinstance(input_value, str):
-                year_first = True if date_format[0] == 'Y' else False
-
-                try:
-                    value_fmt = dparse(input_value, yearfirst=year_first)
-                except (ValueError, TypeError):
-                    msg = 'failed to format input {VAL} as "{DTYPE}" - unable to parse the value as a datetime object' \
-                        .format(VAL=input_value, DTYPE=dtype)
-                    logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    raise ValueError(msg)
-            elif isinstance(input_value, datetime.datetime):  # value is already formatted properly
-                value_fmt = input_value
-            else:
-                msg = 'failed to format input {VAL} as "{DTYPE}" - unsupported object type passed as the input value' \
-                    .format(VAL=input_value, DTYPE=dtype)
-                logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise ValueError(msg)
-
-        elif dtype in settings.supported_float_dtypes:
-            value_fmt = settings.format_as_float(input_value)
-
-        elif dtype in settings.supported_int_dtypes:
-            value_fmt = settings.format_as_int(input_value)
-
-        elif dtype in settings.supported_bool_dtypes:
-            value_fmt = settings.format_as_bool(input_value)
-
-        else:
-            value_fmt = str(input_value)
-
-        logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
-                     .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
-
-        return value_fmt
 
     def format_display(self, editing: bool = False):
         """
@@ -4336,36 +4308,6 @@ class DataElementCombo(DataElement):
 
         return layout
 
-    def format_value(self, input_value):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-
-            input_value: value input into the GUI element.
-        """
-        dtype = self.dtype
-        aliases = {j: i for i, j in self.aliases.items()}  # input is the combo selection alias
-
-        if input_value == '' or pd.isna(input_value):
-            return None
-
-        if dtype in settings.supported_int_dtypes:
-            value_fmt = settings.format_as_int(input_value)
-        else:
-            value_fmt = str(input_value)
-
-        try:
-            value_fmt = aliases[input_value]
-        except KeyError:
-            logger.debug('DataElement {NAME}: failed to find an alias for value "{VAL}"'
-                         .format(NAME=self.name, VAL=input_value))
-
-        logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
-                     .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
-
-        return value_fmt
-
     def format_display(self, editing: bool = False):
         """
         Format the elements value for displaying.
@@ -4478,30 +4420,6 @@ class DataElementMultiline(DataElement):
                                metadata={'disabled': is_disabled, 'name': self.name})]
 
         return layout
-
-    def format_value(self, input_value):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-
-            input_value: value input into the GUI element.
-        """
-        if input_value == '' or pd.isna(input_value):
-            return None
-
-        try:  # remove newline automatically added by the multiline element
-            value_fmt = str(input_value).strip()
-        except ValueError:
-            msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
-            logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ValueError(msg)
-
-        logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
-                     .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
-
-        return value_fmt
 
     def format_display(self, editing: bool = False):
         """

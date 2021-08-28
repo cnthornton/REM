@@ -1801,6 +1801,7 @@ class DatabaseRecord:
         for refbox in self.references:
             if refbox.etype != 'refbox':
                 continue
+
             ref_vals = refbox.as_row()
             values.extend(ref_vals.values.tolist())
             columns.extend(ref_vals.index.tolist())
