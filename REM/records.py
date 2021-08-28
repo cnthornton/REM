@@ -97,35 +97,38 @@ class RecordEntry:
         self.import_rules = import_rules
 
         # Database export rules
-        try:
-            export_rules = entry['ExportRules']
-        except KeyError:
+        if self.program_record:
+            try:
+                export_rules = entry['ExportRules']
+            except KeyError:
+                self.export_rules = {}
+                for table in self.import_rules:
+                    table_entry = self.import_rules[table]
+                    import_columns = table_entry['Columns']
+
+                    export_columns = {}
+                    for import_column in import_columns:
+                        import_alias = import_columns[import_column]
+                        if isinstance(import_alias, list):
+                            for export_column in import_alias:
+                                export_columns[export_column] = import_column
+                        else:
+                            export_columns[import_alias] = import_column
+
+                    self.export_rules[table] = {'Columns': export_columns}
+            else:
+                self.export_rules = {}
+                for export_table in export_rules:
+                    export_rule = export_rules[export_table]
+
+                    if 'Columns' not in export_rule:
+                        mod_win2.popup_error('RecordsEntry {NAME}: configuration missing required "ExportRules" {TBL} '
+                                             'parameter "Columns"'.format(NAME=name, TBL=export_table))
+                        sys.exit(1)
+
+                    self.export_rules[export_table] = export_rule
+        else:  # only program records can export records to the database
             self.export_rules = {}
-            for table in self.import_rules:
-                table_entry = self.import_rules[table]
-                import_columns = table_entry['Columns']
-
-                export_columns = {}
-                for import_column in import_columns:
-                    import_alias = import_columns[import_column]
-                    if isinstance(import_alias, list):
-                        for export_column in import_alias:
-                            export_columns[export_column] = import_column
-                    else:
-                        export_columns[import_alias] = import_column
-
-                self.export_rules[table] = {'Columns': export_columns}
-        else:
-            self.export_rules = {}
-            for export_table in export_rules:
-                export_rule = export_rules[export_table]
-
-                if 'Columns' not in export_rule:
-                    mod_win2.popup_error('RecordsEntry {NAME}: configuration missing required "ExportRules" {TBL} '
-                                         'parameter "Columns"'.format(NAME=name, TBL=export_table))
-                    sys.exit(1)
-
-                self.export_rules[export_table] = export_rule
 
         # Record association rules
         try:

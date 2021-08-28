@@ -2082,7 +2082,7 @@ class TableElement:
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
                         'RecordType': self.record_type, 'Title': self.title, 'ImportRules': import_rules,
-                        'Actions': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
                         'SortBy': self.sort_on, 'FilterParameters': self.filter_entry}
 
         import_table = TableElement(self.name, table_layout)
@@ -2240,7 +2240,10 @@ class TableElement:
         Open selected record in new record window.
         """
         df = self.df.copy()
+        modifiers = self.modifiers
         header = df.columns.values.tolist()
+
+        view_only = True if view_only is True or (not modifiers['edit']) else False
 
         try:
             row = df.loc[index]
@@ -2272,6 +2275,7 @@ class TableElement:
                         .format(NAME=self.name, ID=record.record_id(), IND=index))
 
         # Display the record window
+        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
         record = mod_win2.record_window(record, view_only=view_only, is_component=True)
 
         # Update record table values
@@ -2280,24 +2284,25 @@ class TableElement:
         except AttributeError:  # user selected to cancel editing the record
             return df
         else:
-            print('current values:')
-            print(df.iloc[index])
-            row_values = self.set_conditional_values(record_values).squeeze()
-            print('new values:')
-            print(row_values)
-            for col_name, col_value in row_values.iteritems():
-                if col_name not in header:
-                    continue
+            if not view_only:  # only update table if view_only is set to false
+                print('current values:')
+                print(df.iloc[index])
+                row_values = self.set_conditional_values(record_values).squeeze()
+                print('new values:')
+                print(row_values)
+                for col_name, col_value in row_values.iteritems():
+                    if col_name not in header:
+                        continue
 
-                try:
-                    df.at[index, col_name] = col_value
-                except KeyError:
-                    continue
-                except ValueError as e:
-                    logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - {ERR}'
-                                 .format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
+                    try:
+                        df.at[index, col_name] = col_value
+                    except KeyError:
+                        continue
+                    except ValueError as e:
+                        logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
+                                     '{ERR}'.format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
 
-        df = self.set_datatypes(df)
+                df = self.set_datatypes(df)
 
         return df
 
@@ -3459,6 +3464,7 @@ class DataElement:
         except KeyError:
             self.description = self.name
 
+        # Modifiers
         try:
             editable = bool(int(entry['IsEditable']))
         except KeyError:
@@ -3491,6 +3497,7 @@ class DataElement:
         else:
             self.required = required
 
+        # Layout styling options
         try:
             bg_col = entry['BackgroundColor']
         except KeyError:
@@ -3525,7 +3532,7 @@ class DataElement:
                                                      'Description': annot_rule.get('Description', annot_code),
                                                      'Condition': annot_rule['Condition']}
 
-        # Aliases
+        # Formatting options
         try:
             self.aliases = entry['Aliases']
         except KeyError:
@@ -3535,6 +3542,12 @@ class DataElement:
             except KeyError:
                 self.aliases = {}
 
+        try:
+            self.date_format = entry['DateFormat']
+        except KeyError:
+            self.date_format = settings.display_date_format
+
+        # Dynamic variables
         try:
             self.default = entry['DefaultValue']
         except KeyError:
@@ -3810,7 +3823,7 @@ class DataElement:
             display_value = self.format_display()
             window[elem_key].update(value=display_value)
         else:  # element is either disabled or hidden
-            if self.value:
+            if not pd.isna(self.value):
                 display_value = self.format_display()
             else:
                 logger.debug("DataElement {NAME}: no values provided to update the element's display"
@@ -3827,8 +3840,12 @@ class DataElement:
             bg_col = rule['BackgroundColor']
             tooltip = rule['Description']
 
-        window[desc_key].update(background_color=bg_col)
-        window[desc_key].SetTooltip(tooltip)
+        frame_key = self.key_lookup('Frame')
+        window[frame_key].Widget.config(background=bg_col)
+        window[frame_key].Widget.config(highlightcolor=bg_col)
+        window[frame_key].Widget.config(highlightbackground=bg_col)
+#        window[frame_key].update(background_color=bg_col)
+        window[frame_key].SetTooltip(tooltip)
 
     def annotate_display(self, display_value=None):
         """
@@ -3852,7 +3869,7 @@ class DataElement:
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                result = mod_dm.evaluate_condition({self.name: display_value}, annot_condition)
+                result = mod_dm.evaluate_operation({self.name: display_value}, annot_condition)
             except Exception as e:
                 logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
@@ -3879,20 +3896,43 @@ class DataElement:
             input_value: value input into the GUI element.
         """
         aliases = {j: i for i, j in self.aliases.items()}
+        dtype = self.dtype
+        date_format = self.date_format
 
         if input_value == '' or pd.isna(input_value):
             return None
 
-        try:
-            value_fmt = aliases[input_value]
-        except KeyError:
-            try:
-                value_fmt = str(input_value)
-            except ValueError:
-                msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
+        if dtype in settings.supported_date_dtypes:
+            if isinstance(input_value, str):
+                year_first = True if date_format[0] == 'Y' else False
+
+                try:
+                    value_fmt = dparse(input_value, yearfirst=year_first)
+                except (ValueError, TypeError):
+                    msg = 'failed to format input {VAL} as "{DTYPE}" - unable to parse the value as a datetime object' \
+                        .format(VAL=input_value, DTYPE=dtype)
+                    logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    raise ValueError(msg)
+            elif isinstance(input_value, datetime.datetime):  # value is already formatted properly
+                value_fmt = input_value
+            else:
+                msg = 'failed to format input {VAL} as "{DTYPE}" - unsupported object type passed as the input value' \
+                    .format(VAL=input_value, DTYPE=dtype)
                 logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 raise ValueError(msg)
+        else:
+            try:
+                value_fmt = aliases[input_value]
+            except KeyError:
+                try:
+                    value_fmt = str(input_value)
+                except ValueError:
+                    msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
+                    logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    raise ValueError(msg)
 
         logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
                      .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
@@ -3978,11 +4018,6 @@ class DataElementInput(DataElement):
         # Data type check
         if not self.dtype:
             self.dtype = 'varchar'
-
-        try:
-            self.date_format = entry['DateFormat']
-        except KeyError:
-            self.date_format = settings.display_date_format
 
         try:
             self.value = self.format_value(self.default)
@@ -4881,7 +4916,7 @@ class ElementReference:
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                result = mod_dm.evaluate_condition({self.name: display_value}, annot_condition)
+                result = mod_dm.evaluate_operation({self.name: display_value}, annot_condition)
             except Exception as e:
                 logger.error('ElementReference {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
