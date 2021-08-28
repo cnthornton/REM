@@ -888,18 +888,20 @@ def main():
                 if not record_entry:
                     msg = 'unable to find a configured record type with name {NAME}'.format(NAME=record_type)
                     logger.warning(msg)
+
                     continue
                 else:
                     logger.debug('the record type selected is {TYPE}'.format(TYPE=record_type))
 
                 # Display the import record window
-                table_entry = current_rule.import_table_entry
+                table_entry = record_entry.import_table
                 table_entry['RecordType'] = record_type
                 import_table = mod_elem.TableElement(current_rule.name, table_entry)
 
                 try:
-                    mod_win2.record_import_window(import_table, enable_new=True,
-                                                  record_layout=current_rule.record_layout_entry)
+#                    mod_win2.record_import_window(import_table, enable_new=True,
+#                                                  record_layout=current_rule.record_layout_entry)
+                    mod_win2.record_import_window(import_table, enable_new=True)
                 except Exception as e:
                     msg = 'record importing failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)

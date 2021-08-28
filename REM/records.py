@@ -67,7 +67,7 @@ class RecordEntry:
                                  .format(NAME=name))
             sys.exit(1)
 
-#        self.menu_group = self.group
+        #        self.menu_group = self.group
 
         try:
             self.id_code = entry['IDCode']
@@ -287,7 +287,8 @@ class RecordEntry:
 
         return import_df
 
-    def save_database_records_old(self, records, id_field: str = 'RecordID', exists: bool = None, statements: dict = None,
+    def save_database_records_old(self, records, id_field: str = 'RecordID', exists: bool = None,
+                                  statements: dict = None,
                                   export_columns: bool = True):
         """
         Create insert and update database transaction statements for records.
@@ -452,7 +453,7 @@ class RecordEntry:
         """
         export_rules = self.export_rules
         ref_table = settings.reference_lookup
-#        pd.set_option('display.max_columns', None)
+        #        pd.set_option('display.max_columns', None)
 
         if not statements:
             statements = {}
@@ -1119,7 +1120,7 @@ class DatabaseRecord:
         except KeyError:
             msg = 'missing required configuration parameter "Sections"'
             logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-#            raise AttributeError('missing required configuration parameter "Sections"')
+        #            raise AttributeError('missing required configuration parameter "Sections"')
         else:
             for i, section in enumerate(sections):
                 section_entry = sections[section]
@@ -1780,7 +1781,7 @@ class DatabaseRecord:
         record_entry = self.record_entry
         record_type = record_entry.name
         record_id = self.record_id()
-#        ref_df = self.ref_df
+        #        ref_df = self.ref_df
 
         if not statements:
             statements = {}
@@ -1793,71 +1794,71 @@ class DatabaseRecord:
         # Determine any record associations to delete as well
 
         # Child records
-#        ref_df['IsParentChild'].fillna(False, inplace=True)
-#        ref_df[settings.delete_field].fillna(False, inplace=True)
-#        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field] & (ref_df['DocNo'] == record_id))]
-#
-#        # Prepare statements to remove any child references
-#        marked = {}  # records to delete grouped by their record type
-#        for index, row in child_df.iterrows():
-#            if record_id != row['DocNo']:  # only remove entries where primary record is the parent
-#                continue
-#
-#            ref_id = row['RefNo']
-#            ref_type = row['RefType']
-#            logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
-#                         .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
-#            try:
-#                marked[ref_type].append(ref_id)
-#            except KeyError:
-#                marked[ref_type] = [ref_id]
-#
-#        for ref_type in marked:
-#            ref_ids = marked[ref_type]
-#
-#            ref_entry = settings.records.fetch_rule(ref_type)
-#            if ref_entry is None:
-#                msg = 'unable to delete record {ID} dependant records {REFID} - invalid record type "{TYPE}"' \
-#                    .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
-#                logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
-#
-#                raise AttributeError(msg)
-#
-#            statements = ref_entry.delete_database_records(ref_ids, statements=statements)
+        #        ref_df['IsParentChild'].fillna(False, inplace=True)
+        #        ref_df[settings.delete_field].fillna(False, inplace=True)
+        #        child_df = ref_df[(ref_df['IsParentChild']) & (~ref_df[settings.delete_field] & (ref_df['DocNo'] == record_id))]
+        #
+        #        # Prepare statements to remove any child references
+        #        marked = {}  # records to delete grouped by their record type
+        #        for index, row in child_df.iterrows():
+        #            if record_id != row['DocNo']:  # only remove entries where primary record is the parent
+        #                continue
+        #
+        #            ref_id = row['RefNo']
+        #            ref_type = row['RefType']
+        #            logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
+        #                         .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+        #            try:
+        #                marked[ref_type].append(ref_id)
+        #            except KeyError:
+        #                marked[ref_type] = [ref_id]
+        #
+        #        for ref_type in marked:
+        #            ref_ids = marked[ref_type]
+        #
+        #            ref_entry = settings.records.fetch_rule(ref_type)
+        #            if ref_entry is None:
+        #                msg = 'unable to delete record {ID} dependant records {REFID} - invalid record type "{TYPE}"' \
+        #                    .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
+        #                logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+        #
+        #                raise AttributeError(msg)
+        #
+        #            statements = ref_entry.delete_database_records(ref_ids, statements=statements)
 
-#        # Linked records
-#        ref_df['IsHardLink'].fillna(False, inplace=True)
-#        link_df = ref_df[(ref_df['IsHardLink']) & (~ref_df[settings.delete_field])]
-#
-#        # Prepare statements to remove any hard-linked references
-#        marked = {}  # records to delete grouped by their record type
-#        for index, row in link_df.iterrows():
-#            if row['RefNo'] == record_id:  # record serves as the reference in the references table
-#                ref_id = row['DocNo']
-#                ref_type = row['DocType']
-#            else:  # record serves as the primary in the references table
-#                ref_id = row['RefNo']
-#                ref_type = row['DocType']
-#
-#            logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
-#                         .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
-#            try:
-#                marked[ref_type].append(ref_id)
-#            except KeyError:
-#                marked[ref_type] = [ref_id]
-#
-#        for ref_type in marked:
-#            ref_ids = marked[ref_type]
-#
-#            ref_entry = settings.records.fetch_rule(ref_type)
-#            if ref_entry is None:
-#                msg = 'unable to delete record {ID} dependant records {REFID} - invalid record type "{TYPE}"' \
-#                    .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
-#                logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
-#
-#                raise AttributeError(msg)
-#
-#            statements = ref_entry.delete_database_records(ref_ids, statements=statements)
+        #        # Linked records
+        #        ref_df['IsHardLink'].fillna(False, inplace=True)
+        #        link_df = ref_df[(ref_df['IsHardLink']) & (~ref_df[settings.delete_field])]
+        #
+        #        # Prepare statements to remove any hard-linked references
+        #        marked = {}  # records to delete grouped by their record type
+        #        for index, row in link_df.iterrows():
+        #            if row['RefNo'] == record_id:  # record serves as the reference in the references table
+        #                ref_id = row['DocNo']
+        #                ref_type = row['DocType']
+        #            else:  # record serves as the primary in the references table
+        #                ref_id = row['RefNo']
+        #                ref_type = row['DocType']
+        #
+        #            logger.debug('Record {ID}: preparing to delete dependant record {REFID} of type {TYPE}'
+        #                         .format(ID=record_id, REFID=ref_id, TYPE=ref_type))
+        #            try:
+        #                marked[ref_type].append(ref_id)
+        #            except KeyError:
+        #                marked[ref_type] = [ref_id]
+        #
+        #        for ref_type in marked:
+        #            ref_ids = marked[ref_type]
+        #
+        #            ref_entry = settings.records.fetch_rule(ref_type)
+        #            if ref_entry is None:
+        #                msg = 'unable to delete record {ID} dependant records {REFID} - invalid record type "{TYPE}"' \
+        #                    .format(ID=record_id, REFID=ref_ids, TYPE=ref_type)
+        #                logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+        #
+        #                raise AttributeError(msg)
+        #
+        #            statements = ref_entry.delete_database_records(ref_ids, statements=statements)
 
         # Prepare statement for the removal of the record
         try:
@@ -1888,7 +1889,7 @@ class DatabaseRecord:
         try:
             statements = self.prepare_delete_statements(statements=statements)
         except Exception as e:
-            msg = 'Record {ID}: failed to prepare database transaction statements for deletion - {ERR}'\
+            msg = 'Record {ID}: failed to prepare database transaction statements for deletion - {ERR}' \
                 .format(ID=record_id, ERR=e)
             logger.exception(msg)
             mod_win2.popup_error(msg)
@@ -1971,7 +1972,7 @@ class DatabaseRecord:
                 logger.info('RecordType {NAME}, Record {ID}: updating reference {REF}'
                             .format(NAME=self.name, ID=record_id, REF=ref_id))
                 statements = user.prepare_update_statement(ref_table, comp_columns, comp_values, update_filters,
-                                                                  filter_params, statements=statements)
+                                                           filter_params, statements=statements)
             else:
                 # Prepare the insert statement for the existing reference entry to the references table
                 comp_columns.extend([settings.creator_code, settings.creation_date])
@@ -2046,7 +2047,7 @@ class DatabaseRecord:
                 statements = comp_entry.delete_database_records(deleted_df[comp_table.id_column].values.tolist(),
                                                                 statements=statements)
 
-#                comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
+            #                comp_df[self.delete_field] = comp_df[comp_table.deleted_column]
 
             # Prepare transaction statements for the component records
             exist_df = comp_df[~comp_df[comp_table.deleted_column]]  # don't update removed references
@@ -2308,8 +2309,13 @@ class DatabaseRecord:
         try:
             reference_title = record_layout['References'].get('Title', 'References')
         except KeyError:
-            reference_title = 'References'
-            has_references = False
+            try:
+                reference_title = record_layout['References2'].get('Title', 'References')
+            except KeyError:
+                reference_title = 'References'
+                has_references = False
+            else:
+                has_references = True
         else:
             has_references = True
 
