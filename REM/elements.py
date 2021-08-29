@@ -3945,6 +3945,8 @@ class DataElement:
 
         # Set the value alias, if applicable
         aliases = {j: i for i, j in self.aliases.items()}
+        print('value aliases:')
+        print(aliases)
         if value_fmt in aliases:
             value_fmt = aliases[value_fmt]
 
@@ -3960,6 +3962,9 @@ class DataElement:
         value = self.value
         if value == '' or pd.isna(value):
             return ''
+
+        logger.debug('DataElement {NAME}: formatting display for element value {VAL} of type {TYPE}'
+                     .format(NAME=self.name, VAL=value, TYPE=type(value)))
 
         dtype = self.dtype
         if dtype == 'money':
@@ -3990,6 +3995,9 @@ class DataElement:
         elif isinstance(value, float):
             display_value = str(value)
 
+        elif isinstance(value, int):
+            display_value = value
+
         elif isinstance(value, datetime.datetime):
             if not editing:  # use global settings to determine how to format date
                 display_value = settings.format_display_date(value)  # default format is ISO
@@ -4004,7 +4012,10 @@ class DataElement:
         if display_value in aliases:
             display_value = aliases[display_value]
 
-        return display_value
+        logger.debug('DataElement {NAME}: display value is {VAL}'
+                     .format(NAME=self.name, VAL=display_value))
+
+        return str(display_value)
 
     def has_value(self):
         """

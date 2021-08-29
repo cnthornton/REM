@@ -1368,7 +1368,6 @@ class DatabaseRecord:
         meta_params = self.metadata
         comp_types = self.component_types
         ref_types = self.reference_types
-        print(data)
 
         self.new = new
         record_entry = self.record_entry
