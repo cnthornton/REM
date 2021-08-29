@@ -1904,6 +1904,8 @@ class DatabaseRecord:
                 .format(ID=record_id, ERR=e)
             logger.exception(msg)
             mod_win2.popup_error(msg)
+
+            return False
         else:
             if len(statements) < 1:
                 logger.debug('Record {ID}: no records needed deleting from the database'.format(ID=record_id))
@@ -1959,6 +1961,9 @@ class DatabaseRecord:
 
         # Prepare to save record references
         for refbox in self.references:
+            if refbox.etype == 'refbox':  # only save old reference elements this way
+                continue
+
             ref_data = refbox.as_row()
             ref_id = ref_data['DocNo']  # reference record ID
             logger.debug('Record {ID}: preparing reference statement for reference {REF}'
@@ -2397,7 +2402,7 @@ class DatabaseRecord:
         ref_layout.append([sg.pin(sg.Col(ref_boxes, key=ref_panel_key, background_color=bg_col,
                                          visible=True, expand_x=True, metadata={'visible': True}))])
 
-        if has_references is True and self.new is False:
+        if has_references is True:
             details_layout.append([sg.Col(ref_layout, expand_x=True, pad=(0, pad_el), background_color=bg_col)])
 
         # Add components to the details section
@@ -2503,6 +2508,7 @@ class DatabaseRecord:
         # Resize the reference boxes
         ref_width = width - 62  # accounting for left and right padding and border width
         for refbox in self.references:
+            print(refbox.name)
             refbox.resize(window, size=(ref_width, 40))
 
         # Resize component tables

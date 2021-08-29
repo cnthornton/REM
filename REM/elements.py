@@ -1710,11 +1710,9 @@ class TableElement:
         # Reset table column sizes
         columns = self.display_columns
         header = list(columns.keys())
-        print(header)
 
         tbl_width = width - 16  # for border sizes on either side of the table
         lengths = self._calc_column_widths(width=tbl_width, pixels=True)
-        print(lengths)
         for col_index, col_name in enumerate(header):
             col_width = lengths[col_index]
             window[tbl_key].Widget.column(col_name, width=col_width)
@@ -3329,7 +3327,7 @@ class ReferenceBox:
         """
         record_entry = settings.records.fetch_rule(self.reference_type)
         record_group = record_entry.group
-        if record_group in ('account', 'bank_statement', 'cash_expense'):
+        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
             record_class = mod_records.StandardRecord
         elif record_group == 'bank_deposit':
             record_class = mod_records.DepositRecord
@@ -3728,7 +3726,8 @@ class DataElement:
         """
         GUI layout for the data element.
         """
-        is_disabled = False if overwrite is True or (editable is True and self.editable is True) else True
+        is_disabled = False if (overwrite is True or (editable is True and self.editable is True)) and \
+                               self.etype != 'text' else True
         self.disabled = is_disabled
         is_required = self.required
 
@@ -3945,8 +3944,6 @@ class DataElement:
 
         # Set the value alias, if applicable
         aliases = {j: i for i, j in self.aliases.items()}
-        print('value aliases:')
-        print(aliases)
         if value_fmt in aliases:
             value_fmt = aliases[value_fmt]
 

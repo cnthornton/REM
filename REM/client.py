@@ -598,7 +598,7 @@ class SettingsManager:
         unsaved_ids = {}
         for entry in entries:
             id_list = entry.get_unsaved_ids(internal_only=internal)
-            unsaved_ids[entry.name] = id_list
+            unsaved_ids[entry.id_code] = id_list
 
         return unsaved_ids
 

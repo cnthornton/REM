@@ -729,7 +729,7 @@ class ConfigManager:
             collection = database[self.mongod_config]
         except errors.InvalidName as e:
             logger.warning('failed to load configuration database collection "{COLL}" - {ERR}'
-                            .format(COLL=self.mongod_config, ERR=e))
+                           .format(COLL=self.mongod_config, ERR=e))
             collection = None
         else:
             logger.info('successfully loaded configuration database collection "{}"'.format(self.mongod_config))
