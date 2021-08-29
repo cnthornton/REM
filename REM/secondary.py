@@ -1920,7 +1920,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     record_entry = settings.records.fetch_rule(table.record_type)
 
     record_type = record_entry.group
-    if record_type in ('account', 'bank_statement', 'cash_expense'):
+    if record_type in ('custom', 'account', 'bank_statement', 'cash_expense'):
         record_class = mod_records.StandardRecord
     elif record_type == 'bank_deposit':
         record_class = mod_records.DepositRecord

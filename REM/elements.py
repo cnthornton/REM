@@ -2861,7 +2861,7 @@ class ReferenceElement:
         """
         record_entry = settings.records.fetch_rule(self.record_type)
         record_group = record_entry.group
-        if record_group in ('account', 'bank_statement', 'cash_expense'):
+        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
             record_class = mod_records.StandardRecord
         elif record_group == 'bank_deposit':
             record_class = mod_records.DepositRecord

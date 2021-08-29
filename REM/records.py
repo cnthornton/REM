@@ -63,11 +63,12 @@ class RecordEntry:
         try:
             self.group = entry['RecordGroup']
         except KeyError:
-            mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "RecordGroup"'
-                                 .format(NAME=name))
-            sys.exit(1)
+            self.group = 'custom'
 
-        #        self.menu_group = self.group
+        try:
+            self.record_class = entry['RecordClass']
+        except KeyError:
+            self.record_class = self.name
 
         try:
             self.id_code = entry['IDCode']
@@ -534,11 +535,13 @@ class RecordEntry:
 
                 # Create any hard-linked records
                 if 'HardLink' in table_entry:
+                    record_class = self.record_class
                     record_type = self.name
 
                     link_rules = table_entry['HardLink']
                     for ref_type in link_rules:
                         ref_entry = settings.records.fetch_rule(ref_type)
+                        ref_class = ref_entry.record_class
                         link_rule = link_rules[ref_type]
                         try:
                             condition = link_rule['Condition']
@@ -581,7 +584,7 @@ class RecordEntry:
                             ref_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild',
                                            'IsHardLink', 'IsApproved', 'IsDeleted', settings.creator_code,
                                            settings.creation_date]
-                            ref_values = (primary_id, record_type, ref_id, ref_type, datetime.datetime.now(),
+                            ref_values = (primary_id, record_class, ref_id, ref_class, datetime.datetime.now(),
                                           0, 1, 1, 0, user.uid, datetime.datetime.now())
 
                             statements = user.prepare_insert_statement(ref_table, ref_columns, ref_values,
@@ -681,6 +684,7 @@ class RecordEntry:
 
         for record_type in record_types:
             record_entry = settings.records.fetch_rule(record_type)
+            record_class = record_entry.record_class
             if record_entry is None:
                 msg = 'unable to delete dependant records of record type "{TYPE}"' \
                     .format(TYPE=record_type)
@@ -688,8 +692,8 @@ class RecordEntry:
 
                 raise AttributeError(msg)
 
-            # Subset imported references by record type
-            sub_df = import_df[import_df['ReferenceType'] == record_type]
+            # Subset imported references by record class
+            sub_df = import_df[import_df['ReferenceType'] == record_class]
 
             # Prepare deletion statements for reference records
             ref_ids = sub_df['ReferenceID'].values.tolist()
@@ -1289,7 +1293,17 @@ class DatabaseRecord:
                         continue
                     table_entry = comp_elements[comp_element]
                     comp_table = mod_elem.TableElement(comp_element, table_entry, parent=self.name)
-                    self.component_types.append(comp_table.record_type)
+                    comp_type = comp_table.record_type
+                    comp_entry = settings.records.fetch_rule(comp_type)
+                    try:
+                        self.component_types.append(comp_entry.record_class)
+                    except AttributeError:
+                        msg = 'unable to add component table with record type "{TYPE}" - configuration has no entry ' \
+                              'for the record type'.format(TYPE=comp_type)
+                        logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        continue
+
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
 
@@ -1354,9 +1368,11 @@ class DatabaseRecord:
         meta_params = self.metadata
         comp_types = self.component_types
         ref_types = self.reference_types
+        print(data)
 
         self.new = new
         record_entry = self.record_entry
+        record_class = record_entry.record_class
 
         if isinstance(data, pd.Series):
             record_data = data.to_dict()
@@ -1364,9 +1380,9 @@ class DatabaseRecord:
             record_data = data
         elif isinstance(data, pd.DataFrame):
             if data.shape[0] > 1:
-                raise AttributeError('more than one record provided to record class "{TYPE}"'.format(TYPE=self.name))
+                raise AttributeError('more than one record provided to record of type "{TYPE}"'.format(TYPE=self.name))
             elif data.shape[0] < 1:
-                raise AttributeError('empty dataframe provided to record class "{TYPE}"'.format(TYPE=self.name))
+                raise AttributeError('empty dataframe provided to record of type "{TYPE}"'.format(TYPE=self.name))
             else:
                 record_data = data.iloc[0]
         else:
@@ -1473,7 +1489,7 @@ class DatabaseRecord:
                 reftype = row['RefType']
 
                 # Store imported references as references box objects
-                if doctype in ref_types and reftype == self.name:
+                if doctype in ref_types and reftype == record_class:
                     ref_id = row['DocNo']
                     if ref_id == record_id:
                         continue
@@ -1490,7 +1506,7 @@ class DatabaseRecord:
                         self.references.append(ref_box)
                         self.elements += ref_box.elements
 
-                elif doctype == self.name and reftype in ref_types:
+                elif doctype == record_class and reftype in ref_types:
                     ref_id = row['RefNo']
                     if ref_id == record_id:
                         continue
@@ -1508,15 +1524,10 @@ class DatabaseRecord:
                         self.elements += ref_box.elements
 
                 # Store imported components as table rows
-                elif doctype == self.name and reftype in comp_types:
+                elif doctype == record_class and reftype in comp_types:
                     ref_id = row['RefNo']
                     logger.debug('RecordType {NAME}: adding component record {ID} with record type "{TYPE}"'
                                  .format(NAME=self.name, ID=ref_id, TYPE=reftype))
-                    # Fetch the relevant components table
-                    #                    comp_table = self.fetch_component(reftype, by_type=True)
-
-                    # Append record to the components table
-                    #                    comp_table.df = comp_table.import_row(ref_id)
 
                     try:
                         component_ids[reftype].append(ref_id)
@@ -1779,7 +1790,8 @@ class DatabaseRecord:
         Prepare statements for deleting the record and child records from the database.
         """
         record_entry = self.record_entry
-        record_type = record_entry.name
+        record_type = record_entry.record_class
+        id_code = record_entry.id_code
         record_id = self.record_id()
         #        ref_df = self.ref_df
 
@@ -1862,10 +1874,10 @@ class DatabaseRecord:
 
         # Prepare statement for the removal of the record
         try:
-            unsaved_record_ids = unsaved_ids[record_type]
+            unsaved_record_ids = unsaved_ids[id_code]
         except KeyError:
-            msg = 'unable to delete record {ID} from the database - record of type type "{TYPE}" has no ' \
-                  'representation in the database of unsaved record IDs'.format(ID=record_id, TYPE=record_type)
+            msg = 'unable to delete record {ID} from the database - records with ID code "{TYPE}" are not ' \
+                  'represented in the database of unsaved record IDs'.format(ID=record_id, TYPE=id_code)
             logger.error('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
 
             raise KeyError(msg)
@@ -1923,6 +1935,7 @@ class DatabaseRecord:
         record_entry = self.record_entry
         record_id = self.record_id()
         import_df = self.ref_df
+        record_class = record_entry.record_class
 
         # Verify that required parameters have values
         for param in self.parameters:
@@ -1996,9 +2009,12 @@ class DatabaseRecord:
                                .format(NAME=self.name, TBL=comp_table.name))
                 continue
 
+            comp_entry = settings.records.fetch_rule(comp_type)
+            comp_class = comp_entry.record_class
+
             try:
                 import_ids = import_df[(import_df['DocNo'] == record_id) &
-                                       (import_df['RefType'] == comp_type)]['RefNo'].tolist()
+                                       (import_df['RefType'] == comp_class)]['RefNo'].tolist()
             except Exception as e:
                 logger.warning('RecordEntry {NAME}: failed to extract existing components from component table '
                                '"{TBL}" - {ERR}'.format(NAME=self.name, TBL=comp_table.name, ERR=e))
@@ -2015,8 +2031,8 @@ class DatabaseRecord:
                 is_deleted = row[comp_table.deleted_column]
                 comp_columns = ['DocNo', 'DocType', 'RefNo', 'RefType', 'RefDate', 'IsParentChild', 'IsHardLink',
                                 'IsApproved', 'IsDeleted']
-                comp_values = (record_id, self.name, comp_id, comp_type, datetime.datetime.now(), pc, 0, 1, is_deleted,
-                               datetime.datetime.now(), user.uid)
+                comp_values = (record_id, record_class, comp_id, comp_class, datetime.datetime.now(), pc, 0, 1,
+                               is_deleted, datetime.datetime.now(), user.uid)
                 if comp_id in import_ids:  # existing reference
                     comp_columns.extend([settings.edit_date, settings.editor_code])
                     update_filters = 'DocNo = ? AND RefNo = ?'
@@ -2039,7 +2055,6 @@ class DatabaseRecord:
                                                                statements=statements)
 
             # Prepare the record entries for the components
-            comp_entry = settings.records.fetch_rule(comp_type)
 
             # Fully remove deleted component records if parent-child relationship
             if pc:  # removed records should be deleted if parent-child is true
