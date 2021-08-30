@@ -2209,7 +2209,7 @@ class RecordTable(TableElement):
         """
         super().__init__(name, entry, parent)
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ['Import', 'Add', 'Delete']])
+                              ['Import', 'Delete']])
 
         self.etype = 'record_table'
 
@@ -2217,15 +2217,13 @@ class RecordTable(TableElement):
             modifiers = entry['Modifiers']
         except KeyError:
             self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
-                              'import': False, 'add': False, 'delete': False, 'fill': False, 'options': False,
-                              'sort': False}
+                              'import': False, 'delete': False, 'fill': False, 'options': False, 'sort': False}
         else:
             self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
                               'export': modifiers.get('export', 0), 'import': modifiers.get('import', 0),
                               'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
-                              'add': modifiers.get('add', 0), 'delete': modifiers.get('delete', 0),
-                              'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
-                              'sort': modifiers.get('sort', 0)}
+                              'delete': modifiers.get('delete', 0), 'fill': modifiers.get('fill', 0),
+                              'options': modifiers.get('options', 0), 'sort': modifiers.get('sort', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))
@@ -2329,7 +2327,6 @@ class RecordTable(TableElement):
         fill_key = self.key_lookup('Fill')
         export_key = self.key_lookup('Export')
         filter_key = self.key_lookup('Filter')
-        add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
@@ -2465,10 +2462,6 @@ class RecordTable(TableElement):
             else:
                 param.run_event(window, event, values)
 
-        elif event == add_key or (event == '-HK_TBL_ADD-' and (not window[add_key].metadata['disabled'] and
-                                                               window[add_key].metadata['visible'])):
-            self.add_row()
-
         elif event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
                                                                   window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
@@ -2504,12 +2497,10 @@ class RecordTable(TableElement):
         Layout for the table action elements.
         """
         import_key = self.key_lookup('Import')
-        add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
 
         # Element shortcuts
         hotkeys = settings.hotkeys
-        add_shortcut = hotkeys['-HK_TBL_ADD-'][2]
         delete_shortcut = hotkeys['-HK_TBL_DEL-'][2]
         import_shortcut = hotkeys['-HK_TBL_IMPORT-'][2]
 
@@ -2524,10 +2515,6 @@ class RecordTable(TableElement):
                                  visible=self.modifiers['import'],
                                  tooltip='Add an existing database record to the table ({})'.format(import_shortcut),
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
-                       sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
-                                 button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['add'],
-                                 tooltip='Add a new row to the table ({})'.format(add_shortcut),
-                                 metadata={'visible': self.modifiers['add'], 'disabled': disabled}),
                        sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['delete'],
@@ -2563,7 +2550,6 @@ class RecordTable(TableElement):
         Enable data table element actions.
         """
         params = self.parameters
-        add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
@@ -2576,9 +2562,6 @@ class RecordTable(TableElement):
             window[filter_key].update(disabled=False)
 
         # Enable table modification buttons
-        window[add_key].update(disabled=False)
-        window[add_key].metadata['disabled'] = False
-
         window[delete_key].update(disabled=False)
         window[delete_key].metadata['disabled'] = False
 
@@ -2590,7 +2573,6 @@ class RecordTable(TableElement):
         Disable data table element actions.
         """
         params = self.parameters
-        add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
@@ -2603,9 +2585,6 @@ class RecordTable(TableElement):
             window[filter_key].update(disabled=True)
 
         # Disable table modification buttons
-        window[add_key].update(disabled=True)
-        window[add_key].metadata['disabled'] = True
-
         window[delete_key].update(disabled=True)
         window[delete_key].metadata['disabled'] = True
 
@@ -2712,73 +2691,6 @@ class RecordTable(TableElement):
                                      '{ERR}'.format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
 
                 df = self.set_datatypes(df)
-
-        return df
-
-    def add_row(self, record_date: datetime.datetime = None, defaults: dict = None):
-        """
-        Add a new row to the records table.
-        """
-        df = self.df.copy()
-        header = list(self.columns)
-
-        creation_date = record_date if isinstance(record_date, datetime.datetime) else datetime.datetime.now()
-        defaults = defaults if defaults is not None else {}
-
-        if self.record_type is None:
-            msg = 'required attribute "record_type" missing from the configuration'
-            logger.warning('DataTable {NAME}: failed to add a new row to the table - {ERR}'
-                           .format(NAME=self.name, ERR=msg))
-            mod_win2.popup_error(msg)
-            return df
-
-        # Create a new record object
-        record_entry = settings.records.fetch_rule(self.record_type)
-
-        record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
-        if not record_id:
-            msg = 'unable to create an ID for the new record'
-            logger.error('Error: DataTable {NAME}: failed to add new row to the table - {ERR}'
-                         .format(NAME=self.name, ERR=msg))
-            mod_win2.popup_error(msg)
-
-            return df
-
-        record_data = pd.Series(index=header)
-
-        # Set default values for the new record
-        for default_col in defaults:
-            if default_col not in header:
-                continue
-
-            default_value = defaults[default_col]
-            record_data[default_col] = default_value
-
-        record_data[self.id_column] = record_id
-        record_data[self.date_column] = creation_date
-
-        record_data = self.set_defaults(record_data)
-
-        try:
-            record = self._translate_row(record_data, level=1, new_record=True)
-        except Exception as e:
-            msg = 'failed to add record at row {IND} - {ERR}'.format(IND=df.shape[0] + 2, ERR=e)
-            mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            return df
-
-        # Display the record window
-        record = mod_win2.record_window(record)
-        try:
-            record_values = record.table_values()
-        except AttributeError:  # record creation was cancelled
-            return df
-        else:
-            logger.debug('DataTable {NAME}: appending values {VALS} to the table'
-                         .format(NAME=self.name, VALS=record_values))
-            df = self.append(record_values)
-
-        self.df = df
 
         return df
 
@@ -2918,6 +2830,236 @@ class RecordTable(TableElement):
 
         # Remove selected rows from the table of available import rows
         self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
+
+        return df
+
+
+class ComponentTable(RecordTable):
+    """
+    Subclass of the records table, but for record components. Allows additional actions such as creating
+    associated records.
+
+    Attributes:
+
+        name (str): table element configuration name.
+
+        elements (list): list of table element keys.
+
+        title (str): display title.
+
+        etype (str): GUI element type.
+
+        modifiers (dict): flags that alter the element's behavior.
+
+        association_rule (str): name of the association rule connecting the associated records.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Table attributes.
+
+        Arguments:
+            name (str): name of the configured table element.
+
+            entry (dict): configuration entry for the table element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                             ['Add']])
+
+        self.etype = 'component_table'
+
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
+                              'import': False, 'add': False, 'delete': False, 'fill': False, 'options': False,
+                              'sort': False}
+        else:
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
+                              'export': modifiers.get('export', 0), 'import': modifiers.get('import', 0),
+                              'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
+                              'add': modifiers.get('add', 0), 'delete': modifiers.get('delete', 0),
+                              'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
+                              'sort': modifiers.get('sort', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, MOD=modifier))
+                    flag = False
+
+                self.modifiers[modifier] = flag
+
+        try:
+            self.association_rule = entry['AssociationRule']
+        except KeyError:
+            msg = 'ReferenceBox {NAME}: missing required parameter "AssociationRule"'.format(NAME=self.name)
+            logger.error(msg)
+
+            raise AttributeError(msg)
+
+    def action_layout(self, disabled: bool = True):
+        """
+        Layout for the table action elements.
+        """
+        import_key = self.key_lookup('Import')
+        add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
+
+        # Element shortcuts
+        hotkeys = settings.hotkeys
+        add_shortcut = hotkeys['-HK_TBL_ADD-'][2]
+        delete_shortcut = hotkeys['-HK_TBL_DEL-'][2]
+        import_shortcut = hotkeys['-HK_TBL_IMPORT-'][2]
+
+        # Element settings
+        text_col = mod_const.TEXT_COL  # standard text color
+        header_col = mod_const.TBL_HEADER_COL  # color of the header background
+        pad_el = mod_const.ELEM_PAD
+
+        # Layout
+        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
+                                 button_color=(text_col, header_col), disabled=disabled,
+                                 visible=self.modifiers['import'],
+                                 tooltip='Add an existing database record to the table ({})'.format(import_shortcut),
+                                 metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
+                       sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
+                                 button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['add'],
+                                 tooltip='Add a new row to the table ({})'.format(add_shortcut),
+                                 metadata={'visible': self.modifiers['add'], 'disabled': disabled}),
+                       sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
+                                 button_color=(text_col, header_col), disabled=disabled,
+                                 visible=self.modifiers['delete'],
+                                 tooltip='Remove the selected row(s) from the table ({})'.format(delete_shortcut),
+                                 metadata={'visible': self.modifiers['delete'], 'disabled': disabled})]
+
+        layout = [sg.Col([bttn_layout], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
+                         background_color=header_col, expand_x=True)]
+
+        return layout
+
+    def enable(self, window):
+        """
+        Enable data table element actions.
+        """
+        params = self.parameters
+        add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
+        import_key = self.key_lookup('Import')
+
+        logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
+
+        # Enable filter parameters
+        if len(params) > 0 and self.modifiers['filter'] is True:
+            # Enable the apply filters button
+            filter_key = self.key_lookup('Filter')
+            window[filter_key].update(disabled=False)
+
+        # Enable table modification buttons
+        window[add_key].update(disabled=False)
+        window[add_key].metadata['disabled'] = False
+
+        window[delete_key].update(disabled=False)
+        window[delete_key].metadata['disabled'] = False
+
+        window[import_key].update(disabled=False)
+        window[import_key].metadata['disabled'] = False
+
+    def disable(self, window):
+        """
+        Disable data table element actions.
+        """
+        params = self.parameters
+        add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
+        import_key = self.key_lookup('Import')
+
+        logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
+
+        # Disable filter parameters
+        if len(params) > 0 and self.modifiers['filter'] is True:
+            # Disable the apply filters button
+            filter_key = self.key_lookup('Filter')
+            window[filter_key].update(disabled=True)
+
+        # Disable table modification buttons
+        window[add_key].update(disabled=True)
+        window[add_key].metadata['disabled'] = True
+
+        window[delete_key].update(disabled=True)
+        window[delete_key].metadata['disabled'] = True
+
+        window[import_key].update(disabled=True)
+        window[import_key].metadata['disabled'] = True
+
+    def add_row(self, record_date: datetime.datetime = None, defaults: dict = None):
+        """
+        Add a new row to the records table.
+        """
+        df = self.df.copy()
+        header = list(self.columns)
+
+        creation_date = record_date if isinstance(record_date, datetime.datetime) else datetime.datetime.now()
+        defaults = defaults if defaults is not None else {}
+
+        if self.record_type is None:
+            msg = 'required attribute "record_type" missing from the configuration'
+            logger.warning('DataTable {NAME}: failed to add a new row to the table - {ERR}'
+                           .format(NAME=self.name, ERR=msg))
+            mod_win2.popup_error(msg)
+            return df
+
+        # Create a new record object
+        record_entry = settings.records.fetch_rule(self.record_type)
+
+        record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
+        if not record_id:
+            msg = 'unable to create an ID for the new record'
+            logger.error('Error: DataTable {NAME}: failed to add new row to the table - {ERR}'
+                         .format(NAME=self.name, ERR=msg))
+            mod_win2.popup_error(msg)
+
+            return df
+
+        record_data = pd.Series(index=header)
+
+        # Set default values for the new record
+        for default_col in defaults:
+            if default_col not in header:
+                continue
+
+            default_value = defaults[default_col]
+            record_data[default_col] = default_value
+
+        record_data[self.id_column] = record_id
+        record_data[self.date_column] = creation_date
+
+        record_data = self.set_defaults(record_data)
+
+        try:
+            record = self._translate_row(record_data, level=1, new_record=True)
+        except Exception as e:
+            msg = 'failed to add record at row {IND} - {ERR}'.format(IND=df.shape[0] + 2, ERR=e)
+            mod_win2.popup_error(msg)
+            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            return df
+
+        # Display the record window
+        record = mod_win2.record_window(record)
+        try:
+            record_values = record.table_values()
+        except AttributeError:  # record creation was cancelled
+            return df
+        else:
+            logger.debug('DataTable {NAME}: appending values {VALS} to the table'
+                         .format(NAME=self.name, VALS=record_values))
+            df = self.append(record_values)
+
+        self.df = df
 
         return df
 
@@ -3213,6 +3355,8 @@ class ReferenceBox:
 
         modifiers (dict): flags that alter the element's behavior.
 
+        association_rule (str): name of the association rule connecting the associated records.
+
         aliases (dict): layout element aliases.
 
         refmap (dict): required reference parameters mapped to database column names.
@@ -3258,6 +3402,14 @@ class ReferenceBox:
                 self.modifiers[modifier] = flag
 
         try:
+            self.association_rule = entry['AssociationRule']
+        except KeyError:
+            msg = 'ReferenceBox {NAME}: missing required parameter "AssociationRule"'.format(NAME=self.name)
+            logger.error(msg)
+
+            raise AttributeError(msg)
+
+        try:
             self.aliases = entry['Aliases']
         except KeyError:
             self.aliases = {}
@@ -3286,7 +3438,7 @@ class ReferenceBox:
         self.reference_id = None
         self.reference_type = None
         self.date = None
-        self.warnings = None
+        self.notes = None
         self.is_hardlink = False
         self.is_pc = False
         self.approved = False
@@ -3314,7 +3466,7 @@ class ReferenceBox:
         self.reference_id = None
         self.reference_type = None
         self.date = None
-        self.warnings = None
+        self.notes = None
         self.is_hardlink = False
         self.is_pc = False
         self.approved = False
@@ -3395,7 +3547,7 @@ class ReferenceBox:
         is_approved = self.approved
         aliases = self.aliases
         modifiers = self.modifiers
-        warnings = self.warnings if self.warnings is not None else ''
+        warnings = self.notes if self.notes is not None else ''
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -3495,7 +3647,7 @@ class ReferenceBox:
         print('reference has hard-link: {}'.format(is_hl))
         print('reference has parent: {}'.format(is_pc))
         referenced = self.referenced
-        warnings = self.warnings if self.warnings is not None else ''
+        warnings = self.notes if self.notes is not None else ''
 
         # Update value of approved checkbox
         window[approved_key].update(value=self.approved)
@@ -3524,7 +3676,7 @@ class ReferenceBox:
         else:
             window[parent_key].update(visible=False)
 
-        # Set warnings
+        # Set notes
         bg_col = mod_const.ACTION_COL if not warnings else mod_const.WARNING_COL
         window[elem_key].Widget.config(background=bg_col)
         window[elem_key].Widget.config(highlightbackground=bg_col)
@@ -3581,11 +3733,11 @@ class ReferenceBox:
         warn_col = colmap['Warnings']
         if warn_col:
             try:
-                self.warnings = entry[warn_col]
+                self.notes = entry[warn_col]
             except KeyError:
                 msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=warn_col)
                 logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.warnings = None
+                self.notes = None
 
         hl_col = colmap['IsHardLink']
         if hl_col:
@@ -3688,7 +3840,7 @@ class ReferenceBox:
             values.append(self.is_pc)
         if warn_col:
             indices.append(warn_col)
-            values.append(self.warnings)
+            values.append(self.notes)
 
         reference = pd.Series(values, index=indices)
 

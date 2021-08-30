@@ -1307,7 +1307,7 @@ class DatabaseRecord:
                                        .format(NAME=self.name, TYPE=comp_element))
                         continue
                     table_entry = comp_elements[comp_element]
-                    comp_table = mod_elem.RecordTable(comp_element, table_entry, parent=self.name)
+                    comp_table = mod_elem.ComponentTable(comp_element, table_entry, parent=self.name)
                     comp_type = comp_table.record_type
                     comp_entry = settings.records.fetch_rule(comp_type)
                     try:
