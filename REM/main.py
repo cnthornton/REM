@@ -840,7 +840,7 @@ def main():
             # Display the import record window
             table_entry = record_entry.import_table
             table_entry['RecordType'] = record_entry.name
-            import_table = mod_elem.TableElement(record_entry.name, table_entry)
+            import_table = mod_elem.RecordTable(record_entry.name, table_entry)
 
             try:
                 mod_win2.record_import_window(import_table, enable_new=False)
@@ -896,7 +896,7 @@ def main():
                 # Display the import record window
                 table_entry = record_entry.import_table
                 table_entry['RecordType'] = record_type
-                import_table = mod_elem.TableElement(current_rule.name, table_entry)
+                import_table = mod_elem.RecordTable(current_rule.name, table_entry)
 
                 try:
 #                    mod_win2.record_import_window(import_table, enable_new=True,

@@ -1292,7 +1292,7 @@ class DatabaseRecord:
                                        .format(NAME=self.name, TYPE=comp_element))
                         continue
                     table_entry = comp_elements[comp_element]
-                    comp_table = mod_elem.TableElement(comp_element, table_entry, parent=self.name)
+                    comp_table = mod_elem.RecordTable(comp_element, table_entry, parent=self.name)
                     comp_type = comp_table.record_type
                     comp_entry = settings.records.fetch_rule(comp_type)
                     try:
@@ -1438,7 +1438,7 @@ class DatabaseRecord:
                     except KeyError:
                         continue
 
-                param.df = param.df.append(table_data, ignore_index=True)
+                param.df = param.append(table_data)
             else:  # parameter is a data element
                 try:
                     value = record_data[param_name]

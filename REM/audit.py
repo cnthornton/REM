@@ -896,7 +896,7 @@ class AuditTransactionTab:
             raise AttributeError(msg)
 
         try:
-            self.table = mod_elem.TableElement(name, entry['DisplayTable'])
+            self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
         except KeyError:
             msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required parameter "DisplayTable"' \
                 .format(NAME=name)

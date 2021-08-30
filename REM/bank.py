@@ -1017,9 +1017,9 @@ class AccountEntry:
                 raise AttributeError(msg)
 
         try:
-            self.table = mod_elem.TableElement(name, entry['DisplayTable'])
+            self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
         except KeyError:
-            self.table = mod_elem.TableElement(name, record_entry.import_table)
+            self.table = mod_elem.RecordTable(name, record_entry.import_table)
         self.elements += self.table.elements
 
         try:
