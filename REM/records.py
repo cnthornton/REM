@@ -140,17 +140,32 @@ class RecordEntry:
             self.association_rules = {}
         else:
             self.association_rules = {}
-            for record_type in association_rules:
-                assoc_rule = association_rules[record_type]
+            for rule_name in association_rules:
+                rule = association_rules[rule_name]
 
-                if 'ReferenceMap' not in assoc_rule:
-                    mod_win2.popup_error('RecordsEntry {NAME}: configuration missing required "AssociationRules" '
-                                         '{ASSOC} parameter "ReferenceMap"'.format(NAME=name, ASSOC=record_type))
-                    sys.exit(1)
-                if 'Description' not in assoc_rule:
-                    assoc_rule['Description'] = record_type
+                if 'Primary' not in rule:
+                    msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "Primary"'\
+                        .format(NAME=self.name, RULE=rule_name)
 
-                self.association_rules[record_type] = assoc_rule
+                    raise AttributeError(msg)
+
+                if 'ReferenceTable' not in rule:
+                    msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "ReferenceTable"' \
+                        .format(NAME=self.name, RULE=rule_name)
+
+                    raise AttributeError(msg)
+
+                if 'AssociationType' in rule:
+                    assoc_type = rule['AssociationType']
+                    if assoc_type not in ('parent', 'child', 'reference'):
+                        msg = 'RecordEntry {NAME}: unknown association type {TYPE} provided to association rule {RULE}' \
+                            .format(NAME=self.name, TYPE=assoc_type, RULE=rule_name)
+
+                        raise AttributeError(msg)
+
+                self.association_rules[rule_name] = {'AssociationType': rule.get('AssociationType', 'reference'),
+                                                     'Primary': rule.get('Primary'),
+                                                     'ReferenceTable': rule.get('ReferenceTable')}
 
         # Import table layout configuration
         try:
