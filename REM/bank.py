@@ -860,7 +860,7 @@ class BankRule:
             logger.debug('BankRule {NAME}: preparing account {ACCT} statements'.format(NAME=self.name, ACCT=acct.name))
             try:
                 statements = record_entry.save_database_records(acct.table.data(), id_field=acct.table.id_column,
-                                                                exists=True, statements=statements)
+                                                                statements=statements)
             except Exception as e:
                 msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}' \
                     .format(ACCT=acct.name, ERR=e)
@@ -1136,7 +1136,7 @@ class AccountEntry:
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
                     if table.modifiers['open'] is True:
-                        table.df = table.export_row(index, layout=self.record_layout, level=0)
+                        table.df = table.load_record(index, layout=self.record_layout, level=0)
 
                         table.update_display(window, window_values=values)
 

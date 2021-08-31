@@ -1414,7 +1414,7 @@ class DatabaseRecord:
 
         # Prepare to save record references
         for reference in self.references:
-            ref_data = reference.as_row()
+            ref_data = reference.export_reference()
             ref_id = ref_data['DocNo']  # reference record ID
             logger.debug('Record {ID}: preparing reference statement for reference {REF}'
                          .format(ID=record_id, REF=ref_id))
@@ -2003,3 +2003,5 @@ def import_references(record_id):
                              prog_db=True)
 
     return import_df
+
+
