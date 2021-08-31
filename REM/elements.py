@@ -3547,6 +3547,7 @@ class ReferenceBox:
         ref_key = self.key_lookup('RefID')
         date_key = self.key_lookup('RefDate')
         approved_key = self.key_lookup('Approved')
+        discard_key = self.key_lookup('Unlink')
 
         logger.debug('ReferenceBox {NAME}: updating reference box display'.format(NAME=self.name))
 
@@ -3573,14 +3574,16 @@ class ReferenceBox:
         else:
             window[elem_key].update(visible=False)
 
-        # Set flag badges
+        # Set flag badges and disable delete button if reference is a child or hard-linked
         if is_hl:
             window[link_key].update(visible=True)
+            window[discard_key].update(disabled=True)
         else:
             window[link_key].update(visible=False)
 
         if is_pc:
             window[parent_key].update(visible=True)
+            window[discard_key].update(disabled=True)
         else:
             window[parent_key].update(visible=False)
 
