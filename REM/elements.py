@@ -2746,14 +2746,14 @@ class ComponentTable(RecordTable):
         except KeyError:
             self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
                               'import': False, 'add': False, 'delete': False, 'fill': False, 'options': False,
-                              'sort': False}
+                              'sort': False, 'unsaved': False}
         else:
             self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
                               'export': modifiers.get('export', 0), 'import': modifiers.get('import', 0),
                               'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
                               'add': modifiers.get('add', 0), 'delete': modifiers.get('delete', 0),
                               'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
-                              'sort': modifiers.get('sort', 0)}
+                              'sort': modifiers.get('sort', 0), 'unsaved': modifiers.get('unsaved', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))

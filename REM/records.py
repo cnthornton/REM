@@ -257,6 +257,48 @@ class RecordEntry:
 
         return df
 
+    def import_unreferenced_records(self, rule_name):
+        """
+        Import a record's association.
+        """
+        association_rules = self.association_rules
+
+        try:
+            rule = association_rules[rule_name]
+        except KeyError:
+            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                .format(RULE=rule_name)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        is_primary = rule['Primary']
+        reference_table = rule['ReferenceTable']
+
+        if not is_primary:  # association is secondary
+            msg = 'unable to import unreferenced records - association rule {RULE} must set to primary'\
+                .format(RULE=rule_name)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        # Import reference entries related to record_id
+        columns = ['DocNo']
+        filters = ('RefNo IS NULL', None)
+        import_df = user.read_db(*user.prepare_query_statement(reference_table, columns=columns, filter_rules=filters),
+                                 prog_db=True)
+
+        try:
+            import_ids = import_df.iloc[:, 0].values.tolist()
+        except IndexError as e:
+            msg = 'unable to import unreferenced records for association rule {RULE} - {ERR}'\
+                .format(RULE=rule_name, ERR=e)
+            logger.error(msg)
+
+            raise ImportError(msg)
+
+        return import_ids
+
     def confirm_saved(self, id_list, id_field: str = 'RecordID', table: str = None):
         """
         Check whether or not records have already been saved to the database.
