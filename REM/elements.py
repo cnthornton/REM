@@ -36,8 +36,6 @@ class TableElement:
 
         title (str): display title.
 
-        record_type (str): table is composed of records of this type.
-
         columns (list): list of table columns.
 
         display_columns (dict): dictionary mapping display names to table column rules.
@@ -55,8 +53,6 @@ class TableElement:
         filter_rules (dict): rules used to automatically filter the data table.
 
         summary_rules (dict): rules used to summarize the data table.
-
-        import_rules (dict): rules used to import records from the database.
 
         df (DataFrame): pandas dataframe containing table data.
 
@@ -326,6 +322,13 @@ class TableElement:
             self.columns[self.deleted_column] = 'bool'
 
         try:
+            self.added_column = entry['DeletedColumn']
+        except KeyError:
+            self.added_column = 'RowAdded'
+        if self.added_column not in self.columns:
+            self.columns[self.added_column] = 'bool'
+
+        try:
             self.icon = entry['Icon']
         except KeyError:
             self.icon = None
@@ -391,6 +394,7 @@ class TableElement:
             self.required = required
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
+        self._actions = []
 
         # Dynamic attributes
         self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
@@ -578,6 +582,7 @@ class TableElement:
         filter_key = self.key_lookup('Filter')
 
         param_elems = [i for param in self.parameters for i in param.elements]
+        action_events = [self.key_lookup(i) for i in self._actions]
 
         # Row click event
         if event == tbl_key:
@@ -716,9 +721,18 @@ class TableElement:
             annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
             self.export_table(export_df, annotation_map)
 
+        elif event in action_events:
+            self.run_action_event(window, event, values)
+
         result = self.update_display(window, values)
 
         return result
+
+    def run_action_event(self, window, event, values):
+        """
+        Run a table action event.
+        """
+        pass
 
     def update_display(self, window, window_values: dict = None):
         """
@@ -893,8 +907,6 @@ class TableElement:
                 col_dtype = display_df[alias_col].dtype
                 if is_integer_dtype(col_dtype):  # convert integer-type alias keys to integer values
                     alias_map = {int(i): j for i, j in alias_map.items()}
-            #                elif is_bool_dtype(col_dtype):  # convert boolean-type alias keys to boolean values
-            #                    alias_map = {bool(i): j for i, j in alias_map.items()}
             except KeyError:
                 logger.warning('DataTable {TBL}: alias {ALIAS} not found in the list of display columns'
                                .format(TBL=self.name, ALIAS=alias_col))
@@ -2169,7 +2181,9 @@ class TableElement:
 
 class RecordTable(TableElement):
     """
-    Data table element containing record data.
+    Record tables are a subclass of the data table, but specifically for storing record data. Record tables provide
+    additional functionality to the data table, including opening of a record instead of row value editing,
+    deleting records, and importing existing records into the table.
 
     Attributes:
 
@@ -2208,8 +2222,10 @@ class RecordTable(TableElement):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
+        self._actions = ['Delete', 'Import']
+
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ['Import', 'Delete']])
+                              self._actions])
 
         self.etype = 'record_table'
 
@@ -2315,155 +2331,16 @@ class RecordTable(TableElement):
 
         self.update_display(window)
 
-    def run_event(self, window, event, values):
+    def run_action_event(self, window, event, values):
         """
-        Perform a table action.
+        Run a table action event.
         """
         tbl_key = self.key_lookup('Element')
-        options_key = self.key_lookup('Options')
-        frame_key = self.key_lookup('OptionsFrame')
-        cancel_key = self.key_lookup('Cancel')
-        sort_key = self.key_lookup('Sort')
-        fill_key = self.key_lookup('Fill')
-        export_key = self.key_lookup('Export')
-        filter_key = self.key_lookup('Filter')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
-        param_elems = [i for param in self.parameters for i in param.elements]
-
-        # Row click event
-        if event == tbl_key:
-            # Close options panel, if open
-            if window[frame_key].metadata['visible'] is True:
-                window[frame_key].metadata['visible'] = False
-                window[frame_key].update(visible=False)
-                self.resize(window, size=self.dimensions)
-
-            # Find row selected by user
-            try:
-                select_row_index = values[event][0]
-            except IndexError:  # user double-clicked too quickly
-                msg = 'table row could not be selected'
-                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            else:
-                # Get the real index of the selected row
-                try:
-                    index = self.index_map[select_row_index]
-                except KeyError:
-                    index = select_row_index
-
-                logger.debug('DataTable {NAME}: opening record at real index {IND}'.format(NAME=self.name, IND=index))
-                if self.modifiers['open'] is True:
-                    self.df = self.export_row(index)
-
-        elif event == self.key_lookup('CollapseButton'):
-            self.collapse_expand(window)
-
-        elif event == self.key_lookup('FilterButton'):
-            self.collapse_expand(window, frame='filter')
-
-        elif event == self.key_lookup('SummaryButton'):
-            self.collapse_expand(window, frame='summary')
-
-        # Click filter Apply button to apply filtering to table
-        elif event == filter_key or event == '-HK_TBL_FILTER-':
-            # Update parameter values
-            for param in self.parameters:
-                param.value = param.format_value(values)
-
-        # Click to open table options panel
-        elif event == options_key or event == '-HK_TBL_OPTS-':
-            if window[frame_key].metadata['visible'] is False:
-                window[frame_key].metadata['visible'] = True
-
-                tbl_width, tbl_height = window[tbl_key].get_size()
-
-                # Reveal the options panel
-                window[tbl_key].update(visible=False)
-                window[frame_key].update(visible=True)
-                window[frame_key].expand(expand_row=True, expand_y=True, expand_x=True)
-                window.refresh()
-
-                frame_w, frame_h = window[frame_key].get_size()
-
-                # Reduce table size
-                columns = self.display_columns
-                header = list(columns.keys())
-                new_width = tbl_width - frame_w - 2 if tbl_width - frame_w - 2 > 0 else 0
-                logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
-                             'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
-                lengths = self._calc_column_widths(width=new_width, pixels=True)
-                for col_index, col_name in enumerate(header):
-                    col_width = lengths[col_index]
-                    window[tbl_key].Widget.column(col_name, width=col_width)
-
-                # Reveal the table frame
-                window[tbl_key].update(visible=True)
-            else:
-                self.resize(window, size=self.dimensions)
-
-        elif event == cancel_key:
-            self.resize(window, size=self.dimensions)
-
-        # Sort column selected from menu of sort columns
-        elif event == sort_key:
-            sort_on = self.sort_on
-            display_map = self.display_columns
-
-            # Get sort column
-            display_col = values[sort_key]
-            try:
-                sort_col = display_map[display_col]
-            except KeyError:
-                logger.warning('DataTable {NAME}: sort display column {COL} must have a one-to-one '
-                               'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
-            else:
-                if sort_col in sort_on:
-                    # Remove column from sortby list
-                    self.sort_on.remove(sort_col)
-                else:
-                    # Add column to sortby list
-                    self.sort_on.append(sort_col)
-
-        # NA value fill method selected from menu of fill methods
-        elif event == fill_key:
-            display_map = self.display_columns
-
-            # Get selected rows, if any
-            select_row_indices = values[tbl_key]
-
-            # Get the real indices of the selected rows
-            try:
-                indices = [self.index_map[i] for i in select_row_indices]
-            except KeyError:
-                msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_notice(msg)
-                indices = []
-
-            # Find selected fill method
-            display_col = values[fill_key]
-            try:
-                fill_col = display_map[display_col]
-            except KeyError:
-                logger.warning('DataTable {NAME}: fill display column {COL} must have a one-to-one '
-                               'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
-            else:
-                # Fill in NA values
-                self.fill(fill_col, rows=indices)
-
-        elif event in param_elems:
-            try:
-                param = self.fetch_parameter(event, by_key=True)
-            except KeyError:
-                logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
-                             .format(TBL=self.name, KEY=event))
-            else:
-                param.run_event(window, event, values)
-
-        elif event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
-                                                                  window[delete_key].metadata['visible'])):
+        if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
+                                                                window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
             select_row_indices = values[tbl_key]
 
@@ -2478,19 +2355,9 @@ class RecordTable(TableElement):
 
             self.delete_rows(indices)
 
-        elif event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
-                                                                     window[import_key].metadata['visible'])):
+        if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
+                                                                   window[import_key].metadata['visible'])):
             self.import_rows()
-
-        elif event == export_key:
-            export_df = self.update_display(window, values)
-            annotations = self.annotate_display(self.df)
-            annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-            self.export_table(export_df, annotation_map)
-
-        result = self.update_display(window, values)
-
-        return result
 
     def action_layout(self, disabled: bool = True):
         """
@@ -2624,7 +2491,7 @@ class RecordTable(TableElement):
 
         return df
 
-    def export_row(self, index, layout: dict = None, level: int = 1):
+    def load_record(self, index, layout: dict = None, level: int = 1):
         """
         Open selected record in new record window.
         """
@@ -2823,6 +2690,7 @@ class RecordTable(TableElement):
         # Append selected rows to the table
         logger.debug('DataTable {NAME}: importing {N} records to the table'
                      .format(NAME=self.name, N=select_df.shape[0]))
+        select_df[self.added_column] = True
         df = self.append(select_df)
         self.df = df
         #        print('table dataframe after appending selected records:')
@@ -2866,6 +2734,8 @@ class ComponentTable(RecordTable):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
+        self._actions = ['Delete', 'Import', 'Add']
+
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                              ['Add']])
 
@@ -2901,6 +2771,39 @@ class ComponentTable(RecordTable):
             logger.error(msg)
 
             raise AttributeError(msg)
+
+    def run_action_event(self, window, event, values):
+        """
+        Run a table action event.
+        """
+        tbl_key = self.key_lookup('Element')
+        add_key = self.key_lookup('Add')
+        delete_key = self.key_lookup('Delete')
+        import_key = self.key_lookup('Import')
+
+        if event == add_key or (event == '-HK_TBL_ADD-' and (not window[add_key].metadata['disabled'] and
+                                                             window[add_key].metadata['visible'])):
+            self.add_row()
+
+        if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
+                                                                window[delete_key].metadata['visible'])):
+            # Find rows selected by user for deletion
+            select_row_indices = values[tbl_key]
+
+            # Get the real indices of the selected rows
+            try:
+                indices = [self.index_map[i] for i in select_row_indices]
+            except KeyError:
+                msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                mod_win2.popup_notice(msg)
+                indices = []
+
+            self.delete_rows(indices)
+
+        if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
+                                                                   window[import_key].metadata['visible'])):
+            self.import_rows()
 
     def action_layout(self, disabled: bool = True):
         """
@@ -3057,11 +2960,39 @@ class ComponentTable(RecordTable):
         else:
             logger.debug('DataTable {NAME}: appending values {VALS} to the table'
                          .format(NAME=self.name, VALS=record_values))
+            record_values[self.added_column] = True
             df = self.append(record_values)
 
         self.df = df
 
         return df
+
+    def export_reference(self, record_id):
+        """
+        Export component table records as reference entries.
+        """
+        df = self.df
+
+        # Filter added rows that were later removed from the table
+        conditions = df[self.deleted_column] & df[self.added_column]
+        export_df = df[~conditions]
+
+        # Create the reference entries
+        ref_df = export_df[[self.id_column, self.deleted_column]]
+        ref_df.rename(columns={self.id_column: 'ReferenceID', self.deleted_column: 'IsDeleted'}, inplace=True)
+
+        ref_df['RecordID'] = record_id
+        ref_df['RecordType'] = self.parent
+        ref_df['ReferenceDate'] = datetime.datetime.now()
+        ref_df['ReferenceType'] = self.record_type
+
+        # Add reference notes based on row annotations
+        annotations = self.annotate_display(export_df)
+        annotation_map = {i: self.annotation_rules[j]['Description'] for i, j in annotations.items()}
+
+        ref_df['Notes'] = ref_df.index.map(annotation_map)
+
+        return ref_df
 
 
 class ReferenceElement:
@@ -3358,8 +3289,6 @@ class ReferenceBox:
         association_rule (str): name of the association rule connecting the associated records.
 
         aliases (dict): layout element aliases.
-
-        refmap (dict): required reference parameters mapped to database column names.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -3414,26 +3343,6 @@ class ReferenceBox:
         except KeyError:
             self.aliases = {}
 
-        try:
-            self.refmap = entry['ColumnMap']
-        except KeyError:
-            raise AttributeError('missing required parameter "ColumnMap"')
-        else:
-            if 'ReferenceID' not in self.refmap:
-                raise AttributeError('ReferenceBox parameter "ColumnMap" is missing required entry "ReferenceID"')
-            if 'ReferenceType' not in self.refmap:
-                raise AttributeError('ReferenceBox parameter "ColumnMap" is missing required entry "ReferenceType"')
-            if 'ReferenceDate' not in self.refmap:
-                raise AttributeError('ReferenceBox parameter "ColumnMap" is missing required entry "ReferenceDate"')
-            if 'IsParentChild' not in self.refmap:
-                self.refmap['IsParentChild'] = None
-            if 'IsHardLink' not in self.refmap:
-                self.refmap['IsHardLink'] = None
-            if 'IsApproved' not in self.refmap:
-                self.refmap['IsApproved'] = None
-            if 'Warnings' not in self.refmap:
-                self.refmap['Warnings'] = None
-
         # Dynamic values
         self.reference_id = None
         self.reference_type = None
@@ -3479,7 +3388,6 @@ class ReferenceBox:
         Run a record reference event.
         """
         result = True
-        elem_key = self.key_lookup('Element')
         del_key = self.key_lookup('Unlink')
         ref_key = self.key_lookup('RefID')
         approved_key = self.key_lookup('Approved')
@@ -3501,9 +3409,9 @@ class ReferenceBox:
 
             if user_action.upper() == 'OK':
                 # Set element to deleted in metadata
-                window[elem_key].metadata['deleted'] = True
+                self.referenced = False
 
-                self.reset(window)
+                self.update_display(window)
 
         # Update approved element
         elif event == approved_key:
@@ -3568,7 +3476,7 @@ class ReferenceBox:
 
         select_text_col = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
 
-        approved_vis = True if self.refmap['IsApproved'] is not None else False
+        approved_vis = True if modifiers['approve'] is not None else False
         hl_vis = True if self.is_hardlink is True else False
         pc_vis = True if self.is_pc is True else False
 
@@ -3684,13 +3592,11 @@ class ReferenceBox:
 
         window.Element(elem_key).SetTooltip(warnings)
 
-    def load_reference(self, entry):
+    def import_reference(self, entry):
         """
         Initialize a record reference.
         """
-        colmap = self.refmap
-
-        ref_id_col = colmap['ReferenceID']
+        ref_id_col = 'ReferenceID'
         try:
             self.reference_id = entry[ref_id_col]
         except KeyError:
@@ -3704,7 +3610,7 @@ class ReferenceBox:
 
         logger.info('ReferenceBox {NAME}: loading reference {ID}'.format(NAME=self.name, ID=self.reference_id))
 
-        date_col = colmap['ReferenceDate']
+        date_col = 'ReferenceDate'
         try:
             ref_date = entry[date_col]
         except KeyError:
@@ -3721,7 +3627,7 @@ class ReferenceBox:
 
                 return False
 
-        ref_type_col = colmap['ReferenceType']
+        ref_type_col = 'ReferenceType'
         try:
             self.reference_type = entry[ref_type_col]
         except KeyError:
@@ -3730,58 +3636,67 @@ class ReferenceBox:
 
             return False
 
-        warn_col = colmap['Warnings']
-        if warn_col:
-            try:
-                self.notes = entry[warn_col]
-            except KeyError:
-                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=warn_col)
-                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.notes = None
+        warn_col = 'Warnings'
+        try:
+            self.notes = entry[warn_col]
+        except KeyError:
+            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=warn_col)
+            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            self.notes = None
 
-        hl_col = colmap['IsHardLink']
-        if hl_col:
-            try:
-                self.is_hardlink = bool(int(entry[hl_col]))
-            except KeyError:
-                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=hl_col)
-                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.is_hardlink = False
-            except ValueError:
-                msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[hl_col], COL=hl_col)
-                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.is_hardlink = False
+        hl_col = 'IsHardLink'
+        try:
+            self.is_hardlink = bool(int(entry[hl_col]))
+        except KeyError:
+            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=hl_col)
+            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            self.is_hardlink = False
+        except ValueError:
+            msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[hl_col], COL=hl_col)
+            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            self.is_hardlink = False
 
-        pc_col = colmap['IsParentChild']
-        if pc_col:
-            try:
-                self.is_pc = bool(int(entry[pc_col]))
-            except KeyError:
-                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=pc_col)
-                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.is_pc = False
-            except ValueError:
-                msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[pc_col], COL=pc_col)
-                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.is_pc = False
+        pc_col = 'IsParentChild'
+        try:
+            self.is_pc = bool(int(entry[pc_col]))
+        except KeyError:
+            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=pc_col)
+            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            self.is_pc = False
+        except ValueError:
+            msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[pc_col], COL=pc_col)
+            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            self.is_pc = False
 
-        approved_col = colmap['IsApproved']
-        if approved_col:
-            try:
-                self.approved = bool(int(entry[approved_col]))
-            except KeyError:
-                msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=approved_col)
-                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.approved = False
-            except ValueError:
-                msg = 'parameter "{COL}" was provided unknown value type {VAL}' \
-                    .format(VAL=entry[approved_col], COL=approved_col)
-                logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                self.approved = False
+        approved_col = 'IsApproved'
+        try:
+            self.approved = bool(int(entry[approved_col]))
+        except KeyError:
+            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=approved_col)
+            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            self.approved = False
+        except ValueError:
+            msg = 'parameter "{COL}" was provided unknown value type {VAL}' \
+                .format(VAL=entry[approved_col], COL=approved_col)
+            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            self.approved = False
 
         self.referenced = True
 
         return True
+
+    def export_reference(self, record_id):
+        """
+        Export the association as a reference entry.
+        """
+        indices = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'Notes', 'IsApproved',
+                   'IsChild', 'IsHardLink', 'IsDeleted']
+        values = [record_id, self.reference_id, self.date, self.parent, self.reference_type, self.notes, self.approved,
+                  self.is_pc, self.is_hardlink, (not self.referenced)]
+
+        reference = pd.Series(values, index=indices)
+
+        return reference
 
     def load_record(self, level: int = 1):
         """
@@ -3816,35 +3731,6 @@ class ReferenceBox:
         record.initialize(record_data, new=False)
 
         return record
-
-    def as_row(self):
-        """
-        Format reference record as a table entry.
-        """
-        colmap = self.refmap
-        hl_col = colmap['IsHardLink']
-        pc_col = colmap['IsParentChild']
-        warn_col = colmap['Warnings']
-        approved_col = colmap['IsApproved']
-
-        indices = [colmap['ReferenceID'], colmap['ReferenceDate'], colmap['ReferenceType']]
-        values = [self.reference_id, self.date, self.reference_type]
-        if approved_col:
-            indices.append(approved_col)
-            values.append(self.approved)
-        if hl_col:
-            indices.append(hl_col)
-            values.append(self.is_hardlink)
-        if pc_col:
-            indices.append(pc_col)
-            values.append(self.is_pc)
-        if warn_col:
-            indices.append(warn_col)
-            values.append(self.notes)
-
-        reference = pd.Series(values, index=indices)
-
-        return reference
 
     def has_value(self):
         """
