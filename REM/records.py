@@ -1470,18 +1470,25 @@ class DatabaseRecord:
         param = self.fetch_header(self.date_field)
         return param.value
 
-    def initialize(self, data, new: bool = False):
+    def initialize(self, data, new: bool = False, references: dict = None):
         """
         Initialize record attributes.
 
         Arguments:
-            data (dict): dictionary or pandas series containing record data.
+            data (dict): dictionary, series, or dataframe containing the record data used to populate the data fields.
 
-            new (bool): record is newly created [default: False].
+            new (bool): record is newly created [default: False]. New records allow editing of all data
+                element fields, even those normally disabled.
+
+            references (dict): optional reference imports by association rule. If provided, will not attempt to import
+                references for the given association rule but will use the reference entries provided instead.
         """
         headers = self.headers
         parameters = self.parameters
         meta_params = self.metadata
+
+        if not references:
+            references = {}
 
         self.new = new
         record_entry = self.record_entry
@@ -1578,7 +1585,11 @@ class DatabaseRecord:
         for refbox in self.references:
             assoc_rule = refbox.association_rule
 
-            ref_data = record_entry.import_references(record_id, assoc_rule)
+            if assoc_rule in references:
+                ref_data = references[assoc_rule]
+            else:
+                ref_data = record_entry.import_references(record_id, assoc_rule)
+
             if ref_data.empty:
                 logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations'
                              .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
@@ -1607,7 +1618,11 @@ class DatabaseRecord:
             comp_entry = settings.records.fetch_rule(comp_table.record_type)
 
             # Load the reference entries defined by the given association rule
-            ref_df = record_entry.import_references(record_id, assoc_rule)
+            if assoc_rule in references:
+                ref_df = references[assoc_rule]
+            else:
+                ref_df = record_entry.import_references(record_id, assoc_rule)
+
             if ref_df.empty:
                 logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations'
                              .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
