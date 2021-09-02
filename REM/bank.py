@@ -326,6 +326,8 @@ class BankRule:
 #                pd.set_option('display.max_columns', None)
                 for acct_panel in self.panels:
                     acct = self.fetch_account(acct_panel, by_key=True)
+
+                    acct.table.df = acct.merge_references()
                     acct.table.df = acct.table.set_conditional_values()
 
                     self.update_display(window)
@@ -576,8 +578,8 @@ class BankRule:
         Arguments:
             expand (bool): expand the search by ignoring association parameters designated as expanded [Default: False].
         """
-        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'Notes', 'IsApproved', 'IsHardLinked',
-                    'IsParentChild', 'IsDeleted']
+        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLinked',
+                    'IsChild', 'IsDeleted']
 
         # Fetch primary account and prepare data
         acct = self.fetch_account(self.current_account)
@@ -589,7 +591,7 @@ class BankRule:
         id_column = table.id_column
 
         # Merge the records and references tables
-        df = pd.merge(table.data(), acct.ref_df, how='left', on='RecordID')
+        df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), acct.ref_df, how='left', on='RecordID')
         header = df.columns.tolist()
 
         if df.empty:
@@ -614,7 +616,8 @@ class BankRule:
                          .format(NAME=self.name, ACCT=assoc_acct.name))
 
             # Merge the associated records and references tables
-            assoc_df = pd.merge(assoc_acct.table.data(), assoc_acct.ref_df, how='left', on='RecordID')
+            assoc_df = pd.merge(assoc_acct.table.data().drop(columns=list(assoc_acct.ref_map.values())),
+                                assoc_acct.ref_df, how='left', on='RecordID')
             assoc_header = assoc_df.columns.tolist()
 
             if assoc_df.empty:  # no records loaded to match to, so skip
@@ -818,282 +821,6 @@ class BankRule:
 
         return True
 
-    def reconcile_statement_old(self, expand: bool = False):
-        """
-        Run the primary Bank Reconciliation rule algorithm for the record tab.
-        """
-        # Fetch primary account and prepare data
-        acct = self.fetch_account(self.current_account)
-        logger.info('AuditRule {NAME}: reconciling account {ACCT}'.format(NAME=self.name, ACCT=acct.name))
-        logger.debug('AuditRule {NAME}: expanded search is set to {VAL}'
-                     .format(NAME=self.name, VAL=('on' if expand else 'off')))
-
-        refmap = acct.refmap
-        table = acct.table
-        id_column = table.id_column
-        df = table.data()
-        header = df.columns.tolist()
-
-        # Filter out records already associated with transaction account records
-        logger.debug('AuditRule {NAME}: dropping {ACCT} records that are already associated with a transaction '
-                     'account record'.format(NAME=self.name, ACCT=acct.name))
-        df = df.drop(df[~df[refmap['ReferenceID']].isna()].index, axis=0)
-
-        # Define the fields that will be included in the merged association account table
-        required_fields = ["_Account_", "_RecordID_", "_RecordType_"]
-
-        # Initialize a merged association account table
-        logger.debug('AuditRule {NAME}: creating the merged accounts table'.format(NAME=self.name, ACCT=acct.name))
-        merged_df = pd.DataFrame(columns=required_fields)
-
-        # Fetch associated account data
-        transactions = acct.transactions
-        assoc_ref_maps = {}
-        for assoc_acct_name in transactions:
-            assoc_acct = self.fetch_account(assoc_acct_name)
-            logger.debug('AuditRule {NAME}: adding data from the association account {ACCT} to the merged table'
-                         .format(NAME=self.name, ACCT=assoc_acct.name))
-
-            assoc_ref_map = assoc_acct.refmap
-            assoc_df = assoc_acct.table.data()
-
-            if assoc_df.empty:  # no records loaded to match to, so skip
-                continue
-
-            # Filter association account records that are already associated with a record
-            ref_id_col = assoc_ref_map['ReferenceID']
-            drop_conds = ~assoc_df[ref_id_col].isna()
-            drop_labels = assoc_df[drop_conds].index
-            assoc_df = assoc_df.drop(drop_labels, axis=0)
-            assoc_header = assoc_df.columns.tolist()
-
-            # Create the account-association account column mapping from the association rules
-            assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
-            colmap = {}
-            for acct_colname in assoc_rules:
-                if acct_colname not in header:  # attempting to use a column that was not defined in the table config
-                    msg = 'AssociationRule column {COL} is missing from the account data'.format(COL=acct_colname)
-                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
-                    del assoc_rules[acct_colname]
-
-                    continue
-
-                rule_entry = assoc_rules[acct_colname]
-                assoc_colname = rule_entry['Column']
-                if assoc_colname not in assoc_header:
-                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
-                        .format(COL=assoc_colname, ACCT=assoc_acct_name)
-                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
-                    del assoc_rules[acct_colname]
-
-                    continue
-
-                colmap[assoc_colname] = acct_colname
-
-            colmap[assoc_acct.table.id_column] = "_RecordID_"
-
-            # Remove all but the relevant columns from the association account table
-            assoc_df = assoc_df[list(colmap)]
-
-            # Change column names of the association account table using the column map
-            assoc_df.rename(columns=colmap, inplace=True)
-
-            # Add association account name and record type to the association account table
-            assoc_df['_Account_'] = assoc_acct_name
-            assoc_df['_RecordType_'] = assoc_acct.record_type
-
-            # Store column mappers for fast recall during matching
-            assoc_ref_maps[assoc_acct_name] = {'RefMap': assoc_ref_map, 'RuleMap': assoc_rules}
-
-            # Concatenate association tables
-            merged_df = merged_df.append(assoc_df, ignore_index=True)
-
-        #        pd.set_option('display.max_columns', None)
-        #        print(merged_df)
-        #        print(merged_df.dtypes)
-
-        # Iterate over record rows, attempting to find matches in associated transaction records
-        logger.debug('AuditRule {NAME}: attempting to find associations for account {ACCT} records'
-                     .format(NAME=self.name, ACCT=acct.name))
-        nfound = 0
-        for row in df.itertuples():
-            index = getattr(row, 'Index')
-            record_id = getattr(row, id_column)
-
-            # Attempt to find a match for the record to each of the associated transaction accounts
-            matches = pd.DataFrame(columns=merged_df.columns)
-            for assoc_acct_name in assoc_ref_maps:
-                # Filter merged df by account name
-                assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
-
-                # Select columns that will be used to compare records
-                cols = list(assoc_ref_maps[assoc_acct_name]['RuleMap'])
-
-                # Find exact matches between account record and the associated account records using relevant columns
-                row_vals = [getattr(row, i) for i in cols]
-                acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
-                matches = matches.append(acct_matches)
-
-            # Check matches and find correct association
-            nmatch = matches.shape[0]
-            if nmatch == 0 and expand is True:  # no matching entries in the merged dataset
-                # Attempt to find matches using only the core columns
-                matches = pd.DataFrame(columns=merged_df.columns)
-                expanded_cols = []
-                for assoc_acct_name in assoc_ref_maps:
-                    # Filter merged df by account name
-                    assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
-
-                    # Select columns that will be used to compare records
-                    assoc_rules = assoc_ref_maps[assoc_acct_name]['RuleMap']
-                    cols = []
-                    for col in assoc_rules:
-                        rule_entry = assoc_rules[col]
-                        if rule_entry['Expand']:
-                            expanded_cols.append(col)
-                            continue
-
-                        cols.append(col)
-
-                    # Find exact matches between account record and the associated account records using relevant cols
-                    row_vals = [getattr(row, i) for i in cols]
-                    acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
-                    matches = matches.append(acct_matches)
-
-                nmatch = matches.shape[0]
-                if nmatch == 0:  # no matches found given the parameters supplied
-                    continue
-
-                elif nmatch == 1:  # found one exact match using the column subset
-                    nfound += 1
-
-                    results = matches.iloc[0]
-                    assoc_acct_name = results['_Account_']
-                    ref_id = results['_RecordID_']
-                    ref_type = results['_RecordType_']
-
-                    logger.debug('AuditRule {NAME}: associating {ACCT} record {REFID} to account record {ID} from an '
-                                 'expanded search'.format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id,
-                                                          ID=record_id))
-
-                    # Remove the found match from the dataframe of unmatched associated account records
-                    merged_df.drop(matches.index.tolist()[0], inplace=True)
-
-                    # Determine appropriate warning for the expanded search
-                    assoc_rules = assoc_ref_maps[assoc_acct_name]['RuleMap']
-                    warning = ["Potential false positive: the association is the result of an expanded search"]
-                    for column in expanded_cols:
-                        if getattr(row, column) != results[column]:
-                            try:
-                                warning.append('- {}'.format(assoc_rules[column]['Description']))
-                            except KeyError:
-                                logger.warning('BankRecordTab {NAME}: no description provided for expanded '
-                                               'association rule {COL}'.format(NAME=self.name, COL=column))
-
-                    warning = '\n'.join(warning)
-
-                    # Add the reference information to the account record's table entry
-                    ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
-                    ref_values = [ref_id, ref_type, datetime.datetime.now()]
-                    if 'Warnings' in refmap and refmap['Warnings']:
-                        ref_cols.append(refmap['Warnings'])
-                        ref_values.append(warning)
-
-                    acct.table.df.at[index, ref_cols] = ref_values
-
-                    # Add the reference information to the referenced record's table entry
-                    assoc_acct = self.fetch_account(assoc_acct_name)
-                    assoc_refmap = assoc_acct.refmap
-                    assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
-                                      assoc_refmap['ReferenceDate']]
-                    assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
-                    if 'Warnings' in refmap and refmap['Warnings']:
-                        assoc_ref_cols.append(refmap['Warnings'])
-                        assoc_ref_values.append(warning)
-
-                    assoc_acct.table.df.loc[assoc_acct.table.df[assoc_acct.table.id_column] == ref_id,
-                                            assoc_ref_cols] = assoc_ref_values
-
-                elif nmatch > 1:  # too many matches
-                    msg = 'found more than one expanded match for account {ACCT} record "{RECORD}"' \
-                        .format(ACCT=self.current_account, RECORD=record_id)
-                    logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_notice(msg)
-
-                    continue
-
-            elif nmatch == 1:  # found one exact match
-                nfound += 1
-
-                results = matches.iloc[0]
-                ref_id = results['_RecordID_']
-                ref_type = results['_RecordType_']
-                assoc_acct_name = results['_Account_']
-
-                logger.debug('AuditRule {NAME}: associating {ACCT} record {REFID} to account record {ID}'
-                             .format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id, ID=record_id))
-
-                # Remove the found match from the dataframe of unmatched associated account records
-                merged_df.drop(matches.index.tolist()[0], inplace=True)
-
-                # Add the reference information to the account record's table entry
-                ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
-                ref_values = [ref_id, ref_type, datetime.datetime.now()]
-                if 'IsApproved' in refmap and refmap['IsApproved']:
-                    ref_cols.append(refmap['IsApproved'])
-                    ref_values.append(True)
-
-                acct.table.df.at[index, ref_cols] = ref_values
-
-                # Add the reference information to the referenced record's table entry
-                assoc_acct = self.fetch_account(assoc_acct_name)
-                assoc_refmap = assoc_acct.refmap
-                assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
-                                  assoc_refmap['ReferenceDate']]
-                assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
-                if 'IsApproved' in assoc_refmap and assoc_refmap['IsApproved']:
-                    assoc_ref_cols.append(refmap['IsApproved'])
-                    assoc_ref_values.append(True)
-
-                assoc_acct.table.df.loc[assoc_acct.table.df[assoc_acct.table.id_column] == ref_id, assoc_ref_cols] = \
-                    assoc_ref_values
-
-            elif nmatch > 1:  # too many matches
-                nfound += 1
-                warning = 'found more than one match for account {ACCT} record "{RECORD}"' \
-                    .format(ACCT=self.current_account, RECORD=record_id)
-                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
-
-                # Match the first of the exact matches
-                results = matches.iloc[0]
-                ref_id = results['_RecordID_']
-                ref_type = results['_RecordType_']
-                assoc_acct_name = results['_Account_']
-
-                # Remove match from list of unmatched association records
-                merged_df.drop(matches.index.tolist()[0], inplace=True)
-
-                # Add the reference information to the account record's table entry
-                ref_cols = [refmap['ReferenceID'], refmap['ReferenceType'], refmap['ReferenceDate']]
-                ref_values = [ref_id, ref_type, datetime.datetime.now()]
-                if 'Warnings' in refmap and refmap['Warnings']:
-                    ref_cols.append(refmap['Warnings'])
-                    ref_values.append(warning)
-
-                acct.table.df.at[index, ref_cols] = ref_values
-
-                # Add the reference information to the referenced record's table entry
-                assoc_acct = self.fetch_account(assoc_acct_name)
-                assoc_refmap = assoc_acct.refmap
-                assoc_ref_cols = [assoc_refmap['ReferenceID'], assoc_refmap['ReferenceType'],
-                                  assoc_refmap['ReferenceDate']]
-                assoc_ref_values = [record_id, acct.record_type, datetime.datetime.now()]
-                assoc_acct.table.df.loc[assoc_acct.table.df[assoc_acct.table.id_column] == ref_id, assoc_ref_cols] = \
-                    assoc_ref_values
-
-        logger.info('AuditRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
-                    .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
-
     def save_records(self):
         """
         Save any changes to the records made during the reconciliation process.
@@ -1152,18 +879,13 @@ class BankRule:
 
                 sheet_name = acct.title
                 table = acct.table
+                df = table.df
 
-                df = pd.merge(acct.table.data(), acct.ref_df, how='left', on='RecordID')
                 export_df = table.format_display_table(df)
 
-                # Add reference ID column to the export table
-                record_entry = settings.records.fetch_rule(acct.record_type)
-                rule_name = acct.association_rule
-                ref_col = record_entry.association_rules[rule_name]['Title']
-                export_df[ref_col] = df['ReferenceID']
-
-                # Prepare custom annotations
-                annotation_map = acct.annotate_records(df)
+                # Prepare row colors based on record annotations
+                annotations = table.annotate_display(df)
+                annotation_map = {i: table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
 
                 # Write table to the output file
                 try:
@@ -1209,6 +931,8 @@ class AccountEntry:
         table (RecordTable): table for storing account data.
 
         ref_df (DataFrame): table for storing record references.
+
+        ref_map (dict): reference columns to add to the records table along with their table aliases.
 
         transactions (dict): source and sink dynamics of the account.
     """
@@ -1265,6 +989,23 @@ class AccountEntry:
             logger.warning('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             self.parameters = {}
+
+        try:
+            ref_map = entry['ReferenceMap']
+        except KeyError:
+            self.ref_map = {}
+        else:
+            ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLinked',
+                        'IsChild', 'IsDeleted']
+            self.ref_map = {}
+            for column in ref_map:
+                if column not in ref_cols:
+                    msg = 'reference map column {COL} is not a valid reference column name'.format(COL=column)
+                    logger.warning('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    continue
+
+                self.ref_map[column] = ref_map[column]
 
         try:
             transactions = entry['Transactions']
@@ -1423,49 +1164,35 @@ class AccountEntry:
         tbl_height = int(height * 0.55)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
 
-    def annotate_records(self, df: pd.DataFrame = None):
+    def merge_references(self, df: pd.DataFrame = None):
         """
-        Annotate records based on whether the records have a reference, the reference is approved, or the reference has
-        a warning.
+        Merge the records table and the reference table on reference map columns.
         """
-        # Define annotation colors
-        approved_col = mod_const.APPROVE_COL
-        warn_col = mod_const.WARNING_COL
-        ref_col = mod_const.PASS_COL
+        ref_map = self.ref_map
+        ref_df = self.ref_df.copy()
 
-        # Merge the record and reference tables
         if df is None:
-            df = pd.merge(self.table.data(), self.ref_df, how='left', on='RecordID')
+            df = self.table.data()
 
-        # Get row color by reference category
-        annotations = {}
+        # Set index to record ID for updating
+        df.set_index('RecordID', inplace=True)
+        ref_df.set_index('RecordID', inplace=True)
 
-        # Find rows where the records have a reference and the reference is approved
-        approve_inds = df[(df['IsApproved']) & (~df['ReferenceID'].isna())].index
-        for i in approve_inds:
-            annotations[i] = approved_col
+        # Rename reference columns to record columns using the reference map
+        ref_df = ref_df[list(ref_df)].rename(columns=ref_map)
 
-        # Find rows where records have a reference with a warning
-        warn_inds = df[(~df['ReferenceID'].isna()) & (~df['ReferenceNotes'].isna())].index
-        for i in warn_inds:
-            annotations[i] = warn_col
+        # Update record reference columns
+        df.update(ref_df)
+        df.reset_index(inplace=True)
 
-        # Find rows where records have references without warnings, but are not yet approved
-        ref_inds = df[(~df['IsApproved']) & (df['ReferenceNotes'].isna()) & (~df['ReferenceID'].isna())].index
-        for i in ref_inds:
-            annotations[i] = ref_col
-
-        return annotations
+        return df
 
     def update_display(self, window):
         """
         Update the panel's record table display.
         """
-        # Get custom annotations
-        annotations = self.annotate_records()
-
         # Update the display table
-        self.table.update_display(window, annotations=annotations)
+        self.table.update_display(window)
 
     def load_data(self, parameters):
         """
@@ -1505,9 +1232,6 @@ class AccountEntry:
 
             return False
 
-        # Update record table with imported data
-        self.table.df = self.table.append(df)
-
         # Load the record references from the reference table connected with the association rule
         rule_name = self.association_rule
         record_ids = self.table.row_ids()
@@ -1523,5 +1247,11 @@ class AccountEntry:
 
         self.ref_df = pd.merge(df.loc[:, ['RecordID']], import_df, how='left', on='RecordID')
         self.ref_df['RecordType'].fillna(record_type, inplace=True)
+
+        # Merge the imported records with the reference entries
+        df = self.merge_references(df)
+
+        # Update the record table dataframe with the data imported from the database
+        self.table.df = self.table.append(df)
 
         return True
