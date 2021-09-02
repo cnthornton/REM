@@ -443,12 +443,14 @@ class RecordEntry:
             column_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
                           'ReferenceType': 'DocType', 'RecordType': 'RefType'}
 
+        # Remove rows where the primary column is NULL
+        df.drop(df[df[primary_col].isna()].index, inplace=True)
+
         # Check if references exists in the table already
         exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
 
-        export_df = df.rename(columns=column_map)
-
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
+        export_df = df.rename(columns=column_map)
 
         # Extract all currently existing records from the table
         current_df = export_df[exists]
