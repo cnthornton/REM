@@ -241,7 +241,7 @@ class DataParameter:
         # Required symbol
         if is_required is True:
             required_layout = [sg.Text('*', font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.WARNING_COL, tooltip='required')]
+                                       text_color=mod_const.NOTE_COL, tooltip='required')]
         else:
             required_layout = []
 

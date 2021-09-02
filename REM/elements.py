@@ -3048,7 +3048,7 @@ class ComponentTable(RecordTable):
         annotations = self.annotate_display(export_df)
         annotation_map = {i: self.annotation_rules[j]['Description'] for i, j in annotations.items()}
 
-        ref_df['Notes'] = ref_df.index.map(annotation_map)
+        ref_df['ReferenceNotes'] = ref_df.index.map(annotation_map)
 
         return ref_df
 
@@ -3697,7 +3697,7 @@ class ReferenceBox:
 
             return False
 
-        warn_col = 'Warnings'
+        warn_col = 'ReferenceNotes'
         try:
             self.notes = entry[warn_col]
         except KeyError:
@@ -3750,8 +3750,8 @@ class ReferenceBox:
         """
         Export the association as a reference entry.
         """
-        indices = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'Notes', 'IsApproved',
-                   'IsChild', 'IsHardLink', 'IsDeleted']
+        indices = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'ReferenceNotes',
+                   'IsApproved', 'IsChild', 'IsHardLink', 'IsDeleted']
         values = [record_id, self.reference_id, self.date, self.parent, self.reference_type, self.notes, self.approved,
                   self.is_pc, self.is_hardlink, (not self.referenced)]
 
@@ -4165,7 +4165,7 @@ class DataElement:
         # Required symbol
         if is_required is True:
             required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.WARNING_COL, tooltip='required')]
+                                       text_color=mod_const.NOTE_COL, tooltip='required')]
         else:
             required_layout = []
 
@@ -4924,7 +4924,7 @@ class ElementReference:
         # Required symbol
         if is_required is True:
             required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.WARNING_COL, tooltip='required')]
+                                       text_color=mod_const.NOTE_COL, tooltip='required')]
         else:
             required_layout = []
 

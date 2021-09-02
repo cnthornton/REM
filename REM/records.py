@@ -240,17 +240,17 @@ class RecordEntry:
 
         if is_primary:  # input records are the primary record IDs
             columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate', 'DocType AS RecordType',
-                       'RefType AS ReferenceType', 'Notes', 'IsChild', 'IsHardLink', 'IsApproved']
+                       'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'IsChild', 'IsHardLink', 'IsApproved']
             filter_str = 'DocNo IN ({VALS}) AND IsDeleted = ?'
         else:  # input records are the reference record ID
             columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
-                       'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes', 'IsChild', 'IsHardLink',
-                       'IsApproved']
+                       'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes', 'IsChild',
+                       'IsHardLink', 'IsApproved']
             filter_str = 'RefNo IN ({VALS}) AND IsDeleted = ?'
 
         # Import reference entries related to record_id
-        df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'Notes',
-                                   'IsChild', 'IsHardLink', 'IsApproved'])
+        df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
+                                   'ReferenceNotes', 'IsChild', 'IsHardLink', 'IsApproved'])
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
             sub_vals = ','.join(['?' for _ in sub_ids])
@@ -437,11 +437,11 @@ class RecordEntry:
         if is_primary:  # input record is the primary record ID
             primary_col = 'RecordID'
             column_map = {'ReferenceID': 'RefNo', 'RecordID': 'DocNo', 'ReferenceDate': 'RefDate',
-                          'ReferenceType': 'RefType', 'RecordType': 'DocType'}
+                          'ReferenceType': 'RefType', 'RecordType': 'DocType', 'ReferenceNotes': 'Notes'}
         else:  # reference record is the primary record ID
             primary_col = 'ReferenceID'
             column_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
-                          'ReferenceType': 'DocType', 'RecordType': 'RefType'}
+                          'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes'}
 
         # Remove rows where the primary column is NULL
         df.drop(df[df[primary_col].isna()].index, inplace=True)
