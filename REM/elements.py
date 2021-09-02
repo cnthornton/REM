@@ -394,7 +394,7 @@ class TableElement:
             self.required = required
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
-        self._actions = []
+        self._actions = ['Element']
 
         # Dynamic attributes
         self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
@@ -584,49 +584,23 @@ class TableElement:
         param_elems = [i for param in self.parameters for i in param.elements]
         action_events = [self.key_lookup(i) for i in self._actions]
 
-        # Row click event
-        if event == tbl_key:
-            # Close options panel, if open
-            if window[frame_key].metadata['visible'] is True:
-                window[frame_key].metadata['visible'] = False
-                window[frame_key].update(visible=False)
-                self.resize(window, size=self.dimensions)
-
-            # Find row selected by user
-            try:
-                select_row_index = values[event][0]
-            except IndexError:  # user double-clicked too quickly
-                msg = 'table row could not be selected'
-                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            else:
-                # Get the real index of the selected row
-                try:
-                    index = self.index_map[select_row_index]
-                except KeyError:
-                    index = select_row_index
-
-                logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
-                             .format(NAME=self.name, IND=index))
-                if self.modifiers['edit'] is True:
-                    self.edit_row(index)
-
-        elif event == self.key_lookup('CollapseButton'):
+        if event == self.key_lookup('CollapseButton'):
             self.collapse_expand(window)
 
-        elif event == self.key_lookup('FilterButton'):
+        if event == self.key_lookup('FilterButton'):
             self.collapse_expand(window, frame='filter')
 
-        elif event == self.key_lookup('SummaryButton'):
+        if event == self.key_lookup('SummaryButton'):
             self.collapse_expand(window, frame='summary')
 
         # Click filter Apply button to apply filtering to table
-        elif event == filter_key or event == '-HK_TBL_FILTER-':
+        if event == filter_key or event == '-HK_TBL_FILTER-':
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
 
         # Click to open table options panel
-        elif event == options_key or event == '-HK_TBL_OPTS-':
+        if event == options_key or event == '-HK_TBL_OPTS-':
             if window[frame_key].metadata['visible'] is False:
                 window[frame_key].metadata['visible'] = True
 
@@ -656,11 +630,11 @@ class TableElement:
             else:
                 self.resize(window, size=self.dimensions)
 
-        elif event == cancel_key:
+        if event == cancel_key:
             self.resize(window, size=self.dimensions)
 
         # Sort column selected from menu of sort columns
-        elif event == sort_key:
+        if event == sort_key:
             sort_on = self.sort_on
             display_map = self.display_columns
 
@@ -680,7 +654,7 @@ class TableElement:
                     self.sort_on.append(sort_col)
 
         # NA value fill method selected from menu of fill methods
-        elif event == fill_key:
+        if event == fill_key:
             display_map = self.display_columns
 
             # Get selected rows, if any
@@ -706,7 +680,7 @@ class TableElement:
                 # Fill in NA values
                 self.fill(fill_col, rows=indices)
 
-        elif event in param_elems:
+        if event in param_elems:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
@@ -715,13 +689,13 @@ class TableElement:
             else:
                 param.run_event(window, event, values)
 
-        elif event == export_key:
+        if event == export_key:
             export_df = self.update_display(window, values)
             annotations = self.annotate_display(self.df)
             annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
             self.export_table(export_df, annotation_map)
 
-        elif event in action_events:
+        if event in action_events:
             self.run_action_event(window, event, values)
 
         result = self.update_display(window, values)
@@ -732,7 +706,34 @@ class TableElement:
         """
         Run a table action event.
         """
-        pass
+        tbl_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('OptionsFrame')
+
+        # Row click event
+        if event == tbl_key:
+            # Close options panel, if open
+            if window[frame_key].metadata['visible'] is True:
+                window[frame_key].metadata['visible'] = False
+                window[frame_key].update(visible=False)
+                self.resize(window, size=self.dimensions)
+
+            # Find row selected by user
+            try:
+                select_row_index = values[event][0]
+            except IndexError:  # user double-clicked too quickly
+                msg = 'table row could not be selected'
+                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            else:
+                # Get the real index of the selected row
+                try:
+                    index = self.index_map[select_row_index]
+                except KeyError:
+                    index = select_row_index
+
+                logger.debug('DataTable {NAME}: opening row at real index {IND} for editing'
+                             .format(NAME=self.name, IND=index))
+                if self.modifiers['edit'] is True:
+                    self.edit_row(index)
 
     def update_display(self, window, window_values: dict = None):
         """
@@ -2222,10 +2223,9 @@ class RecordTable(TableElement):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-        self._actions = ['Delete', 'Import']
-
+        self._actions.extend(['Delete', 'Import'])
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              self._actions])
+                              ['Delete', 'Import']])
 
         self.etype = 'record_table'
 
@@ -2292,7 +2292,7 @@ class RecordTable(TableElement):
         # Dynamic attributes
         self.import_df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
 
-    def _translate_row(self, row, layout: dict = None, level: int = 1, new_record: bool = False):
+    def _translate_row(self, row, level: int = 1, new_record: bool = False, references: pd.DataFrame = None):
         """
         Translate row data into a record object.
         """
@@ -2314,8 +2314,8 @@ class RecordTable(TableElement):
 
             record_class = mod_records.StandardRecord
 
-        record = record_class(record_entry, level=level, record_layout=layout)
-        record.initialize(row, new=new_record)
+        record = record_class(record_entry, level=level)
+        record.initialize(row, new=new_record, references=references)
 
         return record
 
@@ -2336,9 +2336,37 @@ class RecordTable(TableElement):
         Run a table action event.
         """
         tbl_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('OptionsFrame')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
+        # Row click event
+        if event == tbl_key:
+            # Close options panel, if open
+            if window[frame_key].metadata['visible'] is True:
+                window[frame_key].metadata['visible'] = False
+                window[frame_key].update(visible=False)
+                self.resize(window, size=self.dimensions)
+
+            # Find row selected by user from the display table of non-deleted rows
+            try:
+                select_row_index = values[event][0]
+            except IndexError:  # user double-clicked too quickly
+                msg = 'table row could not be selected'
+                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            else:
+                # Get the real index of the selected row
+                try:
+                    index = self.index_map[select_row_index]
+                except KeyError:
+                    index = select_row_index
+
+                logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
+                             .format(NAME=self.name, IND=index))
+                if self.modifiers['open'] is True:
+                    self.load_record(index)
+
+        # Delete rows button clicked
         if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
                                                                 window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
@@ -2355,6 +2383,7 @@ class RecordTable(TableElement):
 
             self.delete_rows(indices)
 
+        # Import rows button clicked
         if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                    window[import_key].metadata['visible'])):
             self.import_rows()
@@ -2491,7 +2520,7 @@ class RecordTable(TableElement):
 
         return df
 
-    def load_record(self, index, layout: dict = None, level: int = 1):
+    def load_record(self, index, level: int = 1, references: pd.Dataframe = None):
         """
         Open selected record in new record window.
         """
@@ -2518,7 +2547,7 @@ class RecordTable(TableElement):
             row['Warnings'] = self.annotation_rules[annot_code]['Description']
 
         try:
-            record = self._translate_row(row, layout=layout, level=level, new_record=False)
+            record = self._translate_row(row, level=level, new_record=False, references=references)
         except Exception as e:
             msg = 'failed to open record at row {IND}'.format(IND=index + 1)
             mod_win2.popup_error(msg)
@@ -2734,8 +2763,7 @@ class ComponentTable(RecordTable):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-        self._actions = ['Delete', 'Import', 'Add']
-
+        self._actions.append('Add')
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                              ['Add']])
 
@@ -2777,14 +2805,43 @@ class ComponentTable(RecordTable):
         Run a table action event.
         """
         tbl_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('OptionsFrame')
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
+        # Row click event
+        if event == tbl_key:
+            # Close options panel, if open
+            if window[frame_key].metadata['visible'] is True:
+                window[frame_key].metadata['visible'] = False
+                window[frame_key].update(visible=False)
+                self.resize(window, size=self.dimensions)
+
+            # Find row selected by user from the display table of non-deleted rows
+            try:
+                select_row_index = values[event][0]
+            except IndexError:  # user double-clicked too quickly
+                msg = 'table row could not be selected'
+                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            else:
+                # Get the real index of the selected row
+                try:
+                    index = self.index_map[select_row_index]
+                except KeyError:
+                    index = select_row_index
+
+                logger.debug('DataTable {NAME}: loading record at real index {IND}'
+                             .format(NAME=self.name, IND=index))
+                if self.modifiers['open'] is True:
+                    self.load_record(index)
+
+        # Add row button clicked
         if event == add_key or (event == '-HK_TBL_ADD-' and (not window[add_key].metadata['disabled'] and
                                                              window[add_key].metadata['visible'])):
             self.add_row()
 
+        # Delete rows button clicked
         if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
                                                                 window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
@@ -2801,6 +2858,7 @@ class ComponentTable(RecordTable):
 
             self.delete_rows(indices)
 
+        # Import rows button clicked
         if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                    window[import_key].metadata['visible'])):
             self.import_rows()
