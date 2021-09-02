@@ -211,6 +211,11 @@ class RecordEntry:
     def import_references(self, records, rule_name):
         """
         Import a record's association.
+
+        Arguments:
+            records (list): list of record IDs to extract from the reference table.
+
+            rule_name (str): name of the association rule to use to gather information about the references to extract.
         """
         association_rules = self.association_rules
 
@@ -1585,8 +1590,9 @@ class DatabaseRecord:
         for refbox in self.references:
             assoc_rule = refbox.association_rule
 
-            if assoc_rule in references:
-                ref_data = references[assoc_rule]
+            if assoc_rule in references:  # use provided reference entries instead of importing from reference table
+                assoc_refs = references[assoc_rule]
+                ref_data = assoc_refs[assoc_refs['RecordID'] == record_id]
             else:
                 ref_data = record_entry.import_references(record_id, assoc_rule)
 
@@ -1618,17 +1624,18 @@ class DatabaseRecord:
             comp_entry = settings.records.fetch_rule(comp_table.record_type)
 
             # Load the reference entries defined by the given association rule
-            if assoc_rule in references:
-                ref_df = references[assoc_rule]
+            if assoc_rule in references:  # use provided reference entries instead of importing from reference table
+                assoc_refs = references[assoc_rule]
+                ref_data = assoc_refs[assoc_refs['RecordID'] == record_id]
             else:
-                ref_df = record_entry.import_references(record_id, assoc_rule)
+                ref_data = record_entry.import_references(record_id, assoc_rule)
 
-            if ref_df.empty:
+            if ref_data.empty:
                 logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations'
                              .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                 continue
 
-            import_ids = ref_df['ReferenceID']
+            import_ids = ref_data['ReferenceID']
 
             # Load the component records
             import_df = comp_entry.load_record_data(import_ids)
