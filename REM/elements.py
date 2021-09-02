@@ -735,15 +735,26 @@ class TableElement:
                 if self.modifiers['edit'] is True:
                     self.edit_row(index)
 
-    def update_display(self, window, window_values: dict = None):
+    def update_display(self, window, window_values: dict = None, annotations: dict = None):
         """
         Format object elements for display.
+
+        Arguments:
+            window (Window): GUI window.
+
+            window_values (dict): optional mapping of elements with element values.
+
+            annotations (dict): custom row color annotations to use instead of generating annotations from the
+                configured annotation rules.
         """
         is_float_dtype = pd.api.types.is_float_dtype
         highlight_col = mod_const.SELECT_BG_COL
         white_text_col = mod_const.WHITE_TEXT_COL
         def_bg_col = mod_const.ACTION_COL
         text_col = mod_const.TEXT_COL
+
+        if not annotations:
+            annotations = {}
 
         # Sort table and update table sorting information
         sort_key = self.key_lookup('Sort')
@@ -797,13 +808,19 @@ class TableElement:
                 logger.warning(msg)
 
         # Edit the index map to reflect what is currently displayed
-        self.index_map = {i: j for i, j in enumerate(df.index.tolist())}
+        passed_indices = df.index.tolist()
+        self.index_map = {i: j for i, j in enumerate(passed_indices)}
+
+        annotations = {i: j for i, j in annotations.items() if i in passed_indices}
 
         df = df.reset_index()
 
-        # Highlight table rows using configured annotation rules
-        annotations = self.annotate_display(df)
-        row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
+        # Prepare annotations
+        if len(annotations) < 1:  # highlight table rows using configured annotation rules
+            annotations = self.annotate_display(df)
+            row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
+        else:  # use custom annotations to highight table rows
+            row_colors = [(i, j) for i, j in annotations.items()]
 
         # Format the table
         display_df = self.format_display_table(df)

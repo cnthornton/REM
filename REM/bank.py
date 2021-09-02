@@ -1152,11 +1152,20 @@ class BankRule:
 
                 sheet_name = acct.title
                 table = acct.table
-                df = table.data()  # show all data
 
+                df = pd.merge(acct.table.data(), acct.ref_df, how='left', on='RecordID')
                 export_df = table.format_display_table(df)
-                annotations = table.annotate_display(df)
-                annotation_map = {i: table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+
+                # Add reference ID column to the export table
+                record_entry = settings.records.fetch_rule(acct.record_type)
+                rule_name = acct.association_rule
+                ref_col = record_entry.association_rules[rule_name]['Title']
+                export_df[ref_col] = df['ReferenceID']
+
+                # Prepare custom annotations
+                annotation_map = acct.annotate_records(df)
+
+                # Write table to the output file
                 try:
                     export_df.style.apply(lambda x: ['background-color: {}'
                                           .format(annotation_map.get(x.name, 'white')) for _ in x], axis=1) \
@@ -1414,9 +1423,10 @@ class AccountEntry:
         tbl_height = int(height * 0.55)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
 
-    def update_display(self, window):
+    def annotate_records(self, df: pd.DataFrame = None):
         """
-        Update the panel's record table display.
+        Annotate records based on whether the records have a reference, the reference is approved, or the reference has
+        a warning.
         """
         # Define annotation colors
         approved_col = mod_const.APPROVE_COL
@@ -1424,30 +1434,38 @@ class AccountEntry:
         ref_col = mod_const.PASS_COL
 
         # Merge the record and reference tables
-        df = pd.merge(self.table.data(), self.ref_df, how='left', on='RecordID')
+        if df is None:
+            df = pd.merge(self.table.data(), self.ref_df, how='left', on='RecordID')
 
-        # Annotate the table based on whether records have a reference, the reference is approved, or the reference has
-        # a warning
-        row_colors = []
+        # Get row color by reference category
+        annotations = {}
 
         # Find rows where the records have a reference and the reference is approved
         approve_inds = df[(df['IsApproved']) & (~df['ReferenceID'].isna())].index
-        row_colors.extend([(i, approved_col) for i in approve_inds])
+        for i in approve_inds:
+            annotations[i] = approved_col
 
         # Find rows where records have a reference with a warning
         warn_inds = df[(~df['ReferenceID'].isna()) & (~df['ReferenceNotes'].isna())].index
-        row_colors.extend([(i, warn_col) for i in warn_inds])
+        for i in warn_inds:
+            annotations[i] = warn_col
 
         # Find rows where records have references without warnings, but are not yet approved
         ref_inds = df[(~df['IsApproved']) & (df['ReferenceNotes'].isna()) & (~df['ReferenceID'].isna())].index
-        row_colors.extend([(i, ref_col) for i in ref_inds])
+        for i in ref_inds:
+            annotations[i] = ref_col
+
+        return annotations
+
+    def update_display(self, window):
+        """
+        Update the panel's record table display.
+        """
+        # Get custom annotations
+        annotations = self.annotate_records()
 
         # Update the display table
-        self.table.update_display(window)
-
-        # Update the row colors
-        tbl_key = self.table.key_lookup('Element')
-        window[tbl_key].update(row_colors=row_colors)
+        self.table.update_display(window, annotations=annotations)
 
     def load_data(self, parameters):
         """

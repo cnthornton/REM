@@ -155,6 +155,9 @@ class RecordEntry:
 
                     raise AttributeError(msg)
 
+                if 'Title' not in rule:
+                    rule['Title'] = rule_name
+
                 if 'AssociationType' in rule:
                     assoc_type = rule['AssociationType']
                     if assoc_type not in ('parent', 'child', 'reference'):
