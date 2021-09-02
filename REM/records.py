@@ -1457,9 +1457,6 @@ class DatabaseRecord:
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
 
-        self.ref_df = pd.DataFrame(columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted',
-                                            'IsParentChild', 'IsHardLink', 'IsApproved'])
-
         # Record report layout definition
         try:
             report = entry['Report']
@@ -1697,10 +1694,6 @@ class DatabaseRecord:
         # Reset references
         for refbox in self.references:
             refbox.reset(window)
-
-        self.ref_df = pd.DataFrame(
-            columns=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'IsParentChild', 'IsHardLink',
-                     'IsApproved'])
 
     def remove_unsaved_ids(self):
         """
