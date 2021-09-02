@@ -1405,7 +1405,7 @@ class AccountEntry:
 
     def resize(self, window, size):
         """
-        Resize the bank record tab.
+        Resize the reconciliation panel.
         """
         width, height = size
 
@@ -1416,9 +1416,38 @@ class AccountEntry:
 
     def update_display(self, window):
         """
-        Update the audit record summary tab's record display.
+        Update the panel's record table display.
         """
+        # Define annotation colors
+        approved_col = mod_const.APPROVE_COL
+        warn_col = mod_const.WARNING_COL
+        ref_col = mod_const.PASS_COL
+
+        # Merge the record and reference tables
+        df = pd.merge(self.table.data(), self.ref_df, how='left', on='RecordID')
+
+        # Annotate the table based on whether records have a reference, the reference is approved, or the reference has
+        # a warning
+        row_colors = []
+
+        # Find rows where the records have a reference and the reference is approved
+        approve_inds = df[(df['IsApproved']) & (~df['ReferenceID'].isna())].index
+        row_colors.extend([(i, approved_col) for i in approve_inds])
+
+        # Find rows where records have a reference with a warning
+        warn_inds = df[(~df['ReferenceID'].isna()) & (~df['ReferenceNotes'].isna())].index
+        row_colors.extend([(i, warn_col) for i in warn_inds])
+
+        # Find rows where records have references without warnings, but are not yet approved
+        ref_inds = df[(~df['IsApproved']) & (df['ReferenceNotes'].isna()) & (~df['ReferenceID'].isna())].index
+        row_colors.extend([(i, ref_col) for i in ref_inds])
+
+        # Update the display table
         self.table.update_display(window)
+
+        # Update the row colors
+        tbl_key = self.table.key_lookup('Element')
+        window[tbl_key].update(row_colors=row_colors)
 
     def load_data(self, parameters):
         """

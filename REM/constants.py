@@ -21,7 +21,9 @@ HEADER_COL2 = '#F2F7F2'  # light green
 HEADER_COL3 = '#FEE3E2'  # light red
 BORDER_COL = '#767676'  # dark grey
 PASS_COL = '#ACFBAF'  # light-medium green
-FAIL_COL = WARNING_COL = '#F4B3B3'  # light-medium red
+APPROVE_COL = '#CCE7CD'  # medium-dark green
+WARNING_COL = '#FFD740'  # medium orange-yellow
+FAIL_COL = NOTE_COL = '#F4B3B3'  # light-medium red
 BOX_COL = '#FFFAFA'  # light green
 
 # Element padding
