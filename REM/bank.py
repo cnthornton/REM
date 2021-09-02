@@ -572,6 +572,255 @@ class BankRule:
     def reconcile_statement(self, expand: bool = False):
         """
         Run the primary Bank Reconciliation rule algorithm for the record tab.
+
+        Arguments:
+            expand (bool): expand the search by ignoring association parameters designated as expanded [Default: False].
+        """
+        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'Notes', 'IsApproved', 'IsHardLinked',
+                    'IsParentChild', 'IsDeleted']
+
+        # Fetch primary account and prepare data
+        acct = self.fetch_account(self.current_account)
+        logger.info('BankRule {NAME}: reconciling account {ACCT}'.format(NAME=self.name, ACCT=acct.name))
+        logger.debug('BankRule {NAME}: expanded search is set to {VAL}'
+                     .format(NAME=self.name, VAL=('on' if expand else 'off')))
+
+        table = acct.table
+        id_column = table.id_column
+
+        # Merge the records and references tables
+        df = pd.merge(table.data(), acct.ref_df, how='left', on='RecordID')
+        header = df.columns.tolist()
+
+        if df.empty:
+            return True
+
+        # Filter out records already associated with transaction account records
+        logger.debug('BankRule {NAME}: dropping {ACCT} records that are already associated with a transaction '
+                     'account record'.format(NAME=self.name, ACCT=acct.name))
+        df = df.drop(df[~df['ReferenceID'].isna()].index, axis=0)
+
+        # Initialize the merged associated account dataframe
+        logger.debug('BankRule {NAME}: initializing the merged accounts table'.format(NAME=self.name, ACCT=acct.name))
+        required_fields = ['_Account_', '_RecordID_', '_RecordType_']
+        merged_df = pd.DataFrame(columns=required_fields)
+
+        # Fetch associated account data
+        transactions = acct.transactions
+        assoc_ref_maps = {}
+        for assoc_acct_name in transactions:
+            assoc_acct = self.fetch_account(assoc_acct_name)
+            logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
+                         .format(NAME=self.name, ACCT=assoc_acct.name))
+
+            # Merge the associated records and references tables
+            assoc_df = pd.merge(assoc_acct.table.data(), assoc_acct.ref_df, how='left', on='RecordID')
+            assoc_header = assoc_df.columns.tolist()
+
+            if assoc_df.empty:  # no records loaded to match to, so skip
+                continue
+
+            # Filter association account records that are already associated with a record
+            drop_conds = ~assoc_df['ReferenceID'].isna()
+            drop_labels = assoc_df[drop_conds].index
+            assoc_df = assoc_df.drop(drop_labels, axis=0)
+
+            # Create the account-association account column mapping from the association rules
+            assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
+            colmap = {}
+            for acct_colname in assoc_rules:
+                if acct_colname not in header:  # attempting to use a column that was not defined in the table config
+                    msg = 'AssociationRule column {COL} is missing from the account data'.format(COL=acct_colname)
+                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
+                    del assoc_rules[acct_colname]
+
+                    continue
+
+                rule_entry = assoc_rules[acct_colname]
+                assoc_colname = rule_entry['Column']
+                if assoc_colname not in assoc_header:
+                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
+                        .format(COL=assoc_colname, ACCT=assoc_acct_name)
+                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
+                    del assoc_rules[acct_colname]
+
+                    continue
+
+                colmap[assoc_colname] = acct_colname
+
+            colmap[assoc_acct.table.id_column] = "_RecordID_"
+
+            # Remove all but the relevant columns from the association account table
+            assoc_df = assoc_df[list(colmap)]
+
+            # Change column names of the association account table using the column map
+            assoc_df.rename(columns=colmap, inplace=True)
+
+            # Add association account name and record type to the association account table
+            assoc_df['_Account_'] = assoc_acct_name
+            assoc_df['_RecordType_'] = assoc_acct.record_type
+
+            # Store column mappers for fast recall during matching
+            assoc_ref_maps[assoc_acct_name] = assoc_rules
+
+            # Concatenate association tables
+            merged_df = merged_df.append(assoc_df, ignore_index=True)
+
+        #        pd.set_option('display.max_columns', None)
+        #        print(merged_df)
+        #        print(merged_df.dtypes)
+
+        # Iterate over record rows, attempting to find matches in associated transaction records
+        logger.debug('AuditRule {NAME}: attempting to find associations for account {ACCT} records'
+                     .format(NAME=self.name, ACCT=acct.name))
+        nfound = 0
+        for row in df.itertuples():
+            record_id = getattr(row, id_column)
+
+            # Attempt to find a match for the record to each of the associated transaction accounts
+            matches = pd.DataFrame(columns=merged_df.columns)
+            for assoc_acct_name in assoc_ref_maps:
+                # Subset merged df to include only the association records with the given account name
+                assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
+
+                # Select the columns that will be used to compare records
+                cols = list(assoc_ref_maps[assoc_acct_name])
+
+                # Find exact matches between account record and the associated account records using relevant columns
+                row_vals = [getattr(row, i) for i in cols]
+                acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
+                matches = matches.append(acct_matches)
+
+            # Check matches and find correct association
+            nmatch = matches.shape[0]
+            if nmatch == 0 and expand is True:  # no matching entries in the merged dataset
+                # Attempt to find matches using only the core columns
+                matches = pd.DataFrame(columns=merged_df.columns)
+                expanded_cols = []
+                for assoc_acct_name in assoc_ref_maps:
+                    # Subset merged df to include only the association records with the given account name
+                    assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
+
+                    # Select columns that will be used to compare records
+                    assoc_rules = assoc_ref_maps[assoc_acct_name]
+                    cols = []
+                    for col in assoc_rules:
+                        rule_entry = assoc_rules[col]
+                        if rule_entry['Expand']:
+                            expanded_cols.append(col)
+                            continue
+
+                        cols.append(col)
+
+                    # Find exact matches between account record and the associated account records using relevant cols
+                    row_vals = [getattr(row, i) for i in cols]
+                    acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
+                    matches = matches.append(acct_matches)
+
+                nmatch = matches.shape[0]
+                if nmatch == 0:  # no matches found given the parameters supplied
+                    continue
+
+                elif nmatch == 1:  # found one exact match using the column subset
+                    nfound += 1
+
+                    results = matches.iloc[0]
+                    assoc_acct_name = results['_Account_']
+                    ref_id = results['_RecordID_']
+                    ref_type = results['_RecordType_']
+
+                    logger.debug('AuditRule {NAME}: associating {ACCT} record {REFID} to account record {ID} from an '
+                                 'expanded search'.format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id,
+                                                          ID=record_id))
+
+                    # Remove the found match from the dataframe of unmatched associated account records
+                    merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                    # Determine appropriate warning for the expanded search
+                    assoc_rules = assoc_ref_maps[assoc_acct_name]
+                    warning = ["Potential false positive: the association is the result of an expanded search"]
+                    for column in expanded_cols:
+                        if getattr(row, column) != results[column]:
+                            try:
+                                warning.append('- {}'.format(assoc_rules[column]['Description']))
+                            except KeyError:
+                                logger.warning('BankRecordTab {NAME}: no description provided for expanded '
+                                               'association rule {COL}'.format(NAME=self.name, COL=column))
+
+                    warning = '\n'.join(warning)
+
+                    # Insert the reference into the account records reference dataframe
+                    ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, 0, 0, 0, 0]
+                    acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
+
+                    # Insert the reference into the associated account's reference dataframe
+                    assoc_acct = self.fetch_account(assoc_acct_name)
+                    ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, 0, 0, 0, 0]
+                    assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
+
+                elif nmatch > 1:  # too many matches
+                    msg = 'found more than one expanded match for account {ACCT} record "{RECORD}"' \
+                        .format(ACCT=self.current_account, RECORD=record_id)
+                    logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_notice(msg)
+
+                    continue
+
+            elif nmatch == 1:  # found one exact match
+                nfound += 1
+
+                results = matches.iloc[0]
+                ref_id = results['_RecordID_']
+                ref_type = results['_RecordType_']
+                assoc_acct_name = results['_Account_']
+
+                logger.debug('AuditRule {NAME}: associating {ACCT} record {REFID} to account record {ID}'
+                             .format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id, ID=record_id))
+
+                # Remove the found match from the dataframe of unmatched associated account records
+                merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                # Insert the reference into the account records reference dataframe
+                ref_values = [ref_id, datetime.datetime.now(), ref_type, None, 1, 0, 0, 0]
+                acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
+
+                # Insert the reference into the associated account's reference dataframe
+                assoc_acct = self.fetch_account(assoc_acct_name)
+                ref_values = [record_id, datetime.datetime.now(), acct.record_type, None, 1, 0, 0, 0]
+                assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
+
+            elif nmatch > 1:  # too many matches
+                nfound += 1
+                warning = 'found more than one match for account {ACCT} record "{RECORD}"' \
+                    .format(ACCT=self.current_account, RECORD=record_id)
+                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
+
+                # Match the first of the exact matches
+                results = matches.iloc[0]
+                ref_id = results['_RecordID_']
+                ref_type = results['_RecordType_']
+                assoc_acct_name = results['_Account_']
+
+                # Remove match from list of unmatched association records
+                merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                # Insert the reference into the account records reference dataframe
+                ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, 0, 0, 0, 0]
+                acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
+
+                # Insert the reference into the associated account's reference dataframe
+                assoc_acct = self.fetch_account(assoc_acct_name)
+                ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, 0, 0, 0, 0]
+                assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
+
+        logger.info('AuditRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
+                    .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
+
+        return True
+
+    def reconcile_statement_old(self, expand: bool = False):
+        """
+        Run the primary Bank Reconciliation rule algorithm for the record tab.
         """
         # Fetch primary account and prepare data
         acct = self.fetch_account(self.current_account)
@@ -619,7 +868,7 @@ class BankRule:
             assoc_header = assoc_df.columns.tolist()
 
             # Create the account-association account column mapping from the association rules
-            assoc_rules = transactions[assoc_acct_name]['AssociationRules']
+            assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
             colmap = {}
             for acct_colname in assoc_rules:
                 if acct_colname not in header:  # attempting to use a column that was not defined in the table config
@@ -850,13 +1099,13 @@ class BankRule:
         Save any changes to the records made during the reconciliation process.
         """
         statements = {}
-        for acct_panel in self.panels:
+        for acct_panel in self.panels:  # visible panels only
             acct = self.fetch_account(acct_panel, by_key=True)
 
             record_type = acct.record_type
             record_entry = settings.records.fetch_rule(record_type)
 
-            # Prepare to save the record
+            # Prepare to save the record data
             logger.debug('BankRule {NAME}: preparing account {ACCT} statements'.format(NAME=self.name, ACCT=acct.name))
             try:
                 statements = record_entry.save_database_records(acct.table.data(), id_field=acct.table.id_column,
@@ -866,7 +1115,19 @@ class BankRule:
                     .format(ACCT=acct.name, ERR=e)
                 logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                raise
+                return False
+
+            # Prepare to save the reference data
+            if acct.name == self.current_account:  # only save references for primary account to prevent redundancy
+                try:
+                    statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
+                                                                       statements=statements)
+                except Exception as e:
+                    msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                        .format(ACCT=acct.name, ERR=e)
+                    logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    return False
 
         logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
                     .format(NAME=self.name, ACCT=self.current_account))
@@ -929,15 +1190,16 @@ class AccountEntry:
 
         permissions (str): user access permissions.
 
-        record_type (str): entry database record type.
+        record_type (str): account entry database record type.
+
+        association_rule (str): name of the association rule referenced when attempting to find associations between
+            account entries.
 
         import_parameters (list): list of entry data parameters used in the import window.
 
         table (RecordTable): table for storing account data.
 
-        record_layout (dict): layout for the record table entries.
-
-        refmap (dict): configured reference parameters mapped to database column names.
+        ref_df (DataFrame): table for storing record references.
 
         transactions (dict): source and sink dynamics of the account.
     """
@@ -974,47 +1236,12 @@ class AccountEntry:
             record_entry = settings.records.fetch_rule(self.record_type)
 
         try:
-            self.import_rules = entry['ImportRules']
+            self.association_rule = entry['AssociationRule']
         except KeyError:
-            self.import_rules = record_entry.import_rules
-
-        try:
-            self.record_layout = entry['RecordLayout']
-        except KeyError:
-            self.record_layout = record_entry.record_layout
-
-        try:
-            reference = entry['Reference']
-        except KeyError:
-            msg = 'AccountEntry {NAME}: missing required configuration parameter "Reference".'.format(NAME=name)
+            msg = 'ReferenceBox {NAME}: missing required parameter "AssociationRule"'.format(NAME=self.name)
             logger.error(msg)
 
             raise AttributeError(msg)
-        else:
-            try:
-                references = self.record_layout['References2']['Elements']
-            except KeyError:
-                msg = 'the record layout is missing configured layout parameter "References2"'
-                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise AttributeError(msg)
-
-            try:
-                ref_entry = references[reference]
-            except KeyError:
-                msg = 'the record layout is missing configured reference component {COMP}'.format(COMP=reference)
-                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise AttributeError(msg)
-
-            try:
-                self.refmap = ref_entry['ColumnMap']
-            except KeyError:
-                msg = 'no column mapping specified in the {RTYPE} configuration for reference {REF}' \
-                    .format(NAME=name, RTYPE=self.record_type, REF=reference)
-                logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise AttributeError(msg)
 
         try:
             self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
@@ -1048,14 +1275,14 @@ class AccountEntry:
                 else:
                     trans_entry['TransactionType'] = cnfg_entry['TransactionType']
 
-                if 'AssociationRules' not in cnfg_entry:
+                if 'AssociationParameters' not in cnfg_entry:
                     msg = 'AccountEntry {NAME}: Transaction account {ACCT} is missing required parameter ' \
-                          '"AssociationRules"'.format(NAME=name, ACCT=transaction_acct)
+                          '"AssociationParameters"'.format(NAME=name, ACCT=transaction_acct)
                     logger.error(msg)
 
                     continue
                 else:
-                    trans_entry['AssociationRules'] = cnfg_entry['AssociationRules']
+                    trans_entry['AssociationParameters'] = cnfg_entry['AssociationParameters']
 
                 if 'ImportParameters' not in cnfg_entry:
                     trans_entry['ImportParameters'] = {}
@@ -1068,6 +1295,8 @@ class AccountEntry:
                     trans_entry['Title'] = cnfg_entry['Title']
 
                 self.transactions[transaction_acct] = trans_entry
+
+        self.ref_df = None
 
     def key_lookup(self, component):
         """
@@ -1089,8 +1318,9 @@ class AccountEntry:
         Reset the elements and attributes of the bank record tab.
         """
 
-        # Reset the data tables
+        # Reset the record and reference tables
         self.table.reset(window)
+        self.ref_df = None
 
         # Un-collapse the tab filter frame
         filter_key = self.table.key_lookup('FilterFrame')
@@ -1099,7 +1329,7 @@ class AccountEntry:
 
     def run_event(self, window, event, values):
         """
-        Run a bank record tab event.
+        Run a bank account entry event.
         """
         table_keys = self.table.elements
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
@@ -1136,14 +1366,14 @@ class AccountEntry:
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
                     if table.modifiers['open'] is True:
-                        table.df = table.load_record(index, layout=self.record_layout, level=0)
+                        table.df = table.load_record(index, level=0, references={self.association_rule: self.ref_df})
 
                         table.update_display(window, window_values=values)
 
             # Table import button or the import hotkey was pressed
             elif event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                          window[import_key].metadata['visible'])):
-                table.import_rows(import_rules=self.import_rules, program_database=True)
+                table.import_rows()
                 table.update_display(window, window_values=values)
             else:
                 table.run_event(window, event, values)
@@ -1195,28 +1425,56 @@ class AccountEntry:
         Load data from the database.
         """
         # Prepare the database query statement
-        import_rules = self.import_rules
+#        import_rules = self.import_rules
+#
+#        param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in parameters]
+#        filters = param_filters + mod_db.format_import_filters(import_rules)
+#        table_statement = mod_db.format_tables(import_rules)
+#        columns = mod_db.format_import_columns(import_rules)
+#
+#        # Import primary bank data from database
+#        try:
+#            df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+#                              prog_db=True)
+#        except Exception as e:
+#            msg = 'failed to import data from the database'
+#            logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+#            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
+#            data_loaded = False
+#        else:
+#            logger.debug('AccountEntry {NAME}: loaded data for bank reconciliation "{RULE}"'
+#                         .format(NAME=self.name, RULE=self.parent))
+#            data_loaded = True
+        record_type = self.record_type
+        record_entry = settings.records.fetch_rule(record_type)
 
-        param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in parameters]
-        filters = param_filters + mod_db.format_import_filters(import_rules)
-        table_statement = mod_db.format_tables(import_rules)
-        columns = mod_db.format_import_columns(import_rules)
-
-        # Import primary bank data from database
+        # Prepare the database query statement
         try:
-            df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
-                              prog_db=True)
+            df = record_entry.import_records(params=parameters)
         except Exception as e:
             msg = 'failed to import data from the database'
             logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
-            data_loaded = False
-        else:
-            logger.debug('AccountEntry {NAME}: loaded data for bank reconciliation "{RULE}"'
-                         .format(NAME=self.name, RULE=self.parent))
-            data_loaded = True
 
-            # Update record table with imported data
-            self.table.df = self.table.append(df)
+            return False
 
-        return data_loaded
+        # Update record table with imported data
+        self.table.df = self.table.append(df)
+
+        # Load the record references from the reference table connected with the association rule
+        rule_name = self.association_rule
+        record_ids = self.table.row_ids()
+
+        try:
+            import_df = record_entry.import_references(record_ids, rule_name)
+        except Exception as e:
+            msg = 'failed to import references from association rule {RULE}'.format(RULE=rule_name)
+            logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
+
+            return False
+
+        self.ref_df = pd.merge(df.loc[:, ['RecordID']], import_df, how='left', on='RecordID')
+        self.ref_df['RecordType'].fillna(record_type, inplace=True)
+
+        return True
