@@ -1266,6 +1266,7 @@ class DatabaseRecord:
         # Record data elements
         self.sections = {}
         self.modules = []
+        used_associations = []
         try:
             sections = entry['Sections']
         except KeyError:
@@ -1393,6 +1394,16 @@ class DatabaseRecord:
                                          '- {ERR}'.format(NAME=self.name, ID=ref_element, ERR=e))
                         continue
                     else:
+                        assoc_rule = ref_box.association_rule
+                        if assoc_rule in used_associations:
+                            msg = 'association rule {RULE} set for reference element {ELEM} has already been used ' \
+                                  'for another element'.format(RULE=assoc_rule, ELEM=ref_element)
+                            logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                            continue
+                        else:
+                            used_associations.append(assoc_rule)
+
                         self.references.append(ref_box)
                         self.elements += ref_box.elements
 
@@ -1429,6 +1440,16 @@ class DatabaseRecord:
                         logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                         continue
+
+                    assoc_rule = comp_table.association_rule
+                    if assoc_rule in used_associations:
+                        msg = 'association rule {RULE} set for reference element {ELEM} has already been used ' \
+                              'for another element'.format(RULE=assoc_rule, ELEM=comp_element)
+                        logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        continue
+                    else:
+                        used_associations.append(assoc_rule)
 
                     self.components.append(comp_table)
                     self.elements += comp_table.elements
