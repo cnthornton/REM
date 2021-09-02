@@ -464,31 +464,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
                 break
 
         if event == '-DELETE-':
-            ref_df = record.ref_df
-
-            # Check if the record contains any child references
-            ref_df['IsParentChild'].fillna(False, inplace=True)
-            ref_df[settings.delete_field].fillna(False, inplace=True)
-            child_df = ref_df[
-                (ref_df['IsParentChild']) & (~ref_df[settings.delete_field]) & (ref_df['DocNo'] == record_id)]
-
-            # Check if the record is hard-linked to another record
-            ref_df['IsHardLink'].fillna(False, inplace=True)
-            link_df = ref_df[(ref_df['IsHardLink']) & (~ref_df[settings.delete_field])]
-
-            # Verify that the user would like to delete the record
-            nchild = child_df.shape[0]
-            nlink = link_df.shape[0]
-            if nlink > 0 or nchild > 0:  # Record is hard-linked to other records
-                msg = 'Deleting record {ID} will also delete {N} dependent records and {NH} hard-linked records as ' \
-                      'well. Would you like to continue with record deletion?'.format(ID=record_id, N=nchild, NH=nlink)
-            else:
-                msg = 'Are you sure that you would like to delete this record?'
-
-            user_input = popup_confirm(msg)
-            if user_input != 'OK':
-                continue
-
             deleted = record.delete()
             if deleted is False:
                 continue
