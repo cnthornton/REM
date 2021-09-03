@@ -2630,27 +2630,18 @@ class RecordTable(TableElement):
 
         return df
 
-    def import_rows(self, import_rules: dict = None, program_database: bool = False):
+    def import_rows(self):
         """
         Import one or more records from a table of records.
         """
         import_df = self.import_df.copy()
-        reference_col = self.reference_column
         logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
-        import_rules = import_rules if import_rules is None else self.import_rules
         record_type = self.record_type
         id_col = self.id_column
 
         record_entry = settings.records.fetch_rule(record_type)
-        if import_rules is None and record_entry is None:
-            msg = 'unable to display the record import window - record type was not configured for the table'
-            mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return self.df
-        elif record_entry is not None and import_rules is None:
-            import_rules = record_entry.import_rules
-            program_database = record_entry.program_record
+        import_rules = self.import_rules if self.import_rules else record_entry.import_rules
+        program_database = record_entry.program_record
 
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
@@ -2660,43 +2651,7 @@ class RecordTable(TableElement):
                         }
 
         import_table = RecordTable(self.name, table_layout)
-
-        # Search for records without an existing reference to the provided reference type
-        if reference_col and program_database:  # option only available for program records
-            logger.debug('DataTable {NAME}: importing unreferenced records on column "{COL}"'
-                         .format(NAME=self.name, COL=reference_col))
-
-            # Prepare query arguments
-            import_filters = mod_db.format_import_filters(import_rules)
-            table_statement = mod_db.format_tables(import_rules)
-            import_columns = mod_db.format_import_columns(import_rules)
-
-            import_ref_col = mod_db.get_import_column(import_rules, reference_col)
-            ref_filter = '{REFCOL} IS NULL'.format(REFCOL=import_ref_col)
-            import_filters.append(ref_filter)
-
-            try:
-                df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
-                                                                filter_rules=import_filters), prog_db=True)
-            except Exception as e:
-                logger.exception('DataTable {NAME}: failed to import data from the database - {ERR}'
-                                 .format(NAME=self.name, ERR=e))
-            else:
-                # Subset on table columns
-                df = df[[i for i in df.columns.values if i in import_df.columns]]
-
-                # Drop records that are already in the import table
-                import_ids = import_df[id_col].tolist()
-                df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
-
-                # Drop records that are already in the table
-                current_ids = self.df[id_col].tolist()
-                df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
-
-                # Add import dataframe to data table object
-                import_table.df = import_df.append(df, ignore_index=True)
-        else:
-            import_table.df = import_df
+        import_table.df = import_df
 
         # Add relevant search parameters
         if self.search_field:
@@ -3041,6 +2996,148 @@ class ComponentTable(RecordTable):
             df = self.append(record_values)
 
         self.df = df
+
+        return df
+
+    def import_rows(self):
+        """
+        Import one or more records from a table of records.
+        """
+        import_df = self.import_df.copy()
+#        reference_col = self.reference_column
+        rule_name = self.association_rule
+        modifiers = self.modifiers
+        logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
+        record_type = self.record_type
+        id_col = self.id_column
+
+        record_entry = settings.records.fetch_rule(record_type)
+        import_rules = self.import_rules if self.import_rules else record_entry.import_rules
+        program_database = record_entry.program_record
+
+        table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
+                        'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
+                        'RecordType': self.record_type, 'Title': self.title, 'Description': self.description,
+                        'ImportRules': import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1}
+                        }
+
+        import_table = RecordTable(self.name, table_layout)
+
+        # Search for records without an existing reference to the provided reference type
+#        if reference_col and program_database:  # option only available for program records
+#            logger.debug('DataTable {NAME}: importing unreferenced records on column "{COL}"'
+#                         .format(NAME=self.name, COL=reference_col))
+#
+#            # Prepare query arguments
+#            import_filters = mod_db.format_import_filters(import_rules)
+#            table_statement = mod_db.format_tables(import_rules)
+#            import_columns = mod_db.format_import_columns(import_rules)
+#
+#            import_ref_col = mod_db.get_import_column(import_rules, reference_col)
+#            ref_filter = '{REFCOL} IS NULL'.format(REFCOL=import_ref_col)
+#            import_filters.append(ref_filter)
+#
+#            try:
+#                df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
+#                                                                filter_rules=import_filters), prog_db=True)
+#            except Exception as e:
+#                logger.exception('DataTable {NAME}: failed to import data from the database - {ERR}'
+#                                 .format(NAME=self.name, ERR=e))
+#            else:
+#                # Subset on table columns
+#                df = df[[i for i in df.columns.values if i in import_df.columns]]
+#
+#                # Drop records that are already in the import table
+#                import_ids = import_df[id_col].tolist()
+#                df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
+#
+#                # Drop records that are already in the table
+#                current_ids = self.df[id_col].tolist()
+#                df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
+#
+#                # Add import dataframe to data table object
+#                import_table.df = import_df.append(df, ignore_index=True)
+#        else:
+#            import_table.df = import_df
+
+        # Search for records without an existing reference to the provided reference type
+        if modifiers['unsaved'] and program_database:  # option only available for program records
+            logger.debug('DataTable {NAME}: importing unreferenced records on rule "{RULE}"'
+                         .format(NAME=self.name, RULE=rule_name))
+
+            # Import the entries from the reference table with record references unset
+            try:
+                ref_ids = record_entry.import_unreferenced_records(rule_name)
+                df = record_entry.load_record_data(ref_ids)
+            except Exception as e:
+                msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
+                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            else:
+                # Subset on table columns
+                df = df[[i for i in df.columns.values if i in import_df.columns]]
+
+                # Drop records that are already in the import dataframe
+                import_ids = import_df[id_col].tolist()
+                df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
+
+                # Drop records that are already in the component dataframe
+                current_ids = self.df[id_col].tolist()
+                df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
+
+                # Add import dataframe to data table object
+                import_table.df = import_df.append(df, ignore_index=True)
+        else:
+            import_table.df = import_df
+
+        # Add relevant search parameters
+        if self.search_field:
+            display_map = {j: i for i, j in self.display_columns.items()}
+            try:
+                search_desc = display_map[self.search_field]
+            except KeyError:
+                search_desc = self.search_field
+            search_entry = {'Description': search_desc, 'ElementType': 'input', 'DataType': 'string'}
+            search_params = [mod_param.DataParameterInput(self.search_field, search_entry)]
+        else:
+            search_params = None
+
+        import_table.sort()
+
+        # Get table of user selected import records
+        select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
+                                           params=search_params)
+        #        pd.set_option('display.max_columns', None)
+        #        print('selected records:')
+        #        print(select_df)
+
+        # Verify that selected records are not already in table
+        current_ids = self.df[id_col].tolist()
+        select_ids = select_df[id_col]
+        remove_indices = []
+        for index, record_id in select_ids.items():
+            if record_id in current_ids:
+                remove_indices.append(index)
+        logger.debug('DataTable {NAME}: removing selected records already stored in the table at rows {ROWS}'
+                     .format(NAME=self.name, ROWS=remove_indices))
+        select_df.drop(remove_indices, inplace=True, axis=0, errors='ignore')
+
+        # Change deleted column of existing selected records to False
+        logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
+                     'False'.format(NAME=self.name))
+        self.df.loc[self.df[id_col].isin(select_ids), self.deleted_column] = False
+
+        # Append selected rows to the table
+        logger.debug('DataTable {NAME}: importing {N} records to the table'
+                     .format(NAME=self.name, N=select_df.shape[0]))
+        select_df[self.added_column] = True
+        df = self.append(select_df)
+        self.df = df
+        #        print('table dataframe after appending selected records:')
+        #        print(self.df)
+
+        # Remove selected rows from the table of available import rows
+        self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
 
         return df
 
