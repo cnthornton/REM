@@ -1810,7 +1810,7 @@ class AuditSummary:
         for tab in tabs:
             # Verify that all required fields for tab record have values
             for param in tab.record.parameters:
-                if param.required is True and param.has_value() is False:
+                if param.modifiers['require'] is True and param.has_value() is False:
                     msg = 'record {ID} is missing values for required field {FIELD}' \
                         .format(ID=tab.record.record_id(), FIELD=param.description)
                     logger.warning('AuditRuleSummary {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))

@@ -412,7 +412,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
             # Verify that required parameters have values
             can_continue = True
             for param in record.parameters:
-                if param.required is True and param.has_value() is False:
+                if param.modifiers['require'] is True and param.has_value() is False:
                     msg = 'Record {ID}: no value provided for the required field "{FIELD}"' \
                         .format(ID=record_id, FIELD=param.description)
                     logger.error(msg)

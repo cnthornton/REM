@@ -34,7 +34,9 @@ class TableElement:
 
         elements (list): list of table GUI element keys.
 
-        title (str): display title.
+        description (str): display title.
+
+        etype (str): program element type.
 
         columns (list): list of table columns.
 
@@ -2211,7 +2213,7 @@ class RecordTable(TableElement):
 
         title (str): display title.
 
-        etype (str): GUI element type.
+        etype (str): program element type.
 
         modifiers (dict): flags that alter the element's behavior.
 
@@ -2761,7 +2763,7 @@ class ComponentTable(RecordTable):
 
         title (str): display title.
 
-        etype (str): GUI element type.
+        etype (str): program element type.
 
         modifiers (dict): flags that alter the element's behavior.
 
@@ -3359,6 +3361,8 @@ class ReferenceBox:
 
         elements (list): list of reference box element GUI keys.
 
+        etype (str): program element type.
+
         modifiers (dict): flags that alter the element's behavior.
 
         association_rule (str): name of the association rule connecting the associated records.
@@ -3837,9 +3841,11 @@ class DataElement:
 
         description (str): display name of the data element.
 
-        etype (str): GUI element type. Can be dropdown, input, text, or multiline
+        etype (str): program element type. Can be dropdown, input, text, or multiline
 
         dtype (str): element data type.
+
+        modifiers (dict): flags that alter the element's behavior.
 
         editable (bool): element is editable. [Default: False]
 
@@ -3899,6 +3905,23 @@ class DataElement:
             self.description = self.name
 
         # Modifiers
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'edit': False, 'require': False, 'hide': False}
+        else:
+            self.modifiers = {'edit': modifiers.get('edit', 0), 'require': modifiers.get('require', 0),
+                              'hide': modifiers.get('hide', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, MOD=modifier))
+                    flag = False
+
+                self.modifiers[modifier] = flag
+
         try:
             self.editable = bool(int(entry['IsEditable']))
         except KeyError:
@@ -4152,10 +4175,12 @@ class DataElement:
         """
         GUI layout for the data element.
         """
-        is_disabled = False if (overwrite is True or (editable is True and self.editable is True)) and \
-                               self.etype != 'text' else True
+        modifiers = self.modifiers
+
+        is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
+                       self.etype != 'text' else True)
         self.disabled = is_disabled
-        is_required = self.required
+        is_required = modifiers['require']
 
         background = self.bg_col
 
@@ -4256,6 +4281,9 @@ class DataElement:
         """
         Format element for display.
         """
+        modifiers = self.modifiers
+        hidden = modifiers['hide']
+
         bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
         tooltip = self.description
 
@@ -4265,8 +4293,8 @@ class DataElement:
 
         # Update element display value
         logger.debug('DataElement {NAME}: disabled {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=self.disabled, VIS=self.hidden))
-        if not self.disabled and not self.hidden:  # element is not disabled and is visible to the user
+                     .format(NAME=self.name, EDIT=self.disabled, VIS=hidden))
+        if not self.disabled and not hidden:  # element is not disabled and is visible to the user
             logger.debug("DataElement {NAME}: updating the element display"
                          .format(NAME=self.name))
 

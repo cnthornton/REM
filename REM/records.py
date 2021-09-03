@@ -1993,7 +1993,7 @@ class DatabaseRecord:
 
         # Verify that required parameters have values
         for param in self.parameters:
-            if param.required is True and param.has_value() is False:
+            if param.modifiers['require'] is True and param.has_value() is False:
                 msg = 'no value provided for the required field {FIELD}'.format(FIELD=param.description)
                 logger.warning('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
 
