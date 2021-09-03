@@ -1807,8 +1807,8 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Layout
     record_col = None
-    for display_col in table.display_columns:
-        colname = table.display_columns[display_col]
+    for colname in table.display_columns:
+        display_col = table.display_columns[colname]
         if colname == 'RecordID':
             record_col = display_col
             break

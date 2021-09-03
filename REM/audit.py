@@ -1829,7 +1829,7 @@ class AuditSummary:
                                  'values: {HAS}'.format(NAME=self.name, COL=required_column, TBL=component_table.name,
                                                         HAS=has_na))
                     if has_na:
-                        display_map = {j: i for i, j in component_table.display_columns.items()}
+                        display_map = component_table.display_columns
                         try:
                             display_column = display_map[required_column]
                         except KeyError:

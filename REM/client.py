@@ -847,9 +847,39 @@ class SettingsManager:
 
         return trans
 
+    def format_display_money(self, value):
+        """
+        Format a money data type value for displaying.
+        """
+        dec_sep = self.decimal_sep
+        group_sep = self.thousands_sep
+
+        value = str(value)
+
+        # Get the sign of the number
+        if value[0] in ('-', '+'):  # sign of the number
+            numeric_sign = value[0]
+            value = value[1:]
+        else:
+            numeric_sign = ''
+
+        if '.' in value:  # substitute common decimal separator "." for local-dependant separator
+            integers, decimals = value.split('.')
+            decimals = decimals[0:2].ljust(2, '0')
+            display_value = '{SIGN}{VAL}{SEP}{DEC}' \
+                .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                        enumerate(integers[::-1])][::-1]).lstrip(','),
+                        SEP=dec_sep, DEC=decimals)
+        else:
+            display_value = '{SIGN}{VAL}' \
+                .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
+                                                        enumerate(value[::-1])][::-1]).lstrip(','))
+
+        return display_value
+
     def format_display_date(self, dt, offset: bool = True):
         """
-        Format a datetime object for displaying based on configured date format.
+        Format a datetime value for displaying based on configured date format.
 
         Arguments:
             dt (datetime): datetime instance.
@@ -857,6 +887,9 @@ class SettingsManager:
             offset (bool): add a localization-dependant offset to the display date [default: True].
         """
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+        if pd.isna(dt):
+            return ''
 
         if not is_datetime_dtype(type(dt)) and not isinstance(dt, datetime.datetime):
             raise ValueError('a datetime object is required in order to format a date for display - an object of '
@@ -868,10 +901,9 @@ class SettingsManager:
             date = dt
 
         date_str = self.format_date_str(date_str=self.display_date_format)
+        display_date = date.strftime(date_str)
 
-        date_formatted = date.strftime(date_str)
-
-        return date_formatted
+        return display_date
 
     def format_date_str(self, date_str: str = None):
         """

@@ -970,7 +970,7 @@ class DataParameterCombo(DataParameter):
             aliases = entry['Aliases']
         except KeyError:
             if not self.aliases:
-                self.aliases = {self.set_datatype(i): self.set_datatype(i) for i in self.combo_values}
+                self.aliases = {self.set_datatype(i): i for i in self.combo_values}
         else:
             self.aliases = {}  # overwrite possible existing aliases set in parameter definitions
             for combo_value in self.combo_values:

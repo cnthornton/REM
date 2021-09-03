@@ -14,12 +14,11 @@ import pandas as pd
 
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
-import REM.database as mod_db
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
-from REM.client import logger, settings, user
+from REM.client import logger, settings
 
 
 class TableElement:
@@ -141,12 +140,20 @@ class TableElement:
                                        .format(NAME=name, COL=col_name, TYPES=', '.join(supported_dtypes)))
                         self.columns[col_name] = 'varchar'
             else:
-                self.columns = {i: None for i in columns}
+                self.columns = {i: 'varchar' for i in columns}
 
         try:
-            self.display_columns = entry['DisplayColumns']
+            display_columns = entry['DisplayColumns']
         except KeyError:
             self.display_columns = {i: i for i in columns.keys()}
+        else:
+            self.display_columns = {}
+            for display_column in display_columns:
+                if display_column in self.columns:
+                    self.display_columns[display_column] = display_columns[display_column]
+                else:
+                    msg = 'display column {COL} not found in the list of table columns'.format(COL=display_column)
+                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         try:
             search_field = entry['SearchField']
@@ -252,15 +259,29 @@ class TableElement:
                     self.conditional_columns[cond_col] = cond_entry
 
         try:
-            self.aliases = entry['Aliases']
+            aliases = entry['Aliases']
         except KeyError:
-            param_def = settings.fetch_alias_definition(self.name)
             aliases = {}
-            for column in self.columns:
-                if column in param_def:
-                    aliases[column] = param_def[column]
+            for display_column in self.display_columns:
+                alias_def = settings.fetch_alias_definition(display_column)
+                if alias_def:
+                    aliases[display_column] = alias_def
 
-            self.aliases = aliases
+        self.aliases = {}
+        for alias_column in aliases:
+            if alias_column in self.display_columns:
+                alias_map = aliases[alias_column]
+
+                # Convert values into correct column datatype
+                column_dtype = self.columns[alias_column]
+                if column_dtype in (settings.supported_int_dtypes + settings.supported_cat_dtypes +
+                                    settings.supported_str_dtypes):
+                    alias_map = {settings.format_value(i, column_dtype): j for i, j in alias_map.items()}
+
+                    self.aliases[alias_column] = alias_map
+            else:
+                msg = 'alias column {COL} not found in list of display columns'.format(COL=alias_column)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         try:
             self.tally_rule = entry['TallyRule']
@@ -424,7 +445,7 @@ class TableElement:
         """
         Calculate the width of the table columns based on the number of columns displayed.
         """
-        header = list(self.display_columns.keys())
+        header = list(self.display_columns)
         widths = self.widths
 
         logger.debug('DataTable {NAME}: calculating table column widths'.format(NAME=self.name))
@@ -618,7 +639,7 @@ class TableElement:
 
                 # Reduce table size
                 columns = self.display_columns
-                header = list(columns.keys())
+                header = list(columns.values())
                 new_width = tbl_width - frame_w - 2 if tbl_width - frame_w - 2 > 0 else 0
                 logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                              'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
@@ -865,7 +886,30 @@ class TableElement:
 
         return display_df
 
-    def format_display_table(self, df, date_fmt: str = None):
+    def format_display_table(self, df):
+        """
+        Format the table for display.
+        """
+        display_df = pd.DataFrame()
+
+        # Subset dataframe by specified columns to display
+        display_map = self.display_columns
+        for column in display_map:
+            column_alias = display_map[column]
+
+            try:
+                col_to_add = self.format_display_column(df, column)
+            except Exception as e:
+                msg = 'failed to format column {COL} for display'.format(COL=column)
+                logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+                continue
+
+            display_df[column_alias] = col_to_add
+
+        return display_df.astype('object').fillna('')
+
+    def format_display_table_old(self, df, date_fmt: str = None):
         """
         Format the table for display.
         """
@@ -942,66 +986,39 @@ class TableElement:
 
         return display_df.astype('object').fillna('')
 
-    def format_display_column(self, df, colname, date_fmt: str = None):
+    def format_display_column(self, df, column):
         """
         Format a specific column for displaying.
         """
-        relativedelta = dateutil.relativedelta.relativedelta
-        strptime = datetime.datetime.strptime
         is_float_dtype = pd.api.types.is_float_dtype
         is_integer_dtype = pd.api.types.is_integer_dtype
         is_bool_dtype = pd.api.types.is_bool_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         is_string_dtype = pd.api.types.is_string_dtype
 
-        display_map = {j: i for i, j in self.display_columns.items()}
         aliases = self.aliases
 
-        date_fmt = date_fmt if date_fmt is not None else settings.format_date_str(date_str=settings.display_date_format)
-        date_offset = settings.get_date_offset()
-
         try:
-            display_col = df[colname]
+            display_col = df[column]
         except KeyError:
-            logger.error('DataTable {TBL}: column {COL} not found in the table columns'
-                         .format(TBL=self.name, COL=colname))
+            msg = 'column {COL} not found in the table dataframe'.format(COL=column)
+            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-            raise
-
-        if colname in display_map:
-            display_name = display_map[colname]
-            if display_name in aliases:
-                alias_map = aliases[display_name]  # dictionary of mapped values
-            else:
-                alias_map = {}
-        else:
-            alias_map = {}
+            raise KeyError(msg)
 
         dtype = display_col.dtype
-        if is_float_dtype(dtype):
-            display_col = display_col.apply('{:,.2f}'.format)
+        if is_float_dtype(dtype) and self.columns[column] == 'money':
+            display_col = display_col.apply(settings.format_display_money)
         elif is_datetime_dtype(dtype):
-            display_col = display_col.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
-                                                       relativedelta(years=+date_offset)).strftime(
-                date_fmt) if pd.notnull(x) else '')
+            display_col = display_col.apply(settings.format_display_date)
+        elif is_string_dtype(dtype) or is_integer_dtype(dtype):
+            display_col = display_col.fillna('')
         elif is_bool_dtype(dtype):
-            try:
-                alias_map = {bool(i): j for i, j in alias_map.items()}
-            except ValueError:
-                logger.warning('DataTable {TBL}: aliases provided to column {COL} does not match data type {DTYPE} '
-                               'of the column'.format(TBL=self.name, COL=colname, DTYPE=dtype))
-        elif is_integer_dtype(dtype):
-            try:
-                alias_map = {int(i): j for i, j in alias_map.items()}
-            except ValueError:
-                logger.warning('DataTable {TBL}: aliases provided to column {COL} does not match data type {DTYPE} '
-                               'of the column'.format(TBL=self.name, COL=colname, DTYPE=dtype))
+            display_col = display_col.apply(lambda x: '✓' if x is True else '')
 
-        try:
+        if column in aliases:
+            alias_map = aliases[column]
             display_col = display_col.apply(lambda x: alias_map[x] if x in alias_map else x)
-        except TypeError:
-            logger.warning('DataTable {TBL}: cannot replace values for column {COL} with their aliases as '
-                           'alias values are not of the same data type'.format(TBL=self.name, COL=colname))
 
         return display_col.fillna('')
 
@@ -1409,7 +1426,7 @@ class TableElement:
                     pad=(0, (0, pad_v)), background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
 
         if self.modifiers['fill'] is True:
-            fill_menu = ['&Fill', list(self.display_columns)]
+            fill_menu = ['&Fill', list(self.display_columns.values())]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
                                           image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                           button_color=(text_col, bg_col), tooltip='Fill NA values')])
@@ -1420,7 +1437,7 @@ class TableElement:
                                       button_color=(text_col, bg_col), tooltip='Export to spreadsheet')])
 
         if self.modifiers['sort'] is True:
-            sort_menu = ['&Sort', list(self.display_columns)]
+            sort_menu = ['&Sort', list(self.display_columns.values())]
             options.append(
                 [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON,
                                image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
@@ -1606,7 +1623,7 @@ class TableElement:
 
         # Reset table column sizes
         columns = self.display_columns
-        header = list(columns.keys())
+        header = list(columns.values())
 
         tbl_width = width - 16  # for border sizes on either side of the table
         lengths = self._calc_column_widths(width=tbl_width, pixels=True)
@@ -1906,7 +1923,7 @@ class TableElement:
             return df
 
         # Display the modify row window
-        display_map = {j: i for i, j in self.display_columns.items()}
+        display_map = self.display_columns
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
         row_values = self.set_conditional_values(mod_row).squeeze()
 
@@ -2654,14 +2671,14 @@ class RecordTable(TableElement):
         import_table.df = import_df
 
         # Add relevant search parameters
-        if self.search_field:
-            display_map = {j: i for i, j in self.display_columns.items()}
+        search_field = self.search_field
+        if search_field:
             try:
-                search_desc = display_map[self.search_field]
+                search_desc = self.display_columns[search_field]
             except KeyError:
-                search_desc = self.search_field
+                search_desc = search_field
             search_entry = {'Description': search_desc, 'ElementType': 'input', 'DataType': 'string'}
-            search_params = [mod_param.DataParameterInput(self.search_field, search_entry)]
+            search_params = [mod_param.DataParameterInput(search_field, search_entry)]
         else:
             search_params = None
 
@@ -3091,14 +3108,15 @@ class ComponentTable(RecordTable):
             import_table.df = import_df
 
         # Add relevant search parameters
-        if self.search_field:
-            display_map = {j: i for i, j in self.display_columns.items()}
+        search_field = self.search_field
+        if search_field:
             try:
-                search_desc = display_map[self.search_field]
+                search_desc = self.display_columns[search_field]
             except KeyError:
-                search_desc = self.search_field
+                search_desc = search_field
+
             search_entry = {'Description': search_desc, 'ElementType': 'input', 'DataType': 'string'}
-            search_params = [mod_param.DataParameterInput(self.search_field, search_entry)]
+            search_params = [mod_param.DataParameterInput(search_field, search_entry)]
         else:
             search_params = None
 
@@ -4521,22 +4539,7 @@ class DataElement:
 
             value = str(value)
             if not editing:
-                if value[0] in ('-', '+'):  # sign of the number
-                    numeric_sign = value[0]
-                    value = value[1:]
-                else:
-                    numeric_sign = ''
-                if dec_sep in value:
-                    integers, decimals = value.split(dec_sep)
-                    decimals = decimals[0:2].ljust(2, '0')
-                    display_value = '{SIGN}{VAL}{SEP}{DEC}' \
-                        .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                                enumerate(integers[::-1])][::-1]).lstrip(','),
-                                SEP=dec_sep, DEC=decimals)
-                else:
-                    display_value = '{SIGN}{VAL}' \
-                        .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                                enumerate(value[::-1])][::-1]).lstrip(','))
+                display_value = settings.format_display_money(value)
             else:
                 display_value = value.replace(group_sep, '').replace(dec_sep, '.')
 
