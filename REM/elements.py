@@ -2748,14 +2748,14 @@ class ComponentTable(RecordTable):
         except KeyError:
             self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
                               'import': False, 'add': False, 'delete': False, 'fill': False, 'options': False,
-                              'sort': False, 'unsaved': False}
+                              'sort': False, 'unassociated': False}
         else:
             self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
                               'export': modifiers.get('export', 0), 'import': modifiers.get('import', 0),
                               'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
                               'add': modifiers.get('add', 0), 'delete': modifiers.get('delete', 0),
                               'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
-                              'sort': modifiers.get('sort', 0), 'unsaved': modifiers.get('unsaved', 0)}
+                              'sort': modifiers.get('sort', 0), 'unassociated': modifiers.get('unassociated', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))
@@ -3062,13 +3062,13 @@ class ComponentTable(RecordTable):
 #            import_table.df = import_df
 
         # Search for records without an existing reference to the provided reference type
-        if modifiers['unsaved'] and program_database:  # option only available for program records
+        if modifiers['unassociated'] and program_database:  # option only available for program records
             logger.debug('DataTable {NAME}: importing unreferenced records on rule "{RULE}"'
                          .format(NAME=self.name, RULE=rule_name))
 
             # Import the entries from the reference table with record references unset
             try:
-                ref_ids = record_entry.import_unreferenced_records(rule_name)
+                ref_ids = record_entry.search_unreferenced_ids(rule_name)
                 df = record_entry.load_record_data(ref_ids)
             except Exception as e:
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)

@@ -265,7 +265,7 @@ class RecordEntry:
 
         return df
 
-    def import_unreferenced_records(self, rule_name):
+    def search_unreferenced_ids(self, rule_name):
         """
         Import a record's association.
         """
@@ -283,9 +283,9 @@ class RecordEntry:
         is_primary = rule['Primary']
         reference_table = rule['ReferenceTable']
 
-        if not is_primary:  # association is secondary
-            msg = 'unable to import unreferenced records - association rule {RULE} must set to primary'\
-                .format(RULE=rule_name)
+        if not is_primary:  # records are used as references, not primary records
+            msg = 'unable to import unreferenced records - {TYPE} records must be the primary records in reference ' \
+                  'table {TBL}'.format(TYPE=self.name, TBL=reference_table)
             logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise ImportError(msg)
@@ -297,7 +297,7 @@ class RecordEntry:
                                  prog_db=True)
 
         try:
-            import_ids = import_df.iloc[:, 0].values.tolist()
+            import_ids = import_df.iloc[:, 0].values.tolist()  # first column
         except IndexError as e:
             msg = 'unable to import unreferenced records for association rule {RULE} - {ERR}'\
                 .format(RULE=rule_name, ERR=e)
@@ -455,12 +455,12 @@ class RecordEntry:
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
         export_df = df.rename(columns=column_map)
 
-        # Extract all currently existing records from the table
+        # Extract all currently existing references from the table
         current_df = export_df[exists]
 
-        # Prepare update statements for the existing records
+        # Prepare update statements for the existing reference entries
         if not current_df.empty:
-            # Add reference edit details to the reference table
+            # Add reference edit details to the reference entries
             current_df.loc[:, settings.editor_code] = user.uid
             current_df.loc[:, settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
 
@@ -478,16 +478,16 @@ class RecordEntry:
             statements = user.prepare_update_statement(reference_table, export_columns, export_values, filter_clause,
                                                        filter_params, statements=statements)
 
-        # Extract all new records from the table
+        # Extract all new reference entries from the table
         new_df = export_df[[not i for i in exists]]
 
-        # Prepare insertion statements for the new records
+        # Prepare insertion statements for the new reference entries
         if not new_df.empty:
-            # Add reference creation details to the reference table
+            # Add reference creation details to the reference entries
             new_df.loc[:, settings.creator_code] = user.uid
             new_df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
 
-            # Ignore new references that were deleted because they never made it to the database anyway
+            # Ignore new reference entries that were deleted, because they never made it to the database anyway
             new_df = new_df[~new_df['IsDeleted']]
             new_df.drop(columns=['IsDeleted'], inplace=True)
 
@@ -596,12 +596,13 @@ class RecordEntry:
                 export_values = [tuple(i) for i in new_df.values.tolist()]
                 statements = user.prepare_insert_statement(table, export_columns, export_values, statements=statements)
 
-        # If relevant, create hard-linked reference records for new database records
+        # If relevant, create or edit hard-linked reference records for new database records
         new_df = df[[not i for i in exists]]
+        current_df = df[exists]
         for association in association_rules:
             rule = association_rules[association]
 
-            # Create any hard-linked records
+            # Create or edit any hard-linked records
             if 'HardLink' in rule:
                 record_type = self.name
 
@@ -711,7 +712,7 @@ class RecordEntry:
             rule = association_rules[association]
             assoc_type = rule['AssociationType']
 
-            import_df = self.import_references(record_ids, rule)
+            import_df = self.import_references(record_ids, association)
 
             # Delete the reference entries
             import_df['IsDeleted'] = True
@@ -860,7 +861,7 @@ class RecordEntry:
 
         return statements
 
-    def _import_saved_ids(self, record_dates, id_field: str = 'RecordID'):
+    def _search_saved_ids(self, record_dates, id_field: str = 'RecordID'):
         """
         Get a list of saved record IDs for records with record date within the provided range of dates.
         """
@@ -938,7 +939,7 @@ class RecordEntry:
 
         # Get list of saved record IDs of the same record type within the range of provided dates
         try:
-            saved_ids = self._import_saved_ids(record_dates)
+            saved_ids = self._search_saved_ids(record_dates)
         except Exception as e:
             logger.error('failed to create IDs for the record entries of type {TYPE} - {ERR}'
                          .format(TYPE=record_type, ERR=e))
