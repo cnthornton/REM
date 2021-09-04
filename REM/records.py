@@ -1842,6 +1842,47 @@ class DatabaseRecord:
 
         return comp_tbl
 
+    def check_required_parameters(self):
+        """
+        Verify that required components have values.
+        """
+        record_id = self.record_id()
+
+        for param in self.parameters:
+            if param.modifiers['require'] is True and param.has_value() is False:
+                msg = 'Record {ID}: no value provided for the required field "{FIELD}"' \
+                    .format(ID=record_id, FIELD=param.description)
+                logger.error(msg)
+                mod_win2.popup_error('record {ID} is missing a value for the required field "{FIELD}"'
+                                    .format(ID=record_id, FIELD=param.description))
+
+                return False
+
+        # Verify that tab record components have values for their required fields.
+        for component_table in self.components:
+            comp_df = component_table.data()
+
+            required_columns = component_table.required_columns
+            for required_column in required_columns:
+                has_na = comp_df[required_column].isnull().any()
+                logger.debug('Record {ID}: required column {COL} in component table {TBL} has NA values: {HAS}'
+                             .format(ID=record_id, COL=required_column, TBL=component_table.name, HAS=has_na))
+                if has_na:
+                    display_map = component_table.display_columns
+                    try:
+                        display_column = display_map[required_column]
+                    except KeyError:
+                        display_column = required_column
+
+                    msg = 'missing values for required column {COL} in component table {TBL}' \
+                        .format(COL=display_column, TBL=component_table.name)
+                    logger.warning('AuditRuleSummary {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
+
+                    return False
+
+        return True
+
     def table_values(self):
         """
         Format parameter values as a table row.
@@ -1988,6 +2029,13 @@ class DatabaseRecord:
         record_entry = settings.records.fetch_rule(self.name)
 
         # Verify that required parameters have values
+        can_continue = self.check_required_parameters()
+        if not can_continue:
+            msg = 'failed to prepare save statements - not all required parameters have values'
+            logger.warning('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
+
+            raise AttributeError(msg)
+
         for param in self.parameters:
             if param.modifiers['require'] is True and param.has_value() is False:
                 msg = 'no value provided for the required field {FIELD}'.format(FIELD=param.description)

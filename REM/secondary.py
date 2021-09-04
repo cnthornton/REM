@@ -262,7 +262,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
 
     # Element parameters
     pad_el = mod_const.ELEM_PAD
-    pad_v = mod_const.VERT_PAD
     pad_frame = mod_const.FRAME_PAD
 
     bg_col = mod_const.ACTION_COL
@@ -410,17 +409,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
                 modifier.value = modifier.format_value(values)
 
             # Verify that required parameters have values
-            can_continue = True
-            for param in record.parameters:
-                if param.modifiers['require'] is True and param.has_value() is False:
-                    msg = 'Record {ID}: no value provided for the required field "{FIELD}"' \
-                        .format(ID=record_id, FIELD=param.description)
-                    logger.error(msg)
-                    popup_error('record {ID} is missing a value for the required field "{FIELD}"'
-                                .format(ID=record_id, FIELD=param.description))
-                    can_continue = False
-
-                    break
+            can_continue = record.check_required_parameters()
 
             if can_continue is True:
                 break
@@ -456,6 +445,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
             if saved is False:
                 msg = 'failed to save record {ID} to the database - see log for details'.format(ID=record_id)
                 popup_error(msg)
+
                 continue
             else:
                 # Remove unsaved IDs associated with the record

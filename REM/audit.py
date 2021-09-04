@@ -1807,40 +1807,6 @@ class AuditSummary:
         tabs = self.tabs
 
         logger.debug('AuditRuleSummary {NAME}: verifying that all required fields have input'.format(NAME=self.name))
-        for tab in tabs:
-            # Verify that all required fields for tab record have values
-            for param in tab.record.parameters:
-                if param.modifiers['require'] is True and param.has_value() is False:
-                    msg = 'record {ID} is missing values for required field {FIELD}' \
-                        .format(ID=tab.record.record_id(), FIELD=param.description)
-                    logger.warning('AuditRuleSummary {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_error(msg)
-
-                    return False
-
-            # Verify that tab record components have values for their required fields.
-            for component_table in tab.record.components:
-                comp_df = component_table.data()
-
-                required_columns = component_table.required_columns
-                for required_column in required_columns:
-                    has_na = comp_df[required_column].isnull().any()
-                    logger.debug('AuditRuleSummary {NAME}: required column {COL} in component table {TBL} has NA '
-                                 'values: {HAS}'.format(NAME=self.name, COL=required_column, TBL=component_table.name,
-                                                        HAS=has_na))
-                    if has_na:
-                        display_map = component_table.display_columns
-                        try:
-                            display_column = display_map[required_column]
-                        except KeyError:
-                            display_column = required_column
-
-                        msg = 'missing values for required column {COL} in component table {TBL}'\
-                            .format(COL=display_column, TBL=component_table.name)
-                        logger.warning('AuditRuleSummary {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                        mod_win2.popup_error(msg)
-
-                        return False
 
         statements = {}
         for tab in tabs:
