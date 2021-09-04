@@ -94,11 +94,6 @@ class TableElement:
         self.etype = 'table'
 
         try:
-            self.title = entry['Title']
-        except KeyError:
-            self.title = name
-
-        try:
             self.description = entry['Description']
         except KeyError:
             self.description = name
@@ -404,17 +399,6 @@ class TableElement:
             self.required_columns = entry['RequiredColumns']
         except KeyError:
             self.required_columns = []
-
-        try:
-            required = bool(int(entry['IsRequired']))
-        except KeyError:
-            self.required = False
-        except ValueError:
-            logger.warning('DataTable {NAME}: "IsRequired" must be either 0 (False) or 1 (True)'
-                           .format(NAME=name))
-            sys.exit(1)
-        else:
-            self.required = required
 
         self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
         self._actions = ['Element']
@@ -2662,7 +2646,7 @@ class RecordTable(TableElement):
 
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
-                        'RecordType': self.record_type, 'Title': self.title, 'Description': self.description,
+                        'RecordType': self.record_type, 'Description': self.description,
                         'ImportRules': import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1}
                         }
@@ -3034,7 +3018,7 @@ class ComponentTable(RecordTable):
 
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
-                        'RecordType': self.record_type, 'Title': self.title, 'Description': self.description,
+                        'RecordType': self.record_type, 'Description': self.description,
                         'ImportRules': import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1}
                         }
@@ -3962,12 +3946,6 @@ class DataElement:
 
         modifiers (dict): flags that alter the element's behavior.
 
-        editable (bool): element is editable. [Default: False]
-
-        hidden (bool): element is not visible to the user. [Default: False]
-
-        required (bool): element requires a value [Default: False].
-
         default: default value of the data element.
 
         value: value of the data element.
@@ -4036,32 +4014,6 @@ class DataElement:
                     flag = False
 
                 self.modifiers[modifier] = flag
-
-        try:
-            self.editable = bool(int(entry['IsEditable']))
-        except KeyError:
-            self.editable = True
-        except ValueError:
-            logger.warning('DataElement {NAME}: "IsEditable" must be either 0 (False) or 1 (True)'.format(NAME=name))
-            self.editable = False
-
-        try:
-            self.hidden = bool(int(entry['IsHidden']))
-        except KeyError:
-            self.hidden = False
-        except ValueError:
-            logger.warning('DataElement {NAME}: configuration parameter "IsHidden" must be either 0 (False) or 1 (True)'
-                           .format(NAME=name))
-            sys.exit(1)
-
-        try:
-            self.required = bool(int(entry['IsRequired']))
-        except KeyError:
-            self.required = False
-        except ValueError:
-            logger.warning('DataElement {NAME}: configuration parameter "IsRequired" must be either 0 (False) or 1 '
-                           '(True)'.format(NAME=name))
-            sys.exit(1)
 
         # Layout styling options
         try:

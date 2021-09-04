@@ -535,6 +535,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
 def parameter_window(account, win_size: tuple = None):
     """
     Display the parameter selection window for a bank reconciliation rule.
+
+    Arguments:
+        account (AccountEntry): primary account entry object.
+
+        win_size (tuple): optional window size parameters (width, height).
     """
     # Initial window size
     if win_size:
@@ -1834,7 +1839,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     new_shortcut = hotkeys['-HK_ENTER-'][2]
 
     # Title
-    title = 'Import {TYPE} records'.format(TYPE=table.title)
+    title = 'Import {TYPE} records'.format(TYPE=table.description)
     title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
                     [sg.Text(title, pad=((pad_frame, 0), (0, pad_v)), font=header_font,
                              background_color=header_col)]]

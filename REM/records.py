@@ -66,11 +66,6 @@ class RecordEntry:
             self.group = 'custom'
 
         try:
-            self.record_class = entry['RecordClass']
-        except KeyError:
-            self.record_class = self.name
-
-        try:
             self.id_code = entry['IDCode']
         except KeyError:
             mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "IDCode"'
