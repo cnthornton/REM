@@ -912,21 +912,21 @@ class AuditTransactionTab:
         else:
             self.elements += self.table.elements
 
-        try:
-            import_rules = entry['ImportRules']
-        except KeyError:
-            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required field "ImportRules".' \
-                .format(NAME=name)
-            logger.error(msg)
-
-            raise AttributeError(msg)
-        else:
-            self.import_rules = import_rules
-
-        try:
-            self.record_layout = entry['RecordLayout']
-        except KeyError:
-            self.record_layout = None
+#        try:
+#            import_rules = entry['ImportRules']
+#        except KeyError:
+#            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required field "ImportRules".' \
+#                .format(NAME=name)
+#            logger.error(msg)
+#
+#            raise AttributeError(msg)
+#        else:
+#            self.import_rules = import_rules
+#
+#        try:
+#            self.record_layout = entry['RecordLayout']
+#        except KeyError:
+#            self.record_layout = None
 
         try:
             self.id_format = re.findall(r'\{(.*?)\}', entry['IDFormat'])

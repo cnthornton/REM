@@ -1374,9 +1374,9 @@ class DatabaseRecord:
         # Linked records
         self.references = []
         try:
-            ref_entry = entry['References2']
+            ref_entry = entry['References']
         except KeyError:
-            logger.info('RecordEntry {NAME}: no reference2 record types configured'.format(NAME=self.name))
+            logger.info('RecordEntry {NAME}: no reference record types configured'.format(NAME=self.name))
         else:
             try:
                 ref_elements = ref_entry['Elements']

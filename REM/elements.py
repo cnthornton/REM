@@ -1382,8 +1382,8 @@ class TableElement:
         row4 = []
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
-        bind = True if (self.modifiers['edit'] is True or self.modifiers[
-            'open'] is True) and editable is True else False
+#        bind = True if (self.modifiers['edit'] is True or self.modifiers['open'] is True) and editable is True else False
+        bind = True if editable is True else False
         events = False
 
         col_widths = self._calc_column_widths(width=width - 16, size=font_size, pixels=False)
@@ -2540,7 +2540,7 @@ class RecordTable(TableElement):
 
         return df
 
-    def load_record(self, index, level: int = 1, references: pd.Dataframe = None):
+    def load_record(self, index, level: int = 1, references: pd.DataFrame = None):
         """
         Open selected record in new record window.
         """

@@ -162,7 +162,7 @@ class ToolBar:
         Arguments:
             account_methods (list): list of accounting method rules.
 
-            records (list): list of records rules.
+            records (ConfigurationManager): list of records rules.
         """
         self.name = 'toolbar'
         self.elements = ['-{ELEM}-'.format(ELEM=i) for i in ['amenu', 'rmenu', 'umenu', 'mmenu']]
