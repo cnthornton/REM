@@ -808,7 +808,7 @@ class TableElement:
         else:
             df = self.data()
             try:
-                df = df[df[search_field] == search_value]
+                df = df[df[search_field].str.contains(search_value, case=False, regex=True)]
             except KeyError:
                 msg = 'DataTable {NAME}: search field {COL} not found in list of table columns' \
                     .format(NAME=self.name, COL=search_field)
