@@ -333,6 +333,37 @@ class TableElement:
                 self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
 
         try:
+            summary = entry['ColumnSummary']
+        except KeyError:
+            self.summary = {}
+        else:
+            statistics = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std']
+            self.summary = {}
+            for summary_name in summary:
+                summary_entry = summary[summary_name]
+                if 'Column' not in summary_entry:
+                    msg = 'required parameter "Column" is missing from configured summary item "{SUMM}"'\
+                        .format(SUMM=summary_name)
+                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    continue
+
+                if 'Statistic' in summary_entry:
+                    statistic = summary_entry['Statistic']
+                    if statistic not in statistics:
+                        msg = 'unknown statistic {STAT} provided to summary item "{SUMM}"'\
+                            .format(STAT=statistic, SUMM=summary_name)
+                        logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        summary_entry['Statistic'] = None
+
+                self.summary_rules[summary_name] = {'Column': summary_entry['Column'],
+                                                    'Description': summary_entry.get('Description', summary_name),
+                                                    'Statistic': summary_entry.get('Statistic', None)}
+
+                self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
+
+        try:
             self.deleted_column = entry['DeletedColumn']
         except KeyError:
             self.deleted_column = 'RowDeleted'
@@ -1058,12 +1089,12 @@ class TableElement:
 
         df = df if df is not None else self.data()
 
-        logger.debug('DataTable {NAME}: summarizing column {COL}'.format(NAME=self.name, COL=colname))
+        logger.debug('DataTable {NAME}: summarizing table column {COL}'.format(NAME=self.name, COL=colname))
 
         try:
             col_values = df[colname]
         except KeyError:
-            logger.error('DataTable {NAME}: missing table column "{COL}" from the dataframe'
+            logger.error('DataTable {NAME}: summary column "{COL}" is missing from the table dataframe'
                          .format(NAME=self.name, COL=colname))
 
             raise
@@ -1082,11 +1113,6 @@ class TableElement:
         """
         Update Summary element with data summary
         """
-        #        is_numeric_dtype = pd.api.types.is_numeric_dtype
-        #        is_string_dtype = pd.api.types.is_string_dtype
-        #        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        #        is_bool_dtype = pd.api.types.is_bool_dtype
-
         operators = set('+-*/')
 
         df = df if df is not None else self.data()
@@ -1124,19 +1150,6 @@ class TableElement:
 
                 if component in self.columns:  # component is header column
                     col_summary = self.summarize_column(component, df=subset_df)
-                    #                    try:
-                    #                        dtype = subset_df.dtypes[component]
-                    #                    except KeyError:
-                    #                        logger.error('DataTable {NAME}: missing table column "{COL}" from the subsetted dataframe'
-                    #                                     .format(NAME=self.name, COL=component))
-                    #                        raise
-                    #                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
-                    #                        col_summary = subset_df[component].sum()
-                    #                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                    #                        col_summary = subset_df[component].nunique()
-                    #                    else:  # possibly empty dataframe
-                    #                        col_summary = 0
-
                     rule_values.append(col_summary)
                 else:
                     try:  # component is a number
@@ -3171,281 +3184,6 @@ class ComponentTable(RecordTable):
         return ref_df
 
 
-class ReferenceElement:
-    """
-    GUI reference box element.
-
-    Attributes:
-
-        name (str): reference box element configuration name.
-
-        id (int): reference box element number.
-
-        elements (list): list of reference box element GUI keys.
-    """
-
-    def __init__(self, name, entry, parent=None, inverted: bool = False):
-        """
-        GUI data element.
-
-        Arguments:
-            name (str): reference box element configuration name.
-
-            entry (pd.Series): configuration entry for the element.
-        """
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'Reference', 'Unlink', 'Width', 'Height']]
-
-        self.etype = 'refbox1'
-
-        if inverted is True:
-            colmap = {'DocNo': 'RecordID', 'RefNo': 'ReferenceID', 'DocType': 'RecordType', 'RefType': 'ReferenceType'}
-            self.inverted = True
-        else:
-            colmap = {'DocNo': 'ReferenceID', 'RefNo': 'RecordID', 'DocType': 'ReferenceType', 'RefType': 'RecordType'}
-            self.inverted = False
-
-        entry = entry.rename(index=colmap)
-
-        try:
-            self.record_id = entry['RecordID']
-        except KeyError:
-            raise AttributeError('missing required Reference parameter "DocNo"')
-
-        try:
-            self.reference_id = entry['ReferenceID']
-        except KeyError:
-            raise AttributeError('missing required Reference parameter "RefNo"')
-
-        try:
-            ref_date = entry['RefDate']
-        except KeyError:
-            raise AttributeError('missing required Reference parameter "RefDate"')
-        else:
-            if is_datetime_dtype(ref_date) or isinstance(ref_date, datetime.datetime):
-                self.ref_date = ref_date
-            elif isinstance(ref_date, str):
-                try:
-                    self.ref_date = datetime.datetime.strptime(ref_date, '%Y-%m-%d')
-                except ValueError as e:
-                    logger.exception(e)
-                    raise AttributeError('unknown format for "RefDate" value {}'.format(ref_date))
-            else:
-                raise AttributeError('unknown format for "RefDate" value {}'.format(ref_date))
-
-        try:
-            self.record_type = entry['RecordType']
-        except KeyError:
-            raise AttributeError('missing required Reference parameter "RefType"')
-
-        try:
-            self.reference_type = entry['ReferenceType']
-        except KeyError:
-            raise AttributeError('missing required Reference parameter "RefType"')
-
-        try:
-            self.warnings = entry['Warnings']
-        except KeyError:
-            self.warnings = None
-
-        try:
-            self.hard_link = entry['IsHardLink']
-        except KeyError:
-            self.hard_link = None
-
-        try:
-            self.approved = entry['IsApproved']
-        except KeyError:
-            self.approved = None
-
-        record_entry = settings.records.fetch_rule(self.record_type)
-        record_data = record_entry.load_record_data(self.record_id)
-        nrow = record_data.shape[0]
-
-        if nrow < 1:
-            logger.warning('RecordType {NAME}: record ID {ID} not found in the database'
-                           .format(NAME=self.name, ID=self.record_id))
-            self.record_data = record_data
-        elif nrow == 1:
-            self.record_data = record_data.iloc[0]
-        else:
-            logger.warning('RecordType {NAME}: more than one database entry found for record ID {ID}'
-                           .format(NAME=self.name, ID=self.record_id))
-            self.record_data = record_data.iloc[0]
-
-        if record_entry is not None:
-            self.title = record_entry.menu_title
-        else:
-            self.title = name
-
-        try:
-            self.linked = not bool(int(entry['IsDeleted']))
-        except (ValueError, KeyError):
-            self.linked = True
-
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            logger.warning('ReferenceElement {NAME}: component "{COMP}" not found in list of element components'
-                           .format(NAME=self.name, COMP=component))
-            key = None
-
-        return key
-
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the reference box element.
-        """
-        if size is None:
-            width = int(window.size[0] * 0.5 / 11)
-            height = 40
-        else:
-            width, height = size
-
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(width, None))
-
-        height_key = self.key_lookup('Height')
-        window[height_key].set_size(size=(None, height))
-
-    def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), editable: bool = False):
-        """
-        GUI layout for the reference box element.
-        """
-        is_disabled = not editable
-        width, height = size
-        linked = self.linked
-        warnings = self.warnings if self.warnings is not None else ''
-
-        # Layout options
-        pad_el = mod_const.ELEM_PAD
-        pad_v = mod_const.VERT_PAD
-        pad_h = mod_const.HORZ_PAD
-
-        font = mod_const.LARGE_FONT
-        bold_font = mod_const.BOLD_FONT
-
-        bg_col = mod_const.ACTION_COL if not warnings else mod_const.WARNING_COL
-        text_col = mod_const.TEXT_COL
-        if editable is True:
-            select_text_col = mod_const.SELECT_TEXT_COL
-        else:
-            select_text_col = mod_const.DISABLED_TEXT_COL
-
-        discard_key = self.key_lookup('Unlink')
-        row1 = [sg.Col([[sg.Text(self.title, auto_size_text=True, text_color=text_col, font=bold_font,
-                                 background_color=bg_col)]],
-                       pad=(pad_h, pad_v), justification='l', background_color=bg_col, expand_x=True),
-                sg.Col([[sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, disabled=is_disabled,
-                                   button_color=(text_col, bg_col), border_width=0)]],
-                       pad=(pad_h, pad_v), justification='r', background_color=bg_col)]
-
-        ref_key = self.key_lookup('Reference')
-        elem_key = self.key_lookup('Element')
-        height_key = self.key_lookup('Height')
-        row2 = [sg.Canvas(key=height_key, size=(0, height)),
-                sg.Col([[sg.Text('ID:', auto_size_text=True, pad=((0, pad_el), 0), text_color=text_col,
-                                 font=font, background_color=bg_col),
-                         sg.Text(self.record_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
-                                 enable_events=editable, text_color=select_text_col, font=font, background_color=bg_col,
-                                 tooltip='Open reference record'),
-                         sg.Text('Date:', auto_size_text=True, pad=((0, pad_el), 0), text_color=text_col,
-                                 font=font, background_color=bg_col),
-                         sg.Text(settings.format_display_date(self.ref_date), auto_size_text=True,
-                                 enable_events=True, text_color=text_col, font=font, background_color=bg_col)]],
-                       pad=(pad_h, (0, pad_v)), background_color=bg_col, expand_x=True)]
-
-        width_key = self.key_lookup('Width')
-        layout = sg.Frame('', [[sg.Canvas(key=width_key, size=(width, 0))], row1, row2],
-                          key=elem_key, pad=padding, background_color=bg_col, relief='raised', visible=linked,
-                          metadata={'deleted': False}, tooltip=warnings)
-
-        return layout
-
-    def run_event(self, window, event, values):
-        """
-        Run a record reference event.
-        """
-        result = True
-        elem_key = self.key_lookup('Element')
-        del_key = self.key_lookup('Unlink')
-        ref_key = self.key_lookup('Reference')
-
-        # Delete a reference from the record reference database table
-        logger.info('ReferenceElement {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
-        if event == del_key:
-            msg = 'Are you sure that you would like to disassociate reference {REF} from {RECORD}? This action ' \
-                  'cannot be undone. Disassociating a reference does not delete the reference record.' \
-                .format(REF=self.record_id, RECORD=self.reference_id)
-            user_action = mod_win2.popup_confirm(msg)
-
-            if user_action.upper() == 'OK':
-                self.linked = False
-                # Set element to deleted in metadata
-                window[elem_key].metadata['deleted'] = True
-                window[elem_key].update(visible=False)
-
-        # Load a reference record in a new window
-        elif event == ref_key:
-            try:
-                record = self.load_record()
-            except Exception as e:
-                msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.record_id, ERR=e)
-                mod_win2.popup_error(msg)
-                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            else:
-                # Display the record window
-                mod_win2.record_window(record, view_only=True)
-
-        return result
-
-    def load_record(self, level: int = 1):
-        """
-        Create a record object from the reference.
-        """
-        record_entry = settings.records.fetch_rule(self.record_type)
-        record_group = record_entry.group
-        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
-            record_class = mod_records.StandardRecord
-        elif record_group == 'bank_deposit':
-            record_class = mod_records.DepositRecord
-        elif record_group == 'audit':
-            record_class = mod_records.AuditRecord
-        else:
-            raise TypeError('unknown record group provided {}'.format(record_group))
-
-        record = record_class(record_entry, level=level)
-        record.initialize(self.record_data, new=False)
-
-        return record
-
-    def as_row(self):
-        """
-        Format reference as a table entry.
-        """
-        if self.inverted is True:
-            reference = pd.Series([self.record_id, self.reference_id, self.ref_date, self.record_type,
-                                   self.reference_type, not self.linked, self.warnings],
-                                  index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings'])
-        else:
-            reference = pd.Series([self.reference_id, self.record_id, self.ref_date, self.reference_type,
-                                   self.record_type, not self.linked, self.warnings],
-                                  index=['DocNo', 'RefNo', 'RefDate', 'DocType', 'RefType', 'IsDeleted', 'Warnings'])
-
-        return reference
-
-
 class ReferenceBox:
     """
     GUI reference box element.
@@ -3494,13 +3232,17 @@ class ReferenceBox:
         try:
             modifiers = entry['Modifiers']
         except KeyError:
-            self.modifiers = {'open': False, 'delete': False, 'approve': False}
+            self.modifiers = {'open': None, 'delete': None, 'approve': None}
         else:
-            self.modifiers = {'open': modifiers.get('open', 0), 'delete': modifiers.get('delete', 0),
-                              'approve': modifiers.get('export', 0)}
+            self.modifiers = {'open': modifiers.get('open', None), 'delete': modifiers.get('delete', None),
+                              'approve': modifiers.get('export', None)}
             for modifier in self.modifiers:
+                mod_value = self.modifiers[modifier]
+                if pd.isna(mod_value):
+                    continue
+
                 try:
-                    flag = bool(int(self.modifiers[modifier]))
+                    flag = bool(int(mod_value))
                 except ValueError:
                     logger.warning('ReferenceBox {NAME}: element modifier {MOD} must be either 0 (False) or 1 (True)'
                                    .format(NAME=self.name, MOD=modifier))
@@ -3777,6 +3519,11 @@ class ReferenceBox:
         """
         Initialize a record reference.
         """
+        if isinstance(entry, pd.DataFrame):  # take first row and reduce dimensionality
+            entry = entry.iloc[0].squeeze()
+        elif isinstance(entry, dict):
+            entry = pd.Series(entry)
+
         ref_id_col = 'ReferenceID'
         try:
             self.reference_id = entry[ref_id_col]
@@ -3837,7 +3584,7 @@ class ReferenceBox:
             logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             self.is_hardlink = False
 
-        pc_col = 'IsParentChild'
+        pc_col = 'IsChild'
         try:
             self.is_pc = bool(int(entry[pc_col]))
         except KeyError:
@@ -4248,6 +3995,7 @@ class DataElement:
                        self.etype != 'text' else True)
         self.disabled = is_disabled
         is_required = modifiers['require']
+        hidden = modifiers['hide']
 
         background = self.bg_col
 
@@ -4323,7 +4071,7 @@ class DataElement:
         row2 = element_layout + aux_layout + required_layout
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col)
+        layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
 
         return layout
 
@@ -4813,8 +4561,6 @@ class ElementReference:
 
         dtype (str): data type of the parameter's data storage elements. Must be an integer, float, or bool data type.
 
-        hidden (bool): element is not visible to the user. [Default: False]
-
         operation (str): reference operation.
 
         icon (str): file name of the parameter's icon [Default: None].
@@ -4862,26 +4608,20 @@ class ElementReference:
 
         # Element modifier flags
         try:
-            hidden = bool(int(entry['IsHidden']))
+            modifiers = entry['Modifiers']
         except KeyError:
-            self.hidden = False
-        except ValueError:
-            logger.warning('ElementReference {NAME}: configuration parameter "IsHidden" must be either 0 (False) or 1 '
-                           '(True)'.format(NAME=name))
-            sys.exit(1)
+            self.modifiers = {'require': False, 'hide': False}
         else:
-            self.hidden = hidden
+            self.modifiers = {'require': modifiers.get('require', 0), 'hide': modifiers.get('hide', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, MOD=modifier))
+                    flag = False
 
-        try:
-            required = bool(int(entry['IsRequired']))
-        except KeyError:
-            self.required = False
-        except ValueError:
-            logger.warning('ElementReference {NAME}: configuration parameter "IsRequired" must be either 0 (False) or '
-                           '1 (True)'.format(NAME=name))
-            sys.exit(1)
-        else:
-            self.required = required
+                self.modifiers[modifier] = flag
 
         # Layout options
         try:
@@ -4939,7 +4679,6 @@ class ElementReference:
                      '{DEF} and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
-        self.editable = False
         self.disabled = True
 
     def key_lookup(self, component):
@@ -4992,9 +4731,12 @@ class ElementReference:
         """
         GUI layout for the data element.
         """
-        is_disabled = False if overwrite is True or (editable is True and self.editable is True) else True
+        modifiers = self.modifiers
+
+        is_disabled = False if overwrite is True or editable is True else True
         self.disabled = is_disabled
-        is_required = self.required
+        is_required = modifiers['require']
+        hidden = modifiers['hide']
 
         background = self.bg_col
 
@@ -5055,7 +4797,7 @@ class ElementReference:
         row2 = element_layout + required_layout
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col)
+        layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
 
         return layout
 
@@ -5107,9 +4849,6 @@ class ElementReference:
         """
         Format the elements value for displaying.
         """
-        dec_sep = settings.decimal_sep
-        group_sep = settings.thousands_sep
-
         dtype = self.dtype
         value = self.value
 
@@ -5117,23 +4856,7 @@ class ElementReference:
             return ''
 
         if dtype == 'money':
-            value = str(value)
-            if value[0] in ('-', '+'):  # sign of the number
-                numeric_sign = value[0]
-                value = value[1:]
-            else:
-                numeric_sign = ''
-            if dec_sep in value:
-                integers, decimals = value.split(dec_sep)
-                decimals = decimals[0:2].ljust(2, '0')
-                display_value = '{SIGN}{VAL}{SEP}{DEC}' \
-                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                            enumerate(integers[::-1])][::-1]).lstrip(','),
-                            SEP=dec_sep, DEC=decimals)
-            else:
-                display_value = '{SIGN}{VAL}' \
-                    .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                            enumerate(value[::-1])][::-1]).lstrip(','))
+            display_value = settings.format_display_money(value)
         else:
             display_value = str(value)
 

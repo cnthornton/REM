@@ -1432,7 +1432,7 @@ class DatabaseRecord:
                     comp_table = mod_elem.ComponentTable(comp_element, table_entry, parent=self.name)
                     comp_type = comp_table.record_type
                     try:
-                        settings.records.fetch_rule(comp_type).record_type
+                        settings.records.fetch_rule(comp_type).name
                     except AttributeError:
                         msg = 'unable to add component table with record type "{TYPE}" - configuration has no entry ' \
                               'for the record type'.format(TYPE=comp_type)
@@ -1623,10 +1623,10 @@ class DatabaseRecord:
             elif ref_data.shape[0] > 1:
                 logger.warning('RecordType {NAME}: more than one {TYPE} reference found for record {ID}'
                                .format(NAME=self.name, TYPE=assoc_rule, ID=self.record_id))
-                ref_data = ref_data.iloc[0]
 
             logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
                          .format(NAME=self.name, REF=refbox.name))
+            print(ref_data)
             result = refbox.import_reference(ref_data)
             if result:
                 logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
@@ -1639,6 +1639,7 @@ class DatabaseRecord:
         logger.info('RecordType {NAME}: loading record components'.format(NAME=self.name))
 
         for comp_table in self.components:
+            print(comp_table.name)
             assoc_rule = comp_table.association_rule
             comp_entry = settings.records.fetch_rule(comp_table.record_type)
 
