@@ -611,6 +611,7 @@ class TableElement:
         Perform a table action.
         """
         tbl_key = self.key_lookup('Element')
+        search_key = self.key_lookup('Search')
         options_key = self.key_lookup('Options')
         frame_key = self.key_lookup('OptionsFrame')
         cancel_key = self.key_lookup('Cancel')
@@ -621,6 +622,9 @@ class TableElement:
 
         param_elems = [i for param in self.parameters for i in param.elements]
         action_events = [self.key_lookup(i) for i in self._actions]
+
+        if event == search_key:
+            self.update_display(window, window_values=values)
 
         if event == self.key_lookup('CollapseButton'):
             self.collapse_expand(window)
