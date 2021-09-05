@@ -678,10 +678,13 @@ class TableElement:
         # Sort column selected from menu of sort columns
         if event == sort_key:
             sort_on = self.sort_on
-            display_map = self.display_columns
+            display_map = {j: i for i, j in self.display_columns.items()}
+            print('sorting table on columns {}'.format(self.sort_on))
+            print('using display map {}'.format(display_map))
 
             # Get sort column
             display_col = values[sort_key]
+            print('display column selected is {}'.format(display_col))
             try:
                 sort_col = display_map[display_col]
             except KeyError:
@@ -800,7 +803,6 @@ class TableElement:
 
         # Sort table and update table sorting information
         sort_key = self.key_lookup('Sort')
-        display_map = self.display_columns
         search_field = self.search_field
 
         # Modify records tables for displaying
@@ -809,6 +811,7 @@ class TableElement:
         self.sort(self.sort_on)
 
         if self.modifiers['sort'] is True:
+            display_map = {j: i for i, j in self.display_columns.items()}
             for menu_index, display_col in enumerate(display_map):
                 display_val = display_map[display_col]
                 if display_val in self.sort_on:
@@ -3021,14 +3024,14 @@ class ComponentTable(RecordTable):
         """
         Import one or more records from a table of records.
         """
+        pd.set_option('display.max_columns', None)
         import_df = self.import_df.copy()
-#        reference_col = self.reference_column
         rule_name = self.association_rule
         modifiers = self.modifiers
-        logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
         record_type = self.record_type
         id_col = self.id_column
 
+        logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
         record_entry = settings.records.fetch_rule(record_type)
         import_rules = self.import_rules if self.import_rules else record_entry.import_rules
         program_database = record_entry.program_record
@@ -3092,19 +3095,21 @@ class ComponentTable(RecordTable):
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
                 logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             else:
-                # Subset on table columns
-                df = df[[i for i in df.columns.values if i in import_df.columns]]
+                if not df.empty:
+                    # Subset on table columns
+                    df = df[[i for i in df.columns.values if i in import_df.columns]]
+                    print(df)
 
-                # Drop records that are already in the import dataframe
-                import_ids = import_df[id_col].tolist()
-                df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
+                    # Drop records that are already in the import dataframe
+                    import_ids = import_df[id_col].tolist()
+                    df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
 
-                # Drop records that are already in the component dataframe
-                current_ids = self.df[id_col].tolist()
-                df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
+                    # Drop records that are already in the component dataframe
+                    current_ids = self.df[id_col].tolist()
+                    df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
 
-                # Add import dataframe to data table object
-                import_table.df = import_df.append(df, ignore_index=True)
+                    # Add import dataframe to data table object
+                    import_table.df = import_df.append(df, ignore_index=True)
         else:
             import_table.df = import_df
 
@@ -3126,7 +3131,6 @@ class ComponentTable(RecordTable):
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
-        #        pd.set_option('display.max_columns', None)
         #        print('selected records:')
         #        print(select_df)
 
