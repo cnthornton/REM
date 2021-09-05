@@ -2628,6 +2628,8 @@ class RecordTable(TableElement):
 
                 df = self.set_datatypes(df)
 
+        self.df = df
+
         return df
 
     def delete_rows(self, indices):
