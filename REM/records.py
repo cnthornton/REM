@@ -2323,9 +2323,8 @@ class DatabaseRecord:
                                 ]], background_color=frame_col, expand_x=True)]]
 
         ref_boxes = []
-        modify_reference = True if self.level < 1 and self.permissions['references'] in ugroup else False
-#        modify_reference = True if editable is True and self.level < 1 and self.permissions['references'] in ugroup \
-#            else False
+        modify_reference = True if editable is True and self.level < 1 and self.permissions['references'] in ugroup \
+            else False
         for ref_box in self.references:
             ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=modify_reference)])
 

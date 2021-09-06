@@ -1399,7 +1399,6 @@ class TableElement:
         row4 = []
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
-#        bind = True if (self.modifiers['edit'] is True or self.modifiers['open'] is True) and editable is True else False
         bind = True if editable is True else False
         events = False
 
@@ -3413,7 +3412,7 @@ class ReferenceBox:
                                           tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
                                                    aliases['RemoveLink']))]],
                               pad=((0, pad_h), pad_v), justification='r', element_justification='r',
-                              vertical_alignment='t', background_color=bg_col)
+                              vertical_alignment='c', background_color=bg_col)
                        ]
 
         width_key = self.key_lookup('Width')
@@ -3589,7 +3588,7 @@ class ReferenceBox:
 
         return True
 
-    def export_reference(self, record_id=record_id):
+    def export_reference(self, record_id=None):
         """
         Export the association as a reference entry.
         """

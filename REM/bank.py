@@ -831,35 +831,22 @@ class BankRule:
         Save any changes to the records made during the reconciliation process.
         """
         statements = {}
-        for acct_panel in self.panels:  # visible panels only
-            acct = self.fetch_account(acct_panel, by_key=True)
+        acct = self.fetch_account(self.current_panel, by_key=True)
+        record_type = acct.record_type
+        record_entry = settings.records.fetch_rule(record_type)
 
-            record_type = acct.record_type
-            record_entry = settings.records.fetch_rule(record_type)
+        # Prepare to save the references
+        logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
+                     .format(NAME=self.name, ACCT=acct.name))
+        try:
+            statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
+                                                               statements=statements)
+        except Exception as e:
+            msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                .format(ACCT=acct.name, ERR=e)
+            logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-            # Prepare to save the record data
-            logger.debug('BankRule {NAME}: preparing account {ACCT} statements'.format(NAME=self.name, ACCT=acct.name))
-            try:
-                statements = record_entry.save_database_records(acct.table.data(), id_field=acct.table.id_column,
-                                                                statements=statements)
-            except Exception as e:
-                msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}' \
-                    .format(ACCT=acct.name, ERR=e)
-                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return False
-
-            # Prepare to save the reference data
-            if acct.name == self.current_account:  # only save references for primary account to prevent redundancy
-                try:
-                    statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
-                                                                       statements=statements)
-                except Exception as e:
-                    msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
-                        .format(ACCT=acct.name, ERR=e)
-                    logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    return False
+            return False
 
         logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
                     .format(NAME=self.name, ACCT=self.current_account))
