@@ -513,7 +513,7 @@ class RecordEntry:
         """
         export_rules = self.export_rules
         association_rules = self.association_rules
-        pd.set_option('display.max_columns', None)
+        # pd.set_option('display.max_columns', None)
 
         if not statements:
             statements = {}
@@ -655,7 +655,7 @@ class RecordEntry:
         """
         Delete records from the database.
         """
-#        pd.set_option('display.max_columns', None)
+        # pd.set_option('display.max_columns', None)
 
         if not statements:
             statements = {}
@@ -1954,7 +1954,7 @@ class DatabaseRecord:
                          .format(ID=record_id, ELEM=refbox.name))
             association_rule = refbox.association_rule
 
-            ref_data = refbox.export_reference(record_id)
+            ref_data = refbox.export_reference(record_id=record_id)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
         # Prepare to save record components
@@ -2323,8 +2323,9 @@ class DatabaseRecord:
                                 ]], background_color=frame_col, expand_x=True)]]
 
         ref_boxes = []
-        modify_reference = True if editable is True and self.level < 1 and self.permissions['references'] in ugroup \
-            else False
+        modify_reference = True if self.level < 1 and self.permissions['references'] in ugroup else False
+#        modify_reference = True if editable is True and self.level < 1 and self.permissions['references'] in ugroup \
+#            else False
         for ref_box in self.references:
             ref_boxes.append([ref_box.layout(padding=(0, pad_v), editable=modify_reference)])
 

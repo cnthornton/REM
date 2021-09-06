@@ -578,6 +578,8 @@ class BankRule:
         Arguments:
             expand (bool): expand the search by ignoring association parameters designated as expanded [Default: False].
         """
+        pd.set_option('display.max_columns', None)
+
         ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLinked',
                     'IsChild', 'IsDeleted']
 
@@ -590,9 +592,11 @@ class BankRule:
         table = acct.table
         id_column = table.id_column
 
-        # Merge the records and references tables
+        # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
         df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), acct.ref_df, how='left', on='RecordID')
         header = df.columns.tolist()
+        print('merged main account dataframe:')
+        print(df)
 
         if df.empty:
             return True
@@ -615,13 +619,14 @@ class BankRule:
             logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
                          .format(NAME=self.name, ACCT=assoc_acct.name))
 
-            # Merge the associated records and references tables
-            assoc_df = pd.merge(assoc_acct.table.data().drop(columns=list(assoc_acct.ref_map.values())),
-                                assoc_acct.ref_df, how='left', on='RecordID')
-            assoc_header = assoc_df.columns.tolist()
-
+            assoc_df = assoc_acct.table.data()
             if assoc_df.empty:  # no records loaded to match to, so skip
                 continue
+
+            # Merge the associated records and references tables
+            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct.ref_map.values())),
+                                assoc_acct.ref_df, how='left', on='RecordID')
+            assoc_header = assoc_df.columns.tolist()
 
             # Filter association account records that are already associated with a record
             drop_conds = ~assoc_df['ReferenceID'].isna()
@@ -1198,27 +1203,8 @@ class AccountEntry:
         """
         Load data from the database.
         """
-        # Prepare the database query statement
-#        import_rules = self.import_rules
-#
-#        param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in parameters]
-#        filters = param_filters + mod_db.format_import_filters(import_rules)
-#        table_statement = mod_db.format_tables(import_rules)
-#        columns = mod_db.format_import_columns(import_rules)
-#
-#        # Import primary bank data from database
-#        try:
-#            df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
-#                              prog_db=True)
-#        except Exception as e:
-#            msg = 'failed to import data from the database'
-#            logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-#            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
-#            data_loaded = False
-#        else:
-#            logger.debug('AccountEntry {NAME}: loaded data for bank reconciliation "{RULE}"'
-#                         .format(NAME=self.name, RULE=self.parent))
-#            data_loaded = True
+        pd.set_option('display.max_columns', None)
+
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
@@ -1234,7 +1220,7 @@ class AccountEntry:
 
         # Load the record references from the reference table connected with the association rule
         rule_name = self.association_rule
-        record_ids = self.table.row_ids()
+        record_ids = df[self.table.id_column].tolist()
 
         try:
             import_df = record_entry.import_references(record_ids, rule_name)
@@ -1245,8 +1231,16 @@ class AccountEntry:
 
             return False
 
+        print('imported records:')
+        print(df.head)
+        print('imported references:')
+        print(import_df)
+
         self.ref_df = pd.merge(df.loc[:, ['RecordID']], import_df, how='left', on='RecordID')
         self.ref_df['RecordType'].fillna(record_type, inplace=True)
+
+        print('reference dataframe after merging')
+        print(self.ref_df)
 
         # Merge the imported records with the reference entries
         df = self.merge_references(df)

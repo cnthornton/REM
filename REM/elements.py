@@ -2329,7 +2329,7 @@ class RecordTable(TableElement):
         # Dynamic attributes
         self.import_df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
 
-    def _translate_row(self, row, level: int = 1, new_record: bool = False, references: pd.DataFrame = None):
+    def _translate_row(self, row, level: int = 1, new_record: bool = False, references: dict = None):
         """
         Translate row data into a record object.
         """
@@ -2557,7 +2557,7 @@ class RecordTable(TableElement):
 
         return df
 
-    def load_record(self, index, level: int = 1, references: pd.DataFrame = None):
+    def load_record(self, index, level: int = 1, references: dict = None):
         """
         Open selected record in new record window.
         """
@@ -3193,7 +3193,7 @@ class ReferenceBox:
             self.modifiers = {'open': None, 'delete': None, 'approve': None}
         else:
             self.modifiers = {'open': modifiers.get('open', None), 'delete': modifiers.get('delete', None),
-                              'approve': modifiers.get('export', None)}
+                              'approve': modifiers.get('approve', None)}
             for modifier in self.modifiers:
                 mod_value = self.modifiers[modifier]
                 if pd.isna(mod_value):
@@ -3222,6 +3222,7 @@ class ReferenceBox:
             self.aliases = {}
 
         # Dynamic values
+        self.record_id = None
         self.reference_id = None
         self.reference_type = None
         self.date = None
@@ -3250,6 +3251,7 @@ class ReferenceBox:
         """
         Reset dynamic values.
         """
+        self.record_id = None
         self.reference_id = None
         self.reference_type = None
         self.date = None
@@ -3352,9 +3354,15 @@ class ReferenceBox:
         can_delete = True if (modifiers['delete'] is True and not is_disabled) or (overwrite is True) else False
         can_open = True if (modifiers['open'] is True and not is_disabled) or (overwrite is True) else False
 
+        print('reference {} is disabled: {}'.format(self.name, is_disabled))
+        print('reference {} can be opened: {}'.format(self.name, can_open))
+        print('reference {} can be deleted: {}'.format(self.name, can_delete))
+        print('reference {} can be approved: {}'.format(self.name, can_approve))
+
         select_text_col = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
 
         approved_vis = True if modifiers['approve'] is not None else False
+        print('reference {} approval checkbox is visible: {}'.format(self.name, approved_vis))
         hl_vis = True if self.is_hardlink is True else False
         pc_vis = True if self.is_pc is True else False
 
@@ -3480,6 +3488,18 @@ class ReferenceBox:
         elif isinstance(entry, dict):
             entry = pd.Series(entry)
 
+        id_col = 'RecordID'
+        try:
+            self.record_id = entry[id_col]
+        except KeyError:
+            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=id_col)
+            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return False
+        else:
+            if pd.isna(self.record_id):
+                return False
+
         ref_id_col = 'ReferenceID'
         try:
             self.reference_id = entry[ref_id_col]
@@ -3569,10 +3589,12 @@ class ReferenceBox:
 
         return True
 
-    def export_reference(self, record_id):
+    def export_reference(self, record_id=record_id):
         """
         Export the association as a reference entry.
         """
+        record_id = self.record_id if not record_id else record_id
+
         indices = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'ReferenceNotes',
                    'IsApproved', 'IsChild', 'IsHardLink', 'IsDeleted']
         values = [record_id, self.reference_id, self.date, self.parent, self.reference_type, self.notes, self.approved,
