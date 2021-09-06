@@ -1262,7 +1262,7 @@ class AuditTransactionTab:
                         last_id = prev_id
                         break
 
-                if prev_date_comp and prev_number_comp:
+                if last_id:
                     logger.debug('AuditTransactionTab {NAME}: last transaction ID is {ID} from {DATE}'
                                  .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
 
@@ -1290,11 +1290,11 @@ class AuditTransactionTab:
                             nskipped += 1
                             missing_transactions.append(missing_id)
 
-                    logger.debug('AuditTransactionTab {NAME}: found {N} skipped transactions between last ID '
-                                 '{PREVID} from last transaction date {PREVDATE} and first ID {ID} of current '
-                                 'transaction date {DATE}'
-                                 .format(NAME=self.name, N=nskipped, PREVID=last_id,
-                                         PREVDATE=prev_date.strftime('%Y-%m-%d'), ID=first_id, DATE=audit_date_iso))
+                    msg = ('found {N} skipped transactions between last ID {PREV_ID} from last transaction date '
+                           '{PREV_DATE} and first ID {ID} of current transaction date {DATE}'
+                           .format(N=nskipped, PREV_ID=last_id, PREV_DATE=prev_date.strftime('%Y-%m-%d'), ID=first_id,
+                                   DATE=audit_date_iso))
+                    logger.debug('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             # Search for skipped transaction numbers
             logger.debug('AuditTransactionTab {NAME}: searching for skipped transactions within the current '
@@ -1825,11 +1825,7 @@ class AuditSummary:
             sstrings.append(i)
             psets.append(j)
 
-#        success = user.write_db(sstrings, psets)
-        success = True
-        print('')
-        print('')
-        print(statements)
+        success = user.write_db(sstrings, psets)
 
         return success
 

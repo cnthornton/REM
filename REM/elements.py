@@ -679,12 +679,9 @@ class TableElement:
         if event == sort_key:
             sort_on = self.sort_on
             display_map = {j: i for i, j in self.display_columns.items()}
-            print('sorting table on columns {}'.format(self.sort_on))
-            print('using display map {}'.format(display_map))
 
             # Get sort column
             display_col = values[sort_key]
-            print('display column selected is {}'.format(display_col))
             try:
                 sort_col = display_map[display_col]
             except KeyError:
@@ -2609,11 +2606,7 @@ class RecordTable(TableElement):
             return df
         else:
             if not view_only:  # only update table if view_only is set to false
-                print('current values:')
-                print(df.iloc[index])
                 row_values = self.set_conditional_values(record_values).squeeze()
-                print('new values:')
-                print(row_values)
                 for col_name, col_value in row_values.iteritems():
                     if col_name not in header:
                         continue
@@ -2657,6 +2650,7 @@ class RecordTable(TableElement):
         """
         Import one or more records from a table of records.
         """
+        # pd.set_option('display.max_columns', None)
         import_df = self.import_df.copy()
         logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
         record_type = self.record_type
@@ -2693,9 +2687,6 @@ class RecordTable(TableElement):
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
-        #        pd.set_option('display.max_columns', None)
-        #        print('selected records:')
-        #        print(select_df)
 
         # Verify that selected records are not already in table
         current_ids = self.df[id_col].tolist()
@@ -2719,8 +2710,6 @@ class RecordTable(TableElement):
         select_df[self.added_column] = True
         df = self.append(select_df)
         self.df = df
-        #        print('table dataframe after appending selected records:')
-        #        print(self.df)
 
         # Remove selected rows from the table of available import rows
         self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
@@ -3026,7 +3015,7 @@ class ComponentTable(RecordTable):
         """
         Import one or more records from a table of records.
         """
-        pd.set_option('display.max_columns', None)
+        # pd.set_option('display.max_columns', None)
         import_df = self.import_df.copy()
         rule_name = self.association_rule
         modifiers = self.modifiers
@@ -3048,43 +3037,6 @@ class ComponentTable(RecordTable):
         import_table = RecordTable(self.name, table_layout)
 
         # Search for records without an existing reference to the provided reference type
-#        if reference_col and program_database:  # option only available for program records
-#            logger.debug('DataTable {NAME}: importing unreferenced records on column "{COL}"'
-#                         .format(NAME=self.name, COL=reference_col))
-#
-#            # Prepare query arguments
-#            import_filters = mod_db.format_import_filters(import_rules)
-#            table_statement = mod_db.format_tables(import_rules)
-#            import_columns = mod_db.format_import_columns(import_rules)
-#
-#            import_ref_col = mod_db.get_import_column(import_rules, reference_col)
-#            ref_filter = '{REFCOL} IS NULL'.format(REFCOL=import_ref_col)
-#            import_filters.append(ref_filter)
-#
-#            try:
-#                df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
-#                                                                filter_rules=import_filters), prog_db=True)
-#            except Exception as e:
-#                logger.exception('DataTable {NAME}: failed to import data from the database - {ERR}'
-#                                 .format(NAME=self.name, ERR=e))
-#            else:
-#                # Subset on table columns
-#                df = df[[i for i in df.columns.values if i in import_df.columns]]
-#
-#                # Drop records that are already in the import table
-#                import_ids = import_df[id_col].tolist()
-#                df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
-#
-#                # Drop records that are already in the table
-#                current_ids = self.df[id_col].tolist()
-#                df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
-#
-#                # Add import dataframe to data table object
-#                import_table.df = import_df.append(df, ignore_index=True)
-#        else:
-#            import_table.df = import_df
-
-        # Search for records without an existing reference to the provided reference type
         if modifiers['unassociated'] and program_database:  # option only available for program records
             logger.debug('DataTable {NAME}: importing unreferenced records on rule "{RULE}"'
                          .format(NAME=self.name, RULE=rule_name))
@@ -3100,7 +3052,6 @@ class ComponentTable(RecordTable):
                 if not df.empty:
                     # Subset on table columns
                     df = df[[i for i in df.columns.values if i in import_df.columns]]
-                    print(df)
 
                     # Drop records that are already in the import dataframe
                     import_ids = import_df[id_col].tolist()
@@ -3133,8 +3084,6 @@ class ComponentTable(RecordTable):
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
-        #        print('selected records:')
-        #        print(select_df)
 
         # Verify that selected records are not already in table
         current_ids = self.df[id_col].tolist()
@@ -3157,9 +3106,8 @@ class ComponentTable(RecordTable):
                      .format(NAME=self.name, N=select_df.shape[0]))
         select_df[self.added_column] = True
         df = self.append(select_df)
+
         self.df = df
-        #        print('table dataframe after appending selected records:')
-        #        print(self.df)
 
         # Remove selected rows from the table of available import rows
         self.import_df = import_df[~import_df[self.id_column].isin(select_ids)]
@@ -3483,8 +3431,6 @@ class ReferenceBox:
 
         is_hl = self.is_hardlink
         is_pc = self.is_pc
-        print('reference has hard-link: {}'.format(is_hl))
-        print('reference has parent: {}'.format(is_pc))
         referenced = self.referenced
         warnings = self.notes if self.notes is not None else ''
 

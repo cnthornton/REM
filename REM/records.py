@@ -594,20 +594,15 @@ class RecordEntry:
 
         # If relevant, create or edit hard-linked reference records for new database records
         new_df = df[[not i for i in exists]]
-        print('new records are:')
-        print(new_df)
         for association in association_rules:
             if new_df.empty:
                 continue
 
             rule = association_rules[association]
-            print('checking association rule {} for hard links'.format(association))
-            print(rule)
 
             # Create or edit any hard-linked records
             link_rules = rule['HardLink']
             if link_rules is not None:
-                print('association rule {} is a hard-link'.format(association))
                 record_type = self.name
 
                 for ref_type in link_rules:
@@ -626,9 +621,8 @@ class RecordEntry:
                     if df_sub.empty:
                         continue
 
-                    primary_ids = df_sub['RecordID'].tolist()
-                    print('records that passed the hard link condition: {}'.format(primary_ids))
                     # Create new record IDs for the hard-linked records
+                    primary_ids = df_sub['RecordID'].tolist()
                     try:
                         ref_dates = pd.to_datetime(df_sub['RecordDate'], errors='coerce')
                     except KeyError:
@@ -661,7 +655,7 @@ class RecordEntry:
         """
         Delete records from the database.
         """
-        pd.set_option('display.max_columns', None)
+#        pd.set_option('display.max_columns', None)
 
         if not statements:
             statements = {}
@@ -686,6 +680,9 @@ class RecordEntry:
             record_exists = exists[index]
             if record_exists:  # only attempt to delete records that already exist in the database
                 record_ids.append(record_id)
+
+        if len(record_ids) < 1:  # no currently existing records to delete
+            return statements
 
         # Set existing records as deleted in the database
         export_rules = self.export_rules
@@ -719,33 +716,26 @@ class RecordEntry:
             # Import references to be deleted
             import_df = self.import_references(record_ids, association)
 
-            # Delete the reference entries
+            # Delete the reference entries and remove already used references from the list - this is necessary for
+            # hard-linked records to avoid endless looping
             import_df['IsDeleted'] = True
-            print('current list of reference IDs to ignore: {}'.format(ref_ids))
             export_df = import_df.drop(import_df[import_df['ReferenceID'].isin(ref_ids)].index)
-            print('export df is:')
-            print(export_df)
             if export_df.empty:
                 continue
             statements = self.save_database_references(export_df, association, statements=statements)
 
             # Subset references to include those that are child records or hard-linked
             if assoc_type == 'parent':  # referenced records are child records and should be deleted with parent
-#                condition = import_df['IsChild'].astype(bool)
                 condition = export_df['IsChild'].astype(bool)
             elif assoc_type == 'reference':  # deleting hard-linked records should also delete reference records
                 condition = export_df['IsHardLink'].astype(bool)
-#                condition = import_df['IsHardLink'].astype(bool)
             else:  # record is a child record - deleted child records should have no affect on the parent records
                 continue
 
-#            linked_df = import_df[condition]
             linked_df = export_df[condition]
 
-            # Remove already used references - this is necessary for hard-linked records to avoid endless looping
-#            linked_df.drop(import_df[import_df['ReferenceID'].isin(ref_ids)].index, inplace=True)
+            # Update the list of used reference IDs
             ignore_ids = list(set(ref_ids + record_ids))
-            print('new list of reference IDs to ignore: {}'.format(ignore_ids))
 
             # Remove hard-linked and child records. Do not include references that have already been deleted.
             record_types = import_df['ReferenceType'].unique()
@@ -1418,6 +1408,7 @@ class DatabaseRecord:
             references (dict): optional reference imports by association rule. If provided, will not attempt to import
                 references for the given association rule but will use the reference entries provided instead.
         """
+        # pd.set_option('display.max_columns', None)
         headers = self.headers
         parameters = self.parameters
         meta_params = self.metadata
@@ -1537,7 +1528,6 @@ class DatabaseRecord:
 
             logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
                          .format(NAME=self.name, REF=refbox.name))
-            print(ref_data)
             result = refbox.import_reference(ref_data)
             if result:
                 logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
@@ -1550,7 +1540,6 @@ class DatabaseRecord:
         logger.info('RecordType {NAME}: loading record components'.format(NAME=self.name))
 
         for comp_table in self.components:
-            print(comp_table.name)
             assoc_rule = comp_table.association_rule
             comp_entry = settings.records.fetch_rule(comp_table.record_type)
 
@@ -1572,10 +1561,6 @@ class DatabaseRecord:
             import_df = comp_entry.load_record_data(import_ids)
             import_df = import_df[[i for i in import_df.columns if i in comp_table.columns]]
             comp_table.df = comp_table.append(import_df)
-
-            # pd.set_option('display.max_columns', None)
-            # print(comp_table.name)
-            # print(comp_table.df)
 
     def reset(self, window):
         """
@@ -1868,12 +1853,10 @@ class DatabaseRecord:
             # Subset references to include those that are child records or hard-linked
             if assoc_type == 'parent':  # reference table may contain child records
                 nrow = ref_df[ref_df['IsChild']].shape[0]
-                print('number of children in rule {} to delete: {}'.format(rule_name, nrow))
                 nchild += nrow
             elif assoc_type == 'reference':  # reference table may contain hard-linked records
                 nrow = ref_df[ref_df['IsHardLink']].shape[0]
                 nlink += nrow
-                print('number of children in rule {} to delete: {}'.format(rule_name, nrow))
             else:  # child records don't affect parent records
                 continue
 
@@ -1930,9 +1913,7 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-#        success = user.write_db(sstrings, psets)
-        success = True
-        print(statements)
+        success = user.write_db(sstrings, psets)
 
         return success
 
@@ -1996,22 +1977,17 @@ class DatabaseRecord:
 
             # Prepare the reference statements
             ref_data = comp_table.export_reference(record_id)
-            print('reference data for updating:')
-            print(ref_data)
 
             # Fully remove deleted component records if parent-child relationship
             if pc:
                 # Remove records that should be deleted if reference association is parent-child
                 deleted_df = comp_df[comp_df[comp_table.deleted_column]]
                 deleted_ids = deleted_df[comp_table.id_column].tolist()
-                print('component records {} will be deleted'.format(deleted_ids))
                 if not deleted_df.empty:
                     statements = comp_entry.delete_database_records(deleted_ids, statements=statements)
 
                     # Subset ref_data so that references are not updated twice
                     ref_data = ref_data[~ref_data['ReferenceID'].isin(deleted_ids)]
-                    print('new reference data for updating after removing deleted references:')
-                    print(ref_data)
 
                 # Set reference flags
                 ref_data['IsChild'] = True
@@ -2062,9 +2038,7 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = True
-        print(statements)
-#        success = user.write_db(sstrings, psets)
+        success = user.write_db(sstrings, psets)
 
         return success
 
@@ -2464,7 +2438,6 @@ class DatabaseRecord:
         # Resize the reference boxes
         ref_width = width - 62  # accounting for left and right padding and border width
         for refbox in self.references:
-            print(refbox.name)
             refbox.resize(window, size=(ref_width, 40))
 
         # Resize component tables

@@ -671,16 +671,19 @@ def main():
                 try:
                     window[current_rule.current_panel].update(visible=False)
                 except KeyError:
+                    logger.error('unable to resize program display - current panel {PANEL} is missing from the '
+                                 'display window'.format(PANEL=current_panel.current_rule))
                     print(current_rule.panel_keys)
-#                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=True)
+
+                    continue
+
                 window[current_rule.element_key].update(visible=False)
-#
+
                 window.refresh()
-#
+
                 window[current_rule.element_key].update(visible=True)
-#                window[current_rule.panel_keys[current_rule.first_panel]].update(visible=False)
                 window[current_rule.current_panel].update(visible=True)
-#
+
                 resized = False
 
                 continue
@@ -855,9 +858,7 @@ def main():
         # Activate appropriate accounting workflow method panel
         selected_menu = values['-AMENU-']
         if selected_menu in menu_mapper:
-            print('menu {} was selected'.format(selected_menu))
             selected_rule = menu_mapper[selected_menu]
-            print('selected rule is {}'.format(selected_rule))
 
             if selected_rule in audit_names:  # workflow method is a transaction audit
                 # Obtain the selected rule object
@@ -899,8 +900,6 @@ def main():
                 import_table = mod_elem.RecordTable(current_rule.name, table_entry)
 
                 try:
-#                    mod_win2.record_import_window(import_table, enable_new=True,
-#                                                  record_layout=current_rule.record_layout_entry)
                     mod_win2.record_import_window(import_table, enable_new=True)
                 except Exception as e:
                     msg = 'record importing failed - {ERR}'.format(ERR=e)
