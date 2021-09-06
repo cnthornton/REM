@@ -102,12 +102,12 @@ class TableElement:
             modifiers = entry['Modifiers']
         except KeyError:
             self.modifiers = {'edit': False, 'export': False, 'search': False, 'filter': False, 'fill': False,
-                              'options': False, 'sort': False}
+                              'options': False, 'sort': False, 'require': False}
         else:
             self.modifiers = {'edit': modifiers.get('edit', 0), 'export': modifiers.get('export', 0),
                               'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
                               'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
-                              'sort': modifiers.get('sort', 0)}
+                              'sort': modifiers.get('sort', 0), 'require': modifiers.get('require', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))
@@ -1891,7 +1891,7 @@ class TableElement:
 
         return total
 
-    def value(self):
+    def get_value(self):
         """
         Return element value.
         """
@@ -3180,16 +3180,16 @@ class ComponentTable(RecordTable):
         ref_df = export_df[[self.id_column, self.deleted_column]]
         ref_df.rename(columns={self.id_column: 'ReferenceID', self.deleted_column: 'IsDeleted'}, inplace=True)
 
-        ref_df['RecordID'] = record_id
-        ref_df['RecordType'] = self.parent
-        ref_df['ReferenceDate'] = datetime.datetime.now()
-        ref_df['ReferenceType'] = self.record_type
+        ref_df.loc[:, 'RecordID'] = record_id
+        ref_df.loc[:, 'RecordType'] = self.parent
+        ref_df.loc[:, 'ReferenceDate'] = datetime.datetime.now()
+        ref_df.loc[:, 'ReferenceType'] = self.record_type
 
         # Add reference notes based on row annotations
         annotations = self.annotate_display(export_df)
         annotation_map = {i: self.annotation_rules[j]['Description'] for i, j in annotations.items()}
 
-        ref_df['ReferenceNotes'] = ref_df.index.map(annotation_map)
+        ref_df.loc[:, 'ReferenceNotes'] = ref_df.index.map(annotation_map)
 
         return ref_df
 
@@ -3676,7 +3676,7 @@ class ReferenceBox:
         """
         return self.referenced
 
-    def value(self):
+    def get_value(self):
         """
         Return element value.
         """
@@ -3864,7 +3864,7 @@ class DataElement:
 
         return key
 
-    def value(self):
+    def get_value(self):
         """
         Return element value.
         """
@@ -4040,8 +4040,9 @@ class DataElement:
         accessory_layout = []
         if self.dtype in settings.supported_date_dtypes and not is_disabled:
             date_key = self.key_lookup('Calendar')
-            accessory_layout.append(sg.CalendarButton('', key=date_key, format='%Y-%m-%d', pad=(pad_el, 0),
-                                                      image_data=mod_const.CALENDAR_ICON,
+            elem_key = self.key_lookup('Element')
+            accessory_layout.append(sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d',
+                                                      pad=(pad_el, 0), image_data=mod_const.CALENDAR_ICON,
                                                       button_color=(text_col, bg_col), border_width=0,
                                                       tooltip='Select the date from the calendar menu'))
 
@@ -4710,7 +4711,7 @@ class ElementReference:
 
         return key
 
-    def value(self):
+    def get_value(self):
         """
         Return element value.
         """
@@ -4885,7 +4886,7 @@ class ElementReference:
         # Get values of the reference elements
         values = {}
         for element in elements:
-            values[element.name] = element.value()
+            values[element.name] = element.get_value()
 
         # Update element display value
         if values:

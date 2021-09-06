@@ -443,9 +443,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, is_co
             # Save the record to the database table
             saved = record.save()
             if saved is False:
-                msg = 'failed to save record {ID} to the database - see log for details'.format(ID=record_id)
-                popup_error(msg)
-
                 continue
             else:
                 # Remove unsaved IDs associated with the record

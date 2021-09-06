@@ -553,7 +553,7 @@ class AuditRule:
                 except Exception as e:
                     msg = 'database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
-                    logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
                     raise
                 else:
                     if save_status is False:
@@ -1815,7 +1815,6 @@ class AuditSummary:
             except Exception as e:
                 msg = 'failed to save {AUDIT} record {ID}'.format(AUDIT=tab.name, ID=tab.record.record_id())
                 logger.exception('AuditRuleSummary {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                mod_win2.popup_error(msg)
 
                 return False
 
@@ -1826,7 +1825,11 @@ class AuditSummary:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+#        success = user.write_db(sstrings, psets)
+        success = True
+        print('')
+        print('')
+        print(statements)
 
         return success
 
