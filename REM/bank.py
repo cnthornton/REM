@@ -147,17 +147,28 @@ class BankRule:
         tab_bttn_keys = ['-HK_TAB{}-'.format(i) for i in range(1, 10)]
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
-        # Run event from a current primary account element. Pass on to account class.
-        if event in acct_keys:
-            acct = self.fetch_account(event, by_key=True)
-            acct.run_event(window, event, values)
-
-        # Run a table key event. Table event should be sent to the table in the current panel.
-        if event in tbl_bttn_keys:
-            # Determine which panel to act on
+        # Run an account entry event.
+        if event in acct_keys or event in tbl_bttn_keys:
             current_panel = self.current_panel
             acct = self.fetch_account(current_panel, by_key=True)
-            acct.run_event(window, event, values)
+
+            ref_event = acct.run_event(window, event, values)
+            if ref_event:
+                ref_df = acct.ref_df
+                deleted_records = ref_df.loc[ref_df['IsDeleted'], ['RecordID']].squeeze()
+                print('records deleted from the {} reference dataframe are:'.format(acct.name))
+                print(deleted_records)
+
+                # Update all account reference dataframe for currently active panels
+                for panel in self.panels:
+                    if panel == current_panel:  # dont' attempt to update the same panel's reference dataframe
+                        continue
+
+                    ref_acct = self.fetch_account(panel, by_key=True)
+                    assoc_ref_df = ref_acct.ref_df
+                    assoc_ref_df.loc[assoc_ref_df['ReferenceID'].isin(deleted_records), ['IsDeleted']] = True
+
+                self.update_display(window)
 
         # The cancel button or cancel hotkey was pressed. If a reconciliation is in progress, reset the rule but stay
         # in the rule panel. If reconciliation is not in progress, return to home screen.
@@ -673,7 +684,6 @@ class BankRule:
             # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)
 
-        #        pd.set_option('display.max_columns', None)
         #        print(merged_df)
         #        print(merged_df.dtypes)
 
@@ -1075,16 +1085,19 @@ class AccountEntry:
         table_keys = self.table.elements
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
-        success = True
+        reference_event = False
         # Run a record table event.
         if event in table_keys or event in tbl_bttn_keys:
             table = self.table
-            import_key = self.table.key_lookup('Import')
             tbl_key = self.table.key_lookup('Element')
+            delete_key = self.table.key_lookup('Delete')
             frame_key = self.table.key_lookup('OptionsFrame')
+            can_delete = (not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible'])
 
-            # A table row was selected
+            # Record was selected for opening
             if event == tbl_key:
+                reference_event = True
+
                 # Close options panel, if open
                 if window[frame_key].metadata['visible'] is True:
                     window[frame_key].metadata['visible'] = False
@@ -1107,19 +1120,29 @@ class AccountEntry:
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
                     if table.modifiers['open'] is True:
-                        table.df = table.load_record(index, level=0, references={self.association_rule: self.ref_df})
+                        self.load_record(index)
 
-                        table.update_display(window, window_values=values)
+            elif event == delete_key or (event == '-HK_TBL_DEL-' and can_delete):
+                reference_event = True
 
-            # Table import button or the import hotkey was pressed
-            elif event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
-                                                                         window[import_key].metadata['visible'])):
-                table.import_rows()
-                table.update_display(window, window_values=values)
+                # Find rows selected by user for deletion
+                select_row_indices = values[tbl_key]
+
+                # Get the real indices of the selected rows
+                try:
+                    indices = [table.index_map[i] for i in select_row_indices]
+                except KeyError:
+                    msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
+                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_notice(msg)
+                    indices = []
+
+                self.delete_rows(indices)
+
             else:
                 table.run_event(window, event, values)
 
-        return success
+        return reference_event
 
     def layout(self, size):
         """
@@ -1177,6 +1200,84 @@ class AccountEntry:
         df.reset_index(inplace=True)
 
         return df
+
+    def load_record(self, index, level: int = 0):
+        """
+        Open selected record in new record window.
+        """
+        ref_df = self.ref_df
+        association_rule = self.association_rule
+
+        table = self.table
+        df = table.df.copy()
+        modifiers = table.modifiers
+
+        view_only = False if modifiers['edit'] is True else True
+
+        try:
+            row = df.loc[index]
+        except IndexError:
+            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
+            mod_win2.popup_error(msg)
+            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
+                             .format(NAME=table.name, IND=index + 1, MSG=msg))
+
+            return ref_df
+
+        # Add any annotations to the exported row
+        annotations = table.annotate_display(df)
+        annot_code = annotations.get(index, None)
+        if annot_code is not None:
+            row['Warnings'] = table.annotation_rules[annot_code]['Description']
+
+        try:
+            record = table._translate_row(row, level=level, new_record=False, references={association_rule: ref_df})
+        except Exception as e:
+            msg = 'failed to open record at row {IND}'.format(IND=index + 1)
+            mod_win2.popup_error(msg)
+            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=table.name, MSG=msg, ERR=e))
+
+            return ref_df
+        else:
+            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
+                        .format(NAME=self.name, ID=record.record_id(), IND=index))
+
+        # Display the record window
+        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=table.name, VAL=view_only))
+        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
+        record_id = record.record_id()
+
+        # Update reference values
+        for refbox in record.references:
+            if refbox.association_rule != association_rule:
+                continue
+
+            if not view_only:  # only update table if view_only is set to false
+                ref_values = refbox.export_reference()
+                try:
+                    ref_df.loc[ref_df['RecordID'] == record_id, ref_values.index.tolist()] = ref_values.tolist()
+                except KeyError as e:
+                    msg = 'failed to update reference {REF} for record {ID}'.format(REF=refbox.name, ID=record_id)
+                    logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+        return ref_df
+
+    def delete_rows(self, indices):
+        """
+        Delete references using selected table indices.
+        """
+        ref_df = self.ref_df
+        df = self.table.df.copy()
+
+        select_df = df.iloc[indices]
+
+        # Get record IDs of selected rows
+        record_ids = select_df[self.table.id_column].tolist()
+        logger.info('DataTable {TBL}: removing references for records {IDS}'
+                    .format(TBL=self.name, IDS=record_ids))
+
+        # Set the deleted column of the reference entries corresponding to the selected records to True.
+        ref_df.loc[ref_df['RecordID'].isin(record_ids), ['IsDeleted']] = True
 
     def update_display(self, window):
         """
