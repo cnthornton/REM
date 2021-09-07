@@ -9,7 +9,6 @@ import PySimpleGUI as sg
 import pandas as pd
 
 import REM.constants as mod_const
-import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.secondary as mod_win2
 from REM.client import logger, settings, user
@@ -196,7 +195,7 @@ class BankRule:
             else:
                 # Save records to the program database
                 try:
-                    save_status = self.save_records()
+                    save_status = self.save_references()
                 except Exception as e:
                     msg = 'database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
@@ -826,7 +825,7 @@ class BankRule:
 
         return True
 
-    def save_records(self):
+    def save_references(self):
         """
         Save any changes to the records made during the reconciliation process.
         """
