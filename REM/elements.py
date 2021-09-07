@@ -2355,6 +2355,43 @@ class RecordTable(TableElement):
 
         return record
 
+    def _update_row_values(self, index, values):
+        """
+        Update row values at the given dataframe index.
+
+        Arguments:
+            index (int): real index of the row to update.
+
+            values (DataFrame): single row dataframe containing row values to use to update the dataframe at the
+               given index.
+        """
+        df = self.df
+        header = df.columns.tolist()
+
+        if isinstance(values, dict):
+            values = pd.DataFrame(values)
+        elif isinstance(values, pd.Series):
+            values = values.to_frame().T
+
+        row_values = self.set_conditional_values(values)
+        for column in row_values:  # iterate over row value columns
+            if column not in header:
+                msg = 'row value column {COL} not found in the dataframe header'.format(COL=column)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                continue
+
+            value = row_values[column].squeeze()  # reduce to scalar
+            try:
+                df.at[index, column] = value
+            except KeyError:
+                continue
+            except ValueError as e:
+                logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
+                             '{ERR}'.format(NAME=self.name, VAL=value, COL=column, IND=index, ERR=e))
+
+        return df
+
     def reset(self, window):
         """
         Reset data table to default.
@@ -2400,7 +2437,17 @@ class RecordTable(TableElement):
                 logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
                 if self.modifiers['open'] is True:
-                    self.load_record(index)
+                    record = self.load_record(index)
+
+                    # Update record table values
+                    if self.modifiers['edit']:
+                        try:
+                            record_values = record.table_values()
+                        except AttributeError:
+                            msg = 'unable to update row {IND} values - no record was returned'.format(IND=index)
+                            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        else:
+                            self._update_row_values(index, record_values)
 
         # Delete rows button clicked
         if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
@@ -2557,6 +2604,49 @@ class RecordTable(TableElement):
         return df
 
     def load_record(self, index, level: int = 1, references: dict = None):
+        """
+        Open selected record in new record window.
+        """
+        df = self.df.copy()
+        modifiers = self.modifiers
+
+        view_only = False if modifiers['edit'] is True else True
+
+        try:
+            row = df.loc[index]
+        except IndexError:
+            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
+            mod_win2.popup_error(msg)
+            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
+                             .format(NAME=self.name, IND=index + 1, MSG=msg))
+
+            return None
+
+        # Add any annotations to the exported row
+        annotations = self.annotate_display(df)
+        annot_code = annotations.get(index, None)
+        if annot_code is not None:
+            row['Warnings'] = self.annotation_rules[annot_code]['Description']
+
+        try:
+            record = self._translate_row(row, level=level, new_record=False, references=references)
+        except Exception as e:
+            msg = 'failed to open record at row {IND}'.format(IND=index + 1)
+            mod_win2.popup_error(msg)
+            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+            return None
+        else:
+            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
+                        .format(NAME=self.name, ID=record.record_id(), IND=index))
+
+        # Display the record window
+        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
+        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
+
+        return record
+
+    def load_record_old(self, index, level: int = 1, references: dict = None):
         """
         Open selected record in new record window.
         """
@@ -2819,7 +2909,17 @@ class ComponentTable(RecordTable):
                 logger.debug('DataTable {NAME}: loading record at real index {IND}'
                              .format(NAME=self.name, IND=index))
                 if self.modifiers['open'] is True:
-                    self.load_record(index)
+                    record = self.load_record(index)
+
+                    # Update record table values
+                    if self.modifiers['edit']:
+                        try:
+                            record_values = record.table_values()
+                        except AttributeError:
+                            msg = 'unable to update row {IND} values - no record was returned'.format(IND=index)
+                            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        else:
+                            self._update_row_values(index, record_values)
 
         # Add row button clicked
         if event == add_key or (event == '-HK_TBL_ADD-' and (not window[add_key].metadata['disabled'] and
