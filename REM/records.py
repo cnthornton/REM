@@ -10,6 +10,7 @@ import re
 
 import PySimpleGUI as sg
 import dateutil
+import numpy as np
 import pandas as pd
 
 import REM.constants as mod_const
@@ -249,7 +250,7 @@ class RecordEntry:
 
         # Import reference entries related to record_id
         df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
-                                   'ReferenceNotes', 'IsChild', 'IsHardLink', 'IsApproved'])
+                                   'ReferenceNotes', 'IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted'])
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
             sub_vals = ','.join(['?' for _ in sub_ids])
@@ -258,6 +259,10 @@ class RecordEntry:
             import_df = user.read_db(*user.prepare_query_statement(reference_table, columns=columns,
                                                                    filter_rules=filters), prog_db=True)
             df = df.append(import_df, ignore_index=True)
+
+        # Set column data types
+        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
+        df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool, errors='ignore')
 
         return df
 
@@ -1513,7 +1518,9 @@ class DatabaseRecord:
 
             if assoc_rule in references:  # use provided reference entries instead of importing from reference table
                 assoc_refs = references[assoc_rule]
-                ref_data = assoc_refs[assoc_refs['RecordID'] == record_id]
+                ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
+                print('reference data is:')
+                print(ref_data)
             else:
                 ref_data = record_entry.import_references(record_id, assoc_rule)
 
@@ -1546,7 +1553,9 @@ class DatabaseRecord:
             # Load the reference entries defined by the given association rule
             if assoc_rule in references:  # use provided reference entries instead of importing from reference table
                 assoc_refs = references[assoc_rule]
-                ref_data = assoc_refs[assoc_refs['RecordID'] == record_id]
+                ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
+                print('reference data is:')
+                print(ref_data)
             else:
                 ref_data = record_entry.import_references(record_id, assoc_rule)
 
