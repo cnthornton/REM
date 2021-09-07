@@ -5,8 +5,9 @@ REM bank reconciliation configuration classes and objects.
 import datetime
 from random import randint
 
-import PySimpleGUI as sg
+import numpy as np
 import pandas as pd
+import PySimpleGUI as sg
 
 import REM.constants as mod_const
 import REM.elements as mod_elem
@@ -132,6 +133,8 @@ class BankRule:
         """
         Run a bank reconciliation event.
         """
+        pd.set_option('display.max_columns', None)
+
         # Get elements of current account
         current_acct = self.current_account
         current_rule = self.name
@@ -155,7 +158,15 @@ class BankRule:
             ref_event = acct.run_event(window, event, values)
             if ref_event:
                 ref_df = acct.ref_df
+                print(ref_df)
                 deleted_records = ref_df.loc[ref_df['IsDeleted'], ['RecordID']].squeeze()
+                if isinstance(deleted_records, str):
+                    deleted_records = [deleted_records]
+
+                approved_records = ref_df.loc[ref_df['IsApproved'], ['RecordID']].squeeze()
+                if isinstance(approved_records, str):
+                    approved_records = [approved_records]
+
                 print('records deleted from the {} reference dataframe are:'.format(acct.name))
                 print(deleted_records)
 
@@ -167,6 +178,9 @@ class BankRule:
                     ref_acct = self.fetch_account(panel, by_key=True)
                     assoc_ref_df = ref_acct.ref_df
                     assoc_ref_df.loc[assoc_ref_df['ReferenceID'].isin(deleted_records), ['IsDeleted']] = True
+                    assoc_ref_df.loc[~assoc_ref_df['ReferenceID'].isin(deleted_records), ['IsDeleted']] = False
+                    assoc_ref_df.loc[assoc_ref_df['ReferenceID'].isin(approved_records), ['IsApproved']] = True
+                    assoc_ref_df.loc[~assoc_ref_df['ReferenceID'].isin(approved_records), ['IsApproved']] = False
 
                 self.update_display(window)
 
@@ -333,15 +347,12 @@ class BankRule:
                 logger.exception('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
-#                pd.set_option('display.max_columns', None)
                 for acct_panel in self.panels:
                     acct = self.fetch_account(acct_panel, by_key=True)
 
-                    acct.table.df = acct.merge_references()
-                    acct.table.df = acct.table.set_conditional_values()
-
                     self.update_display(window)
- #                   print(acct.table.df)
+                    print('{} reference dataframe after reconciliation'.format(acct.name))
+                    print(acct.ref_df)
 
         return current_rule
 
@@ -590,7 +601,7 @@ class BankRule:
         """
         pd.set_option('display.max_columns', None)
 
-        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLinked',
+        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
                     'IsChild', 'IsDeleted']
 
         # Fetch primary account and prepare data
@@ -603,7 +614,9 @@ class BankRule:
         id_column = table.id_column
 
         # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
-        df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), acct.ref_df, how='left', on='RecordID')
+        ref_df = acct.ref_df.copy()
+        ref_df = ref_df[~ref_df['IsDeleted']]
+        df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), ref_df, how='left', on='RecordID')
         header = df.columns.tolist()
         print('merged main account dataframe:')
         print(df)
@@ -634,8 +647,10 @@ class BankRule:
                 continue
 
             # Merge the associated records and references tables
-            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct.ref_map.values())),
-                                assoc_acct.ref_df, how='left', on='RecordID')
+            assoc_ref_df = assoc_acct.ref_df.copy()
+            assoc_ref_df = assoc_ref_df[~assoc_ref_df['IsDeleted']]
+            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct.ref_map.values())), assoc_ref_df, how='left',
+                                on='RecordID')
             assoc_header = assoc_df.columns.tolist()
 
             # Filter association account records that are already associated with a record
@@ -767,12 +782,13 @@ class BankRule:
                     warning = '\n'.join(warning)
 
                     # Insert the reference into the account records reference dataframe
-                    ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, 0, 0, 0, 0]
+                    ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, False, False, False, False]
                     acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
 
                     # Insert the reference into the associated account's reference dataframe
                     assoc_acct = self.fetch_account(assoc_acct_name)
-                    ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, 0, 0, 0, 0]
+                    ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, False, False, False,
+                                  False]
                     assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
 
                 elif nmatch > 1:  # too many matches
@@ -798,12 +814,12 @@ class BankRule:
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Insert the reference into the account records reference dataframe
-                ref_values = [ref_id, datetime.datetime.now(), ref_type, None, 1, 0, 0, 0]
+                ref_values = [ref_id, datetime.datetime.now(), ref_type, None, True, False, False, False]
                 acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
 
                 # Insert the reference into the associated account's reference dataframe
                 assoc_acct = self.fetch_account(assoc_acct_name)
-                ref_values = [record_id, datetime.datetime.now(), acct.record_type, None, 1, 0, 0, 0]
+                ref_values = [record_id, datetime.datetime.now(), acct.record_type, None, True, False, False, False]
                 assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
 
             elif nmatch > 1:  # too many matches
@@ -822,12 +838,12 @@ class BankRule:
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Insert the reference into the account records reference dataframe
-                ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, 0, 0, 0, 0]
+                ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, False, False, False, False]
                 acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
 
                 # Insert the reference into the associated account's reference dataframe
                 assoc_acct = self.fetch_account(assoc_acct_name)
-                ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, 0, 0, 0, 0]
+                ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, False, False, False, False]
                 assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
 
         logger.info('AuditRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
@@ -996,7 +1012,7 @@ class AccountEntry:
         except KeyError:
             self.ref_map = {}
         else:
-            ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLinked',
+            ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
                         'IsChild', 'IsDeleted']
             self.ref_map = {}
             for column in ref_map:
@@ -1082,6 +1098,8 @@ class AccountEntry:
         """
         Run a bank account entry event.
         """
+        pd.set_option('display.max_columns', None)
+
         table_keys = self.table.elements
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
@@ -1096,7 +1114,9 @@ class AccountEntry:
 
             # Record was selected for opening
             if event == tbl_key:
+                association_rule = self.association_rule
                 reference_event = True
+                ref_df = self.ref_df
 
                 # Close options panel, if open
                 if window[frame_key].metadata['visible'] is True:
@@ -1120,7 +1140,29 @@ class AccountEntry:
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
                     if table.modifiers['open'] is True:
-                        self.load_record(index)
+                        record = table.load_record(index, level=0, references={association_rule: ref_df})
+                        if record is None:
+                            msg = 'unable to update references for record at index {IND} - no record was returned'\
+                                .format(IND=index)
+                            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                            return False
+
+                        # Update reference values
+                        if table.modifiers['edit']:  # only update references if table is editable
+                            record_id = record.record_id()
+                            for refbox in record.references:
+                                if refbox.association_rule != association_rule:
+                                    continue
+
+                                ref_values = refbox.export_reference().drop(labels=['RecordID', 'RecordType'])
+                                print('updating record {} reference with values:'.format(record_id))
+                                print(ref_values)
+                                try:
+                                    ref_df.loc[ref_df['RecordID'] == record_id, ref_values.index.tolist()] = ref_values.tolist()
+                                except KeyError as e:
+                                    msg = 'failed to update reference {REF} for record {ID}'.format(REF=refbox.name, ID=record_id)
+                                    logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             elif event == delete_key or (event == '-HK_TBL_DEL-' and can_delete):
                 reference_event = True
@@ -1182,85 +1224,39 @@ class AccountEntry:
         """
         Merge the records table and the reference table on reference map columns.
         """
+        pd.set_option('display.max_columns', None)
+
         ref_map = self.ref_map
         ref_df = self.ref_df.copy()
 
         if df is None:
             df = self.table.data()
 
+        # Remove references that were deleted
+        print('reference df to merge with the records df:')
+        ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved']
+        ref_df.loc[ref_df['IsDeleted'], ref_columns] = [np.nan, np.nan, np.nan, np.nan, False]
+        print(ref_df)
+        print(ref_df.dtypes)
+
         # Set index to record ID for updating
         df.set_index('RecordID', inplace=True)
         ref_df.set_index('RecordID', inplace=True)
 
         # Rename reference columns to record columns using the reference map
-        ref_df = ref_df[list(ref_df)].rename(columns=ref_map)
+        ref_df = ref_df[list(ref_map)].rename(columns=ref_map)
+        print('reference df after column subsetting:')
+        print(ref_df)
 
         # Update record reference columns
-        df.update(ref_df)
+#        df.update(ref_df)
+#        df.reset_index(inplace=True)
+        df = df.drop(columns=ref_df.columns).join(ref_df)
         df.reset_index(inplace=True)
+        print('dataframe after updating on record id:')
+        print(df)
 
         return df
-
-    def load_record(self, index, level: int = 0):
-        """
-        Open selected record in new record window.
-        """
-        ref_df = self.ref_df
-        association_rule = self.association_rule
-
-        table = self.table
-        df = table.df.copy()
-        modifiers = table.modifiers
-
-        view_only = False if modifiers['edit'] is True else True
-
-        try:
-            row = df.loc[index]
-        except IndexError:
-            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
-            mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
-                             .format(NAME=table.name, IND=index + 1, MSG=msg))
-
-            return ref_df
-
-        # Add any annotations to the exported row
-        annotations = table.annotate_display(df)
-        annot_code = annotations.get(index, None)
-        if annot_code is not None:
-            row['Warnings'] = table.annotation_rules[annot_code]['Description']
-
-        try:
-            record = table._translate_row(row, level=level, new_record=False, references={association_rule: ref_df})
-        except Exception as e:
-            msg = 'failed to open record at row {IND}'.format(IND=index + 1)
-            mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=table.name, MSG=msg, ERR=e))
-
-            return ref_df
-        else:
-            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
-                        .format(NAME=self.name, ID=record.record_id(), IND=index))
-
-        # Display the record window
-        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=table.name, VAL=view_only))
-        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
-        record_id = record.record_id()
-
-        # Update reference values
-        for refbox in record.references:
-            if refbox.association_rule != association_rule:
-                continue
-
-            if not view_only:  # only update table if view_only is set to false
-                ref_values = refbox.export_reference()
-                try:
-                    ref_df.loc[ref_df['RecordID'] == record_id, ref_values.index.tolist()] = ref_values.tolist()
-                except KeyError as e:
-                    msg = 'failed to update reference {REF} for record {ID}'.format(REF=refbox.name, ID=record_id)
-                    logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-
-        return ref_df
 
     def delete_rows(self, indices):
         """
@@ -1283,6 +1279,10 @@ class AccountEntry:
         """
         Update the panel's record table display.
         """
+        # Merge records and references dataframes
+        self.table.df = self.merge_references()
+        self.table.df = self.table.set_conditional_values()
+
         # Update the display table
         self.table.update_display(window)
 
@@ -1305,6 +1305,9 @@ class AccountEntry:
 
             return False
 
+        # Update the record table dataframe with the data imported from the database
+        self.table.df = self.table.append(df)
+
         # Load the record references from the reference table connected with the association rule
         rule_name = self.association_rule
         record_ids = df[self.table.id_column].tolist()
@@ -1323,16 +1326,21 @@ class AccountEntry:
         print('imported references:')
         print(import_df)
 
-        self.ref_df = pd.merge(df.loc[:, ['RecordID']], import_df, how='left', on='RecordID')
-        self.ref_df['RecordType'].fillna(record_type, inplace=True)
+        ref_df = pd.merge(df.loc[:, ['RecordID']], import_df, how='left', on='RecordID')
+        ref_df['RecordType'].fillna(record_type, inplace=True)
+        print('reference df before changing types:')
+        print(ref_df)
+
+        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
+        ref_df[bool_columns] = ref_df[bool_columns].fillna(False)
+        print('reference df after filling boolean na values:')
+        ref_df = ref_df.astype({i: np.bool for i in bool_columns})
+        print(ref_df)
+
+        self.ref_df = ref_df
 
         print('reference dataframe after merging')
         print(self.ref_df)
-
-        # Merge the imported records with the reference entries
-        df = self.merge_references(df)
-
-        # Update the record table dataframe with the data imported from the database
-        self.table.df = self.table.append(df)
+        print(self.ref_df.dtypes)
 
         return True
