@@ -324,11 +324,23 @@ class TableElement:
             for summary_name in summary_rules:
                 summary_rule = summary_rules[summary_name]
                 if 'Column' not in summary_rule:
+                    msg = 'missing required field "Column" for summary rule {RULE}'.format(RULE=summary_name)
+                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
                     continue
+                else:
+                    summary_column = summary_rule['Column']
+                    if summary_column not in self.columns:
+                        msg = 'summary rule {RULE} column "{COL}" is not in the list of table columns'\
+                            .format(RULE=summary_name, COL=summary_column)
+                        logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        continue
 
                 self.summary_rules[summary_name] = {'Column': summary_rule['Column'],
                                                     'Description': summary_rule.get('Description', summary_name),
-                                                    'Condition': summary_rule.get('Condition', None)}
+                                                    'Condition': summary_rule.get('Condition', None),
+                                                    'Statistic': summary_rule.get('Statistic', None)}
 
                 self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
 
@@ -895,13 +907,22 @@ class TableElement:
 
         # Update the table summary
         summary = self.summarize_table(df)
-        for summary_item in summary:
-            summ_rule, summ_value = summary_item
+        for summary_rule in summary:
+            summ_value = summary[summary_rule]
             if isinstance(summ_value, float):
                 summ_value = '{:,.2f}'.format(summ_value)
 
-            summ_key = self.key_lookup(summ_rule)
-            window[summ_key].update(value=summ_value)
+            summary_key = self.key_lookup(summary_rule)
+            window[summary_key].update(value=summ_value)
+
+#        summary = self.summarize_table(df)
+#        for summary_item in summary:
+#            summ_rule, summ_value = summary_item
+#            if isinstance(summ_value, float):
+#                summ_value = '{:,.2f}'.format(summ_value)
+#
+#            summ_key = self.key_lookup(summ_rule)
+#            window[summ_key].update(value=summ_value)
 
         return display_df
 
@@ -1114,6 +1135,42 @@ class TableElement:
         return col_summary
 
     def summarize_table(self, df: pd.DataFrame = None):
+        """
+        Update Summary element with data summary
+        """
+        df = df if df is not None else self.data()
+
+        logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
+
+        # Calculate totals defined by summary rules
+        summary = {}
+        rules = self.summary_rules
+        for rule_name in rules:
+            rule = rules[rule_name]
+
+            logger.debug('DataTable {NAME}: summarizing display table on configured summary rule "{RULE}"'
+                         .format(NAME=self.name, RULE=rule_name))
+
+            column = rule['Column']
+
+            # Subset df if subset rule provided
+            condition = rule['Condition']
+            if condition is not None:
+                try:
+                    subset_df = self.subset(rule['Condition'], df=df)
+                except Exception as e:
+                    logger.warning('DataTable {NAME}: unable to subset dataframe with subset rule {SUB} - {ERR}'
+                                   .format(NAME=self.name, SUB=rule['Subset'], ERR=e))
+                    break
+            else:
+                subset_df = df
+
+            summary_total = self.summarize_column(column, df=subset_df)
+            summary[rule_name] = summary_total
+
+        return summary
+
+    def summarize_table_old(self, df: pd.DataFrame = None):
         """
         Update Summary element with data summary
         """
@@ -1773,14 +1830,14 @@ class TableElement:
 
         return df
 
-    def subset(self, subset_rule):
+    def subset(self, subset_rule, df: pd.DataFrame = None):
         """
         Subset the table based on a set of rules.
         """
         operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'IN', 'In', 'in'}
         chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
 
-        df = self.data()
+        df = self.data() if df is None else df
         if df.empty:
             return df
 
@@ -1889,9 +1946,15 @@ class TableElement:
 
     def get_value(self):
         """
-        Return element value.
+        Return table totals as the element value.
         """
         return self.calculate_total()
+
+    def export_values(self):
+        """
+        Export summary values as a dictionary.
+        """
+        pass
 
     def has_value(self):
         """
@@ -2645,74 +2708,6 @@ class RecordTable(TableElement):
         record = mod_win2.record_window(record, view_only=view_only, is_component=True)
 
         return record
-
-    def load_record_old(self, index, level: int = 1, references: dict = None):
-        """
-        Open selected record in new record window.
-        """
-        df = self.df.copy()
-        modifiers = self.modifiers
-        header = df.columns.values.tolist()
-
-        view_only = False if modifiers['edit'] is True else True
-
-        try:
-            row = df.loc[index]
-        except IndexError:
-            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
-            mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
-                             .format(NAME=self.name, IND=index + 1, MSG=msg))
-
-            return df
-
-        # Add any annotations to the exported row
-        annotations = self.annotate_display(df)
-        annot_code = annotations.get(index, None)
-        if annot_code is not None:
-            row['Warnings'] = self.annotation_rules[annot_code]['Description']
-
-        try:
-            record = self._translate_row(row, level=level, new_record=False, references=references)
-        except Exception as e:
-            msg = 'failed to open record at row {IND}'.format(IND=index + 1)
-            mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-
-            return df
-        else:
-            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
-                        .format(NAME=self.name, ID=record.record_id(), IND=index))
-
-        # Display the record window
-        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
-        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
-
-        # Update record table values
-        try:
-            record_values = record.table_values()
-        except AttributeError:  # user selected to cancel editing the record
-            return df
-        else:
-            if not view_only:  # only update table if view_only is set to false
-                row_values = self.set_conditional_values(record_values).squeeze()
-                for col_name, col_value in row_values.iteritems():
-                    if col_name not in header:
-                        continue
-
-                    try:
-                        df.at[index, col_name] = col_value
-                    except KeyError:
-                        continue
-                    except ValueError as e:
-                        logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
-                                     '{ERR}'.format(NAME=self.name, VAL=col_value, COL=col_name, IND=index, ERR=e))
-
-                df = self.set_datatypes(df)
-
-        self.df = df
-
-        return df
 
     def delete_rows(self, indices):
         """
@@ -3936,6 +3931,12 @@ class DataElement:
         Return element value.
         """
         return self.value
+
+    def export_values(self):
+        """
+        Export the data element value as a dictionary.
+        """
+        return {self.name: self.value}
 
     def reset(self, window):
         """

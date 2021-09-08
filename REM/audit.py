@@ -2035,12 +2035,20 @@ class AuditRecordTab:
                      .format(NAME=self.name))
 
         # Store transaction table summaries for mapping
+#        summary_map = {}
+#        for tab in rule_tabs:
+#            tab_name = tab.name
+#            summary = tab.table.summarize_table()
+#            for rule_name, rule_value in summary:
+#                summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=rule_name)] = rule_value
+
         summary_map = {}
         for tab in rule_tabs:
             tab_name = tab.name
             summary = tab.table.summarize_table()
-            for rule_name, rule_value in summary:
-                summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=rule_name)] = rule_value
+            for summary_rule in summary:
+                summary_value = summary[summary_rule]
+                summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=summary_rule)] = summary_value
 
         # Map audit totals columns to transaction table summaries
         db_columns = totals.df.columns.tolist()
