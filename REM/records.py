@@ -1537,8 +1537,8 @@ class DatabaseRecord:
 
             logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
                          .format(NAME=self.name, REF=refbox.name))
-            result = refbox.import_reference(ref_data)
-            if result:
+            refbox.referenced = refbox.import_reference(ref_data)
+            if refbox.referenced:
                 logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
                             .format(NAME=self.name, REF=refbox.name))
             else:

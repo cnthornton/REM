@@ -1934,7 +1934,7 @@ class TableElement:
         """
         Export summary values as a dictionary.
         """
-        pass
+        return self.summarize_table()
 
     def has_value(self):
         """
@@ -3295,6 +3295,11 @@ class ReferenceBox:
         except KeyError:
             self.aliases = {}
 
+        try:
+            self.colmap = entry['ColumnMap']
+        except KeyError:
+            self.colmap = {}
+
         # Dynamic values
         self.record_id = None
         self.reference_id = None
@@ -3659,8 +3664,6 @@ class ReferenceBox:
             logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             self.approved = False
 
-        self.referenced = True
-
         return True
 
     def export_reference(self, record_id=None):
@@ -3723,6 +3726,16 @@ class ReferenceBox:
         Return element value.
         """
         return self.referenced
+
+    def export_values(self):
+        """
+        Export reference attributes as a dictionary.
+        """
+        colmap = self.colmap
+        reference = self.export_reference()
+        values = reference[[i for i in colmap if i in reference.index]].rename(colmap)
+
+        return values.to_dict()
 
 
 class DataElement:
