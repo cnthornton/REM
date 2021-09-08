@@ -856,32 +856,37 @@ class BankRule:
         Save any changes to the records made during the reconciliation process.
         """
         statements = {}
-        acct = self.fetch_account(self.current_panel, by_key=True)
-        record_type = acct.record_type
-        record_entry = settings.records.fetch_rule(record_type)
 
-        # Prepare to save the references
-        logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
-                     .format(NAME=self.name, ACCT=acct.name))
-        try:
-            statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
-                                                               statements=statements)
-        except Exception as e:
-            msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
-                .format(ACCT=acct.name, ERR=e)
-            logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+        # Prepare to save the account references
+        for panel in self.panels:
+            acct = self.fetch_account(panel, by_key=True)
 
-            return False
+            record_type = acct.record_type
+            record_entry = settings.records.fetch_rule(record_type)
+            logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
+                         .format(NAME=self.name, ACCT=acct.name))
+            try:
+                statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
+                                                                   statements=statements)
+            except Exception as e:
+                msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                    .format(ACCT=acct.name, ERR=e)
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-        logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
-                    .format(NAME=self.name, ACCT=self.current_account))
+                return False
+
+            logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
+                        .format(NAME=self.name, ACCT=self.current_account))
+
         sstrings = []
         psets = []
         for i, j in statements.items():
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+#        success = user.write_db(sstrings, psets)
+        print(statements)
+        success =True
 
         return success
 
