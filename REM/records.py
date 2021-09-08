@@ -440,12 +440,16 @@ class RecordEntry:
 
         if is_primary:  # input record is the primary record ID
             primary_col = 'RecordID'
-            column_map = {'ReferenceID': 'RefNo', 'RecordID': 'DocNo', 'ReferenceDate': 'RefDate',
-                          'ReferenceType': 'RefType', 'RecordType': 'DocType', 'ReferenceNotes': 'Notes'}
+            column_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
+                          'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
+                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
+                          'IsDeleted': 'IsDeleted'}
         else:  # reference record is the primary record ID
             primary_col = 'ReferenceID'
             column_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
-                          'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes'}
+                          'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
+                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
+                          'IsDeleted': 'IsDeleted'}
 
         # Remove rows where the primary column is NULL
         df.drop(df[df[primary_col].isna()].index, inplace=True)
@@ -454,12 +458,10 @@ class RecordEntry:
         exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
 
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
-        export_df = df.rename(columns=column_map)
-
-        # Extract all currently existing references from the table
-        current_df = export_df[exists]
+        export_df = df[[i for i in column_map if i in df.columns]].rename(columns=column_map)
 
         # Prepare update statements for the existing reference entries
+        current_df = export_df[exists]
         if not current_df.empty:
             # Add reference edit details to the reference entries
             current_df.loc[:, settings.editor_code] = user.uid
