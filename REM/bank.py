@@ -12,7 +12,7 @@ import PySimpleGUI as sg
 import REM.constants as mod_const
 import REM.elements as mod_elem
 import REM.secondary as mod_win2
-from REM.client import logger, settings, user
+from REM.client import logger, settings
 
 
 class BankRule:
@@ -324,7 +324,6 @@ class BankRule:
                 window[save_key].update(disabled=False)
                 if len(self.panels) > 1:
                     window[reconcile_key].update(disabled=False)
-                    window[expand_key].update(disabled=False)
 
                     # Enable the navigation buttons
                     window[next_key].update(disabled=False)
@@ -353,6 +352,9 @@ class BankRule:
                     self.update_display(window)
                     print('{} reference dataframe after reconciliation'.format(acct.name))
                     print(acct.ref_df)
+
+                # Enable expanded search after an initial reconciliation is performed
+                window[expand_key].update(disabled=False)
 
         return current_rule
 
