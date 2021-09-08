@@ -847,6 +847,30 @@ class SettingsManager:
 
         return trans
 
+    def format_display(self, value, dtype):
+        """
+        Format value for display.
+        """
+        if value == '' or pd.isna(value):
+            return ''
+
+        if dtype == 'money':
+            display_value = settings.format_display_money(value)
+
+        elif dtype in self.supported_int_dtypes or dtype in self.supported_float_dtypes:
+            display_value = str(value)
+
+        elif dtype in self.supported_date_dtypes:
+            if isinstance(value, datetime.datetime):
+                display_value = self.format_display_date(value)  # default format is ISO
+            else:
+                display_value = value
+
+        else:
+            display_value = str(value).rstrip('\n\r')
+
+        return str(display_value)
+
     def format_display_money(self, value):
         """
         Format a money data type value for displaying.
@@ -871,9 +895,10 @@ class SettingsManager:
                                                         enumerate(integers[::-1])][::-1]).lstrip(','),
                         SEP=dec_sep, DEC=decimals)
         else:
-            display_value = '{SIGN}{VAL}' \
+            display_value = '{SIGN}{VAL}{SEP}00' \
                 .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
-                                                        enumerate(value[::-1])][::-1]).lstrip(','))
+                                                        enumerate(value[::-1])][::-1]).lstrip(','),
+                        SEP=dec_sep)
 
         return display_value
 
