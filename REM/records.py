@@ -1791,7 +1791,45 @@ class DatabaseRecord:
 
         return True
 
-    def table_values(self):
+    def export_values(self, header: bool = True, references: bool = True):
+        """
+        Format parameter values as a table row.
+        """
+        parameters = self.parameters
+
+        values = {}
+
+        if header:
+            headers = self.headers
+            modifiers = self.metadata
+
+            # Add header values
+            for header_elem in headers:
+                values[header_elem.name] = header_elem.value
+
+            # Add modifier values
+            for modifier_elem in modifiers:
+                values[modifier_elem.name] = modifier_elem.value
+
+        if references:
+            components = self.components
+            refboxes = self.references
+
+            # Add record component values
+            for component_table in components:
+                values = {**values, **component_table.export_values()}
+
+            # Add reference values
+            for refbox in refboxes:
+                values = {**values, **refbox.export_values()}
+
+        # Add parameter values
+        for param in parameters:
+            values = {**values, **param.export_values()}
+
+        return pd.Series(values)
+
+    def table_values_old(self):
         """
         Format parameter values as a table row.
         """
@@ -1949,7 +1987,7 @@ class DatabaseRecord:
         # Prepare to save the record
         logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
-            record_data = self.table_values()
+            record_data = self.export_values()
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
@@ -2556,7 +2594,7 @@ class StandardRecord(DatabaseRecord):
                              .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Add'):  # add account records
-                    default_values = {i.name: i.get_value() for i in self.parameters}
+                    default_values = self.export_values(header=False, references=False).to_dict()
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
                 else:
                     component_table.run_event(window, event, values)
@@ -2682,7 +2720,7 @@ class DepositRecord(DatabaseRecord):
                              .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Add'):  # add account records
-                    default_values = {i.name: i.get_value() for i in self.parameters}
+                    default_values = self.export_values(header=False, references=False).to_dict()
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
                 else:
                     component_table.run_event(window, event, values)
@@ -2849,7 +2887,7 @@ class AuditRecord(DatabaseRecord):
                              .format(ID=self.record_id(), KEY=event))
             else:
                 if event == component_table.key_lookup('Add'):  # add account records
-                    default_values = {i.name: i.get_value() for i in self.parameters}
+                    default_values = self.export_values(header=False, references=False).to_dict()
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
                 else:
                     component_table.run_event(window, event, values)

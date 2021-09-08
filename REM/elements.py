@@ -101,13 +101,14 @@ class TableElement:
         try:
             modifiers = entry['Modifiers']
         except KeyError:
-            self.modifiers = {'edit': False, 'export': False, 'search': False, 'filter': False, 'fill': False,
-                              'options': False, 'sort': False, 'require': False}
+            self.modifiers = {'edit': False, 'export': False, 'search': False, 'summary': False, 'filter': False,
+                              'fill': False, 'options': False, 'sort': False, 'require': False}
         else:
             self.modifiers = {'edit': modifiers.get('edit', 0), 'export': modifiers.get('export', 0),
-                              'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
-                              'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
-                              'sort': modifiers.get('sort', 0), 'require': modifiers.get('require', 0)}
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'fill': modifiers.get('fill', 0),
+                              'options': modifiers.get('options', 0), 'sort': modifiers.get('sort', 0),
+                              'require': modifiers.get('require', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))
@@ -787,6 +788,8 @@ class TableElement:
         def_bg_col = mod_const.ACTION_COL
         text_col = mod_const.TEXT_COL
 
+        dtypes = self.columns
+
         if not annotations:
             annotations = {}
 
@@ -886,14 +889,16 @@ class TableElement:
         window[total_key].update(value=tbl_total)
 
         # Update the table summary
-        summary = self.summarize_table(df)
-        for summary_rule in summary:
-            summ_value = summary[summary_rule]
-            if isinstance(summ_value, float):
-                summ_value = '{:,.2f}'.format(summ_value)
+        table_summary = self.summarize_table(df)
+        for summary_name in table_summary:
+            summary_rule = self.summary_rules[summary_name]
+            summary_column = summary_rule['Column']
 
-            summary_key = self.key_lookup(summary_rule)
-            window[summary_key].update(value=summ_value)
+            summary_dtype = dtypes[summary_column]
+            summary_value = settings.format_display(table_summary[summary_name], summary_dtype)
+
+            summary_key = self.key_lookup(summary_name)
+            window[summary_key].update(value=summary_value)
 
 #        summary = self.summarize_table(df)
 #        for summary_item in summary:
@@ -1119,6 +1124,7 @@ class TableElement:
         Update Summary element with data summary
         """
         df = df if df is not None else self.data()
+        dtypes = self.columns
 
         logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
 
@@ -1252,7 +1258,10 @@ class TableElement:
         """
         Create table elements that have consistency in layout.
         """
+        dtypes = self.columns
         table_name = self.description
+        modifiers = self.modifiers
+
         df = self.df
         display_df = self.format_display_table(df)
 
@@ -1380,7 +1389,7 @@ class TableElement:
                     element_justification='c', background_color=filter_bg_col, expand_x=True)]],
                              border_width=1, background_color=filter_bg_col)]]
 
-        if len(filter_params) > 0 and self.modifiers['filter'] is True:
+        if len(filter_params) > 0 and modifiers['filter'] is True:
             visible_filter = True
         else:
             visible_filter = False
@@ -1391,7 +1400,7 @@ class TableElement:
                              background_color=filter_head_col),
                      sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FilterButton'),
                                button_color=(text_col, filter_head_col), border_width=0,
-                               tooltip='Hide / reveal table filter parameters')]],
+                               tooltip='Collapse filter panel')]],
                    pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
                    visible=visible_filter)]
         row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('FilterFrame'), background_color=filter_bg_col,
@@ -1399,7 +1408,7 @@ class TableElement:
 
         # Table title
         row3 = []
-        if self.modifiers['search'] is True and self.search_field is not None:
+        if modifiers['search'] and self.search_field is not None:
             row3.append(sg.Col([
                 [sg.Frame('', [[sg.Image(data=mod_const.SEARCH_ICON, background_color=bg_col, pad=((0, pad_h), 0)),
                                 sg.Input(default_text='', key=search_key, size=(isize - 2, 1),
@@ -1420,7 +1429,7 @@ class TableElement:
             row3.append(sg.Col([[sg.Canvas(size=(0, 0), background_color=header_col)]],
                                justification='c', background_color=header_col, expand_x=True))
 
-        if self.modifiers['options'] is True:
+        if modifiers['options'] and any([modifiers['fill'], modifiers['sort'], modifiers['export']]):
             row3.append(sg.Col([
                 [sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                 [sg.Button('', key=options_key, image_data=mod_const.OPTIONS_ICON, border_width=0,
@@ -1462,18 +1471,18 @@ class TableElement:
                              element_justification='r', vertical_alignment='c')]],
                     pad=(0, (0, pad_v)), background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
 
-        if self.modifiers['fill'] is True:
+        if modifiers['fill']:
             fill_menu = ['&Fill', list(self.display_columns.values())]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
                                           image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                           button_color=(text_col, bg_col), tooltip='Fill NA values')])
 
-        if self.modifiers['export'] is True:
+        if modifiers['export']:
             options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON,
                                       image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                       button_color=(text_col, bg_col), tooltip='Export to spreadsheet')])
 
-        if self.modifiers['sort'] is True:
+        if modifiers['sort']:
             sort_menu = ['&Sort', list(self.display_columns.values())]
             options.append(
                 [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON,
@@ -1506,16 +1515,25 @@ class TableElement:
 
         # Table summary rows
         summary_rules = self.summary_rules
-        summ_width = self.key_lookup('SummaryWidth')
-        if summary_rules:
+        if len(summary_rules) > 0:  # display summary is set and table contains summary rules
+            summ_width = self.key_lookup('SummaryWidth')
+            summary_visible = modifiers['summary']
+
             summary_c1 = []
             summary_c2 = []
-            for summary_rule_name in summary_rules:
-                summary_rule = summary_rules[summary_rule_name]
-                summary_title = summary_rule.get('Description', summary_rule_name)
+            table_summary = self.summarize_table()
+            for summary_name in table_summary:
+                summary_rule = summary_rules[summary_name]
+
+                summary_title = summary_rule['Description']
+                summary_column = summary_rule['Column']
+
+                summary_dtype = dtypes[summary_column]
+                summary_value = settings.format_display(table_summary[summary_name], summary_dtype)
+
                 summary_c1.append([sg.Text('{}:'.format(summary_title), pad=((0, pad_h), 0), font=font,
                                            text_color=text_col, background_color=filter_bg_col)])
-                summary_c2.append([sg.Text('0.00', key=self.key_lookup(summary_rule_name), size=(14, 1), font=font,
+                summary_c2.append([sg.Text(summary_value, key=self.key_lookup(summary_name), size=(14, 1), font=font,
                                            justification='r', text_color=text_col, background_color=filter_bg_col)])
             summary_elements = [[sg.Canvas(key=summ_width, size=(width, 0), background_color=filter_bg_col)],
                                 [sg.Col(summary_c1, background_color=filter_bg_col, vertical_alignment='t',
@@ -1527,11 +1545,12 @@ class TableElement:
                                      background_color=filter_head_col),
                              sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('SummaryButton'),
                                        button_color=(text_col, filter_head_col), border_width=0,
-                                       tooltip='Hide / reveal table summary')]],
-                           pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True)]
+                                       tooltip='Collapse summary panel')]],
+                           pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
+                           visible=summary_visible)]
             row7 = [sg.pin(sg.Col(summary_elements, key=self.key_lookup('SummaryFrame'), pad=(pad_h, pad_v),
-                                  background_color=filter_bg_col, visible=True, expand_x=True, expand_y=True,
-                                  metadata={'visible': True}))]
+                                  background_color=filter_bg_col, visible=summary_visible, expand_x=True, expand_y=True,
+                                  metadata={'visible': summary_visible}))]
         else:
             row6 = row7 = []
 
@@ -2311,14 +2330,16 @@ class RecordTable(TableElement):
         try:
             modifiers = entry['Modifiers']
         except KeyError:
-            self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
-                              'import': False, 'delete': False, 'fill': False, 'options': False, 'sort': False}
+            self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'summary': False,
+                              'filter': False, 'import': False, 'delete': False, 'fill': False, 'options': False,
+                              'sort': False}
         else:
             self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
                               'export': modifiers.get('export', 0), 'import': modifiers.get('import', 0),
-                              'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
-                              'delete': modifiers.get('delete', 0), 'fill': modifiers.get('fill', 0),
-                              'options': modifiers.get('options', 0), 'sort': modifiers.get('sort', 0)}
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'delete': modifiers.get('delete', 0),
+                              'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
+                              'sort': modifiers.get('sort', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))
@@ -2822,16 +2843,17 @@ class ComponentTable(RecordTable):
         try:
             modifiers = entry['Modifiers']
         except KeyError:
-            self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'filter': False,
-                              'import': False, 'add': False, 'delete': False, 'fill': False, 'options': False,
-                              'sort': False, 'unassociated': False}
+            self.modifiers = {'open': False, 'edit': False, 'export': False, 'search': False, 'summary': False,
+                              'filter': False, 'import': False, 'add': False, 'delete': False, 'fill': False,
+                              'options': False, 'sort': False, 'unassociated': False}
         else:
             self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
                               'export': modifiers.get('export', 0), 'import': modifiers.get('import', 0),
-                              'search': modifiers.get('search', 0), 'filter': modifiers.get('filter', 0),
-                              'add': modifiers.get('add', 0), 'delete': modifiers.get('delete', 0),
-                              'fill': modifiers.get('fill', 0), 'options': modifiers.get('options', 0),
-                              'sort': modifiers.get('sort', 0), 'unassociated': modifiers.get('unassociated', 0)}
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'add': modifiers.get('add', 0),
+                              'delete': modifiers.get('delete', 0), 'fill': modifiers.get('fill', 0),
+                              'options': modifiers.get('options', 0), 'sort': modifiers.get('sort', 0),
+                              'unassociated': modifiers.get('unassociated', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))
@@ -3072,7 +3094,7 @@ class ComponentTable(RecordTable):
         # Display the record window
         record = mod_win2.record_window(record)
         try:
-            record_values = record.table_values()
+            record_values = record.export_values()
         except AttributeError:  # record creation was cancelled
             return df
         else:
@@ -4934,20 +4956,20 @@ class ElementReference:
 
         return display_value
 
-    def update_display(self, window, elements):
+    def update_display(self, window, values: dict = None):
         """
         Format element for display.
+
+        Arguments:
+            window: GUI window.
+
+            values: exported record values.
         """
         bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
         tooltip = self.description
 
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
-
-        # Get values of the reference elements
-        values = {}
-        for element in elements:
-            values[element.name] = element.get_value()
 
         # Update element display value
         if values:
