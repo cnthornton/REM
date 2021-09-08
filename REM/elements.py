@@ -320,6 +320,8 @@ class TableElement:
         except KeyError:
             self.summary_rules = {}
         else:
+            statistics = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std']
+
             self.summary_rules = {}
             for summary_name in summary_rules:
                 summary_rule = summary_rules[summary_name]
@@ -337,41 +339,19 @@ class TableElement:
 
                         continue
 
+                if 'Statistic' in summary_rule:
+                    statistic = summary_rule['Statistic']
+                    if statistic not in statistics:
+                        msg = 'unknown statistic {STAT} provided to summary rule "{SUMM}"' \
+                            .format(STAT=statistic, SUMM=summary_name)
+                        logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        summary_rule['Statistic'] = None
+
                 self.summary_rules[summary_name] = {'Column': summary_rule['Column'],
                                                     'Description': summary_rule.get('Description', summary_name),
                                                     'Condition': summary_rule.get('Condition', None),
                                                     'Statistic': summary_rule.get('Statistic', None)}
-
-                self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
-
-        try:
-            summary = entry['ColumnSummary']
-        except KeyError:
-            self.summary = {}
-        else:
-            statistics = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std']
-            self.summary = {}
-            for summary_name in summary:
-                summary_entry = summary[summary_name]
-                if 'Column' not in summary_entry:
-                    msg = 'required parameter "Column" is missing from configured summary item "{SUMM}"'\
-                        .format(SUMM=summary_name)
-                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    continue
-
-                if 'Statistic' in summary_entry:
-                    statistic = summary_entry['Statistic']
-                    if statistic not in statistics:
-                        msg = 'unknown statistic {STAT} provided to summary item "{SUMM}"'\
-                            .format(STAT=statistic, SUMM=summary_name)
-                        logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                        summary_entry['Statistic'] = None
-
-                self.summary_rules[summary_name] = {'Column': summary_entry['Column'],
-                                                    'Description': summary_entry.get('Description', summary_name),
-                                                    'Statistic': summary_entry.get('Statistic', None)}
 
                 self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=summary_name))
 
