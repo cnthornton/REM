@@ -1788,7 +1788,7 @@ def database_importer_window(win_size: tuple = None):
     return True
 
 
-def record_import_window(table, win_size: tuple = None, enable_new: bool = False, record_layout: dict = None):
+def record_import_window(table, win_size: tuple = None, enable_new: bool = False):
     """
     Display the import from database window.
     """
@@ -1903,7 +1903,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     filter_key = table.key_lookup('Filter')
     table_elements = [i for i in table.elements if i not in (tbl_key, filter_key)]
 
-    display_df = table.update_display(window)
+    table.update_display(window)
 
     current_w, current_h = window.size
 
@@ -1952,7 +1952,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             record_data['RecordID'] = record_id
             record_data['RecordDate'] = record_date
 
-            record = record_class(record_entry, level=0, record_layout=record_layout)
+            record = record_class(record_entry, level=0)
             try:
                 record.initialize(record_data, new=True)
             except Exception as e:
@@ -1968,52 +1968,24 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
                     table.reset(window)
                     table.df = table.append(import_df)
-                    display_df = table.update_display(window)
+                    table.update_display(window)
 
             continue
 
         if event == tbl_key:  # click to open record
             # retrieve selected row
             try:
-                row = values[tbl_key][0]
+                row_index = values[tbl_key][0]
             except IndexError:
                 continue
             else:
-                record_id = display_df.at[row, record_col]
-                try:
-                    trans_df = table.df[table.df['RecordID'] == record_id]
-                except KeyError:
-                    msg = 'missing required column "RecordID"'
-                    popup_error(msg)
-                    logger.error('record importing failed - {ERR}'.format(ERR=msg))
-                    continue
-                else:
-                    if trans_df.empty:
-                        msg = 'Could not find record {ID} in data table'.format(ID=record_id)
-                        logger.error('record importing failed - {ERR}'.format(ERR=msg))
-                        popup_error(msg)
-                        continue
-                    else:
-                        record_data = trans_df.iloc[0]
+                record = table.load_record(row_index, level=0)
+                if record:
+                    import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-                    record = record_class(record_entry, level=0, record_layout=record_layout)
-                    try:
-                        record.initialize(record_data)
-                    except Exception as e:
-                        msg = 'failed to initialize record {ID}'.format(ID=record_id)
-                        logger.error('{MSG} - {ERR}'.format(MSG=msg, ERR=e))
-                        popup_error(msg)
-                        raise
-                    else:
-                        record = record_window(record)
-
-                        # Reload the display records
-                        if record:
-                            import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
-
-                            table.reset(window)
-                            table.df = table.append(import_df)
-                            display_df = table.update_display(window)
+                    table.reset(window)
+                    table.df = table.append(import_df)
+                    table.update_display(window)
 
                 continue
 
@@ -2028,11 +2000,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
             table.reset(window)
             table.df = table.append(import_df)
-            display_df = table.update_display(window)
+            table.update_display(window)
 
         # Run table events
         if event in table_elements or event in table_shortcuts:
-            display_df = table.run_event(window, event, values)
+            table.run_event(window, event, values)
 
             continue
 

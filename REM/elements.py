@@ -2728,7 +2728,7 @@ class RecordTable(TableElement):
 
         # Display the record window
         logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
-        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
+        record = mod_win2.record_window(record, view_only=view_only)
 
         return record
 
@@ -3065,6 +3065,49 @@ class ComponentTable(RecordTable):
 
         window[import_key].update(disabled=True)
         window[import_key].metadata['disabled'] = True
+
+    def load_record(self, index, level: int = 1, references: dict = None):
+        """
+        Open selected record in new record window.
+        """
+        df = self.df.copy()
+        modifiers = self.modifiers
+
+        view_only = False if modifiers['edit'] is True else True
+
+        try:
+            row = df.loc[index]
+        except IndexError:
+            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
+            mod_win2.popup_error(msg)
+            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
+                             .format(NAME=self.name, IND=index + 1, MSG=msg))
+
+            return None
+
+        # Add any annotations to the exported row
+        annotations = self.annotate_rows(df)
+        annot_code = annotations.get(index, None)
+        if annot_code is not None:
+            row['Warnings'] = self.annotation_rules[annot_code]['Description']
+
+        try:
+            record = self._translate_row(row, level=level, new_record=False, references=references)
+        except Exception as e:
+            msg = 'failed to open record at row {IND}'.format(IND=index + 1)
+            mod_win2.popup_error(msg)
+            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+            return None
+        else:
+            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
+                        .format(NAME=self.name, ID=record.record_id(), IND=index))
+
+        # Display the record window
+        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
+        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
+
+        return record
 
     def add_row(self, record_date: datetime.datetime = None, defaults: dict = None):
         """
