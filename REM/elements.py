@@ -8,7 +8,6 @@ import sys
 from random import randint
 
 import PySimpleGUI as sg
-import dateutil
 import numpy as np
 import pandas as pd
 
@@ -666,6 +665,9 @@ class TableElement:
             for param in self.parameters:
                 param.value = param.format_value(values)
 
+            # Update the display table to show the filtered table
+            self.update_display(window)
+
         # Click to open table options panel
         if event == options_key or event == '-HK_TBL_OPTS-':
             if window[frame_key].metadata['visible'] is False:
@@ -720,6 +722,9 @@ class TableElement:
                     # Add column to sortby list
                     self.sort_on.append(sort_col)
 
+            # Update the display table to show the sorted values
+            self.update_display(window)
+
         # NA value fill method selected from menu of fill methods
         if event == fill_key:
             display_map = self.display_columns
@@ -747,6 +752,9 @@ class TableElement:
                 # Fill in NA values
                 self.fill(fill_col, rows=indices)
 
+            # Update the display table to show the new table values
+            self.update_display(window)
+
         if event in param_elems:
             try:
                 param = self.fetch_parameter(event, by_key=True)
@@ -773,8 +781,6 @@ class TableElement:
 
         if event in action_events:
             self.run_action_event(window, event, values)
-
-        self.update_display(window, values)
 
         return None
 
@@ -807,7 +813,8 @@ class TableElement:
                 if self.modifiers['edit'] is True:
                     self.edit_row(index)
 
-            self.update_display(window, values)
+        # All action events require a table update
+        self.update_display(window, values)
 
         return None
 
@@ -2487,7 +2494,6 @@ class RecordTable(TableElement):
         Run a table action event.
         """
         tbl_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('OptionsFrame')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
@@ -2545,6 +2551,11 @@ class RecordTable(TableElement):
         if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                    window[import_key].metadata['visible'])):
             self.import_rows()
+
+        # All action events require a table update
+        self.update_display(window, values)
+
+        return None
 
     def action_layout(self, disabled: bool = True):
         """
@@ -2955,6 +2966,11 @@ class ComponentTable(RecordTable):
         if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                    window[import_key].metadata['visible'])):
             self.import_rows()
+
+        # All action events require a table update
+        self.update_display(window, values)
+
+        return None
 
     def action_layout(self, disabled: bool = True):
         """

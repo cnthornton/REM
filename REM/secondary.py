@@ -2140,7 +2140,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     table_statement = mod_db.format_tables(import_rules)
     import_columns = mod_db.format_import_columns(import_rules)
 
-    display_table = table.update_display(window)
+    table.update_display(window)
 
     select_index = []
     while True:
@@ -2184,7 +2184,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
                 continue
 
             table.df = table.append(record_df)
-            display_table = table.update_display(window)
+            table.update_display(window)
 
             continue
 
@@ -2194,10 +2194,12 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
             # Get real index of selected rows
             select_index = [table.index_map[i] for i in selected_rows]
+
             break
 
         if event in table.elements or event in table_shortcuts:
-            display_table = table.run_event(window, event, values)
+            table.run_event(window, event, values)
+
             continue
 
     window.close()

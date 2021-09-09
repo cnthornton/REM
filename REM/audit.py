@@ -1075,37 +1075,6 @@ class AuditTransactionTab:
             table = self.table
 
             table.run_event(window, event, values)
-#
-#            tbl_key = self.table.key_lookup('Element')
-#            import_key = self.table.key_lookup('Import')
-#            if event == tbl_key:  # user clicked to open a table record
-#                if self.record_layout is not None:
-#                    # Find index of row
-#                    try:
-#                        select_row_index = values[event][0]
-#                    except IndexError:  # user double-clicked too quickly
-#                        logger.warning('AuditTransactionTab {NAME}: no row selected for exporting'
-#                                       .format(NAME=self.name))
-#                    else:
-#                        # Get the real index of the column
-#                        try:
-#                            row_index = table.index_map[select_row_index]
-#                        except KeyError:
-#                            row_index = select_row_index
-#
-#                        table.export_row(row_index, layout=self.record_layout, custom=True)
-#                else:
-#                    logger.warning('AuditTransactionTab {NAME}: no layout specified for the transaction type'
-#                                   .format(NAME=self.name))
-#
-#            elif event == import_key or (event == '-TBL_IMP-' and (not window[import_key].metadata['disabled'] and
-#                                                                   window[import_key].metadata['visible'])):
-##                table.import_rows(import_rules=self.import_rules)
-#                table.import_rows()
-#                table.update_display(window, window_values=values)
-#
-#            else:
-#                table.run_event(window, event, values)
 
         # Run a transaction audit
         elif event == audit_key:
@@ -1114,8 +1083,7 @@ class AuditTransactionTab:
             except Exception as e:
                 msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
                 mod_win2.popup_error(msg)
-                logger.error('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                raise
+                logger.exception('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 success = False
             else:

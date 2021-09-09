@@ -1119,7 +1119,6 @@ class AccountEntry:
             table = self.table
             tbl_key = self.table.key_lookup('Element')
             delete_key = self.table.key_lookup('Delete')
-            frame_key = self.table.key_lookup('OptionsFrame')
             can_delete = (not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible'])
 
             # Record was selected for opening
@@ -1130,10 +1129,6 @@ class AccountEntry:
 
                 # Close options panel, if open
                 table.reset_column_widths(window)
-                #if window[frame_key].metadata['visible'] is True:
-                #    window[frame_key].metadata['visible'] = False
-                #    window[frame_key].update(visible=False)
-                #    table.resize(window, size=table.dimensions)
 
                 # Find row selected by user
                 try:

@@ -1765,7 +1765,7 @@ class DatabaseRecord:
                     .format(ID=record_id, FIELD=param.description)
                 logger.error(msg)
                 mod_win2.popup_error('record {ID} is missing a value for the required field "{FIELD}"'
-                                    .format(ID=record_id, FIELD=param.description))
+                                     .format(ID=record_id, FIELD=param.description))
 
                 return False
 
@@ -2011,7 +2011,7 @@ class DatabaseRecord:
 
         # Prepare to save record components
         for comp_table in self.components:
-            comp_df = comp_table.df
+            comp_df = comp_table.data(all_rows=True)
             if comp_df.empty:
                 continue
 
@@ -2213,7 +2213,7 @@ class DatabaseRecord:
                                           sparsify=True, na_rep='')
 
             # Highlight errors in html string
-            annotations = comp_table.annotate_display(grouped_df.reset_index())
+            annotations = comp_table.annotate_rows(grouped_df.reset_index())
             colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
             try:  # colors should be a dictionary of row index with matching color
                 html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
@@ -2599,8 +2599,11 @@ class StandardRecord(DatabaseRecord):
                 if event == component_table.key_lookup('Add'):  # add account records
                     default_values = self.export_values(header=False, references=False).to_dict()
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
+                    component_table.update_display(window)
                 else:
                     component_table.run_event(window, event, values)
+
+                self.update_display(window, window_values=values)
 
         # Run a reference-box event
         elif event in reference_elems:
