@@ -560,13 +560,18 @@ class TableElement:
 
     def reset(self, window):
         """
-        Reset data table to default.
+        Reset the data table to default.
         """
-        columns = list(self.columns)
 
+        # Reset dynamic attributes
+        columns = list(self.columns)
         self.df = self.set_datatypes(pd.DataFrame(columns=columns))
         self.index_map = {}
 
+        # Reset column widths
+        self.reset_column_widths(window)
+
+        # Update the display
         self.update_display(window)
 
     def fetch_parameter(self, element, by_key: bool = False):
