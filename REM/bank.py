@@ -1146,7 +1146,7 @@ class AccountEntry:
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
                     if table.modifiers['open'] is True:
-                        record = table.load_record(index, level=0, references={association_rule: ref_df})
+                        record = table.load_record(index, level=0, savable=False, references={association_rule: ref_df})
                         if record is None:
                             msg = 'unable to update references for record at index {IND} - no record was returned'\
                                 .format(IND=index)

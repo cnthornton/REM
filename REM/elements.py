@@ -2523,10 +2523,10 @@ class RecordTable(TableElement):
                     # Update record table values
                     if self.modifiers['edit']:
                         try:
-                            record_values = record.table_values()
-                        except AttributeError:
-                            msg = 'unable to update row {IND} values - no record was returned'.format(IND=index)
-                            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            record_values = record.export_values()
+                        except Exception as e:
+                            msg = 'unable to update row {IND} values'.format(IND=index)
+                            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                         else:
                             self._update_row_values(index, record_values)
 
@@ -2689,7 +2689,7 @@ class RecordTable(TableElement):
 
         return df
 
-    def load_record(self, index, level: int = 1, references: dict = None):
+    def load_record(self, index, level: int = 1, references: dict = None, savable: bool = True):
         """
         Open selected record in new record window.
         """
@@ -2728,7 +2728,7 @@ class RecordTable(TableElement):
 
         # Display the record window
         logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
-        record = mod_win2.record_window(record, view_only=view_only)
+        record = mod_win2.record_window(record, view_only=view_only, modify_database=savable)
 
         return record
 
@@ -2933,10 +2933,10 @@ class ComponentTable(RecordTable):
                     # Update record table values
                     if self.modifiers['edit']:
                         try:
-                            record_values = record.table_values()
-                        except AttributeError:
-                            msg = 'unable to update row {IND} values - no record was returned'.format(IND=index)
-                            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            record_values = record.export_values()
+                        except Exception as e:
+                            msg = 'unable to update row {IND} values'.format(IND=index)
+                            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                         else:
                             self._update_row_values(index, record_values)
 
@@ -3066,7 +3066,7 @@ class ComponentTable(RecordTable):
         window[import_key].update(disabled=True)
         window[import_key].metadata['disabled'] = True
 
-    def load_record(self, index, level: int = 1, references: dict = None):
+    def load_record(self, index, level: int = 1, references: dict = None, savable: bool = False):
         """
         Open selected record in new record window.
         """
@@ -3105,7 +3105,7 @@ class ComponentTable(RecordTable):
 
         # Display the record window
         logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
-        record = mod_win2.record_window(record, view_only=view_only, is_component=True)
+        record = mod_win2.record_window(record, view_only=view_only, modify_database=savable)
 
         return record
 
@@ -3162,7 +3162,7 @@ class ComponentTable(RecordTable):
             return df
 
         # Display the record window
-        record = mod_win2.record_window(record)
+        record = mod_win2.record_window(record, modify_database=False)
         try:
             record_values = record.export_values()
         except AttributeError:  # record creation was cancelled
