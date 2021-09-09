@@ -210,9 +210,7 @@ class BankRule:
             default_title = acct.title + '.xlsx'
             outfile = sg.popup_get_file('', title='Save As', default_path=default_title, save_as=True,
                                         default_extension='xlsx', no_window=True,
-                                        file_types=(
-                                            ('XLS - Microsoft Excel', '*.xlsx'), ('Comma-Separated Values', '*.csv'))
-                                        )
+                                        file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
 
             if not outfile:
                 msg = 'Please select an output file before continuing'
@@ -911,19 +909,11 @@ class BankRule:
 
                 sheet_name = acct.title
                 table = acct.table
-                df = table.df
-
-                export_df = table.format_display_table(df)
-
-                # Prepare row colors based on record annotations
-                annotations = table.annotate_display(df)
-                annotation_map = {i: table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
 
                 # Write table to the output file
+                export_df = table.export_table(display=False)
                 try:
-                    export_df.style.apply(lambda x: ['background-color: {}'
-                                          .format(annotation_map.get(x.name, 'white')) for _ in x], axis=1) \
-                        .to_excel(writer, sheet_name=sheet_name, engine='openpyxl', header=True, index=False)
+                    export_df.to_excel(writer, sheet_name=sheet_name, engine='openpyxl', header=True, index=False)
                 except Exception as e:
                     msg = 'failed to save table {SHEET} to file to {FILE} - {ERR}' \
                         .format(SHEET=sheet_name, FILE=filename, ERR=e)

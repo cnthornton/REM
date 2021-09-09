@@ -68,8 +68,6 @@ class TableElement:
 
         row_color (str): hex code for the color of alternate rows.
 
-        dimensions (tuple): size of the data table in pixels.
-
         tooltip (str): table tooltip.
     """
 
@@ -161,7 +159,7 @@ class TableElement:
                                'setting to None'.format(NAME=name, FIELD=search_field))
                 self.search_field = None
             else:
-                self.search_field = search_field
+                self.search_field = (search_field, None)
 
         try:
             self.filter_entry = entry['FilterParameters']
@@ -334,7 +332,7 @@ class TableElement:
                 else:
                     summary_column = summary_rule['Column']
                     if summary_column not in self.columns:
-                        msg = 'summary rule {RULE} column "{COL}" is not in the list of table columns'\
+                        msg = 'summary rule {RULE} column "{COL}" is not in the list of table columns' \
                             .format(RULE=summary_name, COL=summary_column)
                         logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -593,12 +591,36 @@ class TableElement:
 
         return parameter
 
-    def data(self, deleted: bool = False):
+    def data(self, all_rows: bool = False, display_rows: bool = False):
         """
         Return the table dataframe.
+
+        Arguments:
+            all_rows (bool): return all table rows, including the deleted rows [Default: False].
+
+            display_rows (bool): return only the display rows [Default: False].
         """
-        if deleted:
+        if all_rows:
             df = self.df.copy()
+        elif display_rows:
+            search = self.search_field
+
+            # Filter the table rows, if applicable
+            try:
+                search_col, search_value = search
+            except (TypeError, ValueError):
+                search_col = search_value = None
+
+            if not search_value:  # no search value provided in the search field, try the filter parameters
+                df = self._apply_filter()
+            else:
+                df = self._filter_deleted(self.df.copy())
+                try:
+                    df = df[df[search_col].str.contains(search_value, case=False, regex=True)]
+                except KeyError:
+                    msg = 'DataTable {NAME}: search field {COL} not found in list of table columns' \
+                        .format(NAME=self.name, COL=search_col)
+                    logger.warning(msg)
         else:
             df = self._filter_deleted(self.df.copy())
 
@@ -622,7 +644,12 @@ class TableElement:
         action_events = [self.key_lookup(i) for i in self._action_elements]
 
         if event == search_key:
-            self.update_display(window, window_values=values)
+            # Update the search field value
+            search_col = self.search_field[0]
+            search_value = values[search_key]
+            self.search_field = (search_col, search_value)
+
+            self.update_display(window)
 
         if event == self.key_lookup('CollapseButton'):
             self.collapse_expand(window)
@@ -730,24 +757,32 @@ class TableElement:
                 param.run_event(window, event, values)
 
         if event == export_key:
-            export_df = self.update_display(window, values)
-            annotations = self.annotate_display(self.df)
-            annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-            self.export_table(export_df, annotation_map)
+            outfile = sg.popup_get_file('', title='Export table display', save_as=True,
+                                        default_extension='xlsx', no_window=True,
+                                        file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
+            logger.debug('DataTable {NAME}: exporting the display table to spreadsheet {FILE}'
+                         .format(NAME=self.name, FILE=outfile))
+
+            export_df = self.export_table()
+            try:
+                export_df.to_excel(outfile, engine='openpyxl', header=True, index=False)
+            except Exception as e:
+                msg = 'failed to save table to file to {FILE} - {ERR}'.format(FILE=outfile, ERR=e)
+                logger.exception(msg)
+                mod_win2.popup_error(msg)
 
         if event in action_events:
             self.run_action_event(window, event, values)
 
-        result = self.update_display(window, values)
+        self.update_display(window, values)
 
-        return result
+        return None
 
     def run_action_event(self, window, event, values):
         """
         Run a table action event.
         """
         tbl_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('OptionsFrame')
 
         # Row click event
         if event == tbl_key:
@@ -771,6 +806,10 @@ class TableElement:
                              .format(NAME=self.name, IND=index))
                 if self.modifiers['edit'] is True:
                     self.edit_row(index)
+
+            self.update_display(window, values)
+
+        return None
 
     def update_display(self, window, window_values: dict = None, annotations: dict = None):
         """
@@ -797,7 +836,7 @@ class TableElement:
 
         # Sort table and update table sorting information
         sort_key = self.key_lookup('Sort')
-        search_field = self.search_field
+        #        search_field = self.search_field
 
         # Modify records tables for displaying
         logger.debug('DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
@@ -823,28 +862,29 @@ class TableElement:
                     window[sort_key].TKButtonMenu.configure(menu=window[sort_key].TKMenu)
 
         # Filter the table rows, if applicable
-        if search_field is not None and window_values is not None:
-            search_key = self.key_lookup('Search')
-            try:
-                search_value = window_values[search_key]
-            except KeyError:
-                msg = 'DataTable {NAME}: search field key {KEY} not found in list of window GUI elements' \
-                    .format(NAME=self.name, KEY=search_key)
-                logger.warning(msg)
-                search_value = None
-        else:
-            search_value = None
-
-        if not search_value:  # no search value provided in the search field, try the filter parameters
-            df = self._apply_filter()
-        else:
-            df = self.data()
-            try:
-                df = df[df[search_field].str.contains(search_value, case=False, regex=True)]
-            except KeyError:
-                msg = 'DataTable {NAME}: search field {COL} not found in list of table columns' \
-                    .format(NAME=self.name, COL=search_field)
-                logger.warning(msg)
+        df = self.data(display_rows=True)
+        #        if search_field is not None and window_values is not None:
+        #            search_key = self.key_lookup('Search')
+        #            try:
+        #                search_value = window_values[search_key]
+        #            except KeyError:
+        #                msg = 'DataTable {NAME}: search field key {KEY} not found in list of window GUI elements' \
+        #                    .format(NAME=self.name, KEY=search_key)
+        #                logger.warning(msg)
+        #                search_value = None
+        #        else:
+        #            search_value = None
+        #
+        #        if not search_value:  # no search value provided in the search field, try the filter parameters
+        #            df = self._apply_filter()
+        #        else:
+        #            df = self.data()
+        #            try:
+        #                df = df[df[search_field].str.contains(search_value, case=False, regex=True)]
+        #            except KeyError:
+        #                msg = 'DataTable {NAME}: search field {COL} not found in list of table columns' \
+        #                    .format(NAME=self.name, COL=search_field)
+        #                logger.warning(msg)
 
         # Edit the index map to reflect what is currently displayed
         passed_indices = df.index.tolist()
@@ -856,13 +896,13 @@ class TableElement:
 
         # Prepare annotations
         if len(annotations) < 1:  # highlight table rows using configured annotation rules
-            annotations = self.annotate_display(df)
+            annotations = self.annotate_rows(df)
             row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
         else:  # use custom annotations to highight table rows
             row_colors = [(i, j) for i, j in annotations.items()]
 
         # Format the table
-        display_df = self.format_display_table(df)
+        display_df = self.format_display_values(df)
 
         # Update the GUI with table values and annotations
         data = display_df.values.tolist()
@@ -902,24 +942,44 @@ class TableElement:
             summary_key = self.key_lookup(summary_name)
             window[summary_key].update(value=summary_value)
 
-#        summary = self.summarize_table(df)
-#        for summary_item in summary:
-#            summ_rule, summ_value = summary_item
-#            if isinstance(summ_value, float):
-#                summ_value = '{:,.2f}'.format(summ_value)
-#
-#            summ_key = self.key_lookup(summ_rule)
-#            window[summ_key].update(value=summ_value)
+        #        summary = self.summarize_table(df)
+        #        for summary_item in summary:
+        #            summ_rule, summ_value = summary_item
+        #            if isinstance(summ_value, float):
+        #                summ_value = '{:,.2f}'.format(summ_value)
+        #
+        #            summ_key = self.key_lookup(summ_rule)
+        #            window[summ_key].update(value=summ_value)
 
         return display_df
 
-    def format_display_table(self, df):
+    def format_display_table(self):
         """
         Format the table for display.
         """
-        display_df = pd.DataFrame()
+        # Get the display dataframe
+        df = self.data(display_rows=True)
+        display_df = self.format_display_values(df)
+
+        # Prepare row colors based on record annotations
+        annotations = self.annotate_rows(df)
+        annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+
+        # Add annotations to the dataframe styling
+        display_df = display_df.style.apply(
+            lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white'))
+                       for _ in x], axis=1)
+
+        return display_df
+
+    def format_display_values(self, df: pd.DataFrame = None):
+        """
+        Format the table values for display.
+        """
+        df = self.data(display_rows=True) if df is None else df
 
         # Subset dataframe by specified columns to display
+        display_df = pd.DataFrame()
         display_map = self.display_columns
         for column in display_map:
             column_alias = display_map[column]
@@ -933,83 +993,6 @@ class TableElement:
                 continue
 
             display_df[column_alias] = col_to_add
-
-        return display_df.astype('object').fillna('')
-
-    def format_display_table_old(self, df, date_fmt: str = None):
-        """
-        Format the table for display.
-        """
-        relativedelta = dateutil.relativedelta.relativedelta
-        strptime = datetime.datetime.strptime
-        is_float_dtype = pd.api.types.is_float_dtype
-        is_integer_dtype = pd.api.types.is_integer_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-
-        display_map = self.display_columns
-        aliases = self.aliases
-
-        # Set display parameters
-        date_fmt = date_fmt if date_fmt is not None else settings.format_date_str(date_str=settings.display_date_format)
-
-        display_header = list(display_map.keys())
-
-        # Localization specific options
-        date_offset = settings.get_date_offset()
-
-        display_df = pd.DataFrame()
-
-        # Subset dataframe by specified columns to display
-        for col_name in display_map:
-            col_rule = display_map[col_name]
-
-            try:
-                col_to_add = mod_dm.generate_column_from_rule(df, col_rule)
-            except Exception as e:
-                logger.error('DataTable {TBL}: unable to generate column from display rule {RULE} - {ERR}'
-                             .format(TBL=self.name, RULE=col_rule, ERR=e))
-                continue
-
-            dtype = col_to_add.dtype
-            if is_float_dtype(dtype):
-                col_to_add = col_to_add.apply('{:,.2f}'.format)
-            elif is_datetime_dtype(dtype):
-                col_to_add = col_to_add.apply(lambda x: (strptime(x.strftime(date_fmt), date_fmt) +
-                                                         relativedelta(years=+date_offset)).strftime(date_fmt)
-                if pd.notnull(x) else '')
-            elif is_string_dtype(dtype):
-                col_to_add = col_to_add.fillna('')
-            elif is_bool_dtype(dtype):
-                col_to_add = col_to_add.apply(lambda x: '✓' if x is True else '')
-
-            display_df[col_name] = col_to_add
-
-        # Map column values to the aliases specified in the configuration
-        for alias_col in aliases:
-            alias_map = aliases[alias_col]  # dictionary of mapped values
-            if alias_col not in display_header:
-                logger.warning('DataTable {TBL}: alias column {ALIAS} not found in the list of display columns'
-                               .format(TBL=self.name, ALIAS=alias_col))
-                continue
-
-            try:
-                col_dtype = display_df[alias_col].dtype
-                if is_integer_dtype(col_dtype):  # convert integer-type alias keys to integer values
-                    alias_map = {int(i): j for i, j in alias_map.items()}
-            except KeyError:
-                logger.warning('DataTable {TBL}: alias {ALIAS} not found in the list of display columns'
-                               .format(TBL=self.name, ALIAS=alias_col))
-            except ValueError:
-                logger.warning('DataTable {TBL}: aliases provided to column {ALIAS} does not match data type {DTYPE} '
-                               'of the column'.format(TBL=self.name, ALIAS=alias_col, DTYPE=col_dtype))
-            else:
-                try:
-                    display_df[alias_col] = display_df[alias_col].apply(lambda x: alias_map[x] if x in alias_map else x)
-                except TypeError:
-                    logger.warning('DataTable {TBL}: cannot replace values for column {ALIAS} with their aliases as '
-                                   'alias values are not of the same data type'.format(TBL=self.name, ALIAS=alias_col))
 
         return display_df.astype('object').fillna('')
 
@@ -1216,9 +1199,9 @@ class TableElement:
 
         return outputs
 
-    def annotate_display(self, df):
+    def annotate_rows(self, df):
         """
-        Annotate the display table using configured annotation rules.
+        Annotate the provided dataframe using configured annotation rules.
         """
         rules = self.annotation_rules
         if df.empty or rules is None:
@@ -1264,10 +1247,10 @@ class TableElement:
         table_name = self.description
         modifiers = self.modifiers
 
-        df = self.df
-        display_df = self.format_display_table(df)
+        display_df = self.format_display_values()
 
         tooltip = tooltip if tooltip is not None else self.tooltip
+        search_field = self.search_field
 
         disabled = True if editable is False and overwrite is False else False
 
@@ -1410,18 +1393,19 @@ class TableElement:
 
         # Table title
         row3 = []
-        if modifiers['search'] and self.search_field is not None:
-            row3.append(sg.Col([
+        if modifiers['search'] and search_field is not None:
+            search_layout = [
                 [sg.Frame('', [[sg.Image(data=mod_const.SEARCH_ICON, background_color=bg_col, pad=((0, pad_h), 0)),
                                 sg.Input(default_text='', key=search_key, size=(isize - 2, 1),
                                          border_width=0, do_not_clear=True, background_color=bg_col,
                                          enable_events=True, tooltip='Search table')]],
                           background_color=bg_col, pad=(pad_el, int(pad_el / 2)), relief='sunken')],
-                [sg.Canvas(size=(header_col_size, 0), background_color=header_col)]],
-                justification='l', background_color=header_col))
+                [sg.Canvas(size=(header_col_size, 0), background_color=header_col)]
+            ]
         else:
-            row3.append(sg.Col([[sg.Canvas(size=(header_col_size, 0), background_color=header_col)]],
-                               justification='l', element_justification='l', background_color=header_col))
+            search_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)]]
+
+        row3.append(sg.Col(search_layout, justification='l', element_justification='l', background_color=header_col))
 
         if table_name is not None:
             row3.append(sg.Col([[sg.Text(table_name, pad=(pad_el, int(pad_el / 2)), font=bold_font,
@@ -1901,25 +1885,26 @@ class TableElement:
 
         return subset_df
 
-    def export_table(self, df, annotation_map):
+    def export_table(self, display=True):
         """
         Export table to spreadsheet.
         """
-        logger.info('DataTable {NAME}: exporting the display table to a spreadsheet'.format(NAME=self.name))
-        outfile = sg.popup_get_file('', title='Export table display', save_as=True,
-                                    default_extension='xlsx', no_window=True,
-                                    file_types=(
-                                        ('XLS - Microsoft Excel', '*.xlsx'), ('Comma-Separated Values', '*.csv')))
+        df = self.data(display_rows=display)
+        logger.info('DataTable {NAME}: preparing the table for exporting'.format(NAME=self.name))
 
-        out_fmt = outfile.split('.')[-1]
+        # Annotate the table
+        annotations = self.annotate_rows(df)
+        annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
 
-        if outfile:
-            if out_fmt == 'csv':
-                df.to_csv(outfile, sep=',', header=True, index=False)
-            else:
-                df.style.apply(
-                    lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white')) for _ in x],
-                    axis=1).to_excel(outfile, engine='openpyxl', header=True, index=False)
+        # Format the display values
+        display_df = self.format_display_values(df)
+
+        # Style the table by adding the annotation coloring
+        style = 'background-color: {}'
+        style_df = display_df.style.apply(lambda x: [style.format(annotation_map.get(x.name, 'white')) for _ in x],
+                                          axis=1)
+
+        return style_df
 
     def calculate_total(self, df: pd.DataFrame = None):
         """
@@ -2713,7 +2698,7 @@ class RecordTable(TableElement):
             return None
 
         # Add any annotations to the exported row
-        annotations = self.annotate_display(df)
+        annotations = self.annotate_rows(df)
         annot_code = annotations.get(index, None)
         if annot_code is not None:
             row['Warnings'] = self.annotation_rules[annot_code]['Description']
@@ -2783,13 +2768,17 @@ class RecordTable(TableElement):
 
         # Add relevant search parameters
         search_field = self.search_field
-        if search_field:
+        if isinstance(search_field, tuple):
+            search_col, search_val = search_field
             try:
-                search_desc = self.display_columns[search_field]
+                search_description = self.display_columns[search_col]
             except KeyError:
-                search_desc = search_field
-            search_entry = {'Description': search_desc, 'ElementType': 'input', 'DataType': 'string'}
-            search_params = [mod_param.DataParameterInput(search_field, search_entry)]
+                search_description = search_col
+
+            search_dtype = self.columns[search_col]
+            search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
+                            'DataType': search_dtype, 'DefaultValue': search_val}
+            search_params = [mod_param.DataParameterInput(search_col, search_entry)]
         else:
             search_params = None
 
@@ -2862,7 +2851,7 @@ class ComponentTable(RecordTable):
         super().__init__(name, entry, parent)
         self._action_elements.append('Add')
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                             ['Add']])
+                              ['Add']])
 
         self.etype = 'component_table'
 
@@ -3186,14 +3175,17 @@ class ComponentTable(RecordTable):
 
         # Add relevant search parameters
         search_field = self.search_field
-        if search_field:
+        if isinstance(search_field, tuple):
+            search_col, search_val = search_field
             try:
-                search_desc = self.display_columns[search_field]
+                search_description = self.display_columns[search_col]
             except KeyError:
-                search_desc = search_field
+                search_description = search_col
 
-            search_entry = {'Description': search_desc, 'ElementType': 'input', 'DataType': 'string'}
-            search_params = [mod_param.DataParameterInput(search_field, search_entry)]
+            search_dtype = self.columns[search_col]
+            search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
+                            'DataType': search_dtype, 'DefaultValue': search_val}
+            search_params = [mod_param.DataParameterInput(search_col, search_entry)]
         else:
             search_params = None
 
@@ -3252,7 +3244,7 @@ class ComponentTable(RecordTable):
         ref_df.loc[:, 'ReferenceType'] = self.record_type
 
         # Add reference notes based on row annotations
-        annotations = self.annotate_display(export_df)
+        annotations = self.annotate_rows(export_df)
         annotation_map = {i: self.annotation_rules[j]['Description'] for i, j in annotations.items()}
 
         ref_df.loc[:, 'ReferenceNotes'] = ref_df.index.map(annotation_map)
@@ -4107,7 +4099,7 @@ class DataElement:
         modifiers = self.modifiers
 
         is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
-                       self.etype != 'text' else True)
+                                self.etype != 'text' else True)
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
