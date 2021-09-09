@@ -184,20 +184,22 @@ class RecordEntry:
                                  .format(NAME=name))
             sys.exit(1)
 
-    def import_records(self, params: list = None):
+    def import_records(self, params: list = None, import_rules: dict = None):
         """
         Import all records from the database.
         """
         params = [] if params is None else params
 
+        import_rules = self.import_rules if not import_rules else import_rules
+
         # Add configured import filters
-        filters = mod_db.format_import_filters(self.import_rules)
-        table_statement = mod_db.format_tables(self.import_rules)
-        columns = mod_db.format_import_columns(self.import_rules)
+        filters = mod_db.format_import_filters(import_rules)
+        table_statement = mod_db.format_tables(import_rules)
+        columns = mod_db.format_import_columns(import_rules)
 
         # Add optional parameter-based filters
         for param in params:
-            dbcol = mod_db.get_import_column(self.import_rules, param.name)
+            dbcol = mod_db.get_import_column(import_rules, param.name)
             if dbcol:
                 param_filter = param.query_statement(dbcol)
                 if param_filter is not None:
@@ -206,6 +208,7 @@ class RecordEntry:
         # Query existing database entries
         import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                                  prog_db=True)
+
         return import_df
 
     def import_references(self, records, rule_name):

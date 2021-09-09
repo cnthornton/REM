@@ -12,7 +12,7 @@ import PySimpleGUI as sg
 import REM.constants as mod_const
 import REM.elements as mod_elem
 import REM.secondary as mod_win2
-from REM.client import logger, settings
+from REM.client import logger, settings, user
 
 
 class BankRule:
@@ -252,6 +252,9 @@ class BankRule:
             next_index = (current_index + 1) % len(self.panels)
             next_panel = self.panels[next_index]
 
+            # Reset panel sizes
+            self.resize_elements(window)
+
             # Hide current panel and un-hide the following panel
             window[self.current_panel].update(visible=False)
             window[next_panel].update(visible=True)
@@ -265,6 +268,9 @@ class BankRule:
             current_index = self.panels.index(self.current_panel)
             back_index = current_index - 1
             prev_panel = self.panels[back_index]
+
+            # Reset panel sizes
+            self.resize_elements(window)
 
             # Hide current panel and un-hide the previous panel
             window[self.current_panel].update(visible=False)
@@ -886,9 +892,7 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-#        success = user.write_db(sstrings, psets)
-        print(statements)
-        success =True
+        success = user.write_db(sstrings, psets)
 
         return success
 
@@ -1070,6 +1074,11 @@ class AccountEntry:
 
                 self.transactions[transaction_acct] = trans_entry
 
+        try:
+            self.import_rules = entry['ImportRules']
+        except KeyError:
+            self.import_rules = record_entry.import_rules
+
         self.ref_df = None
 
     def key_lookup(self, component):
@@ -1226,6 +1235,7 @@ class AccountEntry:
         tbl_width = width - 30  # includes padding on both sides and scroll bar
         tbl_height = int(height * 0.55)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
+#        self.update_display(window)
 
     def merge_references(self, df: pd.DataFrame = None):
         """
@@ -1304,7 +1314,7 @@ class AccountEntry:
 
         # Prepare the database query statement
         try:
-            df = record_entry.import_records(params=parameters)
+            df = record_entry.import_records(params=parameters, import_rules=self.import_rules)
         except Exception as e:
             msg = 'failed to import data from the database'
             logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))

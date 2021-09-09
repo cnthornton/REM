@@ -1884,6 +1884,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Prepare record
     record_entry = settings.records.fetch_rule(table.record_type)
+    import_rules = table.import_rules if table.import_rules else record_entry.import_rules
 
     record_type = record_entry.group
     if record_type in ('custom', 'account', 'bank_statement', 'cash_expense'):
@@ -1963,7 +1964,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
                 # Reload the display records
                 if record:
-                    import_df = record_entry.import_records(params=table.parameters)
+                    import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
                     table.reset(window)
                     table.df = table.append(import_df)
@@ -2008,7 +2009,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
                         # Reload the display records
                         if record:
-                            import_df = record_entry.import_records(params=table.parameters)
+                            import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
                             table.reset(window)
                             table.df = table.append(import_df)
@@ -2023,9 +2024,8 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 param.value = param.format_value(values)
 
             # Load the display records
-            import_df = record_entry.import_records(params=table.parameters)
+            import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-            #            table.df = pd.DataFrame(columns=list(table.columns))
             table.reset(window)
             table.df = table.append(import_df)
             display_df = table.update_display(window)

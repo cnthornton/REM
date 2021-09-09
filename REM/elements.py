@@ -1449,6 +1449,7 @@ class TableElement:
         events = False
 
         col_widths = self._calc_column_widths(width=width - 16, size=font_size, pixels=False)
+        self._widths = col_widths
         row4.append(sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
                              row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=font,
@@ -1654,6 +1655,23 @@ class TableElement:
 
             window[frame_key].metadata['visible'] = True
 
+    def reset_column_widths(self, window):
+        """
+        Reset column widths to calculated widths.
+        """
+        widths = self._widths
+        tbl_key = self.key_lookup('Element')
+
+        columns = self.display_columns
+        header = list(columns.values())
+
+        for col_index, col_name in enumerate(header):
+            col_width = widths[col_index]
+            window[tbl_key].Widget.column(col_name, width=col_width)
+
+        window[tbl_key].expand((True, True))
+        window[tbl_key].table_frame.pack(expand=True, fill='both')
+
     def resize(self, window, size: tuple = None, row_rate: int = 80):
         """
         Resize the table element.
@@ -1682,13 +1700,15 @@ class TableElement:
         header = list(columns.values())
 
         tbl_width = width - 16  # for border sizes on either side of the table
-        lengths = self._calc_column_widths(width=tbl_width, pixels=True)
-        for col_index, col_name in enumerate(header):
-            col_width = lengths[col_index]
-            window[tbl_key].Widget.column(col_name, width=col_width)
-
-        window[tbl_key].expand((True, True))
-        window[tbl_key].table_frame.pack(expand=True, fill='both')
+        self._widths = self._calc_column_widths(width=tbl_width, pixels=True)
+        self.reset_column_widths(window)
+        # lengths = self._calc_column_widths(width=tbl_width, pixels=True)
+        #for col_index, col_name in enumerate(header):
+        #    col_width = lengths[col_index]
+        #    window[tbl_key].Widget.column(col_name, width=col_width)
+        #
+        #window[tbl_key].expand((True, True))
+        #window[tbl_key].table_frame.pack(expand=True, fill='both')
 
         # Expand 1 row every N-pixel increase in window size
         initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
@@ -2356,7 +2376,7 @@ class RecordTable(TableElement):
             self.record_type = None
 
         try:
-            self.import_rules = entry['ImportRules']
+            import_rules = entry['ImportRules']
         except KeyError:
             if self.record_type:
                 record_entry = settings.records.fetch_rule(self.record_type)
@@ -2366,6 +2386,18 @@ class RecordTable(TableElement):
                     self.import_rules = None
             else:
                 self.import_rules = None
+        else:
+            for import_table in import_rules:
+                import_rule = import_rules[import_table]
+
+                if 'Columns' not in import_rule:
+                    mod_win2.popup_error('DataTable {NAME}: configuration missing required "ImportRules" {TBL} '
+                                         'parameter "Columns"'.format(NAME=self.name, TBL=import_table))
+                    sys.exit(1)
+                if 'Filters' not in import_rule:
+                    import_rule['Filters'] = None
+
+            self.import_rules = import_rules
 
         try:
             self.id_column = entry['IDColumn']
