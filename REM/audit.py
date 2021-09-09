@@ -254,7 +254,7 @@ class AuditRule:
 
             # Prepare audit records
             if next_subpanel == self.last_panel:
-                # Update audit records
+                # Create audit records using data from the transaction audits
                 for tab in self.summary.tabs:
 
                     # Update audit record totals
@@ -285,7 +285,8 @@ class AuditRule:
                 window[save_key].metadata['disabled'] = False
 
             # Reset panel size
-            self.resize_elements(window)
+            for tab in self.tabs:
+                tab.table.reset_column_widths(window)
 
             # Hide current panel and un-hide the following panel
             window[self.panel_keys[self.current_panel]].update(visible=False)
@@ -306,9 +307,6 @@ class AuditRule:
 
                     # Update the audit record's display
                     tab.update_display(window)
-
-            # Reset panel size
-            self.resize_elements(window)
 
             # Return to previous display
             prev_subpanel = current_panel - 1
