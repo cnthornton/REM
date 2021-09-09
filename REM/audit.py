@@ -1063,7 +1063,6 @@ class AuditTransactionTab:
         tbl_width = width - 30  # includes padding on both sides and scroll bar
         tbl_height = int(height * 0.6)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
-        self.table.update_display(window)
 
     def run_event(self, window, event, values):
         """

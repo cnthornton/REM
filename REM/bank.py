@@ -253,7 +253,9 @@ class BankRule:
             next_panel = self.panels[next_index]
 
             # Reset panel sizes
-            self.resize_elements(window)
+            next_acct = self.fetch_account(next_panel, by_key=True)
+            next_acct.table.reset_column_widths(window)
+#            self.resize_elements(window)
 
             # Hide current panel and un-hide the following panel
             window[self.current_panel].update(visible=False)
@@ -270,7 +272,9 @@ class BankRule:
             prev_panel = self.panels[back_index]
 
             # Reset panel sizes
-            self.resize_elements(window)
+            prev_acct = self.fetch_account(prev_panel, by_key=True)
+            prev_acct.table.reset_column_widths(window)
+#            self.resize_elements(window)
 
             # Hide current panel and un-hide the previous panel
             window[self.current_panel].update(visible=False)
@@ -1135,10 +1139,11 @@ class AccountEntry:
                 ref_df = self.ref_df
 
                 # Close options panel, if open
-                if window[frame_key].metadata['visible'] is True:
-                    window[frame_key].metadata['visible'] = False
-                    window[frame_key].update(visible=False)
-                    table.resize(window, size=table.dimensions)
+                table.reset_column_widths(window)
+                #if window[frame_key].metadata['visible'] is True:
+                #    window[frame_key].metadata['visible'] = False
+                #    window[frame_key].update(visible=False)
+                #    table.resize(window, size=table.dimensions)
 
                 # Find row selected by user
                 try:
@@ -1235,7 +1240,6 @@ class AccountEntry:
         tbl_width = width - 30  # includes padding on both sides and scroll bar
         tbl_height = int(height * 0.55)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
-#        self.update_display(window)
 
     def merge_references(self, df: pd.DataFrame = None):
         """

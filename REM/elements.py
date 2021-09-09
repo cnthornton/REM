@@ -424,8 +424,8 @@ class TableElement:
         except KeyError:
             self.required_columns = []
 
-        self.dimensions = (mod_const.TBL_WIDTH_PX, mod_const.TBL_ROW_HEIGHT)
-        self._actions = ['Element']
+        self._action_elements = ['Element']
+        self._column_widths = []
 
         # Dynamic attributes
         self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
@@ -614,7 +614,7 @@ class TableElement:
         filter_key = self.key_lookup('Filter')
 
         param_elems = [i for param in self.parameters for i in param.elements]
-        action_events = [self.key_lookup(i) for i in self._actions]
+        action_events = [self.key_lookup(i) for i in self._action_elements]
 
         if event == search_key:
             self.update_display(window, window_values=values)
@@ -663,10 +663,10 @@ class TableElement:
                 # Reveal the table frame
                 window[tbl_key].update(visible=True)
             else:
-                self.resize(window, size=self.dimensions)
+                self.reset_column_widths(window)
 
         if event == cancel_key:
-            self.resize(window, size=self.dimensions)
+            self.reset_column_widths(window)
 
         # Sort column selected from menu of sort columns
         if event == sort_key:
@@ -747,10 +747,7 @@ class TableElement:
         # Row click event
         if event == tbl_key:
             # Close options panel, if open
-            if window[frame_key].metadata['visible'] is True:
-                window[frame_key].metadata['visible'] = False
-                window[frame_key].update(visible=False)
-                self.resize(window, size=self.dimensions)
+            self.reset_column_widths(window)
 
             # Find row selected by user
             try:
@@ -1449,7 +1446,7 @@ class TableElement:
         events = False
 
         col_widths = self._calc_column_widths(width=width - 16, size=font_size, pixels=False)
-        self._widths = col_widths
+        self._column_widths = col_widths
         row4.append(sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
                              row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=font,
@@ -1659,15 +1656,22 @@ class TableElement:
         """
         Reset column widths to calculated widths.
         """
-        widths = self._widths
+        widths = self._column_widths
+        display_columns = self.display_columns
+
         tbl_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('OptionsFrame')
 
-        columns = self.display_columns
-        header = list(columns.values())
+        # Close options panel, if open
+        if window[frame_key].metadata['visible'] is True:
+            window[frame_key].metadata['visible'] = False
+            window[frame_key].update(visible=False)
 
-        for col_index, col_name in enumerate(header):
-            col_width = widths[col_index]
-            window[tbl_key].Widget.column(col_name, width=col_width)
+        # Update column widths to saved widths
+        header = list(display_columns.values())
+        for index, column in enumerate(header):
+            width = widths[index]
+            window[tbl_key].Widget.column(column, width=width)
 
         window[tbl_key].expand((True, True))
         window[tbl_key].table_frame.pack(expand=True, fill='both')
@@ -1681,44 +1685,32 @@ class TableElement:
         else:
             width, height = window.size
 
-        row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
-
         logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
                      .format(TBL=self.name, W=int(width), H=int(height)))
-        self.dimensions = (width, height)
 
         tbl_key = self.key_lookup('Element')
 
-        # Close options panel, if open
-        frame_key = self.key_lookup('OptionsFrame')
-        if window[frame_key].metadata['visible'] is True:
-            window[frame_key].metadata['visible'] = False
-            window[frame_key].update(visible=False)
+        # Resize the display table dimensions
 
-        # Reset table column sizes
-        columns = self.display_columns
-        header = list(columns.values())
-
+        # Resize the column widths
         tbl_width = width - 16  # for border sizes on either side of the table
-        self._widths = self._calc_column_widths(width=tbl_width, pixels=True)
+        self._column_widths = self._calc_column_widths(width=tbl_width, pixels=True)
         self.reset_column_widths(window)
-        # lengths = self._calc_column_widths(width=tbl_width, pixels=True)
-        #for col_index, col_name in enumerate(header):
-        #    col_width = lengths[col_index]
-        #    window[tbl_key].Widget.column(col_name, width=col_width)
-        #
-        #window[tbl_key].expand((True, True))
-        #window[tbl_key].table_frame.pack(expand=True, fill='both')
 
         # Expand 1 row every N-pixel increase in window size
+        row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
         initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
         orig_height = initial_nrow * mod_const.TBL_ROW_HEIGHT
         height_diff = int((height - orig_height) / row_rate)
+
         nrows = initial_nrow + height_diff if height_diff > -initial_nrow else 1
         logger.debug('DataTable {NAME}: changing the number of rows in the table from {IROW} to {CROW} based on table '
                      'size difference {DIFF}'.format(NAME=self.name, IROW=initial_nrow, CROW=nrows, DIFF=height_diff))
 
         window[tbl_key].update(num_rows=nrows)
+
+        # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
+        self.update_display(window)
 
         # Expand the table frames
         filter_params = self.parameters
@@ -2341,7 +2333,7 @@ class RecordTable(TableElement):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-        self._actions.extend(['Delete', 'Import'])
+        self._action_elements.extend(['Delete', 'Import'])
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ['Delete', 'Import']])
 
@@ -2512,10 +2504,7 @@ class RecordTable(TableElement):
         # Row click event
         if event == tbl_key:
             # Close options panel, if open
-            if window[frame_key].metadata['visible'] is True:
-                window[frame_key].metadata['visible'] = False
-                window[frame_key].update(visible=False)
-                self.resize(window, size=self.dimensions)
+            self.reset_column_widths(window)
 
             # Find row selected by user from the display table of non-deleted rows
             try:
@@ -2866,7 +2855,7 @@ class ComponentTable(RecordTable):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-        self._actions.append('Add')
+        self._action_elements.append('Add')
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                              ['Add']])
 
@@ -2909,7 +2898,6 @@ class ComponentTable(RecordTable):
         Run a table action event.
         """
         tbl_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('OptionsFrame')
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
@@ -2917,10 +2905,7 @@ class ComponentTable(RecordTable):
         # Row click event
         if event == tbl_key:
             # Close options panel, if open
-            if window[frame_key].metadata['visible'] is True:
-                window[frame_key].metadata['visible'] = False
-                window[frame_key].update(visible=False)
-                self.resize(window, size=self.dimensions)
+            self.reset_column_widths(window)
 
             # Find row selected by user from the display table of non-deleted rows
             try:
