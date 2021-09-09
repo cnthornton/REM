@@ -422,7 +422,7 @@ class TableElement:
             self.required_columns = []
 
         self._action_elements = ['Element']
-        self._column_widths = []
+        self._dimensions = (mod_const.TBL_WIDTH, self.nrow)
 
         # Dynamic attributes
         self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
@@ -566,7 +566,7 @@ class TableElement:
         self.index_map = {}
 
         # Reset column widths
-        self.reset_column_widths(window)
+        self.set_table_dimensions(window)
 
         # Update the display
         self.update_display(window)
@@ -690,6 +690,8 @@ class TableElement:
                 logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                              'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
                 lengths = self._calc_column_widths(width=new_width, pixels=True)
+                print('columns widths are:')
+                print(lengths)
                 for col_index, col_name in enumerate(header):
                     col_width = lengths[col_index]
                     window[tbl_key].Widget.column(col_name, width=col_width)
@@ -697,10 +699,12 @@ class TableElement:
                 # Reveal the table frame
                 window[tbl_key].update(visible=True)
             else:
-                self.reset_column_widths(window)
+                print('closing the options panel')
+                self.set_table_dimensions(window)
 
         if event == cancel_key:
-            self.reset_column_widths(window)
+            print('closing the options panel')
+            self.set_table_dimensions(window)
 
         # Sort column selected from menu of sort columns
         if event == sort_key:
@@ -793,7 +797,7 @@ class TableElement:
         # Row click event
         if event == tbl_key:
             # Close options panel, if open
-            self.reset_column_widths(window)
+            self.set_table_dimensions(window)
 
             # Find row selected by user
             try:
@@ -995,7 +999,7 @@ class TableElement:
                 col_to_add = self.format_display_column(df, column)
             except Exception as e:
                 msg = 'failed to format column {COL} for display'.format(COL=column)
-                logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
                 continue
 
@@ -1316,6 +1320,9 @@ class TableElement:
             nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
 
         width = width if width is not None else mod_const.TBL_WIDTH
+        tbl_width = width - 16
+
+        self._dimensions = (tbl_width, nrow)
 
         isize = mod_const.IN1_SIZE
 
@@ -1441,8 +1448,7 @@ class TableElement:
         bind = True if editable is True else False
         events = False
 
-        col_widths = self._calc_column_widths(width=width - 16, size=font_size, pixels=False)
-        self._column_widths = col_widths
+        col_widths = self._calc_column_widths(width=tbl_width, size=font_size, pixels=False)
         row4.append(sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
                              row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=font,
@@ -1648,29 +1654,40 @@ class TableElement:
 
             window[frame_key].metadata['visible'] = True
 
-    def reset_column_widths(self, window):
+    def set_table_dimensions(self, window):
         """
         Reset column widths to calculated widths.
         """
-        widths = self._column_widths
         display_columns = self.display_columns
+        dimensions = self._dimensions
+
+        width, nrows = dimensions
 
         tbl_key = self.key_lookup('Element')
         frame_key = self.key_lookup('OptionsFrame')
+
+        logger.debug('DataTable {NAME}: resetting display column widths'.format(NAME=self.name))
 
         # Close options panel, if open
         if window[frame_key].metadata['visible'] is True:
             window[frame_key].metadata['visible'] = False
             window[frame_key].update(visible=False)
 
-        # Update column widths to saved widths
+        # Update column widths
         header = list(display_columns.values())
+        widths = self._calc_column_widths(width=width, pixels=True)
         for index, column in enumerate(header):
             width = widths[index]
             window[tbl_key].Widget.column(column, width=width)
 
         window[tbl_key].expand((True, True))
         window[tbl_key].table_frame.pack(expand=True, fill='both')
+
+        # Update the number of rows in the display table
+        window[tbl_key].update(num_rows=nrows)
+
+        # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
+        self.update_display(window)
 
     def resize(self, window, size: tuple = None, row_rate: int = 80):
         """
@@ -1684,14 +1701,8 @@ class TableElement:
         logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
                      .format(TBL=self.name, W=int(width), H=int(height)))
 
-        tbl_key = self.key_lookup('Element')
-
-        # Resize the display table dimensions
-
         # Resize the column widths
         tbl_width = width - 16  # for border sizes on either side of the table
-        self._column_widths = self._calc_column_widths(width=tbl_width, pixels=True)
-        self.reset_column_widths(window)
 
         # Expand 1 row every N-pixel increase in window size
         row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
@@ -1703,10 +1714,10 @@ class TableElement:
         logger.debug('DataTable {NAME}: changing the number of rows in the table from {IROW} to {CROW} based on table '
                      'size difference {DIFF}'.format(NAME=self.name, IROW=initial_nrow, CROW=nrows, DIFF=height_diff))
 
-        window[tbl_key].update(num_rows=nrows)
+        self._dimensions = (tbl_width, nrows)
 
-        # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
-        self.update_display(window)
+        # Resize the display table dimensions
+        self.set_table_dimensions(window)
 
         # Expand the table frames
         filter_params = self.parameters
@@ -2500,7 +2511,7 @@ class RecordTable(TableElement):
         # Row click event
         if event == tbl_key:
             # Close options panel, if open
-            self.reset_column_widths(window)
+            self.set_table_dimensions(window)
 
             # Find row selected by user from the display table of non-deleted rows
             try:
@@ -2910,7 +2921,7 @@ class ComponentTable(RecordTable):
         # Row click event
         if event == tbl_key:
             # Close options panel, if open
-            self.reset_column_widths(window)
+            self.set_table_dimensions(window)
 
             # Find row selected by user from the display table of non-deleted rows
             try:

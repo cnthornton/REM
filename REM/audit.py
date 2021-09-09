@@ -286,7 +286,7 @@ class AuditRule:
 
             # Reset panel size
             for tab in self.tabs:
-                tab.table.reset_column_widths(window)
+                tab.table.set_table_dimensions(window)
 
             # Hide current panel and un-hide the following panel
             window[self.panel_keys[self.current_panel]].update(visible=False)

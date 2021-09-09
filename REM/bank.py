@@ -252,7 +252,7 @@ class BankRule:
 
             # Reset panel sizes
             next_acct = self.fetch_account(next_panel, by_key=True)
-            next_acct.table.reset_column_widths(window)
+            next_acct.table.set_table_dimensions(window)
 #            self.resize_elements(window)
 
             # Hide current panel and un-hide the following panel
@@ -271,7 +271,7 @@ class BankRule:
 
             # Reset panel sizes
             prev_acct = self.fetch_account(prev_panel, by_key=True)
-            prev_acct.table.reset_column_widths(window)
+            prev_acct.table.set_table_dimensions(window)
 #            self.resize_elements(window)
 
             # Hide current panel and un-hide the previous panel
@@ -1128,7 +1128,7 @@ class AccountEntry:
                 ref_df = self.ref_df
 
                 # Close options panel, if open
-                table.reset_column_widths(window)
+                table.set_table_dimensions(window)
 
                 # Find row selected by user
                 try:

@@ -1832,54 +1832,6 @@ class DatabaseRecord:
 
         return pd.Series(values)
 
-    def table_values_old(self):
-        """
-        Format parameter values as a table row.
-        """
-        is_numeric_dtype = pd.api.types.is_numeric_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        headers = self.headers
-        parameters = self.parameters
-        modifiers = self.metadata
-
-        columns = []
-        values = []
-
-        # Add header values
-        for header in headers:
-            columns.append(header.name)
-            values.append(header.value)
-
-        # Add modifier values
-        for modifier in modifiers:
-            columns.append(modifier.name)
-            values.append(modifier.value)
-
-        # Add parameter values
-        for param in parameters:
-            param_type = param.etype
-            if param_type == 'table':  # parameter is a data table object
-                df = param.df
-                for column in df.columns.tolist():  # component is header column
-                    dtype = df[column].dtype
-                    if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
-                        col_summary = df[column].sum()
-                    elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                        col_summary = df[column].nunique()
-                    else:  # possibly empty dataframe
-                        col_summary = 0
-
-                    columns.append(column)
-                    values.append(col_summary)
-            else:  # parameter is a data element object
-                columns.append(param.name)
-                values.append(param.value)
-
-        return pd.Series(values, index=columns)
-
     def prepare_delete_statements(self, statements: dict = None):
         """
         Prepare statements for deleting the record and child records from the database.
