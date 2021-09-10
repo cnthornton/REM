@@ -1030,16 +1030,14 @@ class TableElement:
             display_col = display_col.apply(settings.format_display_money)
         elif is_datetime_dtype(dtype):
             display_col = display_col.apply(settings.format_display_date)
-        elif is_string_dtype(dtype) or is_integer_dtype(dtype):
-            display_col = display_col.fillna('')
         elif is_bool_dtype(dtype):
             display_col = display_col.apply(lambda x: '✓' if x is True else '')
+        elif is_integer_dtype(dtype) or is_string_dtype(dtype):
+            if column in aliases:
+                alias_map = aliases[column]
+                display_col = display_col.apply(lambda x: alias_map[x] if x in alias_map else x)
 
-        if column in aliases:
-            alias_map = aliases[column]
-            display_col = display_col.apply(lambda x: alias_map[x] if x in alias_map else x)
-
-        return display_col.fillna('')
+        return display_col.astype('object').fillna('')
 
     def filter_table(self):
         """
@@ -1088,7 +1086,7 @@ class TableElement:
         """
         is_numeric_dtype = pd.api.types.is_numeric_dtype
 
-        if statistic not in self._supported_stats:
+        if statistic and statistic not in self._supported_stats:
             msg = 'unknown statistic {STAT} supplied for summarizing table column {COL}'\
                 .format(STAT=statistic, COL=column)
             logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
