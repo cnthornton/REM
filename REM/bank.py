@@ -609,7 +609,7 @@ class BankRule:
         Arguments:
             expand (bool): expand the search by ignoring association parameters designated as expanded [Default: False].
         """
-        pd.set_option('display.max_columns', None)
+        #pd.set_option('display.max_columns', None)
 
         ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
                     'IsChild', 'IsDeleted']
@@ -628,8 +628,6 @@ class BankRule:
         ref_df = ref_df[~ref_df['IsDeleted']]
         df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), ref_df, how='left', on='RecordID')
         header = df.columns.tolist()
-        print('merged main account dataframe:')
-        print(df)
 
         if df.empty:
             return True

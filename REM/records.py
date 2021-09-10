@@ -953,18 +953,23 @@ class RecordEntry:
         """
         Remove a record ID from the database of unsaved IDs associated with the record type.
         """
-        if not record_ids:
-            record_ids = self.get_unsaved_ids(internal_only=internal_only)
-            if not record_ids:
-                return False
+        unsaved_ids = self.get_unsaved_ids(internal_only=internal_only)
+
+        if isinstance(record_ids, str):
+            remove_ids = [record_ids] if record_ids in unsaved_ids else []
+        elif isinstance(record_ids, list):
+            remove_ids = [i for i in record_ids if i in unsaved_ids]
+        else:
+            remove_ids = unsaved_ids
 
         if not len(record_ids) > 0:
+            logger.debug('RecordEntry {NAME}: no unsaved record IDs to remove'.format(NAME=self.name))
             return True
 
         logger.debug('RecordEntry {NAME}: attempting to remove IDs {ID} from the list of unsaved record IDs'
-                     .format(NAME=self.name, ID=record_ids))
+                     .format(NAME=self.name, ID=remove_ids))
 
-        value = {'ids': record_ids, 'id_code': self.id_code}
+        value = {'ids': remove_ids, 'id_code': self.id_code}
         content = {'action': 'remove_ids', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
         response = server_conn.process_request(request)
@@ -972,11 +977,11 @@ class RecordEntry:
         success = response['success']
         if success is False:
             msg = 'RecordEntry {NAME}: failed to remove IDs {ID} from the list of unsaved record IDs of type ' \
-                  '{TYPE} - {ERR}'.format(NAME=self.name, ID=record_ids, TYPE=self.name, ERR=response['value'])
+                  '{TYPE} - {ERR}'.format(NAME=self.name, ID=remove_ids, TYPE=self.name, ERR=response['value'])
             logger.error(msg)
         else:
             logger.debug('RecordEntry {NAME}: successfully removed {ID} from the list of unsaved record IDs '
-                         'associated with the record entry'.format(NAME=self.name, ID=record_ids))
+                         'associated with the record entry'.format(NAME=self.name, ID=remove_ids))
 
         return success
 

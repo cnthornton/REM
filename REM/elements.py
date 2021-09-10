@@ -90,6 +90,9 @@ class TableElement:
                                'WidthCol1', 'WidthCol2', 'WidthCol3']])
         self.etype = 'table'
 
+        self._action_elements = ['Element']
+        self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
+
         try:
             self.description = entry['Description']
         except KeyError:
@@ -318,8 +321,6 @@ class TableElement:
         except KeyError:
             self.summary_rules = {}
         else:
-            statistics = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std']
-
             self.summary_rules = {}
             for summary_name in summary_rules:
                 summary_rule = summary_rules[summary_name]
@@ -339,7 +340,7 @@ class TableElement:
 
                 if 'Statistic' in summary_rule:
                     statistic = summary_rule['Statistic']
-                    if statistic not in statistics:
+                    if statistic not in self._supported_stats:
                         msg = 'unknown statistic {STAT} provided to summary rule "{SUMM}"' \
                             .format(STAT=statistic, SUMM=summary_name)
                         logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -421,10 +422,9 @@ class TableElement:
         except KeyError:
             self.required_columns = []
 
-        self._action_elements = ['Element']
+        # Dynamic attributes
         self._dimensions = (mod_const.TBL_WIDTH, self.nrow)
 
-        # Dynamic attributes
         self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
 
@@ -1082,34 +1082,59 @@ class TableElement:
 
         return df
 
-    def summarize_column(self, colname, df: pd.DataFrame = None):
+    def summarize_column(self, column, df: pd.DataFrame = None, statistic: str = None):
         """
         Summarize a table column.
         """
         is_numeric_dtype = pd.api.types.is_numeric_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
+
+        if statistic not in self._supported_stats:
+            msg = 'unknown statistic {STAT} supplied for summarizing table column {COL}'\
+                .format(STAT=statistic, COL=column)
+            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            statistic = None
 
         df = df if df is not None else self.data()
 
-        logger.debug('DataTable {NAME}: summarizing table column {COL}'.format(NAME=self.name, COL=colname))
+        logger.debug('DataTable {NAME}: summarizing table column {COL}'.format(NAME=self.name, COL=column))
 
         try:
-            col_values = df[colname]
+            col_values = df[column]
         except KeyError:
             logger.error('DataTable {NAME}: summary column "{COL}" is missing from the table dataframe'
-                         .format(NAME=self.name, COL=colname))
+                         .format(NAME=self.name, COL=column))
 
-            raise
+            return 0
+
+        if col_values.empty:
+            return 0
 
         dtype = col_values.dtype
-        if is_numeric_dtype(dtype) or is_bool_dtype(dtype):
+        if statistic == 'sum':
             col_summary = col_values.sum()
-        elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+        elif statistic == 'count':
+            col_summary = col_values.count()
+        elif statistic == 'unique':
             col_summary = col_values.nunique()
-        else:  # possibly empty dataframe
-            col_summary = 0
+        elif statistic == 'min':
+            col_summary = col_values.min()
+        elif statistic == 'max':
+            col_summary = col_values.max()
+        elif statistic == 'product' and is_numeric_dtype(dtype):
+            col_summary = col_values.product()
+        elif statistic == 'mean' and is_numeric_dtype(dtype):
+            col_summary = col_values.mean()
+        elif statistic == 'mode' and is_numeric_dtype(dtype):
+            col_summary = col_values.mode()
+        elif statistic == 'median' and is_numeric_dtype(dtype):
+            col_summary = col_values.median()
+        elif statistic == 'std' and is_numeric_dtype(dtype):
+            col_summary = col_values.std()
+        else:
+            if is_numeric_dtype(dtype):  # default statistic for numeric data types like ints, floats, and bools
+                col_summary = col_values.sum()
+            else:  # default statistic for non-numeric data types like strings and datetime objects
+                col_summary = col_values.nunique()
 
         return col_summary
 
@@ -1117,8 +1142,7 @@ class TableElement:
         """
         Update Summary element with data summary
         """
-        df = df if df is not None else self.data()
-        dtypes = self.columns
+        df = self.data() if df is None else df
 
         logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
 
@@ -1145,68 +1169,11 @@ class TableElement:
             else:
                 subset_df = df
 
-            summary_total = self.summarize_column(column, df=subset_df)
+            summary_stat = rule['Statistic']
+            summary_total = self.summarize_column(column, df=subset_df, statistic=summary_stat)
             summary[rule_name] = summary_total
 
         return summary
-
-    def summarize_table_old(self, df: pd.DataFrame = None):
-        """
-        Update Summary element with data summary
-        """
-        operators = set('+-*/')
-
-        df = df if df is not None else self.data()
-
-        logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
-
-        # Calculate totals defined by summary rules
-        outputs = []
-        summ_rules = self.summary_rules
-        for rule_name in summ_rules:
-            summ_rule = summ_rules[rule_name]
-
-            logger.debug('DataTable {NAME}: summarizing display table on configured summary rule "{RULE}"'
-                         .format(NAME=self.name, RULE=summ_rule))
-
-            column = summ_rule['Column']
-
-            # Subset df if subset rule provided
-            condition = summ_rule['Condition']
-            if condition is not None:
-                try:
-                    subset_df = self.subset(summ_rule['Condition'])
-                except Exception as e:
-                    logger.warning('DataTable {NAME}: unable to subset dataframe with subset rule {SUB} - {ERR}'
-                                   .format(NAME=self.name, SUB=summ_rule['Subset'], ERR=e))
-                    break
-            else:
-                subset_df = df
-
-            rule_values = []
-            for component in mod_dm.parse_operation_string(column):
-                if component in operators:
-                    rule_values.append(component)
-                    continue
-
-                if component in self.columns:  # component is header column
-                    col_summary = self.summarize_column(component, df=subset_df)
-                    rule_values.append(col_summary)
-                else:
-                    try:  # component is a number
-                        float(component)
-                    except ValueError:  # component is an unsupported character
-                        logger.warning('DataTable {NAME}: unsupported character "{ITEM}" found in summary rule '
-                                       '"{SUMM}"'.format(NAME=self.name, ITEM=component, SUMM=rule_name))
-                        rule_values = [0]
-                        break
-                    else:
-                        rule_values.append(component)
-
-            summary_total = eval(' '.join([str(i) for i in rule_values]))
-            outputs.append((rule_name, summary_total))
-
-        return outputs
 
     def annotate_rows(self, df):
         """
@@ -2751,16 +2718,18 @@ class RecordTable(TableElement):
         df = self.df.copy()
         select_df = df.iloc[indices]
 
-        # Get record IDs of selected rows
+        # Get record IDs for all selected rows
         record_ids = select_df[self.id_column].tolist()
         logger.info('DataTable {TBL}: removing records {IDS} from the table'
                     .format(TBL=self.name, IDS=record_ids))
 
-        # Add removed rows to the import dataframe
-        self.import_df = self.append(select_df, imports=True)
-
         # Set the deleted field for the selected rows to True
         df.loc[df[self.id_column].isin(record_ids), self.deleted_column] = True
+
+        # Add removed rows to the import dataframe if the records were not created within the table
+        self.import_df = self.append(select_df, imports=True)
+
+        # Set the dataframe
         self.df = df
 
         return df
@@ -3246,7 +3215,8 @@ class ComponentTable(RecordTable):
                     df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
 
                     # Add import dataframe to data table object
-                    import_table.df = import_df.append(df, ignore_index=True)
+#                    import_table.df = import_df.append(df, ignore_index=True)
+                    import_table.df = self.append(df, imports=True)
         else:
             import_table.df = import_df
 

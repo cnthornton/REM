@@ -724,7 +724,7 @@ def parameter_window(account, win_size: tuple = None):
     # Event window
     check_conds = True
     while True:
-        event, values = window.read(timeout=500)
+        event, values = window.read(timeout=100)
 
         # Cancel parameter selection
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without setting param values
