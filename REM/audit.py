@@ -2175,8 +2175,8 @@ class AuditRecordTab:
         else:  # create individual records for each transaction
             final_df = append_df
 
-        final_df = component_table.set_datatypes(final_df)
-
+#        final_df = component_table.set_datatypes(final_df)
+#
         record_ids = record_entry.create_record_ids([record_date for _ in range(final_df.shape[0])],
                                                     offset=settings.get_date_offset())
         if record_ids is None:

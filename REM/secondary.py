@@ -1879,9 +1879,6 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     window = settings.set_shortcuts(window)
     table_shortcuts = settings.get_shortcuts('Table')
 
-    # Set table datatypes
-    table.df = table.set_datatypes(table.df)
-
     # Prepare record
     record_entry = settings.records.fetch_rule(table.record_type)
     import_rules = table.import_rules if table.import_rules else record_entry.import_rules
@@ -1973,6 +1970,9 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             continue
 
         if event == tbl_key:  # click to open record
+            # Close options panel, if open
+            table.set_table_dimensions(window)
+
             # retrieve selected row
             try:
                 row_index = values[tbl_key][0]

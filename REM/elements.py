@@ -559,16 +559,15 @@ class TableElement:
         """
         Reset the data table to default.
         """
-
         # Reset dynamic attributes
         columns = list(self.columns)
         self.df = self.set_datatypes(pd.DataFrame(columns=columns))
         self.index_map = {}
 
-        # Reset column widths
+        # Reset table dimensions
         self.set_table_dimensions(window)
 
-        # Update the display
+        # Update the table display
         self.update_display(window)
 
     def fetch_parameter(self, element, by_key: bool = False):
@@ -690,20 +689,19 @@ class TableElement:
                 logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                              'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
                 lengths = self._calc_column_widths(width=new_width, pixels=True)
-                print('columns widths are:')
-                print(lengths)
                 for col_index, col_name in enumerate(header):
                     col_width = lengths[col_index]
                     window[tbl_key].Widget.column(col_name, width=col_width)
 
                 # Reveal the table frame
                 window[tbl_key].update(visible=True)
+
+                # Update the display table to show annotations properly
+                self.update_display(window)
             else:
-                print('closing the options panel')
                 self.set_table_dimensions(window)
 
         if event == cancel_key:
-            print('closing the options panel')
             self.set_table_dimensions(window)
 
         # Sort column selected from menu of sort columns
@@ -977,9 +975,9 @@ class TableElement:
         annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
 
         # Add annotations to the dataframe styling
-        display_df = display_df.style.apply(
-            lambda x: ['background-color: {}'.format(annotation_map.get(x.name, 'white'))
-                       for _ in x], axis=1)
+        style = 'background-color: {}'
+        display_df = display_df.style.apply(lambda x: [style.format(annotation_map.get(x.name, 'white')) for _ in x],
+                                            axis=1)
 
         return display_df
 
@@ -1666,7 +1664,7 @@ class TableElement:
         tbl_key = self.key_lookup('Element')
         frame_key = self.key_lookup('OptionsFrame')
 
-        logger.debug('DataTable {NAME}: resetting display column widths'.format(NAME=self.name))
+        logger.debug('DataTable {NAME}: resetting display table dimensions'.format(NAME=self.name))
 
         # Close options panel, if open
         if window[frame_key].metadata['visible'] is True:
@@ -1680,8 +1678,8 @@ class TableElement:
             width = widths[index]
             window[tbl_key].Widget.column(column, width=width)
 
-        window[tbl_key].expand((True, True))
-        window[tbl_key].table_frame.pack(expand=True, fill='both')
+#        window[tbl_key].expand((True, True))
+#        window[tbl_key].table_frame.pack(expand=True, fill='both')
 
         # Update the number of rows in the display table
         window[tbl_key].update(num_rows=nrows)
@@ -2561,6 +2559,9 @@ class RecordTable(TableElement):
         # Import rows button clicked
         if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                    window[import_key].metadata['visible'])):
+            # Close options panel, if open
+            self.set_table_dimensions(window)
+
             self.import_rows()
 
         # All action events require a table update
@@ -2954,6 +2955,9 @@ class ComponentTable(RecordTable):
         # Add row button clicked
         if event == add_key or (event == '-HK_TBL_ADD-' and (not window[add_key].metadata['disabled'] and
                                                              window[add_key].metadata['visible'])):
+            # Close options panel, if open
+            self.set_table_dimensions(window)
+
             self.add_row()
 
         # Delete rows button clicked
@@ -2976,6 +2980,9 @@ class ComponentTable(RecordTable):
         # Import rows button clicked
         if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
                                                                    window[import_key].metadata['visible'])):
+            # Close options panel, if open
+            self.set_table_dimensions(window)
+
             self.import_rows()
 
         # All action events require a table update
