@@ -628,6 +628,8 @@ class RecordEntry:
 
                         raise KeyError(msg)
 
+                    sub_cols = [i for i in colmap if i in df.columns]
+
                     # Edit existing linked-records
                     df_sub_exist = exist_df[mod_dm.evaluate_rule(exist_df, condition)]
                     if df_sub_exist.empty:
@@ -637,8 +639,8 @@ class RecordEntry:
                     exist_ref_df = self.import_references(df_sub_exist['RecordID'].tolist(), association)
 
                     # Merge the relevant columns of the records dataframe with the reference dataframe
-                    merged_df = pd.merge(df_sub_exist[['RecordID'] + list(colmap)], exist_ref_df, on='RecordID')
-                    merged_df = merged_df[['ReferenceID'] + list(colmap)].rename(columns=colmap)
+                    merged_df = pd.merge(df_sub_exist[['RecordID'] + sub_cols], exist_ref_df, on='RecordID')
+                    merged_df = merged_df[['ReferenceID'] + sub_cols].rename(columns=colmap)
                     statements = ref_entry.save_database_records(merged_df.rename(columns={'ReferenceID': 'RecordID'}),
                                                                  statements=statements)
 
@@ -662,7 +664,7 @@ class RecordEntry:
 
                     ref_ids = ref_entry.create_record_ids(ref_dates, offset=settings.get_date_offset())
 
-                    ref_df = df_sub[list(colmap)].rename(columns=colmap)
+                    ref_df = df_sub[sub_cols].rename(columns=colmap)
                     ref_df['RecordID'] = ref_ids
                     ref_df['RecordDate'] = ref_dates
                     statements = ref_entry.save_database_records(ref_df, statements=statements)
