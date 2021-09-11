@@ -751,7 +751,7 @@ def parameter_window(account, win_size: tuple = None):
             continue
 
         # Save parameter settings
-        if event == '-HK_RECORD_SAVE-':
+        if event == '-HK_ENTER-':
             window['-LOAD-'].click()
 
         if event == '-LOAD-':
