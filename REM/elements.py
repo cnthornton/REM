@@ -425,7 +425,7 @@ class TableElement:
         # Dynamic attributes
         self._dimensions = (mod_const.TBL_WIDTH, self.nrow)
 
-        self.df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
+        self.df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
 
     def _apply_filter(self):
@@ -540,6 +540,93 @@ class TableElement:
 
         return df
 
+    def _set_column_dtype(self, column, name: str = None, dtype: str = None):
+        """
+        Set the datatype for table column values based on the datatype map.
+        """
+        dtype_map = self.columns
+
+        column_name = column.name if not name else name
+        dtype = dtype_map[column_name] if not dtype else dtype
+        if dtype in ('date', 'datetime', 'timestamp', 'time'):
+            try:
+                values = pd.to_datetime(column, errors='coerce', format=settings.date_format, utc=False)
+            except ValueError:  # need to remove Time Zone information from column values
+                values = column.apply(lambda x: x.replace(tzinfo=None))
+        elif dtype in ('int', 'integer', 'bigint'):
+            try:
+                values = column.astype('Int64')
+            except TypeError:
+                values = column.astype(float).astype('Int64')
+        elif dtype == 'mediumint':
+            try:
+                values = column.astype('Int32')
+            except TypeError:
+                values = column.astype(float).astype('Int32')
+        elif dtype == 'smallint':
+            try:
+                values = column.astype('Int16')
+            except TypeError:
+                values = column.astype(float).astype('Int16')
+        elif dtype in ('tinyint', 'bit'):
+            try:
+                values = column.astype('Int8')
+            except TypeError:
+                values = column.astype(float).astype('Int8')
+        elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
+            values = pd.to_numeric(column, errors='coerce', downcast='float')
+        elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
+            values = pd.to_numeric(column, errors='coerce')
+        elif dtype in ('bool', 'boolean'):
+            values = column.fillna(False).astype(np.bool, errors='raise')
+        elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
+            values = column.astype(np.object, errors='raise')
+        else:
+            values = column.astype(np.object, errors='raise')
+
+        return values
+
+    def _set_datatypes(self, df=None):
+        """
+        Set column_name data types based on header mapping
+        """
+        df = self.df.copy() if df is None else df
+        dtype_map = self.columns
+        header = df.columns.tolist()
+
+        logger.debug('DataTable {NAME}: setting column data types to configured data types'.format(NAME=self.name))
+
+        if not isinstance(dtype_map, dict):
+            logger.warning('DataTable {NAME}: unable to set column datatypes. Columns must be configured '
+                           'as an object to specify data types'.format(NAME=self.name))
+            return df
+
+        for column_name in dtype_map:
+            if column_name not in header:
+                logger.warning('DataTable {NAME}: "{COL}" is not in the dataframe header - setting initial value to NaN'
+                               .format(NAME=self.name, COL=column_name))
+                df[column_name] = None
+
+            dtype = dtype_map[column_name]
+            column = df[column_name]
+            try:
+                column_values = self._set_column_dtype(column)
+            except Exception as e:
+                logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
+                               .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
+                logger.debug('DataTable {NAME}: column "{COL}" values are {VALS}'
+                             .format(NAME=self.name, COL=column_name, VALS=column.values))
+            else:
+                try:
+                    df.loc[:, column_name] = column_values
+                except ValueError as e:
+                    logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
+                                   .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                    logger.debug('DataTable {NAME}: column values are {VALS}'
+                                 .format(NAME=self.name, VALS=column_values))
+
+        return df
+
     def key_lookup(self, component):
         """
         Lookup a component's GUI element key using the component's name.
@@ -561,7 +648,7 @@ class TableElement:
         """
         # Reset dynamic attributes
         columns = list(self.columns)
-        self.df = self.set_datatypes(pd.DataFrame(columns=columns))
+        self.df = self._set_datatypes(pd.DataFrame(columns=columns))
         self.index_map = {}
 
         # Reset table dimensions
@@ -1738,7 +1825,7 @@ class TableElement:
             add_df[self.deleted_column] = False
 
         # Make sure the data types of the columns are consistent
-        add_df = self.set_datatypes(add_df)
+        add_df = self._set_datatypes(add_df)
         add_df = self.set_conditional_values(add_df)
 
         # Add new data to the table
@@ -1926,12 +2013,6 @@ class TableElement:
 
         return total
 
-    def get_value(self):
-        """
-        Return table totals as the element value.
-        """
-        return self.calculate_total()
-
     def export_values(self):
         """
         Export summary values as a dictionary.
@@ -2091,7 +2172,7 @@ class TableElement:
                             df.at[index, column] = dtype_map[dtype](default_value)
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=False)
-                default_values = self.set_column_dtype(default_values, name=column)
+                default_values = self._set_column_dtype(default_values, name=column)
                 logger.debug('DataTable {NAME}: assigning conditional values "{VAL}" to column "{COL}"'
                              .format(NAME=self.name, VAL=default_values.values, COL=column))
                 df[column] = default_values
@@ -2099,7 +2180,7 @@ class TableElement:
                 logger.warning('DataTable {NAME}: neither the "DefaultCondition" nor "DefaultRule" parameter was '
                                'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
 
-        df = self.set_datatypes(df)
+        df = self._set_datatypes(df)
 
         return df
 
@@ -2167,96 +2248,7 @@ class TableElement:
                 logger.warning('DataTable {NAME}: neither the "DefaultValue" nor "DefaultRule" parameter was '
                                'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
 
-        df = self.set_datatypes(df)
-
-        return df
-
-    def set_column_dtype(self, column, name: str = None, dtype: str = None):
-        """
-        Set the datatype for table column values based on the datatype map.
-        """
-        dtype_map = self.columns
-
-        column_name = column.name if not name else name
-        dtype = dtype_map[column_name] if not dtype else dtype
-        #        logger.debug('DataTable {NAME}: the data type of column "{COL}" is "{DTYPE}"'
-        #                     .format(NAME=self.name, COL=column_name, DTYPE=dtype))
-        if dtype in ('date', 'datetime', 'timestamp', 'time'):
-            try:
-                values = pd.to_datetime(column, errors='coerce', format=settings.date_format, utc=False)
-            except ValueError:  # need to remove Time Zone information from column values
-                values = column.apply(lambda x: x.replace(tzinfo=None))
-        elif dtype in ('int', 'integer', 'bigint'):
-            try:
-                values = column.astype('Int64')
-            except TypeError:
-                values = column.astype(float).astype('Int64')
-        elif dtype == 'mediumint':
-            try:
-                values = column.astype('Int32')
-            except TypeError:
-                values = column.astype(float).astype('Int32')
-        elif dtype == 'smallint':
-            try:
-                values = column.astype('Int16')
-            except TypeError:
-                values = column.astype(float).astype('Int16')
-        elif dtype in ('tinyint', 'bit'):
-            try:
-                values = column.astype('Int8')
-            except TypeError:
-                values = column.astype(float).astype('Int8')
-        elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-            values = pd.to_numeric(column, errors='coerce', downcast='float')
-        elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-            values = pd.to_numeric(column, errors='coerce')
-        elif dtype in ('bool', 'boolean'):
-            values = column.fillna(False).astype(np.bool, errors='raise')
-        elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-            values = column.astype(np.object, errors='raise')
-        else:
-            values = column.astype(np.object, errors='raise')
-
-        return values
-
-    def set_datatypes(self, df=None):
-        """
-        Set column_name data types based on header mapping
-        """
-        df = self.df.copy() if df is None else df
-        dtype_map = self.columns
-        header = df.columns.tolist()
-
-        logger.debug('DataTable {NAME}: setting column data types to configured data types'.format(NAME=self.name))
-
-        if not isinstance(dtype_map, dict):
-            logger.warning('DataTable {NAME}: unable to set column datatypes. Columns must be configured '
-                           'as an object to specify data types'.format(NAME=self.name))
-            return df
-
-        for column_name in dtype_map:
-            if column_name not in header:
-                logger.warning('DataTable {NAME}: "{COL}" is not in the dataframe header - setting initial value to NaN'
-                               .format(NAME=self.name, COL=column_name))
-                df[column_name] = None
-
-            dtype = dtype_map[column_name]
-            column = df[column_name]
-            try:
-                column_values = self.set_column_dtype(column)
-            except Exception as e:
-                logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
-                               .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
-                logger.debug('DataTable {NAME}: column "{COL}" values are {VALS}'
-                             .format(NAME=self.name, COL=column_name, VALS=column.values))
-            else:
-                try:
-                    df.loc[:, column_name] = column_values
-                except ValueError as e:
-                    logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
-                                   .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
-                    logger.debug('DataTable {NAME}: column values are {VALS}'
-                                 .format(NAME=self.name, VALS=column_values))
+        df = self._set_datatypes(df)
 
         return df
 
@@ -2385,7 +2377,7 @@ class RecordTable(TableElement):
                 self.reference_column = None
 
         # Dynamic attributes
-        self.import_df = self.set_datatypes(pd.DataFrame(columns=list(self.columns)))
+        self.import_df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
 
     def _translate_row(self, row, level: int = 1, new_record: bool = False, references: dict = None):
         """
@@ -2457,8 +2449,8 @@ class RecordTable(TableElement):
         """
         columns = list(self.columns)
 
-        self.df = self.set_datatypes(pd.DataFrame(columns=columns))
-        self.import_df = self.set_datatypes(pd.DataFrame(columns=columns))
+        self.df = self._set_datatypes(pd.DataFrame(columns=columns))
+        self.import_df = self._set_datatypes(pd.DataFrame(columns=columns))
         self.index_map = {}
 
         self.update_display(window)
@@ -2656,7 +2648,7 @@ class RecordTable(TableElement):
             add_df[self.deleted_column] = False
 
         # Make sure the data types of the columns are consistent
-        add_df = self.set_datatypes(add_df)
+        add_df = self._set_datatypes(add_df)
         add_df = self.set_conditional_values(add_df)
 
         # Add new data to the table
@@ -3802,12 +3794,6 @@ class ReferenceBox:
         """
         return self.referenced
 
-    def get_value(self):
-        """
-        Return element value.
-        """
-        return self.referenced
-
     def export_values(self):
         """
         Export reference attributes as a dictionary.
@@ -3999,12 +3985,6 @@ class DataElement:
             raise KeyError(msg)
 
         return key
-
-    def get_value(self):
-        """
-        Return element value.
-        """
-        return self.value
 
     def export_values(self):
         """

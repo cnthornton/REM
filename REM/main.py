@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.8.4'
+__version__ = '3.8.5'
 
 import sys
 import tkinter as tk
@@ -923,41 +923,15 @@ def main():
                 current_rule.current_account = current_acct.name
                 current_rule.current_panel = current_acct.key_lookup('Panel')
 
+                # Clear the panel
+                current_rule.reset_rule(window, current=True)
+
                 # Update the panel-in-display and the account panel
                 window[current_panel].update(visible=False)
 
                 current_panel = current_rule.element_key
                 window[current_panel].update(visible=True)
                 window[current_rule.current_panel].update(visible=True)
-
-                # Disable toolbar
-                toolbar.disable(window)
-
-                logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
-                continue
-
-            elif selected_rule in bank_names:  # workflow method is bank reconciliation
-                # Obtain the selected rule object
-                current_rule = bank_rules.fetch_rule(selected_rule)
-
-                # Clear the panel
-                current_rule.reset_rule(window, current=True)
-
-                # Update panel-in-display
-                window[current_panel].update(visible=False)
-
-                current_panel = current_rule.element_key
-                window[current_panel].update(visible=True)
-                window[current_rule.panel_keys[current_rule.current_panel]].update(visible=True)
-
-                # Collapse the filter frame of the first tab
-                tg_key = current_rule.key_lookup('MainTG')
-                logger.debug('collapsing the filter frame of the first tab with key {}'.format(tg_key))
-                tab_key = window[tg_key].Get()
-                tab = current_rule.fetch_tab(tab_key, by_key=True)
-                filter_key = tab.table.key_lookup('FilterFrame')
-                if window[filter_key].metadata['visible'] is True:
-                    tab.table.collapse_expand(window, frame='filter')
 
                 # Disable toolbar
                 toolbar.disable(window)

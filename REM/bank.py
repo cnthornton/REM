@@ -325,6 +325,9 @@ class BankRule:
                     else:
                         self.panels.append(self.panel_keys[acct_name])
 
+                    # Enable table action buttons
+                    acct.table.enable(window)
+
                 # Update the display
                 self.update_display(window)
 
@@ -1092,10 +1095,12 @@ class AccountEntry:
         """
         Reset the elements and attributes of the bank record tab.
         """
-
-        # Reset the record and reference tables
+        # Reset the record table and the reference dataframe
         self.table.reset(window)
         self.ref_df = None
+
+        # Disable table element events
+        self.table.disable(window)
 
         # Un-collapse the tab filter frame
         filter_key = self.table.key_lookup('FilterFrame')
