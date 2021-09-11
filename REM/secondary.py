@@ -49,42 +49,6 @@ def popup_error(msg):
     return sg.popup_error(textwrap.fill(msg, width=40), font=font, title='')
 
 
-# Functions
-def verify_row(self, row_index):
-    """
-    Add row to verified list, returning list of updated row colors.
-    """
-    tbl_bg_col = mod_const.TBL_BG_COL
-    tbl_alt_col = mod_const.TBL_ALT_COL
-    tbl_vfy_col = mod_const.TBL_VFY_COL
-
-    if row_index is not None and row_index not in self.verified:
-        self.verified.append(row_index)  # add row to list of verified
-
-    elif row_index is not None and row_index in self.verified:
-        self.verified.remove(row_index)  # remove row from list of verified
-
-    # Get row colors for rows that have been selected
-    logger.debug('selected orders are {}'.format(', '.join([str(i) for i in self.verified])))
-    selected = [(i, tbl_vfy_col) for i in self.verified]
-
-    # Get row colors for rows that have not been selected
-    unselected = []
-    for index in range(self.df.shape[0]):  # all rows in dataframe
-        if index not in self.verified:
-            if index % 2 == 0:
-                color = tbl_bg_col
-            else:
-                color = tbl_alt_col
-
-            unselected.append((index, color))
-
-    # Update table row colors
-    all_row_colors = selected + unselected
-
-    return all_row_colors
-
-
 # Windows
 def login_window():
     """
@@ -899,6 +863,8 @@ def database_importer_window(win_size: tuple = None):
     """
     Display the database importer window.
     """
+    pd.set_option('display.max_columns', None)
+
     is_numeric_dtype = pd.api.types.is_numeric_dtype
     is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
     relativedelta = dateutil.relativedelta.relativedelta
@@ -912,7 +878,6 @@ def database_importer_window(win_size: tuple = None):
 
     oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
 
-#    cond_operators = ['==', '!=', '>', '<', '>=', '<=']
     math_operators = ('+', '-', '*', '/', '%')
     date_types = settings.supported_date_dtypes
 
@@ -990,14 +955,35 @@ def database_importer_window(win_size: tuple = None):
             if subset_df is None or table is None or record_entry is None:
                 continue
 
-            # Prepare the insertion statement
+            # Prepare the record insertion statements
             try:
                 statements = record_entry.save_database_records(subset_df.replace({np.nan: None}),
                                                                 id_field=settings.id_field, export_columns=False)
             except Exception as e:
-                msg = 'failed to upload entries to the database - {ERR}'.format(ERR=e)
+                msg = 'failed to upload {TYPE} record entries to the database - {ERR}'\
+                    .format(TYPE=record_entry.name, ERR=e)
                 logger.exception(msg)
+
                 return False
+
+            # Prepare references for all associations where record entry is the primary record type
+            association_rules = record_entry.associatiion_rules
+            for rule_name in association_rules:
+                association_rule = association_rules[rule_name]
+                if not association_rule['Primary']:
+                    continue
+
+                # Create an initial reference entry for the records
+                ref_data = pd.DataFrame({'RecordID': record_ids, 'RecordType': record_entry.name,
+                                         'IsDeleted': False})
+                try:
+                    statements = record_entry.save_database_references(ref_data, rule_name, statements=statements)
+                except Exception as e:
+                    msg = 'failed to upload {TYPE} reference entries to the database for association rule {RULE} - ' \
+                          '{ERR}'.format(TYPE=record_entry.name, RULE=rule_name, ERR=e)
+                    logger.exception(msg)
+
+                    return False
 
             sstrings = []
             psets = []
@@ -1165,7 +1151,6 @@ def database_importer_window(win_size: tuple = None):
                     logger.debug('formatting import file options: {}'.format(formatting_options))
 
                     # Import data from the file into a pandas dataframe
-                    pd.set_option('display.max_columns', None)
                     try:
                         import_df = reader(infile, **formatting_options)
                     except Exception as e:
