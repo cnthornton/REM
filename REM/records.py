@@ -521,9 +521,9 @@ class RecordEntry:
             export_columns (bool): use import column mapping to transform column names to database names before
                 exporting [Default: True]
         """
+        # pd.set_option('display.max_columns', None)
         export_rules = self.export_rules
         association_rules = self.association_rules
-        # pd.set_option('display.max_columns', None)
 
         if not statements:
             statements = {}
@@ -604,6 +604,7 @@ class RecordEntry:
 
         # If relevant, create or edit hard-linked reference records for new database records
         new_df = df[[not i for i in exists]]
+        exist_df = df[exists]
         for association in association_rules:
             if new_df.empty:
                 continue
@@ -627,6 +628,21 @@ class RecordEntry:
 
                         raise KeyError(msg)
 
+                    # Edit existing linked-records
+                    df_sub_exist = exist_df[mod_dm.evaluate_rule(exist_df, condition)]
+                    if df_sub_exist.empty:
+                        continue
+
+                    # Get IDs of the linked records
+                    exist_ref_df = self.import_references(df_sub_exist['RecordID'].tolist(), association)
+
+                    # Merge the relevant columns of the records dataframe with the reference dataframe
+                    merged_df = pd.merge(df_sub_exist[['RecordID'] + list(colmap)], exist_ref_df, on='RecordID')
+                    merged_df = merged_df[['ReferenceID'] + list(colmap)].rename(columns=colmap)
+                    statements = ref_entry.save_database_records(merged_df.rename(columns={'ReferenceID': 'RecordID'}),
+                                                                 statements=statements)
+
+                    # Create new hard-linked records
                     df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
                     if df_sub.empty:
                         continue
