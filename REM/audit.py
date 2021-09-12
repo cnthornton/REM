@@ -1985,7 +1985,7 @@ class AuditRecordTab:
             statements = {}
 
         # Export audit record
-        statements = record.prepare_save_statements(statements)
+        statements = record.prepare_save_statements(statements=statements, save_all=True)
 
         return statements
 

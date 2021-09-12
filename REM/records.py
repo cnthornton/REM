@@ -1817,9 +1817,16 @@ class DatabaseRecord:
 
         return True
 
-    def export_values(self, header: bool = True, references: bool = True):
+    def export_values(self, header: bool = True, references: bool = True, edited_only: bool = False):
         """
-        Format parameter values as a table row.
+        Export record data as a table row.
+
+        Arguments:
+            header (bool): include header components in the exported values [Default: True].
+
+            references (bool): include record references and components in the export values [Default: True].
+
+            edited_only (bool): only include values for record elements that were edited [Default: False].
         """
         parameters = self.parameters
 
@@ -1843,15 +1850,15 @@ class DatabaseRecord:
 
             # Add record component values
             for component_table in components:
-                values = {**values, **component_table.export_values()}
+                values = {**values, **component_table.export_values(edited_only=edited_only)}
 
             # Add reference values
             for refbox in refboxes:
-                values = {**values, **refbox.export_values()}
+                values = {**values, **refbox.export_values(edited_only=edited_only)}
 
         # Add parameter values
         for param in parameters:
-            values = {**values, **param.export_values()}
+            values = {**values, **param.export_values(edited_only=edited_only)}
 
         return pd.Series(values)
 
@@ -1944,9 +1951,15 @@ class DatabaseRecord:
 
         return success
 
-    def prepare_save_statements(self, statements: dict = None):
+    def prepare_save_statements(self, statements: dict = None, save_all: bool = False):
         """
         Prepare to the statements for saving the record to the database.
+
+        Arguments:
+            statements (dict): existing transaction statement dictionary to add to.
+
+            save_all (bool): save all record element values, regardless of whether they were edited or not
+                [Default: False]
         """
         if not statements:
             statements = {}
@@ -1965,7 +1978,11 @@ class DatabaseRecord:
         # Prepare to save the record
         logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
-            record_data = self.export_values()
+            if self.new or save_all:  # export all values if record is new or if indicated to do so
+                record_data = self.export_values()
+            else:  # export only edited values and component table rows
+                record_data = self.export_values(edited_only=True)
+
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
