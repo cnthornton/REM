@@ -22,7 +22,7 @@ from REM.client import logger, settings
 
 class TableElement:
     """
-    Generic GUI table element.
+    Record data table element.
 
     Attributes:
 
@@ -80,6 +80,8 @@ class TableElement:
             name (str): name of the configured table element.
 
             entry (dict): configuration entry for the table element.
+
+            parent (str): name of the parent element.
         """
         self.name = name
         self.parent = parent
@@ -924,18 +926,16 @@ class TableElement:
                     self.edit_row(index)
 
         # All action events require a table update
-        self.update_display(window, values)
+        self.update_display(window)
 
         return None
 
-    def update_display(self, window, window_values: dict = None, annotations: dict = None):
+    def update_display(self, window, annotations: dict = None):
         """
         Format object elements for display.
 
         Arguments:
             window (Window): GUI window.
-
-            window_values (dict): optional mapping of elements with element values.
 
             annotations (dict): custom row color annotations to use instead of generating annotations from the
                 configured annotation rules.
@@ -2572,7 +2572,7 @@ class RecordTable(TableElement):
             self.import_rows()
 
         # All action events require a table update
-        self.update_display(window, values)
+        self.update_display(window)
 
         return None
 
@@ -2613,6 +2613,9 @@ class RecordTable(TableElement):
     def row_ids(self, imports: bool = False):
         """
         Return a list of all current row IDs in the dataframe.
+
+        Arguments:
+            imports (bool): get row IDs from the imports dataframe instead of the records dataframe [Default: False].
         """
         id_field = self.id_column
         if imports:
@@ -2677,7 +2680,12 @@ class RecordTable(TableElement):
 
     def append(self, add_df, imports: bool = False):
         """
-        Add new rows of data to the data table.
+        Add new rows of data to the records or import dataframe.
+
+        Arguments:
+            add_df (DataFrame): rows to add to the table.
+
+            imports (bool): add rows to the imports dataframe instead of the records dataframe [Default: False].
         """
         if imports:  # add new data to the import dataframe instead of the data table
             df = self.import_df.copy()
@@ -2711,6 +2719,15 @@ class RecordTable(TableElement):
     def load_record(self, index, level: int = 1, references: dict = None, savable: bool = True):
         """
         Open selected record in new record window.
+
+        Arguments:
+            index (int): real index of the desired record to load.
+
+            level (int): level at which the record should be loaded [Default: load at top level 1]
+
+            references (dict): load record using custom reference dictionary.
+
+            savable (bool): database entry of the record can be updated through the record window [Default: True].
         """
         df = self.df.copy()
         modifiers = self.modifiers
@@ -2754,8 +2771,15 @@ class RecordTable(TableElement):
     def delete_rows(self, indices):
         """
         Remove records from the records table.
+
+        Arguments:
+            indices (list): real indices of the desired records to remove from the table.
         """
         df = self.df.copy()
+
+        if isinstance(indices, str):
+            indices = [indices]
+
         select_df = df.iloc[indices]
         if select_df.empty:
             return df
@@ -2780,7 +2804,7 @@ class RecordTable(TableElement):
 
     def import_rows(self):
         """
-        Import one or more records from a table of records.
+        Import one or more records through the record import window.
         """
         # pd.set_option('display.max_columns', None)
         import_df = self.import_df.copy()
@@ -3001,7 +3025,7 @@ class ComponentTable(RecordTable):
             self.import_rows()
 
         # All action events require a table update
-        self.update_display(window, values)
+        self.update_display(window)
 
         return None
 
@@ -3102,6 +3126,15 @@ class ComponentTable(RecordTable):
     def load_record(self, index, level: int = 1, references: dict = None, savable: bool = False):
         """
         Open selected record in new record window.
+
+        Arguments:
+            index (int): real index of the desired record to load.
+
+            level (int): level at which the record should be loaded [Default: load at top level 1]
+
+            references (dict): load record using custom reference dictionary.
+
+            savable (bool): database entry of the record can be updated through the record window [Default: True].
         """
         df = self.df.copy()
         modifiers = self.modifiers
@@ -3144,7 +3177,12 @@ class ComponentTable(RecordTable):
 
     def add_row(self, record_date: datetime.datetime = None, defaults: dict = None):
         """
-        Add a new row to the records table.
+        Create a new record and add it to the records table.
+
+        Arguments:
+            record_date (datetime): set record date to date [Default: use current date and time].
+
+            defaults (dict): provide new record with custom default values.
         """
         df = self.df.copy()
         header = list(self.columns)
@@ -3201,11 +3239,12 @@ class ComponentTable(RecordTable):
         except AttributeError:  # record creation was cancelled
             return df
         else:
-            self.edited = True
             logger.debug('DataTable {NAME}: appending values {VALS} to the table'
                          .format(NAME=self.name, VALS=record_values))
             record_values[self.added_column] = True
             df = self.append(record_values)
+
+            self.edited = True
 
         self.df = df
 
@@ -3213,7 +3252,7 @@ class ComponentTable(RecordTable):
 
     def import_rows(self):
         """
-        Import one or more records from a table of records.
+        Import one or more records through the record import window.
         """
         # pd.set_option('display.max_columns', None)
         import_df = self.import_df.copy()
@@ -3350,7 +3389,7 @@ class ComponentTable(RecordTable):
 
 class ReferenceBox:
     """
-    GUI reference box element.
+    Record reference box element.
 
     Attributes:
 
@@ -3375,12 +3414,14 @@ class ReferenceBox:
 
     def __init__(self, name, entry, parent=None):
         """
-        GUI data element.
+        Record reference box element.
 
         Arguments:
             name (str): reference box element configuration name.
 
             entry (pd.Series): configuration entry for the element.
+
+            parent (str): name of the parent element.
         """
         self.name = name
         self.parent = parent
@@ -3640,7 +3681,7 @@ class ReferenceBox:
 
         return layout
 
-    def update_display(self, window, window_values=None):
+    def update_display(self, window):
         """
         Update the display element.
         """
@@ -3878,7 +3919,7 @@ class ReferenceBox:
 
 class DataElement:
     """
-    GUI data element.
+    Record data element.
 
     Attributes:
 
@@ -4311,7 +4352,7 @@ class DataElement:
 
         return layout
 
-    def update_display(self, window, window_values=None):
+    def update_display(self, window):
         """
         Format element for display.
         """
@@ -4500,7 +4541,7 @@ class DataElement:
 
 class DataElementInput(DataElement):
     """
-    Input-style data element.
+    Input-style record data element.
 
     Attributes:
 
@@ -4569,7 +4610,7 @@ class DataElementInput(DataElement):
 
 class DataElementCombo(DataElement):
     """
-    Dropdown-style data element.
+    Dropdown-style record data element.
 
     Attributes:
 
@@ -4681,7 +4722,7 @@ class DataElementCombo(DataElement):
 
 class DataElementMultiline(DataElement):
     """
-    Multiline-style data element.
+    Multiline-style record data element.
 
     Attributes:
 
@@ -4764,7 +4805,7 @@ class DataElementMultiline(DataElement):
 # Element references
 class ElementReference:
     """
-    Data element that references the values of other data elements.
+    Record element that references the values of other record elements.
 
     Attributes:
 

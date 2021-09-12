@@ -27,6 +27,11 @@ class RecordEntry:
     def __init__(self, name, entry):
         """
         Configuration record entry.
+
+        Arguments:
+            name (str): name of the record entry.
+
+            entry (dict): configuration entry for the record.
         """
         self.name = name
 
@@ -186,7 +191,12 @@ class RecordEntry:
 
     def import_records(self, params: list = None, import_rules: dict = None):
         """
-        Import all records from the database.
+        Import entry records from the database.
+
+        Arguments:
+            params (list): list of data parameters that will be used to filter the database when importing records.
+
+            import_rules (dict): use custom import rules to import the records from the database.
         """
         params = [] if params is None else params
 
@@ -271,7 +281,8 @@ class RecordEntry:
 
     def search_unreferenced_ids(self, rule_name):
         """
-        Import a record's association.
+        Extract all record IDs from the reference database that do not have a record reference for the given
+        association rule.
         """
         association_rules = self.association_rules
 
@@ -314,6 +325,16 @@ class RecordEntry:
     def confirm_saved(self, id_list, id_field: str = 'RecordID', table: str = None):
         """
         Check whether or not records have already been saved to the database.
+
+        Arguments:
+            id_list (list): check to see if these record IDs are found in the database or the given database table.
+
+            id_field (str): table field containing the record IDs [Default: RecordID].
+
+            table (str): search this database table for the record IDs.
+
+        Returns:
+            records_saved (list): list of corresponding booleans giving the status of the record ID in the database.
         """
         if isinstance(id_list, str):
             record_ids = [id_list]
@@ -376,6 +397,14 @@ class RecordEntry:
     def load_record_data(self, id_list, id_field: str = 'RecordID'):
         """
         Load a record from the database using the record ID.
+
+        Arguments:
+            id_list (list): load records with these record IDs from the database.
+
+            id_field (str): table field containing the record IDs [Default: RecordID].
+
+        Returns:
+            import_df (DataFrame): dataframe of imported records.
         """
         if isinstance(id_list, str):
             record_ids = [id_list]
@@ -415,6 +444,17 @@ class RecordEntry:
     def save_database_references(self, ref_data, rule_name, statements: dict = None):
         """
         Prepare to save database references.
+
+        Arguments:
+            ref_data (DataFrame): reference entries to save to the database table specified by the association rule.
+
+            rule_name (str): name of the association rule that indicates which database table to save the reference
+                entries to.
+
+            statements (dict): optional dictionary of transactions statements to append to.
+
+        Returns:
+            statements (dict): dictionary of transactions statements.
         """
         if statements is None:
             statements = {}
@@ -512,14 +552,17 @@ class RecordEntry:
         Create insert and update database transaction statements for records.
 
         Arguments:
-            records (DataFrame): table containing the record data that will be exported to the database.
+            records (DataFrame): record data that will be exported to the database.
 
             id_field (str): name of the column containing the record IDs.
 
-            statements (dict): dictionary of existing database transaction statements to append the results to.
+            statements (dict): optional dictionary of database transaction statements to append to.
 
             export_columns (bool): use import column mapping to transform column names to database names before
                 exporting [Default: True]
+
+        Returns:
+            statements (dict): dictionary of transactions statements.
         """
         # pd.set_option('display.max_columns', None)
         export_rules = self.export_rules
@@ -682,6 +725,19 @@ class RecordEntry:
                                 ref_ids: list = None):
         """
         Delete records from the database.
+
+        Arguments:
+            records (list): delete records with these record IDs from the database.
+
+            statements (dict): optional dictionary of database transaction statements to add to.
+
+            id_field (str): name of the column containing the record IDs [Default: RecordID].
+
+            ref_ids (list): list of references that have already been modified within the current delete action.
+                Required to prevent endless recursion.
+
+        Returns:
+            statements (dict): dictionary of transaction statements.
         """
         # pd.set_option('display.max_columns', None)
 
@@ -828,6 +884,15 @@ class RecordEntry:
     def create_record_ids(self, date_list, offset: int = 0):
         """
         Create a new set of record IDs.
+
+        Arguments:
+            date_list (list): create IDs from these dates.
+
+            offset (int): apply an offset to the date list that will be used within the new record IDs by this amount
+                [Default: do not apply a date offset].
+
+        Returns:
+            record_ids (list): list of new, unique record IDs.
         """
         relativedelta = dateutil.relativedelta.relativedelta
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
@@ -970,6 +1035,16 @@ class RecordEntry:
     def remove_unsaved_ids(self, record_ids: list = None, internal_only: bool = True):
         """
         Remove a record ID from the database of unsaved IDs associated with the record type.
+
+        Arguments:
+            record_ids (list): optional list of record IDs to remove from the set of unsaved record IDs with ID code
+                corresponding to the ID code configured for the record entry.
+
+            internal_only (bool): only remove recordIDs from the unsaved record IDs if they were created within the
+                program instance.
+
+        Returns:
+            success (bool): removal of unsaved record IDs was successful.
         """
         unsaved_ids = self.get_unsaved_ids(internal_only=internal_only)
 
@@ -1006,6 +1081,13 @@ class RecordEntry:
     def get_unsaved_ids(self, internal_only: bool = False):
         """
         Retrieve a list of unsaved record IDs from the database of unsaved record IDs associated with the record type.
+
+        Arguments:
+            internal_only (bool): only retrieve unsaved record IDs that they were created within the current program
+                instance.
+
+        Returns:
+            unsaved_ids (list): list of unsaved record IDs.
         """
         if internal_only is True:
             instance = settings.instance_id
@@ -1038,6 +1120,13 @@ class RecordEntry:
     def add_unsaved_ids(self, record_ids):
         """
         Add a record ID to the list of unsaved record IDs associated with the record type.
+
+        Arguments:
+            record_ids (list): list of record IDs to add to the set of unsaved record IDs with ID code corresponding to
+                the ID code of the record entry.
+
+        Returns:
+            success (bool): addition of records to the set of unsaved record IDs was successful.
         """
         logger.debug('RecordEntry {NAME}: attempting to add record IDs {ID} to the list of unsaved record IDs '
                      'associated with the record entry'.format(NAME=self.name, ID=record_ids))
@@ -1827,6 +1916,9 @@ class DatabaseRecord:
             references (bool): include record references and components in the export values [Default: True].
 
             edited_only (bool): only include values for record elements that were edited [Default: False].
+
+        Returns:
+            values (Series): record values.
         """
         parameters = self.parameters
 
@@ -1865,6 +1957,12 @@ class DatabaseRecord:
     def prepare_delete_statements(self, statements: dict = None):
         """
         Prepare statements for deleting the record and child records from the database.
+
+        Arguments:
+            statements (dict): optional dictionary of transaction statements to add the delete statements to.
+
+        Returns:
+            statements (dict): dictionary of transaction statements.
         """
         record_id = self.record_id()
         record_entry = settings.records.fetch_rule(self.name)
@@ -1920,6 +2018,12 @@ class DatabaseRecord:
     def delete(self, statements: dict = None):
         """
         Delete the record and child records from the database.
+
+        Arguments:
+            statements (dict): optional dictionary of transaction statement dictionary to add to.
+
+        Returns:
+            success (bool): record deletion was successful.
         """
         record_id = self.record_id()
 
@@ -1956,10 +2060,13 @@ class DatabaseRecord:
         Prepare to the statements for saving the record to the database.
 
         Arguments:
-            statements (dict): existing transaction statement dictionary to add to.
+            statements (dict): optional dictionary of transaction statement dictionary to add to.
 
             save_all (bool): save all record element values, regardless of whether they were edited or not
                 [Default: False]
+
+        Returns:
+            statements (dict): dictionary of transaction statements.
         """
         if not statements:
             statements = {}
@@ -2057,6 +2164,12 @@ class DatabaseRecord:
     def save(self, statements: dict = None):
         """
         Save the record and child records to the database.
+
+        Arguments:
+            statements (dict): optional dictionary of transaction statement dictionary to add to.
+
+        Returns:
+            success (bool): record deletion was successful.
         """
         record_id = self.record_id()
 
@@ -2491,7 +2604,7 @@ class DatabaseRecord:
 
     def collapse_expand(self, window, frame: str = 'references'):
         """
-        Hide/unhide record frames.
+        Collapse record frames.
         """
         if frame == 'references':
             hide_key = self.key_lookup('ReferencesButton')
@@ -2579,7 +2692,7 @@ class StandardRecord(DatabaseRecord):
         elif event in component_elems:  # component table event
             # Update data elements
             for param in self.parameters:
-                param.update_display(window, window_values=values)
+                param.update_display(window)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -2620,17 +2733,17 @@ class StandardRecord(DatabaseRecord):
         # Update data elements
         logger.debug('Record {ID}: updating display data elements'.format(ID=record_id))
         for param in self.parameters:
-            param.update_display(window, window_values=window_values)
+            param.update_display(window)
 
         # Update the components display table
         logger.debug('Record {ID}: updating display component tables'.format(ID=record_id))
         for component in self.components:
-            component.update_display(window, window_values=window_values)
+            component.update_display(window)
 
         # Update the reference boxes
         for refbox in self.references:
             try:
-                refbox.update_display(window, window_values=window_values)
+                refbox.update_display(window)
             except AttributeError:  # old reference box class
                 continue
 
@@ -2711,7 +2824,7 @@ class DepositRecord(DatabaseRecord):
         elif event in component_elems:  # component table event
             # Update data elements
             for param in self.parameters:
-                param.update_display(window, window_values=values)
+                param.update_display(window)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -2754,12 +2867,12 @@ class DepositRecord(DatabaseRecord):
         # Update parameter values
         logger.debug('Record {ID}: updating display data elements'.format(ID=record_id))
         for param in self.parameters:
-            param.update_display(window, window_values=window_values)
+            param.update_display(window)
 
         # Update the components display table
         logger.debug('Record {ID}: updating display component tables'.format(ID=record_id))
         for component in self.components:
-            component.update_display(window, window_values=window_values)
+            component.update_display(window)
 
         # Update the deposit total
         logger.debug('Record {ID}: updating display deposit total'.format(ID=record_id))
@@ -2809,7 +2922,7 @@ class DepositRecord(DatabaseRecord):
         # Update the reference boxes
         for refbox in self.references:
             try:
-                refbox.update_display(window, window_values=window_values)
+                refbox.update_display(window)
             except AttributeError:  # old reference box class
                 continue
 
@@ -2881,7 +2994,7 @@ class AuditRecord(DatabaseRecord):
         elif event in component_elems:  # component table event
             # Update data elements
             for param in self.parameters:
-                param.update_display(window, window_values=values)
+                param.update_display(window)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -2924,12 +3037,12 @@ class AuditRecord(DatabaseRecord):
         # Update parameter values
         logger.debug('Record {ID}: updating display data elements'.format(ID=record_id))
         for param in self.parameters:
-            param.update_display(window, window_values=window_values)
+            param.update_display(window)
 
         # Update the components display table
         logger.debug('Record {ID}: updating display component tables'.format(ID=record_id))
         for component in self.components:
-            component.update_display(window, window_values=window_values)
+            component.update_display(window)
 
         # Update the remainder
         logger.debug('Record {ID}: updating display remainder'.format(ID=record_id))
@@ -2973,7 +3086,7 @@ class AuditRecord(DatabaseRecord):
         # Update the reference boxes
         for refbox in self.references:
             try:
-                refbox.update_display(window, window_values=window_values)
+                refbox.update_display(window)
             except AttributeError:  # old reference box class
                 continue
 
