@@ -68,6 +68,8 @@ class TableElement:
         row_color (str): hex code for the color of alternate rows.
 
         tooltip (str): table tooltip.
+
+        edited (bool): table was edited [Default: False].
     """
 
     def __init__(self, name, entry, parent=None):
@@ -362,11 +364,18 @@ class TableElement:
             self.columns[self.deleted_column] = 'bool'
 
         try:
-            self.added_column = entry['DeletedColumn']
+            self.added_column = entry['AddedColumn']
         except KeyError:
             self.added_column = 'RowAdded'
         if self.added_column not in self.columns:
             self.columns[self.added_column] = 'bool'
+
+        try:
+            self.edited_column = entry['EditedColumn']
+        except KeyError:
+            self.edited_column = 'RowEdited'
+        if self.edited_column not in self.columns:
+            self.columns[self.edited_column] = 'bool'
 
         try:
             self.icon = entry['Icon']
@@ -427,6 +436,7 @@ class TableElement:
 
         self.df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
+        self.edited = False
 
     def _apply_filter(self):
         """
@@ -650,6 +660,7 @@ class TableElement:
         columns = list(self.columns)
         self.df = self._set_datatypes(pd.DataFrame(columns=columns))
         self.index_map = {}
+        self.edited = False
 
         # Reset table dimensions
         self.set_table_dimensions(window)
@@ -825,21 +836,31 @@ class TableElement:
             try:
                 indices = [self.index_map[i] for i in select_row_indices]
             except KeyError:
-                msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
+                msg = 'index information is missing from one or more of the selected table rows'.format(NAME=self.name)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_notice(msg)
-                indices = []
+
+                return None
+            else:
+                if len(indices) < 1:
+                    msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
+                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    return None
 
             # Find selected fill method
             display_col = values[fill_key]
             try:
                 fill_col = display_map[display_col]
             except KeyError:
-                logger.warning('DataTable {NAME}: fill display column {COL} must have a one-to-one '
-                               'mapping with a table column to sort'.format(NAME=self.name, COL=display_col))
-            else:
-                # Fill in NA values
-                self.fill(fill_col, rows=indices)
+                msg = 'fill display column {COL} must have a one-to-one mapping with a table display column to sort'\
+                    .format(COL=display_col)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return None
+
+            # Fill in NA values
+            self.fill(indices, fill_col)
 
             # Update the display table to show the new table values
             self.update_display(window)
@@ -1835,33 +1856,37 @@ class TableElement:
 
         return df
 
-    def fill(self, column, fill_method: str = 'ffill', rows: list = None):
+    def fill(self, indices, column, fill_method: str = 'ffill'):
         """
         Forward fill table NA values.
         """
-        logger.info('DataTable {NAME}: filling {NROW} rows using fill method {METHOD}'
-                    .format(NAME=self.name, NROW=len(rows), METHOD=fill_method))
+        logger.info('DataTable {NAME}: filling table rows {ROWS} using fill method {METHOD}'
+                    .format(NAME=self.name, ROWS=len(indices), METHOD=fill_method))
 
-        if rows is not None:  # fill only specified rows
-            if len(rows) > 0:
-                try:
-                    self.df.iloc[rows, self.df.columns.get_loc(column)] = \
-                        self.df.iloc[rows, self.df.columns.get_loc(column)].fillna(method=fill_method)
-                except IndexError:
-                    logger.warning('DataTable {NAME}: unable to fill table on selected rows - unknown rows selected'
-                                   .format(NAME=self.name))
-                except ValueError:
-                    logger.warning('DataTable {NAME}: unable to fill table on selected rows - invalid method provided'
-                                   .format(NAME=self.name))
-            else:
-                logger.warning('DataTable {NAME}: unable to fill table - no rows selected for filling'
-                               .format(NAME=self.name))
-        else:  # fill all column values
+        if not isinstance(indices, list) or not isinstance(indices, tuple):
+            msg = 'table indices provided must be either a list or tuple'
+            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return None
+
+        if len(indices) > 1:
             try:
-                self.df[column].fillna(method=fill_method, inplace=True)
+                self.df.iloc[indices, self.df.columns.get_loc(column)] = \
+                    self.df.iloc[indices, self.df.columns.get_loc(column)].fillna(method=fill_method)
+            except IndexError:
+                logger.warning('DataTable {NAME}: unable to fill table on selected rows - unknown rows {ROWS} selected'
+                               .format(NAME=self.name, ROWS=indices))
             except ValueError:
-                logger.warning('DataTable {NAME}: unable to fill table on selected rows - invalid method provided'
+                logger.warning('DataTable {NAME}: unable to fill table on selected rows - invalid fill method provided'
                                .format(NAME=self.name))
+            else:  # indicate that the specific rows and the table have been edited
+                self.df.iloc[indices, self.df.columns.get_loc(self.edited_column)] = True
+                self.edited = True
+        else:
+            logger.warning('DataTable {NAME}: unable to fill table - not enough rows selected for filling'
+                           .format(NAME=self.name))
+
+        return None
 
     def sort(self, sort_on=None, ascending: bool = True):
         """
@@ -2013,11 +2038,17 @@ class TableElement:
 
         return total
 
-    def export_values(self):
+    def export_values(self, edited_only: bool = False):
         """
         Export summary values as a dictionary.
+
+        Arguments:
+            edited_only (bool): only export table summary values if the table had been edited [Default: False].
         """
-        return self.summarize_table()
+        if edited_only and not self.edited:  # table was not edited by the user
+            return {}
+        else:
+            return self.summarize_table()
 
     def has_value(self):
         """
@@ -2054,8 +2085,10 @@ class TableElement:
         row_values = self.set_conditional_values(mod_row).squeeze()
 
         # Update record table values
-        df.loc[index] = row_values
-        self.df = df
+        if not row.equals(row_values):
+            df.loc[index] = row_values
+            self.df = df
+            self.edited = True
 
         return df
 
@@ -2424,7 +2457,10 @@ class RecordTable(TableElement):
         elif isinstance(values, pd.Series):
             values = values.to_frame().T
 
+        row = df.iloc[index]
+
         row_values = self.set_conditional_values(values)
+        edited = False
         for column in row_values:  # iterate over row value columns
             if column not in header:
                 msg = 'row value column {COL} not found in the dataframe header'.format(COL=column)
@@ -2433,13 +2469,22 @@ class RecordTable(TableElement):
                 continue
 
             value = row_values[column].squeeze()  # reduce to scalar
-            try:
-                df.at[index, column] = value
-            except KeyError:
-                continue
-            except ValueError as e:
-                logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
-                             '{ERR}'.format(NAME=self.name, VAL=value, COL=column, IND=index, ERR=e))
+            if value != row[column]:
+                edited = True
+
+                try:
+                    #df.at[index, column] = value
+                    row[column] = value
+                except KeyError:
+                    continue
+                except ValueError as e:
+                    logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
+                                 '{ERR}'.format(NAME=self.name, VAL=value, COL=column, IND=index, ERR=e))
+
+        if edited:
+            #df.at[index, self.edited_column] = True
+            row[self.edited_column] = True
+            self.edited = True
 
         return df
 
@@ -2447,12 +2492,17 @@ class RecordTable(TableElement):
         """
         Reset data table to default.
         """
+        # Reset dynamic attributes
         columns = list(self.columns)
-
         self.df = self._set_datatypes(pd.DataFrame(columns=columns))
         self.import_df = self._set_datatypes(pd.DataFrame(columns=columns))
         self.index_map = {}
+        self.edited = False
 
+        # Reset table dimensions
+        self.set_table_dimensions(window)
+
+        # Update the table display
         self.update_display(window)
 
     def run_action_event(self, window, event, values):
@@ -2707,6 +2757,10 @@ class RecordTable(TableElement):
         """
         df = self.df.copy()
         select_df = df.iloc[indices]
+        if select_df.empty:
+            return df
+        else:
+            self.edited = True
 
         # Get record IDs for all selected rows
         record_ids = select_df[self.id_column].tolist()
@@ -2769,6 +2823,8 @@ class RecordTable(TableElement):
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
+        if not select_df.empty:
+            self.edited = True
 
         # Verify that selected records are not already in table
         current_ids = self.df[id_col].tolist()
@@ -3145,6 +3201,7 @@ class ComponentTable(RecordTable):
         except AttributeError:  # record creation was cancelled
             return df
         else:
+            self.edited = True
             logger.debug('DataTable {NAME}: appending values {VALS} to the table'
                          .format(NAME=self.name, VALS=record_values))
             record_values[self.added_column] = True
@@ -3231,6 +3288,8 @@ class ComponentTable(RecordTable):
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
                                            params=search_params)
+        if not select_df.empty:
+            self.edited = True
 
         # Verify that selected records are not already in table
         current_ids = self.df[id_col].tolist()
@@ -3310,6 +3369,8 @@ class ReferenceBox:
         association_rule (str): name of the association rule connecting the associated records.
 
         aliases (dict): layout element aliases.
+
+        edited (bool): reference box was edited [Default: False]
     """
 
     def __init__(self, name, entry, parent=None):
@@ -3383,6 +3444,7 @@ class ReferenceBox:
         self.is_pc = False
         self.approved = False
         self.referenced = False
+        self.edited = False
 
     def key_lookup(self, component):
         """
@@ -3401,7 +3463,7 @@ class ReferenceBox:
 
     def reset(self, window):
         """
-        Reset dynamic values.
+        Reset the reference box to default.
         """
         self.record_id = None
         self.reference_id = None
@@ -3412,6 +3474,7 @@ class ReferenceBox:
         self.is_pc = False
         self.approved = False
         self.referenced = False
+        self.edited = False
 
         self.update_display(window)
 
@@ -3442,12 +3505,14 @@ class ReferenceBox:
             if user_action.upper() == 'OK':
                 # Set element to deleted in metadata
                 self.referenced = False
+                self.edited = True
 
                 self.update_display(window)
 
         # Update approved element
         elif event == approved_key:
             self.approved = bool(values[approved_key])
+            self.edited = True
 
         # Open reference record in a new record window
         elif event == ref_key:
@@ -3794,10 +3859,16 @@ class ReferenceBox:
         """
         return self.referenced
 
-    def export_values(self):
+    def export_values(self, edited_only: bool = False):
         """
         Export reference attributes as a dictionary.
+
+        Arguments:
+            edited_only (bool): only export reference values if the reference had been edited [Default: False].
         """
+        if edited_only and not self.edited:
+            return {}
+
         colmap = self.colmap
         reference = self.export_reference()
         values = reference[[i for i in colmap if i in reference.index]].rename(colmap)
@@ -3828,6 +3899,8 @@ class DataElement:
         default: default value of the data element.
 
         value: value of the data element.
+
+        edited (bool): element value was edited [Default: False].
     """
 
     def __init__(self, name, entry, parent=None):
@@ -3946,7 +4019,7 @@ class DataElement:
         except KeyError:
             self.date_format = settings.display_date_format
 
-        # Dynamic variables
+        # Starting value
         try:
             self.default = self.format_value(entry['DefaultValue'])
         except KeyError:
@@ -3958,6 +4031,7 @@ class DataElement:
 
             self.default = None
 
+        # Dynamic variables
         self.value = self.default
 
         logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
@@ -3966,6 +4040,7 @@ class DataElement:
 
         self.disabled = False
         self.edit_mode = False
+        self.edited = False
 
     def key_lookup(self, component):
         """
@@ -3986,11 +4061,17 @@ class DataElement:
 
         return key
 
-    def export_values(self):
+    def export_values(self, edited_only: bool = False):
         """
         Export the data element value as a dictionary.
+
+        Arguments:
+            edited_only (bool): only export element values if the data element had been edited [Default: False].
         """
-        return {self.name: self.value}
+        if edited_only and not self.edited:
+            return {}
+        else:
+            return {self.name: self.value}
 
     def reset(self, window):
         """
@@ -4007,6 +4088,7 @@ class DataElement:
                          .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
         self.value = self.default
+        self.edited = False
 
         # Reset element editing
         self.edit_mode = False
@@ -4076,13 +4158,17 @@ class DataElement:
                                .format(NAME=self.name, KEY=elem_key))
             else:
                 try:
-                    self.value = self.format_value(value)
+                    new_value = self.format_value(value)
                 except Exception as e:
                     msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
                     logger.exception('DataElement {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     mod_win2.popup_error(msg)
 
                     success = False
+                else:
+                    if new_value != self.value:
+                        self.value = new_value
+                        self.edited = True
 
                 self.update_display(window)
 
@@ -4699,6 +4785,8 @@ class ElementReference:
         icon (str): file name of the parameter's icon [Default: None].
 
         value: value of the parameter's data storage elements.
+
+        edited (bool): element value was edited [Default: False].
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4813,6 +4901,7 @@ class ElementReference:
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
         self.disabled = True
+        self.edited = False
 
     def key_lookup(self, component):
         """
@@ -4833,15 +4922,9 @@ class ElementReference:
 
         return key
 
-    def get_value(self):
-        """
-        Return element value.
-        """
-        return self.value
-
     def reset(self, window):
         """
-        Reset data element value to default.
+        Reset element reference value to default.
         """
         # Reset to default
         if not pd.isna(self.default) and not pd.isna(self.value):
@@ -4849,6 +4932,7 @@ class ElementReference:
                          .format(NAME=self.name, VAL=self.value, DEF=self.default))
 
         self.value = self.default
+        self.edited = False
 
         # Update the parameter window element
         display_value = self.format_display()
@@ -4862,7 +4946,7 @@ class ElementReference:
 
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
         """
-        GUI layout for the data element.
+        GUI layout for the record element.
         """
         modifiers = self.modifiers
 
@@ -4936,7 +5020,7 @@ class ElementReference:
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
-        Generate the layout for the data component of the data element.
+        Generate the layout for the data component of the record element.
         """
         font = mod_const.LARGE_FONT
         bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
@@ -4953,7 +5037,7 @@ class ElementReference:
 
     def format_value(self, input_value):
         """
-        Set the value of the data element from user input.
+        Set the value of the element reference from user input.
 
         Arguments:
 
@@ -4997,7 +5081,7 @@ class ElementReference:
 
     def update_display(self, window, values: dict = None):
         """
-        Format element for display.
+        Format record element for display.
 
         Arguments:
             window: GUI window.
@@ -5013,7 +5097,10 @@ class ElementReference:
         # Update element display value
         if values:
             value = mod_dm.evaluate_operation(values, self.operation)
-            self.value = self.format_value(value)
+            new_value = self.format_value(value)
+            if new_value != self.value:
+                self.value = new_value
+                self.edited = True
 
         display_value = self.format_display()
         window[elem_key].update(value=display_value)
@@ -5068,9 +5155,21 @@ class ElementReference:
 
         return annotation
 
+    def export_values(self, edited_only: bool = False):
+        """
+        Export the element reference value as a dictionary.
+
+        Arguments:
+            edited_only (bool): only export element values if the element reference had been edited [Default: False].
+        """
+        if edited_only and not self.edited:
+            return {}
+        else:
+            return {self.name: self.value}
+
     def has_value(self):
         """
-        Return True if element has a valid value else False
+        Return True if the record element has a valid value else False
         """
         value = self.value
         if not pd.isna(value) and not value == '':
