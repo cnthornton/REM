@@ -689,7 +689,7 @@ class TableElement:
 
         return parameter
 
-    def data(self, all_rows: bool = False, display_rows: bool = False):
+    def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False):
         """
         Return the table dataframe.
 
@@ -697,6 +697,8 @@ class TableElement:
             all_rows (bool): return all table rows, including the deleted rows [Default: False].
 
             display_rows (bool): return only the display rows [Default: False].
+
+            edited_rows (bool): return only rows that have been edited or added to the table [Default: False].
         """
         if all_rows:
             df = self.df.copy()
@@ -721,6 +723,10 @@ class TableElement:
                     logger.warning(msg)
         else:
             df = self._filter_deleted(self.df.copy())
+
+        # Filter on edited rows, if desired
+        if edited_rows:
+            df = df[(df[self.added_column]) | (df[self.edited_column])]
 
         return df
 
@@ -829,10 +835,12 @@ class TableElement:
 
         # NA value fill method selected from menu of fill methods
         if event == fill_key:
-            display_map = self.display_columns
+            display_map = {j: i for i, j in self.display_columns.items()}
 
             # Get selected rows, if any
             select_row_indices = values[tbl_key]
+            print('display indices:')
+            print(select_row_indices)
 
             # Get the real indices of the selected rows
             try:
@@ -844,6 +852,8 @@ class TableElement:
 
                 return None
             else:
+                print('real indices:')
+                print(indices)
                 if len(indices) < 1:
                     msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
                     logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -855,7 +865,7 @@ class TableElement:
             try:
                 fill_col = display_map[display_col]
             except KeyError:
-                msg = 'fill display column {COL} must have a one-to-one mapping with a table display column to sort'\
+                msg = 'fill display column {COL} must have a one-to-one mapping with a table display column'\
                     .format(COL=display_col)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -1860,19 +1870,19 @@ class TableElement:
         """
         Forward fill table NA values.
         """
-        logger.info('DataTable {NAME}: filling table rows {ROWS} using fill method {METHOD}'
-                    .format(NAME=self.name, ROWS=len(indices), METHOD=fill_method))
-
-        if not isinstance(indices, list) or not isinstance(indices, tuple):
+        if not isinstance(indices, list) and not isinstance(indices, tuple):
             msg = 'table indices provided must be either a list or tuple'
             logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             return None
 
+        logger.info('DataTable {NAME}: filling table rows {ROWS} using fill method "{METHOD}"'
+                    .format(NAME=self.name, ROWS=len(indices), METHOD=fill_method))
+
         if len(indices) > 1:
+            column_index = self.df.columns.get_loc(column)
             try:
-                self.df.iloc[indices, self.df.columns.get_loc(column)] = \
-                    self.df.iloc[indices, self.df.columns.get_loc(column)].fillna(method=fill_method)
+                self.df.iloc[indices, column_index] = self.df.iloc[indices, column_index].fillna(method=fill_method)
             except IndexError:
                 logger.warning('DataTable {NAME}: unable to fill table on selected rows - unknown rows {ROWS} selected'
                                .format(NAME=self.name, ROWS=indices))
@@ -2473,8 +2483,7 @@ class RecordTable(TableElement):
                 edited = True
 
                 try:
-                    #df.at[index, column] = value
-                    row[column] = value
+                    df.at[index, column] = value
                 except KeyError:
                     continue
                 except ValueError as e:
@@ -2482,8 +2491,7 @@ class RecordTable(TableElement):
                                  '{ERR}'.format(NAME=self.name, VAL=value, COL=column, IND=index, ERR=e))
 
         if edited:
-            #df.at[index, self.edited_column] = True
-            row[self.edited_column] = True
+            df.at[index, self.edited_column] = True
             self.edited = True
 
         return df
@@ -2792,7 +2800,7 @@ class RecordTable(TableElement):
                     .format(TBL=self.name, IDS=record_ids))
 
         # Set the deleted field for the selected rows to True
-        df.loc[df[self.id_column].isin(record_ids), self.deleted_column] = True
+        df.loc[df[self.id_column].isin(record_ids), [self.deleted_column, self.edited_column]] = [True, True]
 
         # Add removed rows to the import dataframe if the records were not created within the table
         self.import_df = self.append(select_df, imports=True)
@@ -2869,7 +2877,7 @@ class RecordTable(TableElement):
         # Append selected rows to the table
         logger.debug('DataTable {NAME}: importing {N} records to the table'
                      .format(NAME=self.name, N=select_df.shape[0]))
-        select_df[self.added_column] = True
+        select_df.loc[:, self.added_column] = True
         df = self.append(select_df)
         self.df = df
 
@@ -3359,15 +3367,23 @@ class ComponentTable(RecordTable):
 
         return df
 
-    def export_reference(self, record_id):
+    def export_reference(self, record_id, edited_only: bool = False):
         """
         Export component table records as reference entries.
+
+        Arguments:
+            record_id (str): ID of the referenced record.
+
+            edited_only (bool): export references only for components that were added or edited.
         """
         df = self.df
 
         # Filter added rows that were later removed from the table
         conditions = df[self.deleted_column] & df[self.added_column]
         export_df = df[~conditions]
+
+        if edited_only:
+            export_df = export_df[(export_df[self.added_column]) | (export_df[self.edited_column])]
 
         # Create the reference entries
         ref_df = export_df[[self.id_column, self.deleted_column]]
