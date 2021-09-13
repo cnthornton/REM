@@ -1802,7 +1802,9 @@ class AuditSummary:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+#        success = user.write_db(sstrings, psets)
+        success = True
+        print(statements)
 
         return success
 

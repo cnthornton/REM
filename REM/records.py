@@ -674,18 +674,18 @@ class RecordEntry:
                     sub_cols = [i for i in colmap if i in df.columns]
 
                     # Edit existing linked-records
-                    df_sub_exist = exist_df[mod_dm.evaluate_rule(exist_df, condition)]
-                    if df_sub_exist.empty:
-                        continue
+                    #df_sub_exist = exist_df[mod_dm.evaluate_rule(exist_df, condition)]
+                    #if df_sub_exist.empty:
+                    #    continue
 
                     # Get IDs of the linked records
-                    exist_ref_df = self.import_references(df_sub_exist['RecordID'].tolist(), association)
+                    #exist_ref_df = self.import_references(df_sub_exist['RecordID'].tolist(), association)
 
                     # Merge the relevant columns of the records dataframe with the reference dataframe
-                    merged_df = pd.merge(df_sub_exist[['RecordID'] + sub_cols], exist_ref_df, on='RecordID')
-                    merged_df = merged_df[['ReferenceID'] + sub_cols].rename(columns=colmap)
-                    statements = ref_entry.save_database_records(merged_df.rename(columns={'ReferenceID': 'RecordID'}),
-                                                                 statements=statements)
+                    #merged_df = pd.merge(df_sub_exist[['RecordID'] + sub_cols], exist_ref_df, on='RecordID')
+                    #merged_df = merged_df[['ReferenceID'] + sub_cols].rename(columns=colmap)
+                    #statements = ref_entry.save_database_records(merged_df.rename(columns={'ReferenceID': 'RecordID'}),
+                    #                                             statements=statements)
 
                     # Create new hard-linked records
                     df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
@@ -2120,24 +2120,37 @@ class DatabaseRecord:
 
         # Prepare to save record components
         for comp_table in self.components:
-            comp_df = comp_table.data(all_rows=True)
+            comp_type = comp_table.record_type
+            comp_entry = settings.records.fetch_rule(comp_type)
+
+            if self.new or save_all:
+                logger.debug('Record {ID}: preparing export statements for all components in component table {COMP}'
+                             .format(ID=record_id, COMP=comp_table.name))
+                comp_df = comp_table.data(all_rows=True)
+                ref_data = comp_table.export_reference(record_id)
+            else:
+                if not comp_table.edited:  # don't prepare statements for tables that were not edited in any way
+                    logger.debug('Record {ID}: no components from component table {COMP} will be exported'
+                                 .format(ID=record_id, COMP=comp_table.name))
+                    continue
+
+                logger.debug('Record {ID}: preparing export statements for only the edited components in component '
+                             'table {COMP}'.format(ID=record_id, COMP=comp_table.name))
+                ref_data = comp_table.export_reference(record_id, edited_only=True)
+                comp_df = comp_table.data(all_rows=True, edited_rows=True)
+
             if comp_df.empty:
+                logger.debug('Record {ID}: no components in component table {COMP} available to export'
+                             .format(ID=record_id, COMP=comp_table.name))
                 continue
 
             logger.debug('Record {ID}: preparing statements for component table "{TBL}"'
                          .format(ID=record_id, TBL=comp_table.name))
-            association_rule = comp_table.association_rule
-
-            comp_type = comp_table.record_type
-            comp_entry = settings.records.fetch_rule(comp_type)
 
             if comp_table.modifiers['add']:  # component records can be created and deleted through parent record
                 pc = True  # parent-child relationship
             else:
                 pc = False
-
-            # Prepare the reference statements
-            ref_data = comp_table.export_reference(record_id)
 
             # Fully remove deleted component records if parent-child relationship
             if pc:
@@ -2156,6 +2169,7 @@ class DatabaseRecord:
                 # Set reference flags
                 ref_data['IsChild'] = False
 
+            association_rule = comp_table.association_rule
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             # Prepare transaction statements for the component records
