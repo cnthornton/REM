@@ -1737,6 +1737,12 @@ class AuditSummary:
     def save_report(self, filename):
         """
         Generate summary report and save to a PDF file.
+
+        Arguments:
+            filename (str): save report to file.
+
+        Returns:
+            success (bool): saving report was successful.
         """
         report_title = self.title
 
@@ -1762,15 +1768,18 @@ class AuditSummary:
         except Exception as e:
             logger.error('AuditRuleSummary {NAME}: writing to PDF failed - {ERR}'
                          .format(NAME=self.name, ERR=e))
-            status = False
+            success = False
         else:
-            status = True
+            success = True
 
-        return status
+        return success
 
     def save_records(self):
         """
         Save results of an audit to the program database defined in the configuration file.
+
+        Returns:
+            success (bool): saving records to the database was successful.
         """
         tabs = self.tabs
 
@@ -1915,6 +1924,12 @@ class AuditRecordTab:
     def load_record(self, params):
         """
         Load previous audit (if exists) and IDs from the program database.
+
+        Arguments:
+            params (list): filter record table when importing the records on the data parameter values.
+
+        Returns:
+            success (bool): record importing was successful.
         """
         # Prepare the database query statement
         record_entry = settings.records.fetch_rule(self.name)
@@ -1976,7 +1991,10 @@ class AuditRecordTab:
 
     def save_record(self, statements: dict = None):
         """
-        Save audit record to the program database defined in the configuration file.
+        Save the audit record to the program database defined in the configuration file.
+
+        Arguments:
+            statements (dict): optional dictionary of transaction statements to add to.
         """
         record = self.record
 
@@ -1991,7 +2009,7 @@ class AuditRecordTab:
 
     def map_summary(self, rule_tabs):
         """
-        Populate totals table with audit tab summary totals.
+        Populate the audit totals table with audit tab summary totals.
         """
         operators = set('+-*/%')
 
@@ -2003,13 +2021,6 @@ class AuditRecordTab:
                      .format(NAME=self.name))
 
         # Store transaction table summaries for mapping
-#        summary_map = {}
-#        for tab in rule_tabs:
-#            tab_name = tab.name
-#            summary = tab.table.summarize_table()
-#            for rule_name, rule_value in summary:
-#                summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=rule_name)] = rule_value
-
         summary_map = {}
         for tab in rule_tabs:
             tab_name = tab.name
@@ -2066,7 +2077,7 @@ class AuditRecordTab:
 
     def map_transactions(self, rule_tabs, params):
         """
-        Map transaction records from the audit to account records.
+        Map transaction records from the audit to the audit accounting records.
         """
         tab_names = [i.name for i in rule_tabs]
 
@@ -2171,8 +2182,6 @@ class AuditRecordTab:
         else:  # create individual records for each transaction
             final_df = append_df
 
-#        final_df = component_table.set_datatypes(final_df)
-#
         record_ids = record_entry.create_record_ids([record_date for _ in range(final_df.shape[0])],
                                                     offset=settings.get_date_offset())
         if record_ids is None:
@@ -2182,19 +2191,6 @@ class AuditRecordTab:
             raise IOError(msg)
         else:
             final_df[component_table.id_column] = record_ids
-
-    #        for index, row in final_df.iterrows():
-    #            record_id = record_entry.create_id(record_date, offset=settings.get_date_offset())
-#            if not record_id:
-#                msg = 'failed to create a record ID for transaction {TRANS}'.format(TRANS=row)
-#                logger.error('Error: {MSG}'.format(MSG=msg))
-#                mod_win2.popup_error(msg)
-#
-#                continue
-#
-#            logger.info('AuditRecordTab {NAME}: adding transaction record {ID} to the audit record accounts table'
-#                        .format(NAME=self.name, ID=record_id))
-#            final_df.at[index, 'RecordID'] = record_id
 
         component_table.df = component_table.append(final_df)
 
@@ -2209,9 +2205,18 @@ class AuditRecordTab:
         self.record.update_display(window)
 
 
-def replace_nth(s, sub, new, ns):
+def replace_nth(s, sub, new, ns: list = None):
     """
     Replace the nth occurrence of an substring in a string
+
+    Arguments:
+        s (str): string to modify.
+
+        sub (str): substring within the string to replace.
+
+        new (str): new string that will replace the substring.
+
+        ns (list): optional list of indices of the substring instance to replace [Default: replace all].
     """
     if isinstance(ns, str):
         ns = [ns]
@@ -2219,7 +2224,7 @@ def replace_nth(s, sub, new, ns):
     where = [m.start() for m in re.finditer(sub, s)]
     new_s = s
     for count, start_index in enumerate(where):
-        if count not in ns:
+        if ns and count not in ns:
             continue
 
         if isinstance(ns, dict):

@@ -111,6 +111,11 @@ class BankRule:
     def fetch_account(self, account_id, by_key: bool = False):
         """
         Fetch a GUI parameter element by name or event key.
+
+        Arguments:
+            account_id (str): identifier used to find the correct account entry.
+
+            by_key (bool): identifier is an element of the account entry [Default: use account entry name].
         """
         account = None
         for acct in self.accts:
@@ -498,12 +503,6 @@ class BankRule:
 
         # Main Panel layout
         main_key = self.key_lookup('Panel')
-#        main_layout = sg.Col([header,
-#                              [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-#                              [sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True)]],
-#                             key=main_key, pad=(0, 0), background_color=bg_col,
-#                             vertical_alignment='t', visible=True, expand_y=True, expand_x=True, scrollable=True,
-#                             vertical_scroll_only=True)
         main_layout = sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True,
                              key=main_key, vertical_alignment='t', visible=True, expand_y=True, scrollable=True,
                              vertical_scroll_only=True)
@@ -537,14 +536,6 @@ class BankRule:
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')
-        #        frame_layout = [sg.Frame('', [
-        #            [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
-        #            [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-        #            [sg.Col([[sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col)]], vertical_alignment='t'),
-        #             sg.Col([[main_layout]], pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
-        #                    expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True),
-        #             sg.Col([nav_layout], background_color=bg_col, element_justification='c', expand_x=True)]],
-        #                                 background_color=bg_col, relief='raised')]
         frame_layout = [sg.Frame('', [
             [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
             [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
@@ -611,9 +602,11 @@ class BankRule:
 
         Arguments:
             expand (bool): expand the search by ignoring association parameters designated as expanded [Default: False].
-        """
-        #pd.set_option('display.max_columns', None)
 
+        Returns:
+            success (bool): bank reconciliation was successful.
+        """
+        # pd.set_option('display.max_columns', None)
         ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
                     'IsChild', 'IsDeleted']
 
@@ -864,7 +857,7 @@ class BankRule:
 
     def save_references(self):
         """
-        Save any changes to the records made during the reconciliation process.
+        Save record associations to the reference database.
         """
         statements = {}
 
@@ -902,6 +895,9 @@ class BankRule:
     def save_report(self, filename):
         """
         Generate a summary report of the reconciliation to a PDF.
+
+        Arguments:
+            filename (str): name of the file to save the report to.
         """
         status = []
         with pd.ExcelWriter(filename) as writer:
@@ -968,7 +964,7 @@ class AccountEntry:
 
             entry (dict): dictionary of optional and required entry arguments.
 
-            parent (str): name of the object's parent element.
+            parent (str): name of the parent element.
         """
         self.name = name
         self.parent = parent
@@ -1231,7 +1227,13 @@ class AccountEntry:
 
     def merge_references(self, df: pd.DataFrame = None):
         """
-        Merge the records table and the reference table on reference map columns.
+        Merge the records table and the reference table on any reference map columns.
+
+        Arguments:
+            df (DataFrame): merge references with the provided records dataframe [Default: use full records dataframe].
+
+        Returns:
+            df (DataFrame): dataframe of records merged with their corresponding reference entries.
         """
         pd.set_option('display.max_columns', None)
 
@@ -1270,6 +1272,12 @@ class AccountEntry:
     def delete_rows(self, indices):
         """
         Delete references using selected table indices.
+
+        Arguments:
+            indices (list): list of row indices to remove references from.
+
+        Returns:
+            None
         """
         ref_df = self.ref_df
         df = self.table.df.copy()
@@ -1284,6 +1292,8 @@ class AccountEntry:
         # Set the deleted column of the reference entries corresponding to the selected records to True.
         ref_df.loc[ref_df['RecordID'].isin(record_ids), ['IsDeleted']] = True
 
+        return None
+
     def update_display(self, window):
         """
         Update the panel's record table display.
@@ -1297,7 +1307,13 @@ class AccountEntry:
 
     def load_data(self, parameters):
         """
-        Load data from the database.
+        Load record and reference data from the database based on the supplied parameter set.
+
+        Arguments:
+            parameters (list): list of data parameters to filter the records database table on.
+
+        Returns:
+            success (bool): records and references were loaded successully.
         """
         pd.set_option('display.max_columns', None)
 
