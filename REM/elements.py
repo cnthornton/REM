@@ -3562,7 +3562,7 @@ class ReferenceBox:
             except Exception as e:
                 msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.reference_id, ERR=e)
                 mod_win2.popup_error(msg)
-                logger.error('ReferenceElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Display the record window
                 mod_win2.record_window(record, view_only=True)
@@ -3737,9 +3737,17 @@ class ReferenceBox:
 
         window.Element(elem_key).SetTooltip(warnings)
 
-    def import_reference(self, entry):
+    def import_reference(self, entry, new: bool = False):
         """
         Initialize a record reference.
+
+        Arguments:
+            entry (Series): reference information.
+
+            new (bool): reference is newly created instead of already existing [Default: False].
+
+        Returns:
+            success (bool): reference import was successful.
         """
         if isinstance(entry, pd.DataFrame):  # take first row and reduce dimensionality
             entry = entry.iloc[0].squeeze()
@@ -3770,7 +3778,8 @@ class ReferenceBox:
             if pd.isna(self.reference_id):
                 return False
 
-        logger.info('ReferenceBox {NAME}: loading reference {ID}'.format(NAME=self.name, ID=self.reference_id))
+        logger.info('ReferenceBox {NAME}: loading record {ID} reference {REFID}'
+                    .format(NAME=self.name, ID=self.record_id, REFID=self.reference_id))
 
         date_col = 'ReferenceDate'
         try:
@@ -3843,18 +3852,23 @@ class ReferenceBox:
             logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             self.approved = False
 
+        if new:
+            self.edited = True
+
         return True
 
-    def export_reference(self, record_id=None):
+    def export_reference(self):
         """
         Export the association as a reference entry.
-        """
-        record_id = self.record_id if not record_id else record_id
 
+        Returns:
+            reference (Series): record reference information in the form of a pandas Series.
+        """
+        deleted = (not self.referenced)
         indices = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'ReferenceNotes',
                    'IsApproved', 'IsChild', 'IsHardLink', 'IsDeleted']
-        values = [record_id, self.reference_id, self.date, self.parent, self.reference_type, self.notes, self.approved,
-                  self.is_pc, self.is_hardlink, (not self.referenced)]
+        values = [self.record_id, self.reference_id, self.date, self.parent, self.reference_type, self.notes,
+                  self.approved, self.is_pc, self.is_hardlink, deleted]
 
         reference = pd.Series(values, index=indices)
 
@@ -3863,6 +3877,12 @@ class ReferenceBox:
     def load_record(self, level: int = 1):
         """
         Load the reference record from the database.
+
+        Arguments:
+            level (int): load the referenced record at the given depth [Default: 1 - highest level].
+
+        Returns:
+            record (DatabaseRecord): initialized database record.
         """
         record_entry = settings.records.fetch_rule(self.reference_type)
         record_group = record_entry.group
@@ -3875,17 +3895,20 @@ class ReferenceBox:
         else:
             raise TypeError('unknown record group provided {}'.format(record_group))
 
+        logger.info('ReferenceBox {NAME}: loading reference record {ID} of type {TYPE}'
+                    .format(NAME=self.name, ID=self.reference_id, TYPE=self.reference_type))
+
         imports = record_entry.load_record_data(self.reference_id)
         nrow = imports.shape[0]
 
         if nrow < 1:
-            logger.warning('ReferenceRecord {NAME}: record reference {REF} not found in the database'
+            logger.warning('ReferenceBox {NAME}: record reference {REF} not found in the database'
                            .format(NAME=self.name, REF=self.reference_id))
             record_data = imports
         elif nrow == 1:
             record_data = imports.iloc[0]
         else:
-            logger.warning('ReferenceRecord {NAME}: more than one database entry found for record reference {REF}'
+            logger.warning('ReferenceBox {NAME}: more than one database entry found for record reference {REF}'
                            .format(NAME=self.name, REF=self.reference_id))
             record_data = imports.iloc[0]
 

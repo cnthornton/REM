@@ -2082,12 +2082,16 @@ class DatabaseRecord:
 
             raise AttributeError(msg)
 
-        # Prepare to save the record
+        # Prepare to save the record values
         logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
             if self.new or save_all:  # export all values if record is new or if indicated to do so
+                logger.debug('RecordEntry {NAME}, Record {ID}: exporting all record values'
+                             .format(NAME=self.name, ID=record_id))
                 record_data = self.export_values()
             else:  # export only edited values and component table rows
+                logger.debug('RecordEntry {NAME}, Record {ID}: exporting only values for record elements that were '
+                             'edited'.format(NAME=self.name, ID=record_id))
                 record_data = self.export_values(edited_only=True)
 
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
@@ -2101,11 +2105,17 @@ class DatabaseRecord:
 
         # Prepare to save record references
         for refbox in self.references:
-            logger.debug('Record {ID}: preparing statements for reference "{ELEM}"'
-                         .format(ID=record_id, ELEM=refbox.name))
             association_rule = refbox.association_rule
 
-            ref_data = refbox.export_reference(record_id=record_id)
+            if self.new or save_all or refbox.edited:  # export if record is new, indicated, or reference edited
+                logger.debug('Record {ID}: preparing export statements for reference "{ELEM}"'
+                             .format(ID=record_id, ELEM=refbox.name))
+                ref_data = refbox.export_reference()
+            else:  # skip exporting the reference
+                logger.debug('RecordEntry {NAME}, Record {ID}: reference {REF} will not be exported'
+                             .format(NAME=self.name, ID=record_id, REF=refbox.name))
+                continue
+
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
         # Prepare to save record components
@@ -2195,7 +2205,9 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+#        success = user.write_db(sstrings, psets)
+        success = True
+        print(statements)
 
         return success
 
