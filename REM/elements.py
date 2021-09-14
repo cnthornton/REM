@@ -821,6 +821,8 @@ class TableElement(RecordElement):
         #action_events = [self.key_lookup(i) for i in self._action_elements]
         action_events = self._action_elements
 
+        update_event = False
+
         if event == '-HK_ENTER-':  # enter key pressed and current focus was on the table element
             event = elem_key
 
@@ -930,7 +932,7 @@ class TableElement(RecordElement):
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_notice(msg)
 
-                return None
+                return False
             else:
                 print('real indices:')
                 print(indices)
@@ -938,7 +940,7 @@ class TableElement(RecordElement):
                     msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
                     logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                    return None
+                    return False
 
             # Find selected fill method
             display_col = values[fill_key]
@@ -949,7 +951,7 @@ class TableElement(RecordElement):
                     .format(COL=display_col)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                return None
+                return False
 
             # Fill in NA values
             self.fill(indices, fill_col)
@@ -986,18 +988,19 @@ class TableElement(RecordElement):
                 logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
 
         if event in action_events:
-            self.run_action_event(window, event, values)
+            update_event = self.run_action_event(window, event, values)
 
-        return None
+        return update_event
 
     def run_action_event(self, window, event, values):
         """
         Run a table action event.
         """
         elem_key = self.key_lookup('Element')
+        update_event = False
 
         # Row click event
-        if event == elem_key:
+        if event == elem_key and self.modifiers['edit']:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -1017,13 +1020,14 @@ class TableElement(RecordElement):
 
                 logger.debug('DataTable {NAME}: opening row at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
-                if self.modifiers['edit'] is True:
-                    self.edit_row(index)
+                self.edit_row(index)
+                update_event = True
 
         # All action events require a table update
-        self.update_display(window)
+        if update_event:
+            self.update_display(window)
 
-        return None
+        return update_event
 
     def bind_keys(self, window):
         """
@@ -2616,8 +2620,13 @@ class RecordTable(TableElement):
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
+        update_event = False
+
+        can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
+        can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
+
         # Row click event
-        if event == elem_key:
+        if event == elem_key and self.modifiers['open']:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -2636,22 +2645,21 @@ class RecordTable(TableElement):
 
                 logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
-                if self.modifiers['open'] is True:
-                    record = self.load_record(index)
+                record = self.load_record(index)
 
-                    # Update record table values
-                    if record and self.modifiers['edit']:
-                        try:
-                            record_values = record.export_values()
-                        except Exception as e:
-                            msg = 'unable to update row {IND} values'.format(IND=index)
-                            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                        else:
-                            self._update_row_values(index, record_values)
+                # Update record table values
+                if record and self.modifiers['edit']:
+                    try:
+                        record_values = record.export_values()
+                    except Exception as e:
+                        msg = 'unable to update row {IND} values'.format(IND=index)
+                        logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                    else:
+                        self._update_row_values(index, record_values)
+                        update_event = True
 
         # Delete rows button clicked
-        if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
-                                                                window[delete_key].metadata['visible'])):
+        if (event == delete_key or event == '-HK_TBL_DEL-') and can_delete:
             # Find rows selected by user for deletion
             select_row_indices = values[elem_key]
             #select_row_indices = values[tbl_key]
@@ -2663,22 +2671,28 @@ class RecordTable(TableElement):
                 msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_notice(msg)
-                indices = []
-
-            self.delete_rows(indices)
+            else:
+                self.delete_rows(indices)
+                update_event = True
 
         # Import rows button clicked
-        if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
-                                                                   window[import_key].metadata['visible'])):
+        if (event == import_key or event == '-HK_TBL_IMPORT-') and can_import:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
-            self.import_rows()
+            try:
+                self.import_rows()
+            except Exception as e:
+                msg = 'failed to run table import event'
+                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            else:
+                update_event = True
 
         # All action events require a table update
-        self.update_display(window)
+        if update_event:
+            self.update_display(window)
 
-        return None
+        return update_event
 
     def action_layout(self, disabled: bool = True):
         """
@@ -3063,8 +3077,14 @@ class ComponentTable(RecordTable):
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
+        update_event = False
+
+        can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
+        can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
+        can_add = not window[add_key].metadata['disabled'] and window[add_key].metadata['visible']
+
         # Row click event
-        if event == elem_key:
+        if event == elem_key and self.modifiers['open']:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -3083,30 +3103,34 @@ class ComponentTable(RecordTable):
 
                 logger.debug('DataTable {NAME}: loading record at real index {IND}'
                              .format(NAME=self.name, IND=index))
-                if self.modifiers['open'] is True:
-                    record = self.load_record(index)
+                record = self.load_record(index)
 
-                    # Update record table values
-                    if record and self.modifiers['edit']:
-                        try:
-                            record_values = record.export_values()
-                        except Exception as e:
-                            msg = 'unable to update row {IND} values'.format(IND=index)
-                            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                        else:
-                            self._update_row_values(index, record_values)
+                # Update record table values
+                if record and self.modifiers['edit']:
+                    try:
+                        record_values = record.export_values()
+                    except Exception as e:
+                        msg = 'unable to update row {IND} values'.format(IND=index)
+                        logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                    else:
+                        self._update_row_values(index, record_values)
+                        update_event = True
 
         # Add row button clicked
-        if event == add_key or (event == '-HK_TBL_ADD-' and (not window[add_key].metadata['disabled'] and
-                                                             window[add_key].metadata['visible'])):
+        if (event == add_key or event == '-HK_TBL_ADD-') and can_add:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
-            self.add_row()
+            try:
+                self.add_row()
+            except Exception as e:
+                msg = 'failed to run table add event'
+                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            else:
+                update_event = True
 
         # Delete rows button clicked
-        if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
-                                                                window[delete_key].metadata['visible'])):
+        if (event == delete_key or event == '-HK_TBL_DEL-') and can_delete:
             # Find rows selected by user for deletion
             select_row_indices = values[elem_key]
 
@@ -3117,22 +3141,28 @@ class ComponentTable(RecordTable):
                 msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_notice(msg)
-                indices = []
-
-            self.delete_rows(indices)
+            else:
+                self.delete_rows(indices)
+                update_event = True
 
         # Import rows button clicked
-        if event == import_key or (event == '-HK_TBL_IMPORT-' and (not window[import_key].metadata['disabled'] and
-                                                                   window[import_key].metadata['visible'])):
+        if (event == import_key or event == '-HK_TBL_IMPORT-') and can_import:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
-            self.import_rows()
+            try:
+                self.import_rows()
+            except Exception as e:
+                msg = 'failed to run table import event'
+                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            else:
+                update_event = True
 
         # All action events require a table update
-        self.update_display(window)
+        if update_event:
+            self.update_display(window)
 
-        return None
+        return update_event
 
     def action_layout(self, disabled: bool = True):
         """
@@ -3618,7 +3648,6 @@ class ReferenceBox(RecordElement):
         """
         Run a record reference event.
         """
-        result = True
         elem_key = self.key_lookup('Element')
         del_key = self.key_lookup('Unlink')
         ref_key = self.key_lookup('RefID')
@@ -3627,6 +3656,8 @@ class ReferenceBox(RecordElement):
 
         if event == hover_event:
             window[ref_key].set_focus()
+
+        update_event = False
 
         logger.info('ReferenceBox {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
 
@@ -3647,6 +3678,7 @@ class ReferenceBox(RecordElement):
                 # Set element to deleted in metadata
                 self.referenced = False
                 self.edited = True
+                update_event = True
 
                 self.update_display(window)
 
@@ -3656,6 +3688,7 @@ class ReferenceBox(RecordElement):
 
             self.approved = bool(values[approved_key])
             self.edited = True
+            update_event = True
 
         # Open reference record in a new record window
         elif event == ref_key:
@@ -3671,7 +3704,7 @@ class ReferenceBox(RecordElement):
                 # Display the record window
                 mod_win2.record_window(record, view_only=True)
 
-        return result
+        return update_event
 
     def bind_keys(self, window):
         """
@@ -4234,7 +4267,7 @@ class DataElement(RecordElement):
         aux_key = self.key_lookup('Auxiliary')
         left_click = '{}+LCLICK+'.format(elem_key)
 
-        success = True
+        update_event = False
 
         if event == '-HK_ENTER-':  # enter key pressed and current focus was on the element
             if self.edit_mode:  # set event to save
@@ -4285,11 +4318,11 @@ class DataElement(RecordElement):
                     logger.exception('DataElement {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     mod_win2.popup_error(msg)
 
-                    success = False
                 else:
                     if new_value != self.value:
                         self.value = new_value
                         self.edited = True
+                        update_event = True
 
                 self.update_display(window)
 
@@ -4322,7 +4355,7 @@ class DataElement(RecordElement):
 
             self.update_display(window)
 
-        return success
+        return update_event
 
     def bind_keys(self, window):
         """

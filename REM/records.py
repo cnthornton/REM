@@ -1779,7 +1779,15 @@ class DatabaseRecord:
             element_key = match.group(1)
 
             element_type = element_key.split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.parameters]
+            #element_names = [i.key_lookup(element_type) for i in self.parameters]
+            element_names = []
+            for param in self.parameters:
+                try:
+                    element_name = param.key_lookup(element_type)
+                except KeyError:
+                    element_name = None
+
+                element_names.append(element_name)
             logger.debug('RecordType {NAME}: searching record elements for element with key {KEY}'
                          .format(NAME=self.name, KEY=element))
             logger.debug('RecordType {NAME}: there are {N} record elements with element type {TYPE}'
@@ -2727,6 +2735,8 @@ class StandardRecord(DatabaseRecord):
         component_elems = [i for component in self.components for i in component.bindings]
         reference_elems = [i for reference in self.references for i in reference.bindings]
 
+        update_event = False
+
         # Check if any data elements are in edit mode
         try:
             focus_element = window.find_element_with_focus().Key
@@ -2777,6 +2787,7 @@ class StandardRecord(DatabaseRecord):
 
         # Run a component element event
         if event in param_elems or event == '-HK_ENTER-':  # parameter event or enter
+            print('event {EVENT} is a RecordTYPE {NAME} parameter event'.format(EVENT=event, NAME=self.name))
             try:
                 if event == '-HK_ENTER-':
                     print('event was return key')
@@ -2790,13 +2801,13 @@ class StandardRecord(DatabaseRecord):
                 logger.warning('RecordType {NAME}, Record {ID}: unable to find parameter associated with event key '
                                '{KEY}'.format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
-                param.run_event(window, event, values)
+                update_event = param.run_event(window, event, values)
 
         # Run a component table event
         if event in component_elems:  # component table event
             # Update data elements
-            for param in self.parameters:
-                param.update_display(window)
+            #for param in self.parameters:
+            #    param.update_display(window)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -2812,9 +2823,9 @@ class StandardRecord(DatabaseRecord):
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
                     component_table.update_display(window)
                 else:
-                    component_table.run_event(window, event, values)
+                    update_event = component_table.run_event(window, event, values)
 
-                self.update_display(window, window_values=values)
+                #self.update_display(window, window_values=values)
 
         # Run a reference-box event
         if event in reference_elems:
@@ -2824,7 +2835,10 @@ class StandardRecord(DatabaseRecord):
                 logger.error('RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
                              .format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
-                refbox.run_event(window, event, values)
+                update_event = refbox.run_event(window, event, values)
+
+        if update_event:
+            self.update_display(window)
 
         return True
 
@@ -2846,10 +2860,7 @@ class StandardRecord(DatabaseRecord):
 
         # Update the reference boxes
         for refbox in self.references:
-            try:
-                refbox.update_display(window)
-            except AttributeError:  # old reference box class
-                continue
+            refbox.update_display(window)
 
         # Update records header
         logger.debug('Record {ID}: updating display header elements'.format(ID=record_id))
@@ -2884,6 +2895,8 @@ class DepositRecord(DatabaseRecord):
         component_elems = [i for component in self.components for i in component.bindings]
         reference_elems = [i for reference in self.references for i in reference.bindings]
 
+        update_event = False
+
         # Check if any data elements are in edit mode
         try:
             focus_element = window.find_element_with_focus().Key
@@ -2896,6 +2909,8 @@ class DepositRecord(DatabaseRecord):
                 edit_mode = param.edit_mode
             except AttributeError:
                 continue
+            else:
+                print('edit mode is set to: {}'.format(edit_mode))
 
             #if edit_mode and event not in param.elements:  # element is edited and event not an element event
             #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
@@ -2940,7 +2955,7 @@ class DepositRecord(DatabaseRecord):
                 logger.error('Record {ID}: unable to find parameter associated with event key {KEY}'
                              .format(ID=self.record_id(), KEY=event))
             else:
-                param.run_event(window, event, values)
+                update_event = param.run_event(window, event, values)
 
         if event in component_elems:  # component table event
             # Update data elements
@@ -2960,9 +2975,9 @@ class DepositRecord(DatabaseRecord):
                     default_values = self.export_values(header=False, references=False).to_dict()
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
                 else:
-                    component_table.run_event(window, event, values)
+                    update_event = component_table.run_event(window, event, values)
 
-                self.update_display(window, window_values=values)
+                #self.update_display(window, window_values=values)
 
         if event in reference_elems:
             try:
@@ -2971,7 +2986,10 @@ class DepositRecord(DatabaseRecord):
                 logger.error('Record {ID}: unable to find reference associated with event key {KEY}'
                              .format(ID=self.record_id(), KEY=event))
             else:
-                refbox.run_event(window, event, values)
+                update_event = refbox.run_event(window, event, values)
+
+        if update_event:
+            self.update_display(window)
 
         return True
 
@@ -3072,6 +3090,8 @@ class AuditRecord(DatabaseRecord):
         component_elems = [i for component in self.components for i in component.bindings]
         reference_elems = [i for reference in self.references for i in reference.bindings]
 
+        update_event = False
+
         # Check if any data elements are in edit mode
         try:
             focus_element = window.find_element_with_focus().Key
@@ -3084,6 +3104,8 @@ class AuditRecord(DatabaseRecord):
                 edit_mode = param.edit_mode
             except AttributeError:
                 continue
+            else:
+                print('edit mode is set to: {}'.format(edit_mode))
 
             #if edit_mode and event not in param.elements:  # element is edited and event not an element event
             #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
@@ -3126,8 +3148,8 @@ class AuditRecord(DatabaseRecord):
                 logger.error('Record {ID}: unable to find parameter associated with event key {KEY}'
                              .format(ID=self.record_id(), KEY=event))
             else:
-                param.run_event(window, event, values)
-                self.update_display(window, window_values=values)
+                update_event = param.run_event(window, event, values)
+                #self.update_display(window, window_values=values)
 
         if event in component_elems:  # component table event
             # Update data elements
@@ -3147,9 +3169,9 @@ class AuditRecord(DatabaseRecord):
                     default_values = self.export_values(header=False, references=False).to_dict()
                     component_table.add_row(record_date=self.record_date(), defaults=default_values)
                 else:
-                    component_table.run_event(window, event, values)
+                    update_event = component_table.run_event(window, event, values)
 
-                self.update_display(window, window_values=values)
+                #self.update_display(window, window_values=values)
 
         if event in reference_elems:
             try:
@@ -3158,7 +3180,10 @@ class AuditRecord(DatabaseRecord):
                 logger.error('Record {ID}: unable to find reference associated with event key {KEY}'
                              .format(ID=self.record_id(), KEY=event))
             else:
-                refbox.run_event(window, event, values)
+                update_event = refbox.run_event(window, event, values)
+
+        if update_event:
+            self.update_display(window)
 
         return True
 
