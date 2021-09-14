@@ -929,8 +929,8 @@ class DataParameterCombo(DataParameter):
         # Enforce supported data types for the dropdown parameter
         supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + settings.supported_cat_dtypes
         if not self.dtype or self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
-                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
+            msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
+                  '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'varchar'
@@ -1194,8 +1194,8 @@ class DataParameterRange(DataParameter):
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes \
                            + settings.supported_date_dtypes
         if not self.dtype or self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
-                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
+            msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
+                  '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'float'

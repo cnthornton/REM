@@ -263,12 +263,8 @@ class AuditRule:
                     tab.update_display(window)
 
                     # Bind events to element keys
-                    for record_element in tab.record.parameters:
-                        if record_element.etype == 'table':
-                            continue
-                        else:
-                            elem_key = record_element.key_lookup('Element')
-                            window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+                    for record_element in tab.record.record_elements():
+                        record_element.bind_keys(window)
 
                 # Disable / enable action buttons
                 window[next_key].update(disabled=True)

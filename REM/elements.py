@@ -20,7 +20,126 @@ import REM.secondary as mod_win2
 from REM.client import logger, settings
 
 
-class TableElement:
+class RecordElement:
+    """
+    Record element parent class.
+
+    Attributes:
+        name (str): record element configuration name.
+
+        parent (str): optional name of the parent element.
+
+        id (int): record element number.
+
+        elements (list): list of GUI element keys.
+
+        description (str): record element display title.
+
+        annotation_rules (dict): annotate the element using the configured annotation rules.
+
+        bg_col (str): hexadecimal color code of the element's background.
+
+        icon (str): name of the icon file containing the image representing the record element.
+
+        tooltip (str): element tooltip.
+
+        edited (bool): record element was edited [Default: False].
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize the record element attributes.
+
+        Arguments:
+            name (str): name of the configured element.
+
+            entry (dict): configuration entry for the element.
+
+            parent (str): name of the parent element.
+        """
+        self.name = name
+        self.parent = parent
+        self.id = randint(0, 1000000000)
+
+        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                         ('Element',)]
+
+        try:
+            self.etype = entry['ElementType']
+        except KeyError:
+            msg = 'no element type specified for the record element'
+            logger.warning('RecordElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+        try:
+            self.description = entry['Description']
+        except KeyError:
+            self.description = name
+
+        # Layout styling options
+        try:
+            annotation_rules = entry['AnnotationRules']
+        except KeyError:
+            annotation_rules = {}
+
+        self.annotation_rules = {}
+        for code in annotation_rules:
+            rule = annotation_rules[code]
+
+            if 'Condition' not in rule:
+                msg = 'no condition set for configured annotation rule {RULE}'.format(RULE=code)
+                logger.warning('{TYPE} {NAME}: {MSG}'.format(TYPE=self.etype, NAME=self.name, MSG=msg))
+
+                continue
+
+            self.annotation_rules[code] = {'BackgroundColor': rule.get('BackgroundColor', mod_const.FAIL_COL),
+                                           'Description': rule.get('Description', code),
+                                           'Condition': rule['Condition']}
+
+        try:
+            bg_col = entry['BackgroundColor']
+        except KeyError:
+            self.bg_col = mod_const.ACTION_COL
+        else:
+            if isinstance(bg_col, str) and (not bg_col.startswith('#') or len(bg_col) != 7):  # hex color codes
+                self.bg_col = mod_const.ACTION_COL
+            else:
+                self.bg_col = bg_col
+
+        try:
+            self.icon = entry['Icon']
+        except KeyError:
+            self.icon = None
+
+        try:
+            self.tooltip = entry['Tooltip']
+        except KeyError:
+            self.tooltip = None
+
+        # Dynamic variables
+        self.edited = False
+
+    def key_lookup(self, component):
+        """
+        Lookup a record element's GUI element key using the name of the component.
+        """
+        element_names = [i[1: -1].split('_')[-1] for i in self.elements]
+        #element_names = [re.match(r'-(.*?)-', i).group(1).split('_')[-1] for i in self.elements]
+        if component in element_names:
+            key_index = element_names.index(component)
+            key = self.elements[key_index]
+        else:
+            msg = '{ETYPE} {NAME}: component "{COMP}" not found in list of element components' \
+                .format(ETYPE=self.etype, NAME=self.name, COMP=component)
+            logger.warning(msg)
+            logger.debug('{ETYPE} {NAME}: element contains components {COMP}'
+                         .format(ETYPE=self.etype, NAME=self.name, COMP=element_names))
+
+            raise KeyError(msg)
+
+        return key
+
+
+class TableElement(RecordElement):
     """
     Record data table element.
 
@@ -74,7 +193,7 @@ class TableElement:
 
     def __init__(self, name, entry, parent=None):
         """
-        Table attributes.
+        Initialize the data table attributes.
 
         Arguments:
             name (str): name of the configured table element.
@@ -83,24 +202,22 @@ class TableElement:
 
             parent (str): name of the parent element.
         """
-        self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
-        self.elements = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-']
+        super().__init__(name, entry, parent)
+
+        self.etype = 'table'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ['Element', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'FilterButton',
+                              ('Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'FilterButton',
                                'SummaryFrame', 'SummaryButton', 'Width', 'CollapseButton', 'CollapseFrame',
                                'SummaryWidth', 'Options', 'Cancel', 'Sort', 'OptionsFrame', 'OptionsWidth',
-                               'WidthCol1', 'WidthCol2', 'WidthCol3']])
-        self.etype = 'table'
+                               'WidthCol1', 'WidthCol2', 'WidthCol3')])
 
-        self._action_elements = ['Element']
+        # Element-specific bindings
+        elem_key = self.key_lookup('Element')
+        hover_event = '{}+HOVER+'.format(elem_key)
+        self.bindings = self.elements + [hover_event]
+
+        self._action_elements = [self.key_lookup('Element')]
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
-
-        try:
-            self.description = entry['Description']
-        except KeyError:
-            self.description = name
 
         try:
             modifiers = entry['Modifiers']
@@ -289,25 +406,6 @@ class TableElement:
             self.tally_rule = None
 
         try:
-            annot_rules = entry['AnnotationRules']
-        except KeyError:
-            self.annotation_rules = {}
-        else:
-            self.annotation_rules = {}
-            for annot_code in annot_rules:
-                annot_rule = annot_rules[annot_code]
-
-                if 'Condition' not in annot_rule:
-                    mod_win2.popup_notice('No condition set for configured annotation rule {RULE}'
-                                          .format(RULE=annot_code))
-                    continue
-
-                self.annotation_rules[annot_code] = {'BackgroundColor': annot_rule.get('BackgroundColor',
-                                                                                       mod_const.FAIL_COL),
-                                                     'Description': annot_rule.get('Description', annot_code),
-                                                     'Condition': annot_rule['Condition']}
-
-        try:
             filter_rules = entry['FilterRules']
         except KeyError:
             self.filter_rules = {}
@@ -380,11 +478,6 @@ class TableElement:
             self.columns[self.edited_column] = 'bool'
 
         try:
-            self.icon = entry['Icon']
-        except KeyError:
-            self.icon = None
-
-        try:
             self.widths = entry['Widths']
         except KeyError:
             self.widths = None
@@ -424,11 +517,6 @@ class TableElement:
                 self.row_color = row_color
 
         try:
-            self.tooltip = entry['Tooltip']
-        except KeyError:
-            self.tooltip = None
-
-        try:
             self.required_columns = entry['RequiredColumns']
         except KeyError:
             self.required_columns = []
@@ -438,7 +526,6 @@ class TableElement:
 
         self.df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
-        self.edited = False
 
     def _apply_filter(self):
         """
@@ -639,21 +726,6 @@ class TableElement:
 
         return df
 
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            logger.warning('DataTable {NAME}: component {COMP} not found in list of element components'
-                           .format(NAME=self.name, COMP=component))
-            key = None
-
-        return key
-
     def reset(self, window):
         """
         Reset the data table to default.
@@ -734,7 +806,7 @@ class TableElement:
         """
         Perform a table action.
         """
-        tbl_key = self.key_lookup('Element')
+        elem_key = self.key_lookup('Element')
         search_key = self.key_lookup('Search')
         options_key = self.key_lookup('Options')
         frame_key = self.key_lookup('OptionsFrame')
@@ -743,9 +815,17 @@ class TableElement:
         fill_key = self.key_lookup('Fill')
         export_key = self.key_lookup('Export')
         filter_key = self.key_lookup('Filter')
+        hover_event = '{}+HOVER+'.format(elem_key)
 
         param_elems = [i for param in self.parameters for i in param.elements]
-        action_events = [self.key_lookup(i) for i in self._action_elements]
+        #action_events = [self.key_lookup(i) for i in self._action_elements]
+        action_events = self._action_elements
+
+        if event == '-HK_ENTER-':  # enter key pressed and current focus was on the table element
+            event = elem_key
+
+        if event == hover_event:
+            window[elem_key].set_focus()
 
         if event == search_key:
             # Update the search field value
@@ -778,10 +858,10 @@ class TableElement:
             if window[frame_key].metadata['visible'] is False:
                 window[frame_key].metadata['visible'] = True
 
-                tbl_width, tbl_height = window[tbl_key].get_size()
+                tbl_width, tbl_height = window[elem_key].get_size()
 
                 # Reveal the options panel
-                window[tbl_key].update(visible=False)
+                window[elem_key].update(visible=False)
                 window[frame_key].update(visible=True)
                 window[frame_key].expand(expand_row=True, expand_y=True, expand_x=True)
                 window.refresh()
@@ -797,10 +877,10 @@ class TableElement:
                 lengths = self._calc_column_widths(width=new_width, pixels=True)
                 for col_index, col_name in enumerate(header):
                     col_width = lengths[col_index]
-                    window[tbl_key].Widget.column(col_name, width=col_width)
+                    window[elem_key].Widget.column(col_name, width=col_width)
 
                 # Reveal the table frame
-                window[tbl_key].update(visible=True)
+                window[elem_key].update(visible=True)
 
                 # Update the display table to show annotations properly
                 self.update_display(window)
@@ -838,7 +918,7 @@ class TableElement:
             display_map = {j: i for i, j in self.display_columns.items()}
 
             # Get selected rows, if any
-            select_row_indices = values[tbl_key]
+            select_row_indices = values[elem_key]
             print('display indices:')
             print(select_row_indices)
 
@@ -910,16 +990,17 @@ class TableElement:
         """
         Run a table action event.
         """
-        tbl_key = self.key_lookup('Element')
+        elem_key = self.key_lookup('Element')
 
         # Row click event
-        if event == tbl_key:
+        if event == elem_key:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
             # Find row selected by user
             try:
-                select_row_index = values[event][0]
+                #select_row_index = values[event][0]
+                select_row_index = values[elem_key][0]
             except IndexError:  # user double-clicked too quickly
                 msg = 'table row could not be selected'
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -939,6 +1020,13 @@ class TableElement:
         self.update_display(window)
 
         return None
+
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.key_lookup('Element')
+        window[elem_key].bind('<Enter>', '+HOVER+')
 
     def update_display(self, window, annotations: dict = None):
         """
@@ -1345,6 +1433,9 @@ class TableElement:
         search_field = self.search_field
 
         disabled = True if editable is False and overwrite is False else False
+        print('record is editable: {}'.format(editable))
+        print('record is disabled: {}'.format(disabled))
+        print('overwrite is set to: {}'.format(overwrite))
 
         # Element keys
         keyname = self.key_lookup('Element')
@@ -1366,7 +1457,7 @@ class TableElement:
         disabled_text_col = mod_const.DISABLED_TEXT_COL  # disabled button text
         disabled_bg_col = mod_const.INACTIVE_COL  # disabled button background
         alt_col = self.row_color  # alternate row color
-        bg_col = mod_const.TBL_BG_COL  # primary table color is white
+        bg_col = self.bg_col  # default primary table color is white
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
         filter_bg_col = mod_const.DEFAULT_COL  # color of the filter parameter background
         filter_head_col = mod_const.BORDER_COL  # color of filter header and selected row background
@@ -2329,7 +2420,7 @@ class RecordTable(TableElement):
 
     def __init__(self, name, entry, parent=None):
         """
-        Table attributes.
+        Initialize record table attributes.
 
         Arguments:
             name (str): name of the configured table element.
@@ -2339,9 +2430,9 @@ class RecordTable(TableElement):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-        self._action_elements.extend(['Delete', 'Import'])
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ['Delete', 'Import']])
+                              ('Delete', 'Import')])
+        self._action_elements.extend([self.key_lookup(i) for i in ('Delete', 'Import')])
 
         self.etype = 'record_table'
 
@@ -2517,18 +2608,18 @@ class RecordTable(TableElement):
         """
         Run a table action event.
         """
-        tbl_key = self.key_lookup('Element')
+        elem_key = self.key_lookup('Element')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
         # Row click event
-        if event == tbl_key:
+        if event == elem_key:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
             # Find row selected by user from the display table of non-deleted rows
             try:
-                select_row_index = values[event][0]
+                select_row_index = values[elem_key][0]
             except IndexError:  # user double-clicked too quickly
                 msg = 'table row could not be selected'
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -2545,7 +2636,7 @@ class RecordTable(TableElement):
                     record = self.load_record(index)
 
                     # Update record table values
-                    if self.modifiers['edit']:
+                    if record and self.modifiers['edit']:
                         try:
                             record_values = record.export_values()
                         except Exception as e:
@@ -2558,7 +2649,8 @@ class RecordTable(TableElement):
         if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
                                                                 window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
-            select_row_indices = values[tbl_key]
+            select_row_indices = values[elem_key]
+            #select_row_indices = values[tbl_key]
 
             # Get the real indices of the selected rows
             try:
@@ -2909,7 +3001,7 @@ class ComponentTable(RecordTable):
 
     def __init__(self, name, entry, parent=None):
         """
-        Table attributes.
+        Initialize component table attributes.
 
         Arguments:
             name (str): name of the configured table element.
@@ -2919,9 +3011,10 @@ class ComponentTable(RecordTable):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-        self._action_elements.append('Add')
+
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ['Add']])
+                              ('Add',)])
+        self._action_elements.append(self.key_lookup('Add'))
 
         self.etype = 'component_table'
 
@@ -2961,19 +3054,19 @@ class ComponentTable(RecordTable):
         """
         Run a table action event.
         """
-        tbl_key = self.key_lookup('Element')
+        elem_key = self.key_lookup('Element')
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
 
         # Row click event
-        if event == tbl_key:
+        if event == elem_key:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
             # Find row selected by user from the display table of non-deleted rows
             try:
-                select_row_index = values[event][0]
+                select_row_index = values[elem_key][0]
             except IndexError:  # user double-clicked too quickly
                 msg = 'table row could not be selected'
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -2990,7 +3083,7 @@ class ComponentTable(RecordTable):
                     record = self.load_record(index)
 
                     # Update record table values
-                    if self.modifiers['edit']:
+                    if record and self.modifiers['edit']:
                         try:
                             record_values = record.export_values()
                         except Exception as e:
@@ -3011,7 +3104,7 @@ class ComponentTable(RecordTable):
         if event == delete_key or (event == '-HK_TBL_DEL-' and (not window[delete_key].metadata['disabled'] and
                                                                 window[delete_key].metadata['visible'])):
             # Find rows selected by user for deletion
-            select_row_indices = values[tbl_key]
+            select_row_indices = values[elem_key]
 
             # Get the real indices of the selected rows
             try:
@@ -3403,7 +3496,7 @@ class ComponentTable(RecordTable):
         return ref_df
 
 
-class ReferenceBox:
+class ReferenceBox(RecordElement):
     """
     Record reference box element.
 
@@ -3430,27 +3523,25 @@ class ReferenceBox:
 
     def __init__(self, name, entry, parent=None):
         """
-        Record reference box element.
+        Initialize the reference box element attributes.
 
         Arguments:
             name (str): reference box element configuration name.
 
-            entry (pd.Series): configuration entry for the element.
+            entry (dict): configuration entry for the element.
 
             parent (str): name of the parent element.
         """
-        self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
+        super().__init__(name, entry, parent)
         self.etype = 'refbox'
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
-                          'Approved']]
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                              ('RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
+                               'Approved')])
 
-        try:
-            self.description = entry['Description']
-        except KeyError:
-            self.description = name
+        # Element-specific bindings
+        elem_key = self.key_lookup('Element')
+        hover_event = '{}+HOVER+'.format(elem_key)
+        self.bindings = self.elements + [hover_event]
 
         try:
             modifiers = entry['Modifiers']
@@ -3501,22 +3592,6 @@ class ReferenceBox:
         self.is_pc = False
         self.approved = False
         self.referenced = False
-        self.edited = False
-
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            logger.warning('ReferenceBox {NAME}: component "{COMP}" not found in list of element components'
-                           .format(NAME=self.name, COMP=component))
-            key = None
-
-        return key
 
     def reset(self, window):
         """
@@ -3540,9 +3615,14 @@ class ReferenceBox:
         Run a record reference event.
         """
         result = True
+        elem_key = self.key_lookup('Element')
         del_key = self.key_lookup('Unlink')
         ref_key = self.key_lookup('RefID')
         approved_key = self.key_lookup('Approved')
+        hover_event = '{}+HOVER+'.format(elem_key)
+
+        if event == hover_event:
+            window[ref_key].set_focus()
 
         logger.info('ReferenceBox {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
 
@@ -3568,11 +3648,15 @@ class ReferenceBox:
 
         # Update approved element
         elif event == approved_key:
+            window[approved_key].set_focus()
+
             self.approved = bool(values[approved_key])
             self.edited = True
 
         # Open reference record in a new record window
         elif event == ref_key:
+            window[ref_key].set_focus()
+
             try:
                 record = self.load_record()
             except Exception as e:
@@ -3584,6 +3668,13 @@ class ReferenceBox:
                 mod_win2.record_window(record, view_only=True)
 
         return result
+
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.key_lookup('Element')
+        window[elem_key].bind('<Enter>', '+HOVER+')
 
     def resize(self, window, size: tuple = None):
         """
@@ -3619,8 +3710,9 @@ class ReferenceBox:
         font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
 
-        bg_col = mod_const.ACTION_COL if not warnings else mod_const.WARNING_COL
         text_col = mod_const.TEXT_COL
+        bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
+        tooltip = self.tooltip if self.tooltip else self.description
 
         # Allowed actions and visibility of component elements
         is_disabled = False if editable is True else True
@@ -3628,15 +3720,9 @@ class ReferenceBox:
         can_delete = True if (modifiers['delete'] is True and not is_disabled) or (overwrite is True) else False
         can_open = True if (modifiers['open'] is True and not is_disabled) or (overwrite is True) else False
 
-        print('reference {} is disabled: {}'.format(self.name, is_disabled))
-        print('reference {} can be opened: {}'.format(self.name, can_open))
-        print('reference {} can be deleted: {}'.format(self.name, can_delete))
-        print('reference {} can be approved: {}'.format(self.name, can_approve))
-
         select_text_col = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
 
         approved_vis = True if modifiers['approve'] is not None else False
-        print('reference {} approval checkbox is visible: {}'.format(self.name, approved_vis))
         hl_vis = True if self.is_hardlink is True else False
         pc_vis = True if self.is_pc is True else False
 
@@ -3656,13 +3742,11 @@ class ReferenceBox:
         elem_layout = [sg.Canvas(key=height_key, size=(0, height)),
                        sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
                                         text_color=text_col, font=bold_font, background_color=bg_col,
-                                        tooltip=(self.description if 'ReferenceType' not in aliases else
-                                                 aliases['ReferenceType'])),
+                                        tooltip=tooltip),
                                 sg.Image(data=mod_const.LINK_ICON, key=link_key, visible=hl_vis,
                                          pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
-                                                                                                      not in aliases else
-                                                  aliases['IsHardLink'])),
+                                                  not in aliases else aliases['IsHardLink'])),
                                 sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
                                          pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
@@ -3746,7 +3830,7 @@ class ReferenceBox:
             window[parent_key].update(visible=False)
 
         # Set notes
-        bg_col = mod_const.ACTION_COL if not warnings else mod_const.WARNING_COL
+        bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
         window[elem_key].Widget.config(background=bg_col)
         window[elem_key].Widget.config(highlightbackground=bg_col)
         window[elem_key].Widget.config(highlightcolor=bg_col)
@@ -3956,7 +4040,7 @@ class ReferenceBox:
         return values.to_dict()
 
 
-class DataElement:
+class DataElement(RecordElement):
     """
     Record data element.
 
@@ -3985,7 +4069,7 @@ class DataElement:
 
     def __init__(self, name, entry, parent=None):
         """
-        GUI data element.
+        Initialize the data element attributes.
 
         Arguments:
             name (str): data element configuration name.
@@ -3994,18 +4078,14 @@ class DataElement:
 
             parent (str): name of the parent element.
         """
-        self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']]
-        elem_key = self.key_lookup('Element')
-        self.elements.append('{}+LCLICK+'.format(elem_key))
+        super().__init__(name, entry, parent)
+        self.etype = 'text'
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                              ['Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']])
 
-        try:
-            self.etype = entry['ElementType']
-        except KeyError:
-            raise AttributeError('missing required parameter "ElementType".')
+        # Element-specific bindings
+        elem_key = self.key_lookup('Element')
+        self.bindings = self.elements + ['{}+LCLICK+'.format(elem_key)]
 
         try:
             dtype = entry['DataType']
@@ -4024,11 +4104,6 @@ class DataElement:
         if self.dtype in settings.supported_date_dtypes:
             self.elements.append('-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id))
 
-        try:
-            self.description = entry['Description']
-        except KeyError:
-            self.description = self.name
-
         # Modifiers
         try:
             modifiers = entry['Modifiers']
@@ -4046,41 +4121,6 @@ class DataElement:
                     flag = False
 
                 self.modifiers[modifier] = flag
-
-        # Layout styling options
-        try:
-            bg_col = entry['BackgroundColor']
-        except KeyError:
-            self.bg_col = mod_const.ACTION_COL
-        else:
-            if isinstance(bg_col, str) and (not bg_col.startswith('#') or len(bg_col) != 7):  # hex color codes
-                self.bg_col = mod_const.ACTION_COL
-            else:
-                self.bg_col = bg_col
-
-        try:
-            self.icon = entry['Icon']
-        except KeyError:
-            self.icon = None
-
-        try:
-            annot_rules = entry['AnnotationRules']
-        except KeyError:
-            self.annotation_rules = {}
-        else:
-            self.annotation_rules = {}
-            for annot_code in annot_rules:
-                annot_rule = annot_rules[annot_code]
-
-                if 'Condition' not in annot_rule:
-                    mod_win2.popup_notice('No condition set for configured annotation rule {RULE}'
-                                          .format(RULE=annot_code))
-                    continue
-
-                self.annotation_rules[annot_code] = {'BackgroundColor': annot_rule.get('BackgroundColor',
-                                                                                       mod_const.FAIL_COL),
-                                                     'Description': annot_rule.get('Description', annot_code),
-                                                     'Condition': annot_rule['Condition']}
 
         # Formatting options
         try:
@@ -4120,26 +4160,6 @@ class DataElement:
 
         self.disabled = False
         self.edit_mode = False
-        self.edited = False
-
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i[1: -1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            msg = 'DataElement {NAME}: component "{COMP}" not found in list of element components' \
-                .format(NAME=self.name, COMP=component)
-            logger.warning(msg)
-            logger.debug('DataElement {NAME}: data element contains components {COMP}'
-                         .format(NAME=self.name, COMP=element_names))
-
-            raise KeyError(msg)
-
-        return key
 
     def export_values(self, edited_only: bool = False):
         """
@@ -4155,7 +4175,7 @@ class DataElement:
 
     def reset(self, window):
         """
-        Reset data element value to default.
+        Reset data element to default.
         """
         elem_key = self.key_lookup('Element')
         edit_key = self.key_lookup('Edit')
@@ -4182,7 +4202,7 @@ class DataElement:
 
     def resize(self, window, size: tuple = None):
         """
-        Resize the data element.
+        Resize the display element.
         """
         if not size:
             width = 200  # default size in characters * 10
@@ -4197,7 +4217,7 @@ class DataElement:
 
     def run_event(self, window, event, values):
         """
-        Perform an action.
+        Perform an element action.
         """
         text_col = mod_const.TEXT_COL
         disabled_text_col = mod_const.DISABLED_TEXT_COL
@@ -4208,10 +4228,25 @@ class DataElement:
         save_key = self.key_lookup('Save')
         cancel_key = self.key_lookup('Cancel')
         aux_key = self.key_lookup('Auxiliary')
+        left_click = '{}+LCLICK+'.format(elem_key)
 
         success = True
 
-        if event == edit_key or (event == '{}+LCLICK+'.format(elem_key) and not self.disabled):
+        if event == '-HK_ENTER-':  # enter key pressed and current focus was on the element
+            if self.edit_mode:  # set event to save
+                print('element is currently in edit mode')
+                event = save_key
+                print('setting event to {}'.format(event))
+            else:  # set event to edit
+                print('element is in inactive mode')
+                event = edit_key
+                print('setting event to {}'.format(event))
+
+        # Set focus to the element and enable edit mode
+        if (event == edit_key or event == left_click) and not self.disabled:
+            window[elem_key].set_focus()
+
+            print('enabling edit mode')
             # Update element to show any current unformatted data
             value_fmt = self.format_display(editing=True)
 
@@ -4229,7 +4264,9 @@ class DataElement:
 
             self.edit_mode = True
 
+        # Set element to inactive mode and update the element value
         if event == save_key:
+            print('saving value changes and setting to inactive mode')
             # Update value of the data element
             try:
                 value = values[elem_key]
@@ -4283,6 +4320,13 @@ class DataElement:
 
         return success
 
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.key_lookup('Element')
+        window[elem_key].bind('<Button-1>', '+LCLICK+')
+
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
         """
         GUI layout for the data element.
@@ -4290,12 +4334,13 @@ class DataElement:
         modifiers = self.modifiers
 
         is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
-                                self.etype != 'text' else True)
+                       self.etype != 'text' else True)
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
 
         background = self.bg_col
+        tooltip = self.tooltip if self.tooltip else self.description
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -4345,7 +4390,7 @@ class DataElement:
         cancel_key = self.key_lookup('Cancel')
         bttn_vis = False if is_disabled is True else True
         description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=bg_col,
-                                      font=bold_font, auto_size_text=True, tooltip=self.description),
+                                      font=bold_font, auto_size_text=True, tooltip=tooltip),
                               sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
                                         button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
                                         border_width=0, tooltip='Edit value'),
@@ -4609,7 +4654,7 @@ class DataElementInput(DataElement):
 
     def __init__(self, name, entry, parent=None):
         """
-        GUI data element.
+        Initialize data element attributes.
 
         Arguments:
             name (str): data element configuration name.
@@ -4682,7 +4727,7 @@ class DataElementCombo(DataElement):
 
     def __init__(self, name, entry, parent=None):
         """
-        GUI data element.
+        Initialize data element attributes.
 
         Arguments:
             name (str): data element configuration name.
@@ -4790,7 +4835,7 @@ class DataElementMultiline(DataElement):
 
     def __init__(self, name, entry, parent=None):
         """
-        GUI data element.
+        Initialize the data element attributes.
 
         Arguments:
             name (str): data element configuration name.
@@ -4842,7 +4887,7 @@ class DataElementMultiline(DataElement):
 
 
 # Element references
-class ElementReference:
+class ElementReference(RecordElement):
     """
     Record element that references the values of other record elements.
 
@@ -4880,12 +4925,15 @@ class ElementReference:
 
             parent (str): name of the parent element.
         """
-        self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ['Element', 'Description']]
+        super().__init__(name, entry, parent)
+
         self.etype = 'reference'
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                              ('Description',)])
+
+        # Element-specific bindings
+        elem_key = self.key_lookup('Element')
+        self.bindings = self.elements + ['{}+LCLICK+'.format(elem_key)]
 
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
@@ -4901,11 +4949,6 @@ class ElementReference:
                 logger.warning('ElementReference {NAME}: {MSG}'.format(NAME=name, MSG=msg))
 
                 self.dtype = 'int'
-
-        try:
-            self.description = entry['Description']
-        except KeyError:
-            self.description = self.name
 
         # Element modifier flags
         try:
@@ -4924,41 +4967,6 @@ class ElementReference:
 
                 self.modifiers[modifier] = flag
 
-        # Layout options
-        try:
-            bg_col = entry['BackgroundColor']
-        except KeyError:
-            self.bg_col = mod_const.ACTION_COL
-        else:
-            if isinstance(bg_col, str) and (not bg_col.startswith('#') or len(bg_col) != 7):  # hex color codes
-                self.bg_col = mod_const.ACTION_COL
-            else:
-                self.bg_col = bg_col
-
-        try:
-            self.icon = entry['Icon']
-        except KeyError:
-            self.icon = None
-
-        try:
-            annot_rules = entry['AnnotationRules']
-        except KeyError:
-            self.annotation_rules = {}
-        else:
-            self.annotation_rules = {}
-            for annot_code in annot_rules:
-                annot_rule = annot_rules[annot_code]
-
-                if 'Condition' not in annot_rule:
-                    mod_win2.popup_notice('No condition set for configured annotation rule {RULE}'
-                                          .format(RULE=annot_code))
-                    continue
-
-                self.annotation_rules[annot_code] = {'BackgroundColor': annot_rule.get('BackgroundColor',
-                                                                                       mod_const.FAIL_COL),
-                                                     'Description': annot_rule.get('Description', annot_code),
-                                                     'Condition': annot_rule['Condition']}
-
         # Reference parameter information
         try:
             self.operation = entry['Operation']
@@ -4975,6 +4983,7 @@ class ElementReference:
         except KeyError:
             self.default = None
 
+        # Dynamic attributes
         self.value = self.default
         logger.debug('ElementReference {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value '
                      '{DEF} and formatted value {VAL}'
@@ -4982,25 +4991,6 @@ class ElementReference:
 
         self.disabled = True
         self.edited = False
-
-    def key_lookup(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i[1: -1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            msg = 'ElementReference {NAME}: component "{COMP}" not found in list of element components' \
-                .format(NAME=self.name, COMP=component)
-            logger.warning(msg)
-            logger.debug('ElementReference {NAME}: data element contains components {COMP}'
-                         .format(NAME=self.name, COMP=element_names))
-
-            raise KeyError(msg)
-
-        return key
 
     def reset(self, window):
         """
@@ -5024,6 +5014,13 @@ class ElementReference:
         """
         pass
 
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the element.
+        """
+        elem_key = self.key_lookup('Element')
+        window[elem_key].bind('<Button-1>', '+LCLICK+')
+
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
         """
         GUI layout for the record element.
@@ -5036,6 +5033,7 @@ class ElementReference:
         hidden = modifiers['hide']
 
         background = self.bg_col
+        tooltip = self.tooltip if self.tooltip else self.description
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -5072,7 +5070,7 @@ class ElementReference:
         cancel_key = self.key_lookup('Cancel')
         bttn_vis = False if is_disabled is True else True
         description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=bg_col,
-                                      font=bold_font, auto_size_text=True, tooltip=self.description),
+                                      font=bold_font, auto_size_text=True, tooltip=tooltip),
                               sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
                                         button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
                                         border_width=0, tooltip='Edit value'),

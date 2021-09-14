@@ -292,12 +292,17 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     # Bind keys to events
     window = settings.set_shortcuts(window)
 
-    for element in record.parameters:
-        if element.etype == 'table':
-            continue
-        else:
-            elem_key = element.key_lookup('Element')
-            window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+    logger.debug('binding record element hotkeys')
+    for element in record.record_elements():
+        element.bind_keys(window)
+        #if element.etype == 'table':
+        #    continue
+        #else:
+        #    elem_key = element.key_lookup('Element')
+        #    window[elem_key].bind('<Double-Button-1>', '+LDCLICK+')
+        #    window[elem_key].bind('<Button-1>', '+LCLICK+')
+        #elem_key = element.key_lookup('Element')
+        #window[elem_key].bind('<Button-1>', '+LCLICK+')
 
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
@@ -314,9 +319,12 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     record.update_display(window)
 
     # Event window
-    record_elements = [i for i in record.elements]
+    record_elements = record.record_events()
+    print('record elements are:')
+    print(record_elements)
     while True:
         event, values = window.read()
+        print(event)
 
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
@@ -464,7 +472,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
             continue
 
         # Update the record parameters with user-input
-        if event in record_elements:  # selected a record event element
+        if event in record_elements or event == '-HK_ENTER-':  # selected a record event element or pressed return key
             try:
                 record.run_event(window, event, values)
             except Exception as e:
@@ -1863,6 +1871,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     # Bind event keys
     window = settings.set_shortcuts(window)
     table_shortcuts = settings.get_shortcuts('Table')
+    table.bind_keys(window)
 
     # Prepare record
     record_entry = settings.records.fetch_rule(table.record_type)
@@ -1881,9 +1890,10 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
         return None
 
     # Update display with default filter values
-    tbl_key = table.key_lookup('Element')
+    elem_key = table.key_lookup('Element')
     filter_key = table.key_lookup('Filter')
-    table_elements = [i for i in table.elements if i not in (tbl_key, filter_key)]
+    table_elements = [i for i in table.bindings if i not in (elem_key, filter_key)]
+    #table_elements = [i for i in table.elements if i not in (tbl_key, filter_key)]
 
     table.update_display(window)
 
@@ -1954,13 +1964,13 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
             continue
 
-        if event == tbl_key:  # click to open record
+        if event == elem_key:  # click to open record
             # Close options panel, if open
             table.set_table_dimensions(window)
 
             # retrieve selected row
             try:
-                row_index = values[tbl_key][0]
+                row_index = values[elem_key][0]
             except IndexError:
                 continue
             else:

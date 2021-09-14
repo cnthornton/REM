@@ -1771,9 +1771,22 @@ class DatabaseRecord:
         Fetch a record data element by name or event key.
         """
         if by_key is True:
-            element_type = element[1:-1].split('_')[-1]
+            # Remove any binding strings and get last component of element key
+            match = re.match(r'-(.*?)-', element)
+            if not match:
+                raise KeyError('unknown format provided for element key {ELEM}'.format(ELEM=element))
+            element = match.group(0)
+            element_key = match.group(1)
+
+            element_type = element_key.split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.parameters]
+            logger.debug('RecordType {NAME}: searching record elements for element with key {KEY}'
+                         .format(NAME=self.name, KEY=element))
+            logger.debug('RecordType {NAME}: there are {N} record elements with element type {TYPE}'
+                         .format(NAME=self.name, N=len(element_names), TYPE=element_type))
         else:
+            logger.debug('RecordType {NAME}: searching record elements for element with name {KEY}'
+                         .format(NAME=self.name, KEY=element))
             element_names = [i.name for i in self.parameters]
 
         if element in element_names:
@@ -1809,7 +1822,15 @@ class DatabaseRecord:
         Display a reference record in a new window.
         """
         if by_key is True:
-            element_type = reference[1:-1].split('_')[-1]
+            # Remove any binding strings and get last component of element key
+            match = re.match(r'-(.*?)-', reference)
+            if not match:
+                raise KeyError('unknown format provided for element key {ELEM}'.format(ELEM=reference))
+
+            reference = match.group(0)
+            element_key = match.group(1)
+
+            element_type = element_key.split('_')[-1]
             references = [i.key_lookup(element_type) for i in self.references]
         else:
             references = [i.name for i in self.references]
@@ -1828,7 +1849,15 @@ class DatabaseRecord:
         Fetch a record module.
         """
         if by_key is True:
-            element_type = module[1:-1].split('_')[-1]
+            # Remove any binding strings and get last component of element key
+            match = re.match(r'-(.*?)-', module)
+            if not match:
+                raise KeyError('unknown format provided for element key {ELEM}'.format(ELEM=module))
+
+            module = match.group(0)
+            element_key = match.group(1)
+
+            element_type = element_key.split('_')[-1]
             modules = [i.key_lookup(element_type) for i in self.modules]
         elif by_type is True:
             modules = [i.etype for i in self.modules]
@@ -1849,7 +1878,15 @@ class DatabaseRecord:
         Fetch a component table by name.
         """
         if by_key is True:
-            element_type = component[1:-1].split('_')[-1]
+            # Remove any binding strings and get last component of element key
+            match = re.match(r'-(.*?)-', component)
+            if not match:
+                raise KeyError('unknown format provided for element key {ELEM}'.format(ELEM=component))
+
+            component = match.group(0)
+            element_key = match.group(1)
+
+            element_type = element_key.split('_')[-1]
             components = [i.key_lookup(element_type) for i in self.components]
         elif by_type is True:
             components = [i.record_type for i in self.components]
@@ -1864,6 +1901,23 @@ class DatabaseRecord:
                            .format(ELEM=component, NAME=self.name))
 
         return comp_tbl
+
+    def record_events(self):
+        """
+        Return a list of all possible record events.
+        """
+        param_elems = [i for param in self.parameters for i in param.bindings]
+        modifier_elems = [i for param in self.metadata for i in param.elements]
+        component_elems = [i for component in self.components for i in component.bindings]
+        reference_elems = [i for reference in self.references for i in reference.bindings]
+
+        return param_elems + modifier_elems + component_elems + reference_elems
+
+    def record_elements(self):
+        """
+        Return a list of all record elements (to be superseded by sections in the future).
+        """
+        return self.parameters + self.references + self.components
 
     def check_required_parameters(self):
         """
@@ -2664,21 +2718,38 @@ class StandardRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        param_elems = [i for param in self.parameters for i in param.elements]
+        #param_elems = [i for param in self.parameters for i in param.elements]
+        #modifier_elems = [i for param in self.metadata for i in param.elements]
+        #component_elems = [i for component in self.components for i in component.elements]
+        #reference_elems = [i for reference in self.references for i in reference.elements]
+        param_elems = [i for param in self.parameters for i in param.bindings]
         modifier_elems = [i for param in self.metadata for i in param.elements]
-        component_elems = [i for component in self.components for i in component.elements]
-        reference_elems = [i for reference in self.references for i in reference.elements]
+        component_elems = [i for component in self.components for i in component.bindings]
+        reference_elems = [i for reference in self.references for i in reference.bindings]
 
         # Check if any data elements are in edit mode
+        try:
+            focus_element = window.find_element_with_focus().Key
+        except AttributeError:
+            focus_element = None
+        logger.debug('RecordType {NAME}: element in focus is {ELEM}'.format(NAME=self.name, ELEM=focus_element))
+
         for param in self.parameters:
             try:
                 edit_mode = param.edit_mode
             except AttributeError:
                 continue
 
-            if edit_mode and event not in param.elements:  # element is edited and event not an element event
-                logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
-                             .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            #if edit_mode and event not in param.elements:  # element is edited and event not an element event
+            #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
+            #                 .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            #    # Attempt to save the data element value
+            #    param.run_event(window, param.key_lookup('Save'), values)
+
+            if edit_mode and focus_element not in param.elements:  # element is edited but is no longer in focus
+                logger.debug('RecordType {NAME}, Record {ID}: saving changes to data element {PARAM} and setting '
+                             'element to inactive'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
 
@@ -2691,11 +2762,11 @@ class StandardRecord(DatabaseRecord):
             self.collapse_expand(window, frame='references')
 
         # Expand or collapse the component tables frame
-        elif event == self.key_lookup('ComponentsButton'):
+        if event == self.key_lookup('ComponentsButton'):
             self.collapse_expand(window, frame='components')
 
         # Run a modifier event
-        elif event in modifier_elems:
+        if event in modifier_elems:
             try:
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
@@ -2705,17 +2776,24 @@ class StandardRecord(DatabaseRecord):
                 param.run_event(window, event, values)
 
         # Run a component element event
-        elif event in param_elems:  # parameter event
+        if event in param_elems or event == '-HK_ENTER-':  # parameter event or enter
             try:
-                param = self.fetch_element(event, by_key=True)
+                if event == '-HK_ENTER-':
+                    print('event was return key')
+                    print(event)
+                    param = self.fetch_element(window.find_element_with_focus().Key, by_key=True)
+                else:
+                    print('event is from the element')
+                    print(event)
+                    param = self.fetch_element(event, by_key=True)
             except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find parameter associated with event key {KEY}'
-                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.warning('RecordType {NAME}, Record {ID}: unable to find parameter associated with event key '
+                               '{KEY}'.format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
                 param.run_event(window, event, values)
 
         # Run a component table event
-        elif event in component_elems:  # component table event
+        if event in component_elems:  # component table event
             # Update data elements
             for param in self.parameters:
                 param.update_display(window)
@@ -2739,7 +2817,7 @@ class StandardRecord(DatabaseRecord):
                 self.update_display(window, window_values=values)
 
         # Run a reference-box event
-        elif event in reference_elems:
+        if event in reference_elems:
             try:
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
@@ -2797,21 +2875,38 @@ class DepositRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        param_elems = [i for param in self.parameters for i in param.elements]
-        modifier_elems = [i for modifier in self.metadata for i in modifier.elements]
-        component_elems = [i for component in self.components for i in component.elements]
-        reference_elems = [i for reference in self.references for i in reference.elements]
+        #param_elems = [i for param in self.parameters for i in param.elements]
+        #modifier_elems = [i for param in self.metadata for i in param.elements]
+        #component_elems = [i for component in self.components for i in component.elements]
+        #reference_elems = [i for reference in self.references for i in reference.elements]
+        param_elems = [i for param in self.parameters for i in param.bindings]
+        modifier_elems = [i for param in self.metadata for i in param.elements]
+        component_elems = [i for component in self.components for i in component.bindings]
+        reference_elems = [i for reference in self.references for i in reference.bindings]
 
         # Check if any data elements are in edit mode
+        try:
+            focus_element = window.find_element_with_focus().Key
+        except AttributeError:
+            focus_element = None
+        logger.debug('RecordType {NAME}: element in focus is {ELEM}'.format(NAME=self.name, ELEM=focus_element))
+
         for param in self.parameters:
             try:
                 edit_mode = param.edit_mode
             except AttributeError:
                 continue
 
-            if edit_mode and event not in param.elements:  # element is edited and event not an element event
-                logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
-                             .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            #if edit_mode and event not in param.elements:  # element is edited and event not an element event
+            #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
+            #                 .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            #    # Attempt to save the data element value
+            #    param.run_event(window, param.key_lookup('Save'), values)
+
+            if edit_mode and focus_element not in param.elements:  # element is edited but is no longer in focus
+                logger.debug('RecordType {NAME}, Record {ID}: saving changes to data element {PARAM} and setting '
+                             'element to inactive'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
 
@@ -2824,11 +2919,11 @@ class DepositRecord(DatabaseRecord):
             self.collapse_expand(window, frame='references')
 
         # Collapse or expand the component tables frame
-        elif event == self.key_lookup('ComponentsButton'):
+        if event == self.key_lookup('ComponentsButton'):
             self.collapse_expand(window, frame='components')
 
         # Run a modifier event
-        elif event in modifier_elems:
+        if event in modifier_elems:
             try:
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
@@ -2838,7 +2933,7 @@ class DepositRecord(DatabaseRecord):
                 param.run_event(window, event, values)
 
         # Run a data element event
-        elif event in param_elems:  # parameter event
+        if event in param_elems:  # parameter event
             try:
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
@@ -2847,10 +2942,10 @@ class DepositRecord(DatabaseRecord):
             else:
                 param.run_event(window, event, values)
 
-        elif event in component_elems:  # component table event
+        if event in component_elems:  # component table event
             # Update data elements
-            for param in self.parameters:
-                param.update_display(window)
+            #for param in self.parameters:
+            #    param.update_display(window)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -2869,7 +2964,7 @@ class DepositRecord(DatabaseRecord):
 
                 self.update_display(window, window_values=values)
 
-        elif event in reference_elems:
+        if event in reference_elems:
             try:
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
@@ -2968,21 +3063,38 @@ class AuditRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        param_elems = [i for param in self.parameters for i in param.elements]
-        modifier_elems = [i for modifier in self.metadata for i in modifier.elements]
-        component_elems = [i for component in self.components for i in component.elements]
-        reference_elems = [i for reference in self.references for i in reference.elements]
+        #param_elems = [i for param in self.parameters for i in param.elements]
+        #modifier_elems = [i for param in self.metadata for i in param.elements]
+        #component_elems = [i for component in self.components for i in component.elements]
+        #reference_elems = [i for reference in self.references for i in reference.elements]
+        param_elems = [i for param in self.parameters for i in param.bindings]
+        modifier_elems = [i for param in self.metadata for i in param.elements]
+        component_elems = [i for component in self.components for i in component.bindings]
+        reference_elems = [i for reference in self.references for i in reference.bindings]
 
         # Check if any data elements are in edit mode
+        try:
+            focus_element = window.find_element_with_focus().Key
+        except AttributeError:
+            focus_element = None
+        logger.debug('RecordType {NAME}: element in focus is {ELEM}'.format(NAME=self.name, ELEM=focus_element))
+
         for param in self.parameters:
             try:
                 edit_mode = param.edit_mode
             except AttributeError:
                 continue
 
-            if edit_mode and event not in param.elements:  # element is edited and event not an element event
-                logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
-                             .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            #if edit_mode and event not in param.elements:  # element is edited and event not an element event
+            #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
+            #                 .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            #    # Attempt to save the data element value
+            #    param.run_event(window, param.key_lookup('Save'), values)
+
+            if edit_mode and focus_element not in param.elements:  # element is edited but is no longer in focus
+                logger.debug('RecordType {NAME}, Record {ID}: saving changes to data element {PARAM} and setting '
+                             'element to inactive'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
 
@@ -2993,11 +3105,11 @@ class AuditRecord(DatabaseRecord):
         if event == self.key_lookup('ReferencesButton'):
             self.collapse_expand(window, frame='references')
 
-        elif event == self.key_lookup('ComponentsButton'):
+        if event == self.key_lookup('ComponentsButton'):
             self.collapse_expand(window, frame='components')
 
         # Run a modifier event
-        elif event in modifier_elems:
+        if event in modifier_elems:
             try:
                 param = self.fetch_modifier(event, by_key=True)
             except KeyError:
@@ -3007,7 +3119,7 @@ class AuditRecord(DatabaseRecord):
                 param.run_event(window, event, values)
 
         # Run a data element event
-        elif event in param_elems:
+        if event in param_elems:
             try:
                 param = self.fetch_element(event, by_key=True)
             except KeyError:
@@ -3017,10 +3129,10 @@ class AuditRecord(DatabaseRecord):
                 param.run_event(window, event, values)
                 self.update_display(window, window_values=values)
 
-        elif event in component_elems:  # component table event
+        if event in component_elems:  # component table event
             # Update data elements
-            for param in self.parameters:
-                param.update_display(window)
+            #for param in self.parameters:
+            #    param.update_display(window)
 
             try:
                 component_table = self.fetch_component(event, by_key=True)
@@ -3039,7 +3151,7 @@ class AuditRecord(DatabaseRecord):
 
                 self.update_display(window, window_values=values)
 
-        elif event in reference_elems:
+        if event in reference_elems:
             try:
                 refbox = self.fetch_reference(event, by_key=True)
             except KeyError:
