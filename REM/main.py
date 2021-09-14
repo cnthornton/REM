@@ -940,7 +940,8 @@ def main():
                 continue
 
         # Action events
-        if current_rule and (event in current_rule.elements or event in settings.hotkeys):
+        #if current_rule and (event in current_rule.elements or event in settings.hotkeys):
+        if current_rule and (event in current_rule.events() or event in settings.hotkeys):
             logger.info('running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
             try:
                 current_rule_name = current_rule.run_event(window, event, values)

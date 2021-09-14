@@ -85,7 +85,7 @@ class BankRule:
             acct = AccountEntry(acct_id, acct_entry, parent=self.name)
             self.accts.append(acct)
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
-            self.elements += acct.elements
+            #self.elements += acct.elements
 
         # Dynamic Attributes
         self.in_progress = False
@@ -107,6 +107,17 @@ class BankRule:
             key = None
 
         return key
+
+    def events(self):
+        """
+        Return a list of all events allowed under the rule.
+        """
+        events = self.elements
+
+        for acct in self.accts:
+            events.extend(acct.elements)
+
+        return events
 
     def fetch_account(self, account_id, by_key: bool = False):
         """

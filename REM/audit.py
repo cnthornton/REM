@@ -126,7 +126,7 @@ class AuditRule:
             tab_rule = AuditTransactionTab(tab_name, tab_entries[tab_name], parent=self.name)
 
             self.tabs.append(tab_rule)
-            self.elements += tab_rule.elements
+            #self.elements += tab_rule.elements
 
         self.current_tab = 0
         self.final_tab = len(self.tabs)
@@ -140,7 +140,7 @@ class AuditRule:
             sys.exit(1)
 
         self.summary = AuditSummary(name, summary_entry)
-        self.elements += self.summary.elements
+        #self.elements += self.summary.elements
 
         self.in_progress = False
 
@@ -206,6 +206,19 @@ class AuditRule:
 
         return parameter
 
+    def events(self):
+        """
+        Return a list of all events allowed under the rule.
+        """
+        events = self.elements
+
+        for tab in self.tabs:
+            events.extend(tab.elements)
+
+        events += self.summary.summary_events()
+
+        return events
+
     def run_event(self, window, event, values):
         """
         Run a transaction audit event.
@@ -225,7 +238,7 @@ class AuditRule:
         # Rule component element events
         tab_keys = [i for j in self.tabs for i in j.elements]
         param_keys = [i for j in self.parameters for i in j.elements]
-        summary_keys = self.summary.elements
+        summary_keys = self.summary.summary_events()
 
         # Cancel button pressed
         if event in (cancel_key, '-HK_ESCAPE-'):
@@ -263,7 +276,9 @@ class AuditRule:
                     tab.update_display(window)
 
                     # Bind events to element keys
+                    logger.debug('AuditRecord {NAME} : binding record element hotkeys'.format(NAME=tab.name))
                     for record_element in tab.record.record_elements():
+                        print('binding {NAME} record element {ELEM}'.format(NAME=tab.name, ELEM=record_element.name))
                         record_element.bind_keys(window)
 
                 # Disable / enable action buttons
@@ -1476,7 +1491,6 @@ class AuditSummary:
 
                 self.tabs.append(tab)
                 self.elements += tab.elements
-#                self.elements.append('-HK_TAB{}-'.format(tab_i))
 
         try:
             report = entry['Report']
@@ -1527,7 +1541,7 @@ class AuditSummary:
         if by_key is True:
             tab_item = None
             for tab in self.tabs:
-                if fetch_key in tab.elements:
+                if fetch_key in tab.bindings:
                     tab_item = tab
                     break
 
@@ -1559,6 +1573,12 @@ class AuditSummary:
         for tab in self.tabs:
             tab.reset(window)
 
+    def summary_events(self):
+        """
+        Return a list of possible summary window events.
+        """
+        return [i for j in self.tabs for i in j.bindings]
+
     def run_event(self, window, event, values):
         """
         Run a transaction audit summary event.
@@ -1566,7 +1586,8 @@ class AuditSummary:
         # Run a summary tab event
         tg_key = self.key_lookup('TG')
         tab_bttn_keys = ['-HK_TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
-        tab_keys = [i for j in self.tabs for i in j.elements]
+        #tab_keys = [i for j in self.tabs for i in j.elements]
+        tab_keys = self.summary_events()
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
         if event in tab_bttn_keys:
@@ -1603,6 +1624,7 @@ class AuditSummary:
                 logger.error('AuditRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
                              .format(NAME=self.name, EVENT=event, ERR=e))
             else:
+                print('event {EVENT} is a {NAME} record event'.format(EVENT=event, NAME=tab.name))
                 tab.run_event(window, event, values)
 
     def layout(self, win_size: tuple = None):
@@ -1816,12 +1838,13 @@ class AuditRecordTab:
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Tab']]
+                         ('Tab',)]
 
         record_entry = settings.records.fetch_rule(name)
         self.record = mod_records.AuditRecord(record_entry, level=0)
         self.record.metadata = []
-        self.elements += self.record.elements
+        self.elements.extend(self.record.elements)
+        self.bindings = self.record.record_events()
 
         try:
             self.merge = bool(int(entry['MergeTransactions']))
@@ -1846,11 +1869,6 @@ class AuditRecordTab:
             self.title = name
 
         try:
-            self.deposit_type = entry['DepositRecordType']
-        except KeyError:
-            self.deposit_type = None
-
-        try:
             self.summary_mapping = entry['SummaryMapping']
         except KeyError:
             msg = 'missing required configuration parameter "SummaryMapping"'
@@ -1863,14 +1881,6 @@ class AuditRecordTab:
             msg = 'missing required configuration parameter "RecordMapping"'
             logger.error('TransactionAuditRecord {NAME}: {MSG}'.format(NAME=name, MSG=msg))
             sys.exit(1)
-
-        try:
-            self.defaults = entry['Defaults']
-        except KeyError:
-            self.defaults = {}
-
-        # Dynamic attributes
-        self.record_id = None
 
     def key_lookup(self, component):
         """
@@ -1914,9 +1924,10 @@ class AuditRecordTab:
         Run an audit summary record event.
         """
         record = self.record
-        record_keys = record.elements
+        record_keys = record.record_events()
 
         if event in record_keys:
+            print(record_keys)
             self.record.run_event(window, event, values)
 
     def load_record(self, params):
