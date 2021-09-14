@@ -970,16 +970,20 @@ class TableElement(RecordElement):
             outfile = sg.popup_get_file('', title='Export table display', save_as=True,
                                         default_extension='xlsx', no_window=True,
                                         file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
-            logger.debug('DataTable {NAME}: exporting the display table to spreadsheet {FILE}'
-                         .format(NAME=self.name, FILE=outfile))
 
-            export_df = self.export_table()
-            try:
-                export_df.to_excel(outfile, engine='openpyxl', header=True, index=False)
-            except Exception as e:
-                msg = 'failed to save table to file to {FILE} - {ERR}'.format(FILE=outfile, ERR=e)
-                logger.exception(msg)
-                mod_win2.popup_error(msg)
+            if outfile:
+                logger.info('DataTable {NAME}: exporting the display table to spreadsheet {FILE}'
+                            .format(NAME=self.name, FILE=outfile))
+
+                export_df = self.export_table()
+                try:
+                    export_df.to_excel(outfile, engine='openpyxl', header=True, index=False)
+                except Exception as e:
+                    msg = 'failed to save table to file to {FILE} - {ERR}'.format(FILE=outfile, ERR=e)
+                    logger.exception(msg)
+                    mod_win2.popup_error(msg)
+            else:
+                logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
 
         if event in action_events:
             self.run_action_event(window, event, values)
