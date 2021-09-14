@@ -295,14 +295,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     logger.debug('binding record element hotkeys')
     for element in record.record_elements():
         element.bind_keys(window)
-        #if element.etype == 'table':
-        #    continue
-        #else:
-        #    elem_key = element.key_lookup('Element')
-        #    window[elem_key].bind('<Double-Button-1>', '+LDCLICK+')
-        #    window[elem_key].bind('<Button-1>', '+LCLICK+')
-        #elem_key = element.key_lookup('Element')
-        #window[elem_key].bind('<Button-1>', '+LCLICK+')
 
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
@@ -320,11 +312,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
 
     # Event window
     record_elements = record.record_events()
-    print('record elements are:')
-    print(record_elements)
     while True:
         event, values = window.read()
-        print(event)
 
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
