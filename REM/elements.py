@@ -213,8 +213,8 @@ class TableElement(RecordElement):
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        hover_event = '{}+HOVER+'.format(elem_key)
-        self.bindings = self.elements + [hover_event]
+        return_key = '{}+RETURN+'.format(elem_key)
+        self.bindings = self.elements + [return_key]
 
         self._action_elements = [self.key_lookup('Element')]
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
@@ -726,6 +726,53 @@ class TableElement(RecordElement):
 
         return df
 
+    def _update_row_values(self, index, values):
+        """
+        Update row values at the given dataframe index.
+
+        Arguments:
+            index (int): real index of the row to update.
+
+            values (DataFrame): single row dataframe containing row values to use to update the dataframe at the
+               given index.
+        """
+        df = self.df
+        header = df.columns.tolist()
+
+        if isinstance(values, dict):
+            values = pd.DataFrame(values)
+        elif isinstance(values, pd.Series):
+            values = values.to_frame().T
+
+        row = df.iloc[index]
+
+        row_values = self.set_conditional_values(values)
+        edited = False
+        for column in row_values:  # iterate over row value columns
+            if column not in header:
+                msg = 'row value column {COL} not found in the dataframe header'.format(COL=column)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                continue
+
+            value = row_values[column].squeeze()  # reduce to scalar
+            if value != row[column]:
+                edited = True
+
+                try:
+                    df.at[index, column] = value
+                except KeyError:
+                    continue
+                except ValueError as e:
+                    logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
+                                 '{ERR}'.format(NAME=self.name, VAL=value, COL=column, IND=index, ERR=e))
+
+        if edited:
+            df.at[index, self.edited_column] = True
+            self.edited = True
+
+        return edited
+
     def reset(self, window):
         """
         Reset the data table to default.
@@ -815,19 +862,15 @@ class TableElement(RecordElement):
         fill_key = self.key_lookup('Fill')
         export_key = self.key_lookup('Export')
         filter_key = self.key_lookup('Filter')
-        hover_event = '{}+HOVER+'.format(elem_key)
+        return_key = '{}+RETURN+'.format(elem_key)
 
         param_elems = [i for param in self.parameters for i in param.elements]
-        #action_events = [self.key_lookup(i) for i in self._action_elements]
         action_events = self._action_elements
 
         update_event = False
 
-        if event == '-HK_ENTER-':  # enter key pressed and current focus was on the table element
+        if event == return_key:
             event = elem_key
-
-        if event == hover_event:
-            window[elem_key].set_focus()
 
         if event == search_key:
             # Update the search field value
@@ -1006,7 +1049,6 @@ class TableElement(RecordElement):
 
             # Find row selected by user
             try:
-                #select_row_index = values[event][0]
                 select_row_index = values[elem_key][0]
             except IndexError:  # user double-clicked too quickly
                 msg = 'table row could not be selected'
@@ -1020,8 +1062,8 @@ class TableElement(RecordElement):
 
                 logger.debug('DataTable {NAME}: opening row at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
-                self.edit_row(index)
-                update_event = True
+                edited_row = self.edit_row(index)
+                update_event = self._update_row_values(index, edited_row)
 
         # All action events require a table update
         if update_event:
@@ -1034,7 +1076,7 @@ class TableElement(RecordElement):
         Add hotkey bindings to the data element.
         """
         elem_key = self.key_lookup('Element')
-        window[elem_key].bind('<Enter>', '+HOVER+')
+        window[elem_key].bind('<Return>', '+RETURN+')
 
     def update_display(self, window, annotations: dict = None):
         """
@@ -1086,28 +1128,6 @@ class TableElement(RecordElement):
 
         # Filter the table rows, if applicable
         df = self.data(display_rows=True)
-        #        if search_field is not None and window_values is not None:
-        #            search_key = self.key_lookup('Search')
-        #            try:
-        #                search_value = window_values[search_key]
-        #            except KeyError:
-        #                msg = 'DataTable {NAME}: search field key {KEY} not found in list of window GUI elements' \
-        #                    .format(NAME=self.name, KEY=search_key)
-        #                logger.warning(msg)
-        #                search_value = None
-        #        else:
-        #            search_value = None
-        #
-        #        if not search_value:  # no search value provided in the search field, try the filter parameters
-        #            df = self._apply_filter()
-        #        else:
-        #            df = self.data()
-        #            try:
-        #                df = df[df[search_field].str.contains(search_value, case=False, regex=True)]
-        #            except KeyError:
-        #                msg = 'DataTable {NAME}: search field {COL} not found in list of table columns' \
-        #                    .format(NAME=self.name, COL=search_field)
-        #                logger.warning(msg)
 
         # Edit the index map to reflect what is currently displayed
         passed_indices = df.index.tolist()
@@ -1164,15 +1184,6 @@ class TableElement(RecordElement):
 
             summary_key = self.key_lookup(summary_name)
             window[summary_key].update(value=summary_value)
-
-        #        summary = self.summarize_table(df)
-        #        for summary_item in summary:
-        #            summ_rule, summ_value = summary_item
-        #            if isinstance(summ_value, float):
-        #                summ_value = '{:,.2f}'.format(summ_value)
-        #
-        #            summ_key = self.key_lookup(summ_rule)
-        #            window[summ_key].update(value=summ_value)
 
         return display_df
 
@@ -1441,9 +1452,6 @@ class TableElement(RecordElement):
         search_field = self.search_field
 
         disabled = True if editable is False and overwrite is False else False
-        print('record is editable: {}'.format(editable))
-        print('record is disabled: {}'.format(disabled))
-        print('overwrite is set to: {}'.format(overwrite))
 
         # Element keys
         keyname = self.key_lookup('Element')
@@ -2191,15 +2199,20 @@ class TableElement(RecordElement):
         # Display the modify row window
         display_map = self.display_columns
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
-        row_values = self.set_conditional_values(mod_row).squeeze()
+
+        return mod_row
+        #row_values = self.set_conditional_values(mod_row).squeeze()
 
         # Update record table values
-        if not row.equals(row_values):
-            df.loc[index] = row_values
-            self.df = df
-            self.edited = True
-
-        return df
+        #print('original values: {}'.format(row))
+        #print('new values: {}'.format(row_values))
+        #if not row.equals(row_values):
+        #    print('new row values are the same as the original row values')
+        #    df.loc[index] = row_values
+        #    self.df = df
+        #    self.edited = True
+        #
+        #return df
 
     def set_defaults(self, row):
         """
@@ -2440,7 +2453,10 @@ class RecordTable(TableElement):
         super().__init__(name, entry, parent)
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Delete', 'Import')])
-        self._action_elements.extend([self.key_lookup(i) for i in ('Delete', 'Import')])
+
+        action_keys = [self.key_lookup(i) for i in ('Delete', 'Import')]
+        self._action_elements.extend(action_keys)
+        self.bindings.extend(action_keys)
 
         self.etype = 'record_table'
 
@@ -2548,53 +2564,6 @@ class RecordTable(TableElement):
 
         return record
 
-    def _update_row_values(self, index, values):
-        """
-        Update row values at the given dataframe index.
-
-        Arguments:
-            index (int): real index of the row to update.
-
-            values (DataFrame): single row dataframe containing row values to use to update the dataframe at the
-               given index.
-        """
-        df = self.df
-        header = df.columns.tolist()
-
-        if isinstance(values, dict):
-            values = pd.DataFrame(values)
-        elif isinstance(values, pd.Series):
-            values = values.to_frame().T
-
-        row = df.iloc[index]
-
-        row_values = self.set_conditional_values(values)
-        edited = False
-        for column in row_values:  # iterate over row value columns
-            if column not in header:
-                msg = 'row value column {COL} not found in the dataframe header'.format(COL=column)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                continue
-
-            value = row_values[column].squeeze()  # reduce to scalar
-            if value != row[column]:
-                edited = True
-
-                try:
-                    df.at[index, column] = value
-                except KeyError:
-                    continue
-                except ValueError as e:
-                    logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
-                                 '{ERR}'.format(NAME=self.name, VAL=value, COL=column, IND=index, ERR=e))
-
-        if edited:
-            df.at[index, self.edited_column] = True
-            self.edited = True
-
-        return df
-
     def reset(self, window):
         """
         Reset data table to default.
@@ -2655,14 +2624,12 @@ class RecordTable(TableElement):
                         msg = 'unable to update row {IND} values'.format(IND=index)
                         logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     else:
-                        self._update_row_values(index, record_values)
-                        update_event = True
+                        update_event = self._update_row_values(index, record_values)
 
         # Delete rows button clicked
         if (event == delete_key or event == '-HK_TBL_DEL-') and can_delete:
             # Find rows selected by user for deletion
             select_row_indices = values[elem_key]
-            #select_row_indices = values[tbl_key]
 
             # Get the real indices of the selected rows
             try:
@@ -3032,7 +2999,10 @@ class ComponentTable(RecordTable):
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Add',)])
-        self._action_elements.append(self.key_lookup('Add'))
+
+        action_keys = [self.key_lookup(i) for i in ('Add',)]
+        self._action_elements.extend(action_keys)
+        self.bindings.extend(action_keys)
 
         self.etype = 'component_table'
 
@@ -3113,8 +3083,7 @@ class ComponentTable(RecordTable):
                         msg = 'unable to update row {IND} values'.format(IND=index)
                         logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     else:
-                        self._update_row_values(index, record_values)
-                        update_event = True
+                        update_event = self._update_row_values(index, record_values)
 
         # Add row button clicked
         if (event == add_key or event == '-HK_TBL_ADD-') and can_add:
@@ -4122,7 +4091,10 @@ class DataElement(RecordElement):
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        self.bindings = self.elements + ['{}+LCLICK+'.format(elem_key)]
+        save_key = self.key_lookup('Save')
+        lclick_event = '{}+LCLICK+'.format(elem_key)
+        return_key = '{}+RETURN+'.format(save_key)
+        self.bindings = self.elements + [lclick_event, return_key]
 
         try:
             dtype = entry['DataType']
@@ -4267,21 +4239,16 @@ class DataElement(RecordElement):
         aux_key = self.key_lookup('Auxiliary')
         left_click = '{}+LCLICK+'.format(elem_key)
 
+        currently_editing = self.edit_mode
+
         update_event = False
 
-        if event == '-HK_ENTER-':  # enter key pressed and current focus was on the element
-            if self.edit_mode:  # set event to save
-                print('element is currently in edit mode')
-                event = save_key
-                print('setting event to {}'.format(event))
-            else:  # set event to edit
-                print('element is in inactive mode')
-                event = edit_key
-                print('setting event to {}'.format(event))
-
         # Set focus to the element and enable edit mode
-        if (event == edit_key or event == left_click) and not self.disabled:
+        if (event == edit_key or event == left_click) and not currently_editing:
             window[elem_key].set_focus()
+
+            if self.disabled:
+                return False
 
             print('enabling edit mode')
             # Update element to show any current unformatted data
@@ -4302,7 +4269,7 @@ class DataElement(RecordElement):
             self.edit_mode = True
 
         # Set element to inactive mode and update the element value
-        if event == save_key:
+        if event == save_key and currently_editing:
             print('saving value changes and setting to inactive mode')
             # Update value of the data element
             try:
@@ -4339,7 +4306,7 @@ class DataElement(RecordElement):
 
             self.edit_mode = False
 
-        if event == cancel_key:
+        if event == cancel_key and currently_editing:
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
@@ -4362,7 +4329,10 @@ class DataElement(RecordElement):
         Add hotkey bindings to the data element.
         """
         elem_key = self.key_lookup('Element')
+        save_key = self.key_lookup('Save')
+
         window[elem_key].bind('<Button-1>', '+LCLICK+')
+        window[save_key].bind('<Return>', '+RETURN+')
 
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
         """

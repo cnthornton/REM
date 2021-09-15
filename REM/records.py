@@ -1636,8 +1636,6 @@ class DatabaseRecord:
             if assoc_rule in references:  # use provided reference entries instead of importing from reference table
                 assoc_refs = references[assoc_rule]
                 ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
-                print('reference data is:')
-                print(ref_data)
             else:
                 ref_data = record_entry.import_references(record_id, assoc_rule)
 
@@ -1671,8 +1669,6 @@ class DatabaseRecord:
             if assoc_rule in references:  # use provided reference entries instead of importing from reference table
                 assoc_refs = references[assoc_rule]
                 ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
-                print('reference data is:')
-                print(ref_data)
             else:
                 ref_data = record_entry.import_references(record_id, assoc_rule)
 
@@ -2726,10 +2722,6 @@ class StandardRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        #param_elems = [i for param in self.parameters for i in param.elements]
-        #modifier_elems = [i for param in self.metadata for i in param.elements]
-        #component_elems = [i for component in self.components for i in component.elements]
-        #reference_elems = [i for reference in self.references for i in reference.elements]
         param_elems = [i for param in self.parameters for i in param.bindings]
         modifier_elems = [i for param in self.metadata for i in param.elements]
         component_elems = [i for component in self.components for i in component.bindings]
@@ -2742,26 +2734,27 @@ class StandardRecord(DatabaseRecord):
             focus_element = window.find_element_with_focus().Key
         except AttributeError:
             focus_element = None
-        logger.debug('RecordType {NAME}: element in focus is {ELEM}'.format(NAME=self.name, ELEM=focus_element))
+        logger.debug('RecordType {NAME}: element in focus is {ELEM} and current element is {EVENT}'
+                     .format(NAME=self.name, ELEM=focus_element, EVENT=event))
 
         for param in self.parameters:
             try:
                 edit_mode = param.edit_mode
             except AttributeError:
+                print('parameter {PARAM} does not have an edit mode'.format(PARAM=param.name))
                 continue
+            else:
+                if not edit_mode:  # element is not currently being edited
+                    continue
 
-            #if edit_mode and event not in param.elements:  # element is edited and event not an element event
-            #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
-            #                 .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
-            #    # Attempt to save the data element value
-            #    param.run_event(window, param.key_lookup('Save'), values)
-
-            if edit_mode and focus_element not in param.elements:  # element is edited but is no longer in focus
-                logger.debug('RecordType {NAME}, Record {ID}: saving changes to data element {PARAM} and setting '
-                             'element to inactive'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            if focus_element not in param.elements:  # element is edited but is no longer in focus
+                logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
+                             'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
 
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
+            else:  # edited element is still in focus
+                break
 
         # Expand or collapse the details frame
         if event == self.key_lookup('DetailsButton'):
@@ -2787,15 +2780,10 @@ class StandardRecord(DatabaseRecord):
 
         # Run a component element event
         if event in param_elems or event == '-HK_ENTER-':  # parameter event or enter
-            print('event {EVENT} is a RecordTYPE {NAME} parameter event'.format(EVENT=event, NAME=self.name))
             try:
                 if event == '-HK_ENTER-':
-                    print('event was return key')
-                    print(event)
                     param = self.fetch_element(window.find_element_with_focus().Key, by_key=True)
                 else:
-                    print('event is from the element')
-                    print(event)
                     param = self.fetch_element(event, by_key=True)
             except KeyError:
                 logger.warning('RecordType {NAME}, Record {ID}: unable to find parameter associated with event key '
@@ -2886,10 +2874,6 @@ class DepositRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        #param_elems = [i for param in self.parameters for i in param.elements]
-        #modifier_elems = [i for param in self.metadata for i in param.elements]
-        #component_elems = [i for component in self.components for i in component.elements]
-        #reference_elems = [i for reference in self.references for i in reference.elements]
         param_elems = [i for param in self.parameters for i in param.bindings]
         modifier_elems = [i for param in self.metadata for i in param.elements]
         component_elems = [i for component in self.components for i in component.bindings]
@@ -2909,18 +2893,10 @@ class DepositRecord(DatabaseRecord):
                 edit_mode = param.edit_mode
             except AttributeError:
                 continue
-            else:
-                print('edit mode is set to: {}'.format(edit_mode))
-
-            #if edit_mode and event not in param.elements:  # element is edited and event not an element event
-            #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
-            #                 .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
-            #    # Attempt to save the data element value
-            #    param.run_event(window, param.key_lookup('Save'), values)
 
             if edit_mode and focus_element not in param.elements:  # element is edited but is no longer in focus
-                logger.debug('RecordType {NAME}, Record {ID}: saving changes to data element {PARAM} and setting '
-                             'element to inactive'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+                logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
+                             'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
 
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
@@ -3081,10 +3057,6 @@ class AuditRecord(DatabaseRecord):
         """
         Perform a record action.
         """
-        #param_elems = [i for param in self.parameters for i in param.elements]
-        #modifier_elems = [i for param in self.metadata for i in param.elements]
-        #component_elems = [i for component in self.components for i in component.elements]
-        #reference_elems = [i for reference in self.references for i in reference.elements]
         param_elems = [i for param in self.parameters for i in param.bindings]
         modifier_elems = [i for param in self.metadata for i in param.elements]
         component_elems = [i for component in self.components for i in component.bindings]
@@ -3103,22 +3075,20 @@ class AuditRecord(DatabaseRecord):
             try:
                 edit_mode = param.edit_mode
             except AttributeError:
+                print('parameter {PARAM} does not have an edit mode'.format(PARAM=param.name))
                 continue
             else:
-                print('edit mode is set to: {}'.format(edit_mode))
+                if not edit_mode:  # element is not currently being edited
+                    continue
 
-            #if edit_mode and event not in param.elements:  # element is edited and event not an element event
-            #    logger.debug('RecordType {NAME}, Record {ID}: cancelling editing of data element {PARAM}'
-            #                 .format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
-            #    # Attempt to save the data element value
-            #    param.run_event(window, param.key_lookup('Save'), values)
-
-            if edit_mode and focus_element not in param.elements:  # element is edited but is no longer in focus
-                logger.debug('RecordType {NAME}, Record {ID}: saving changes to data element {PARAM} and setting '
-                             'element to inactive'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+            if focus_element not in param.elements:  # element is edited but is no longer in focus
+                logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
+                             'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
 
                 # Attempt to save the data element value
                 param.run_event(window, param.key_lookup('Save'), values)
+            else:  # edited element is still in focus
+                break
 
         # Expand or collapse the details frame
         if event == self.key_lookup('DetailsButton'):
@@ -3148,6 +3118,7 @@ class AuditRecord(DatabaseRecord):
                 logger.error('Record {ID}: unable to find parameter associated with event key {KEY}'
                              .format(ID=self.record_id(), KEY=event))
             else:
+                print('record event {EVENT} is in record element {ELEM}'.format(EVENT=event, ELEM=param.name))
                 update_event = param.run_event(window, event, values)
                 #self.update_display(window, window_values=values)
 

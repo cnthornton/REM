@@ -278,7 +278,6 @@ class AuditRule:
                     # Bind events to element keys
                     logger.debug('AuditRecord {NAME} : binding record element hotkeys'.format(NAME=tab.name))
                     for record_element in tab.record.record_elements():
-                        print('binding {NAME} record element {ELEM}'.format(NAME=tab.name, ELEM=record_element.name))
                         record_element.bind_keys(window)
 
                 # Disable / enable action buttons
@@ -313,7 +312,7 @@ class AuditRule:
                     tab.reset_components(window)
 
                     # Update the audit record's display
-                    tab.update_display(window)
+                    #tab.update_display(window)
 
             # Return to previous display
             prev_subpanel = current_panel - 1
@@ -377,9 +376,9 @@ class AuditRule:
                     current_rule = self.reset_rule(window, current=True)
 
                     return current_rule
-                else:
-                    for tab in self.summary.tabs:
-                        tab.update_display(window)
+                #else:
+                #    for tab in self.summary.tabs:
+                #        tab.update_display(window)
 
                 # Initialize audit
                 initialized = []
@@ -405,8 +404,8 @@ class AuditRule:
                     # Update summary panel title with rule parameter values
                     self.summary.update_title(window, self.parameters)
 
-                    for tab in self.summary.tabs:
-                        tab.update_display(window)
+                    #for tab in self.summary.tabs:
+                    #    tab.update_display(window)
 
                     for tab in self.tabs:
                         # Enable table element events
@@ -1007,7 +1006,7 @@ class AuditTransactionTab:
 
         # Reset visible tabs
         visible = True if first is True else False
-        logger.debug('AuditTransactionTab {NAME}: re-setting visibility of rule tab to {STATUS}'
+        logger.debug('AuditTransactionTab {NAME}: re-setting visibility to {STATUS}'
                      .format(NAME=self.name, STATUS=visible))
 
         window[self.key_lookup('Tab')].update(visible=visible)
@@ -1470,7 +1469,7 @@ class AuditSummary:
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['TG', 'Title']]
+                         ('TG', 'Title')]
 
         try:
             self._title = entry['Title']
@@ -1483,7 +1482,8 @@ class AuditSummary:
             msg = 'Configuration Error: AuditRuleSummary {NAME}: missing required configuration parameter "Tabs".'\
                 .format(NAME=name)
             mod_win2.popup_error(msg)
-            sys.exit(1)
+
+            raise AttributeError(msg)
         else:
             self.tabs = []
             for tab_i, record_type in enumerate(record_tabs):
@@ -1498,7 +1498,9 @@ class AuditSummary:
             msg = 'Configuration Error: AuditRuleSummary {NAME}: missing required configuration parameter "Report".'\
                 .format(NAME=name)
             mod_win2.popup_error(msg)
-            sys.exit(1)
+
+            raise AttributeError(msg)
+
         for tab_name in report:
             report_tab = report[tab_name]
             for section_name in report_tab:
@@ -1590,7 +1592,7 @@ class AuditSummary:
         tab_keys = self.summary_events()
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
-        if event in tab_bttn_keys:
+        if event in tab_bttn_keys:  # tab switching hotkeys
             # Get the element key corresponding the the tab number pressed
             tab_index = int(event[1:-1][-1]) - 1
 
@@ -1624,7 +1626,6 @@ class AuditSummary:
                 logger.error('AuditRuleSummary {NAME}: failed to run event {EVENT} - {ERR}'
                              .format(NAME=self.name, EVENT=event, ERR=e))
             else:
-                print('event {EVENT} is a {NAME} record event'.format(EVENT=event, NAME=tab.name))
                 tab.run_event(window, event, values)
 
     def layout(self, win_size: tuple = None):
@@ -1927,7 +1928,6 @@ class AuditRecordTab:
         record_keys = record.record_events()
 
         if event in record_keys:
-            print(record_keys)
             self.record.run_event(window, event, values)
 
     def load_record(self, params):

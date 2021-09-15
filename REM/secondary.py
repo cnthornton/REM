@@ -312,8 +312,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
 
     # Event window
     record_elements = record.record_events()
+    print('all record events:')
+    print(record_elements)
     while True:
         event, values = window.read()
+        print('running record window event {}'.format(event))
 
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
@@ -471,6 +474,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
                 popup_notice('failed to run event for record {}'.format(record_id))
 
                 continue
+
+
 
     window.close()
     layout = None
