@@ -318,7 +318,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
         event, values = window.read()
         print('running record window event {}'.format(event))
 
-        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without accepting changes
+        if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
+        #if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
             if savable or record.new:  # unsaved IDs should be removed if record can be saved or if newly created
                 record.remove_unsaved_ids()
@@ -464,7 +465,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
             continue
 
         # Update the record parameters with user-input
-        if event in record_elements or event == '-HK_ENTER-':  # selected a record event element or pressed return key
+        if event in record_elements or event in settings.get_shortcuts():  # selected a record event element or hotkey
             try:
                 record.run_event(window, event, values)
             except Exception as e:

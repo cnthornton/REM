@@ -869,9 +869,20 @@ class TableElement(RecordElement):
 
         update_event = False
 
-        if event == return_key:
+        # Hotkey actions
+        if event in (return_key, '-HK_ENTER-'):
             event = elem_key
 
+        if event == '-HK_ESCAPE-':
+            event = cancel_key
+
+        if event == '-HK_TBL_FILTER-':
+            event = filter_key
+
+        if event == '-HK_TBL_OPTS-':
+            event = options_key
+
+        # Table events
         if event == search_key:
             # Update the search field value
             search_col = self.search_field[0]
@@ -890,7 +901,7 @@ class TableElement(RecordElement):
             self.collapse_expand(window, frame='summary')
 
         # Click filter Apply button to apply filtering to table
-        if event == filter_key or event == '-HK_TBL_FILTER-':
+        if event == filter_key:
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
@@ -899,7 +910,7 @@ class TableElement(RecordElement):
             self.update_display(window)
 
         # Click to open table options panel
-        if event == options_key or event == '-HK_TBL_OPTS-':
+        if event == options_key:
             if window[frame_key].metadata['visible'] is False:
                 window[frame_key].metadata['visible'] = True
 
@@ -4242,6 +4253,12 @@ class DataElement(RecordElement):
         currently_editing = self.edit_mode
 
         update_event = False
+
+        if event == '-HK_ENTER-':
+            event = save_key
+
+        if event == '-HK_ESCAPE-':
+            event = cancel_key
 
         # Set focus to the element and enable edit mode
         if (event == edit_key or event == left_click) and not currently_editing:

@@ -1344,7 +1344,7 @@ class DatabaseRecord:
 
                     # Add the parameter to the record
                     self.modules.append(elem_obj)
-                    self.elements += elem_obj.elements
+                    #self.elements += elem_obj.elements
 
         # Record data elements
         self.parameters = []
@@ -1392,7 +1392,7 @@ class DatabaseRecord:
 
                 # Add the parameter to the record
                 self.parameters.append(param_obj)
-                self.elements += param_obj.elements
+                #self.elements += param_obj.elements
 
         # Linked records
         self.references = []
@@ -1427,7 +1427,7 @@ class DatabaseRecord:
                             used_associations.append(assoc_rule)
 
                         self.references.append(ref_box)
-                        self.elements += ref_box.elements
+                        #self.elements += ref_box.elements
 
         # Record components
         self.components = []
@@ -1474,7 +1474,7 @@ class DatabaseRecord:
                         used_associations.append(assoc_rule)
 
                     self.components.append(comp_table)
-                    self.elements += comp_table.elements
+                    #self.elements += comp_table.elements
 
         # Record report layout definition
         try:
@@ -1762,45 +1762,46 @@ class DatabaseRecord:
 
         return parameter
 
-    def fetch_element(self, element, by_key: bool = False):
+    def fetch_element(self, identifier, by_key: bool = False):
         """
         Fetch a record data element by name or event key.
         """
+        elements = self.record_elements()
+
         if by_key is True:
             # Remove any binding strings and get last component of element key
-            match = re.match(r'-(.*?)-', element)
+            match = re.match(r'-(.*?)-', identifier)
             if not match:
-                raise KeyError('unknown format provided for element key {ELEM}'.format(ELEM=element))
-            element = match.group(0)
+                raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
+            identifier = match.group(0)
             element_key = match.group(1)
 
             element_type = element_key.split('_')[-1]
-            #element_names = [i.key_lookup(element_type) for i in self.parameters]
             element_names = []
-            for param in self.parameters:
+            for element in elements:
                 try:
-                    element_name = param.key_lookup(element_type)
+                    element_name = element.key_lookup(element_type)
                 except KeyError:
                     element_name = None
 
                 element_names.append(element_name)
             logger.debug('RecordType {NAME}: searching record elements for element with key {KEY}'
-                         .format(NAME=self.name, KEY=element))
+                         .format(NAME=self.name, KEY=identifier))
             logger.debug('RecordType {NAME}: there are {N} record elements with element type {TYPE}'
                          .format(NAME=self.name, N=len(element_names), TYPE=element_type))
         else:
             logger.debug('RecordType {NAME}: searching record elements for element with name {KEY}'
-                         .format(NAME=self.name, KEY=element))
-            element_names = [i.name for i in self.parameters]
+                         .format(NAME=self.name, KEY=identifier))
+            element_names = [i.name for i in elements]
 
-        if element in element_names:
-            index = element_names.index(element)
-            parameter = self.parameters[index]
+        if identifier in element_names:
+            index = element_names.index(identifier)
+            element = elements[index]
         else:
             raise KeyError('element {ELEM} not found in list of record {NAME} elements'
-                           .format(ELEM=element, NAME=self.name))
+                           .format(ELEM=identifier, NAME=self.name))
 
-        return parameter
+        return element
 
     def fetch_modifier(self, element, by_key: bool = False):
         """
@@ -1820,62 +1821,6 @@ class DatabaseRecord:
                            .format(ELEM=element, NAME=self.name))
 
         return parameter
-
-    def fetch_reference(self, reference, by_key: bool = False):
-        """
-        Display a reference record in a new window.
-        """
-        if by_key is True:
-            # Remove any binding strings and get last component of element key
-            match = re.match(r'-(.*?)-', reference)
-            if not match:
-                raise KeyError('unknown format provided for element key {ELEM}'.format(ELEM=reference))
-
-            reference = match.group(0)
-            element_key = match.group(1)
-
-            element_type = element_key.split('_')[-1]
-            references = [i.key_lookup(element_type) for i in self.references]
-        else:
-            references = [i.name for i in self.references]
-
-        if reference in references:
-            index = references.index(reference)
-            ref_elem = self.references[index]
-        else:
-            raise KeyError('reference {ELEM} not found in list of record {NAME} references'
-                           .format(ELEM=reference, NAME=self.name))
-
-        return ref_elem
-
-    def fetch_module(self, module, by_key: bool = False, by_type: bool = False):
-        """
-        Fetch a record module.
-        """
-        if by_key is True:
-            # Remove any binding strings and get last component of element key
-            match = re.match(r'-(.*?)-', module)
-            if not match:
-                raise KeyError('unknown format provided for element key {ELEM}'.format(ELEM=module))
-
-            module = match.group(0)
-            element_key = match.group(1)
-
-            element_type = element_key.split('_')[-1]
-            modules = [i.key_lookup(element_type) for i in self.modules]
-        elif by_type is True:
-            modules = [i.etype for i in self.modules]
-        else:
-            modules = [i.name for i in self.modules]
-
-        if module in modules:
-            index = modules.index(module)
-            element = self.modules[index]
-        else:
-            raise KeyError('module {ELEM} not found in list of record {NAME} modules'
-                           .format(ELEM=module, NAME=self.name))
-
-        return element
 
     def fetch_component(self, component, by_key: bool = False, by_type: bool = False):
         """
@@ -1906,16 +1851,132 @@ class DatabaseRecord:
 
         return comp_tbl
 
-    def record_events(self):
+    def run_event(self, window, event, values):
         """
-        Return a list of all possible record events.
+        Perform a record action.
         """
-        param_elems = [i for param in self.parameters for i in param.bindings]
         modifier_elems = [i for param in self.metadata for i in param.elements]
-        component_elems = [i for component in self.components for i in component.bindings]
-        reference_elems = [i for reference in self.references for i in reference.bindings]
+        elem_events = self.record_events(record_elements_only=True)
 
-        return param_elems + modifier_elems + component_elems + reference_elems
+        # Expand or collapse the details frame
+        if event == self.key_lookup('DetailsButton'):
+            self.collapse_expand(window, frame='details')
+
+            return False
+
+        if event == self.key_lookup('ReferencesButton'):
+            self.collapse_expand(window, frame='references')
+
+            return False
+
+        if event == self.key_lookup('ComponentsButton'):
+            self.collapse_expand(window, frame='components')
+
+            return False
+
+        # Run a modifier event
+        if event in modifier_elems:
+            try:
+                param = self.fetch_modifier(event, by_key=True)
+            except KeyError:
+                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
+                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
+            else:
+                param.run_event(window, event, values)
+
+            return False
+
+        # Record element events
+        update_event = False
+        hotkeys = settings.get_shortcuts()
+
+        # Get record element that is currently in focus
+        try:
+            focus_element = window.find_element_with_focus().Key
+        except AttributeError:
+            focus_element = None
+        logger.debug('RecordType {NAME}: element in focus is {ELEM}'.format(NAME=self.name, ELEM=focus_element))
+
+        # Check if any data elements are in edit mode
+        for param in self.parameters:
+            try:
+                edit_mode = param.edit_mode
+            except AttributeError:
+                print('parameter {PARAM} does not have an edit mode'.format(PARAM=param.name))
+                continue
+            else:
+                if not edit_mode:  # element is not currently being edited
+                    continue
+
+            if focus_element not in param.elements:  # element is edited but is no longer in focus
+                logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
+                             'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
+
+                # Attempt to save the data element value
+                param.run_event(window, param.key_lookup('Save'), values)
+            else:  # edited element is still in focus
+                break
+
+        # Get relevant record element
+        if event in elem_events:
+            try:
+                record_element = self.fetch_element(event, by_key=True)
+            except KeyError:
+                logger.error('Record {ID}: unable to find the record element associated with event key {KEY}'
+                             .format(ID=self.record_id(), KEY=event))
+
+                return False
+        elif event in hotkeys:
+            try:
+                record_element = self.fetch_element(focus_element, by_key=True)
+            except KeyError:
+                logger.error('Record {ID}: unable to fetch the record element in focus'
+                             .format(ID=self.record_id(), KEY=event))
+
+                return False
+        else:
+            record_element = None
+
+        # Run a record element event
+        if record_element is not None:
+            print('record event {EVENT} is in record element {ELEM}'.format(EVENT=event, ELEM=record_element.name))
+            if record_element.etype == 'component_table':
+                if event == record_element.key_lookup('Add'):
+                    # Close options panel, if open
+                    record_element.set_table_dimensions(window)
+
+                    default_values = self.export_values(header=False, references=False).to_dict()
+                    record_element.add_row(record_date=self.record_date(), defaults=default_values)
+                else:
+                    update_event = record_element.run_event(window, event, values)
+            else:
+                update_event = record_element.run_event(window, event, values)
+
+        if update_event:
+            self.update_display(window)
+
+        return True
+
+    def update_display(self, window):
+        """
+        Update the record display.
+        """
+        pass
+
+    def record_events(self, record_elements_only: bool = False):
+        """
+        Return a list of available record events.
+        """
+        if record_elements_only:
+            events = []
+        else:
+            events = self.elements
+
+        events.extend([i for param in self.parameters for i in param.bindings])
+        events.extend([i for component in self.components for i in component.bindings])
+        events.extend([i for reference in self.references for i in reference.bindings])
+
+        return events
 
     def record_elements(self):
         """
@@ -2718,118 +2779,6 @@ class DatabaseRecord:
 
 class StandardRecord(DatabaseRecord):
 
-    def run_event(self, window, event, values):
-        """
-        Perform a record action.
-        """
-        param_elems = [i for param in self.parameters for i in param.bindings]
-        modifier_elems = [i for param in self.metadata for i in param.elements]
-        component_elems = [i for component in self.components for i in component.bindings]
-        reference_elems = [i for reference in self.references for i in reference.bindings]
-
-        update_event = False
-
-        # Check if any data elements are in edit mode
-        try:
-            focus_element = window.find_element_with_focus().Key
-        except AttributeError:
-            focus_element = None
-        logger.debug('RecordType {NAME}: element in focus is {ELEM} and current element is {EVENT}'
-                     .format(NAME=self.name, ELEM=focus_element, EVENT=event))
-
-        for param in self.parameters:
-            try:
-                edit_mode = param.edit_mode
-            except AttributeError:
-                print('parameter {PARAM} does not have an edit mode'.format(PARAM=param.name))
-                continue
-            else:
-                if not edit_mode:  # element is not currently being edited
-                    continue
-
-            if focus_element not in param.elements:  # element is edited but is no longer in focus
-                logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
-                             'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
-
-                # Attempt to save the data element value
-                param.run_event(window, param.key_lookup('Save'), values)
-            else:  # edited element is still in focus
-                break
-
-        # Expand or collapse the details frame
-        if event == self.key_lookup('DetailsButton'):
-            self.collapse_expand(window, frame='details')
-
-        # Expand or collapse the references frame
-        if event == self.key_lookup('ReferencesButton'):
-            self.collapse_expand(window, frame='references')
-
-        # Expand or collapse the component tables frame
-        if event == self.key_lookup('ComponentsButton'):
-            self.collapse_expand(window, frame='components')
-
-        # Run a modifier event
-        if event in modifier_elems:
-            try:
-                param = self.fetch_modifier(event, by_key=True)
-            except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
-            else:
-                param.run_event(window, event, values)
-
-        # Run a component element event
-        if event in param_elems or event == '-HK_ENTER-':  # parameter event or enter
-            try:
-                if event == '-HK_ENTER-':
-                    param = self.fetch_element(window.find_element_with_focus().Key, by_key=True)
-                else:
-                    param = self.fetch_element(event, by_key=True)
-            except KeyError:
-                logger.warning('RecordType {NAME}, Record {ID}: unable to find parameter associated with event key '
-                               '{KEY}'.format(NAME=self.name, ID=self.record_id(), KEY=event))
-            else:
-                update_event = param.run_event(window, event, values)
-
-        # Run a component table event
-        if event in component_elems:  # component table event
-            # Update data elements
-            #for param in self.parameters:
-            #    param.update_display(window)
-
-            try:
-                component_table = self.fetch_component(event, by_key=True)
-            except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find component associated with event key {KEY}'
-                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
-            else:
-                if event == component_table.key_lookup('Add'):  # add account records
-                    # Close options panel, if open
-                    component_table.set_table_dimensions(window)
-
-                    default_values = self.export_values(header=False, references=False).to_dict()
-                    component_table.add_row(record_date=self.record_date(), defaults=default_values)
-                    component_table.update_display(window)
-                else:
-                    update_event = component_table.run_event(window, event, values)
-
-                #self.update_display(window, window_values=values)
-
-        # Run a reference-box event
-        if event in reference_elems:
-            try:
-                refbox = self.fetch_reference(event, by_key=True)
-            except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find reference associated with event key {KEY}'
-                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
-            else:
-                update_event = refbox.run_event(window, event, values)
-
-        if update_event:
-            self.update_display(window)
-
-        return True
-
     def update_display(self, window, window_values: dict = None):
         """
         Update the display of the record's elements and components.
@@ -2869,105 +2818,6 @@ class DepositRecord(DatabaseRecord):
         header_names = [i.name for i in self.headers]
         if 'DepositAmount' not in header_names:
             raise AttributeError('missing required header "DepositAmount"')
-
-    def run_event(self, window, event, values):
-        """
-        Perform a record action.
-        """
-        param_elems = [i for param in self.parameters for i in param.bindings]
-        modifier_elems = [i for param in self.metadata for i in param.elements]
-        component_elems = [i for component in self.components for i in component.bindings]
-        reference_elems = [i for reference in self.references for i in reference.bindings]
-
-        update_event = False
-
-        # Check if any data elements are in edit mode
-        try:
-            focus_element = window.find_element_with_focus().Key
-        except AttributeError:
-            focus_element = None
-        logger.debug('RecordType {NAME}: element in focus is {ELEM}'.format(NAME=self.name, ELEM=focus_element))
-
-        for param in self.parameters:
-            try:
-                edit_mode = param.edit_mode
-            except AttributeError:
-                continue
-
-            if edit_mode and focus_element not in param.elements:  # element is edited but is no longer in focus
-                logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
-                             'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
-
-                # Attempt to save the data element value
-                param.run_event(window, param.key_lookup('Save'), values)
-
-        # Expand or collapse the details frame
-        if event == self.key_lookup('DetailsButton'):
-            self.collapse_expand(window, frame='details')
-
-        # Collapse or expand the references frame
-        if event == self.key_lookup('ReferencesButton'):
-            self.collapse_expand(window, frame='references')
-
-        # Collapse or expand the component tables frame
-        if event == self.key_lookup('ComponentsButton'):
-            self.collapse_expand(window, frame='components')
-
-        # Run a modifier event
-        if event in modifier_elems:
-            try:
-                param = self.fetch_modifier(event, by_key=True)
-            except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
-            else:
-                param.run_event(window, event, values)
-
-        # Run a data element event
-        if event in param_elems:  # parameter event
-            try:
-                param = self.fetch_element(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find parameter associated with event key {KEY}'
-                             .format(ID=self.record_id(), KEY=event))
-            else:
-                update_event = param.run_event(window, event, values)
-
-        if event in component_elems:  # component table event
-            # Update data elements
-            #for param in self.parameters:
-            #    param.update_display(window)
-
-            try:
-                component_table = self.fetch_component(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
-                             .format(ID=self.record_id(), KEY=event))
-            else:
-                if event == component_table.key_lookup('Add'):  # add account records
-                    # Close options panel, if open
-                    component_table.set_table_dimensions(window)
-
-                    default_values = self.export_values(header=False, references=False).to_dict()
-                    component_table.add_row(record_date=self.record_date(), defaults=default_values)
-                else:
-                    update_event = component_table.run_event(window, event, values)
-
-                #self.update_display(window, window_values=values)
-
-        if event in reference_elems:
-            try:
-                refbox = self.fetch_reference(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find reference associated with event key {KEY}'
-                             .format(ID=self.record_id(), KEY=event))
-            else:
-                update_event = refbox.run_event(window, event, values)
-
-        if update_event:
-            self.update_display(window)
-
-        return True
 
     def update_display(self, window, window_values: dict = None):
         """
@@ -3052,111 +2902,6 @@ class AuditRecord(DatabaseRecord):
         header_names = [i.name for i in self.headers]
         if 'Remainder' not in header_names:
             raise AttributeError('missing required header "Remainder"')
-
-    def run_event(self, window, event, values):
-        """
-        Perform a record action.
-        """
-        param_elems = [i for param in self.parameters for i in param.bindings]
-        modifier_elems = [i for param in self.metadata for i in param.elements]
-        component_elems = [i for component in self.components for i in component.bindings]
-        reference_elems = [i for reference in self.references for i in reference.bindings]
-
-        update_event = False
-
-        # Check if any data elements are in edit mode
-        try:
-            focus_element = window.find_element_with_focus().Key
-        except AttributeError:
-            focus_element = None
-        logger.debug('RecordType {NAME}: element in focus is {ELEM}'.format(NAME=self.name, ELEM=focus_element))
-
-        for param in self.parameters:
-            try:
-                edit_mode = param.edit_mode
-            except AttributeError:
-                print('parameter {PARAM} does not have an edit mode'.format(PARAM=param.name))
-                continue
-            else:
-                if not edit_mode:  # element is not currently being edited
-                    continue
-
-            if focus_element not in param.elements:  # element is edited but is no longer in focus
-                logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
-                             'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=param.name))
-
-                # Attempt to save the data element value
-                param.run_event(window, param.key_lookup('Save'), values)
-            else:  # edited element is still in focus
-                break
-
-        # Expand or collapse the details frame
-        if event == self.key_lookup('DetailsButton'):
-            self.collapse_expand(window, frame='details')
-
-        if event == self.key_lookup('ReferencesButton'):
-            self.collapse_expand(window, frame='references')
-
-        if event == self.key_lookup('ComponentsButton'):
-            self.collapse_expand(window, frame='components')
-
-        # Run a modifier event
-        if event in modifier_elems:
-            try:
-                param = self.fetch_modifier(event, by_key=True)
-            except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
-            else:
-                param.run_event(window, event, values)
-
-        # Run a data element event
-        if event in param_elems:
-            try:
-                param = self.fetch_element(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find parameter associated with event key {KEY}'
-                             .format(ID=self.record_id(), KEY=event))
-            else:
-                print('record event {EVENT} is in record element {ELEM}'.format(EVENT=event, ELEM=param.name))
-                update_event = param.run_event(window, event, values)
-                #self.update_display(window, window_values=values)
-
-        if event in component_elems:  # component table event
-            # Update data elements
-            #for param in self.parameters:
-            #    param.update_display(window)
-
-            try:
-                component_table = self.fetch_component(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find component associated with event key {KEY}'
-                             .format(ID=self.record_id(), KEY=event))
-            else:
-                if event == component_table.key_lookup('Add'):  # add account records
-                    # Close options panel, if open
-                    component_table.set_table_dimensions(window)
-
-                    default_values = self.export_values(header=False, references=False).to_dict()
-                    component_table.add_row(record_date=self.record_date(), defaults=default_values)
-                else:
-                    update_event = component_table.run_event(window, event, values)
-
-                #self.update_display(window, window_values=values)
-
-        if event in reference_elems:
-            try:
-                refbox = self.fetch_reference(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find reference associated with event key {KEY}'
-                             .format(ID=self.record_id(), KEY=event))
-            else:
-                update_event = refbox.run_event(window, event, values)
-
-        if update_event:
-            self.update_display(window)
-
-        return True
 
     def update_display(self, window, window_values: dict = None):
         """

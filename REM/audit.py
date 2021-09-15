@@ -233,6 +233,7 @@ class AuditRule:
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TG')
         tab_bttn_keys = ['-HK_TAB{}-'.format(i) for i in range(1, 10)]
+        hotkeys = settings.get_shortcuts()
         tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
         # Rule component element events
@@ -241,7 +242,7 @@ class AuditRule:
         summary_keys = self.summary.summary_events()
 
         # Cancel button pressed
-        if event in (cancel_key, '-HK_ESCAPE-'):
+        if event == cancel_key:
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Transaction audit is currently in progress. Are you sure you would like to quit without saving?'
@@ -258,7 +259,7 @@ class AuditRule:
                 current_rule = self.reset_rule(window, current=False)
 
         # Next button pressed - display summary panel
-        elif (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
+        elif (event == next_key or event == '-HK_RIGHT-') and not window[next_key].metadata['disabled']:
             next_subpanel = self.current_panel + 1
 
             # Prepare audit records
@@ -302,7 +303,7 @@ class AuditRule:
             self.current_panel = next_subpanel
 
         # Back button pressed
-        elif (event == back_key) or (event == '-HK_LEFT-' and not window[back_key].metadata['disabled']):
+        elif (event == back_key or event == '-HK_LEFT-') and not window[back_key].metadata['disabled']:
             current_panel = self.current_panel
 
             # Delete unsaved keys if returning from summary panel
@@ -310,9 +311,6 @@ class AuditRule:
                 for tab in self.summary.tabs:
                     # Reset audit record components
                     tab.reset_components(window)
-
-                    # Update the audit record's display
-                    #tab.update_display(window)
 
             # Return to previous display
             prev_subpanel = current_panel - 1
@@ -344,7 +342,7 @@ class AuditRule:
                 window[save_key].metadata['disabled'] = True
 
         # Start button pressed
-        elif (event == start_key) or (event == '-HK_ENTER-' and not window[start_key].metadata['disabled']):
+        elif event == start_key and not window[start_key].metadata['disabled']:
             # Check for valid parameter values
             params = self.parameters
             inputs = []
@@ -364,6 +362,7 @@ class AuditRule:
             # Load data from the database
             if all(inputs):  # all rule parameters have input
                 window[start_key].update(disabled=True)
+                window[start_key].metadata['disabled'] = True
 
                 # Verify that the audit has not already been performed with these parameters
                 audit_exists = self.summary.load_records(self.parameters)
@@ -376,9 +375,6 @@ class AuditRule:
                     current_rule = self.reset_rule(window, current=True)
 
                     return current_rule
-                #else:
-                #    for tab in self.summary.tabs:
-                #        tab.update_display(window)
 
                 # Initialize audit
                 initialized = []
@@ -404,9 +400,6 @@ class AuditRule:
                     # Update summary panel title with rule parameter values
                     self.summary.update_title(window, self.parameters)
 
-                    #for tab in self.summary.tabs:
-                    #    tab.update_display(window)
-
                     for tab in self.tabs:
                         # Enable table element events
                         tab.table.enable(window)
@@ -427,19 +420,21 @@ class AuditRule:
                                  .format(NAME=self.name, ERR=msg))
                     current_rule = self.reset_rule(window, current=True)
 
-        # Run a table key event
-        elif event in tbl_bttn_keys:
+        # Run a hotkey event
+        elif event in hotkeys:
             # Determine which panel to act on
             if self.current_panel == self.last_panel:
+                print('hotkey was run in the summary panel')
                 self.summary.run_event(window, event, values)
             else:
+                print('hotkey was run in the transactions panel')
                 # Fetch the transaction tab
                 tab_key = window[tg_key].Get()
                 try:
                     tab = self.fetch_tab(tab_key, by_key=True)
                 except KeyError:
-                    logger.error('AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
-                                 .format(NAME=self.name, KEY=event))
+                    logger.error('AuditRule {NAME}: unable to find transaction tab associated with tab key {KEY}'
+                                 .format(NAME=self.name, KEY=tab_key))
                 else:
                     # Run the tab event
                     tab.run_event(window, event, values)
@@ -478,7 +473,7 @@ class AuditRule:
             tabs = [i.key_lookup('Tab') for i in self.tabs]
             self.current_tab = tabs.index(tab_key)
 
-        # Run component parameter events
+        # Run parameter events
         elif event in param_keys:
             try:
                 param = self.fetch_parameter(event, by_key=True)
@@ -488,7 +483,7 @@ class AuditRule:
             else:
                 param.run_event(window, event, values)
 
-        # Run transaction tab events
+        # Run transaction events
         elif event in tab_keys:
             # Fetch the transaction tab
             try:
@@ -527,7 +522,7 @@ class AuditRule:
                         window[next_key].update(disabled=False)
                         window[next_key].metadata['disabled'] = False
 
-        # Run transaction summary events
+        # Run summary events
         elif event in summary_keys:
             self.summary.run_event(window, event, values)
 
@@ -1073,11 +1068,12 @@ class AuditTransactionTab:
         Run an audit rule transaction event.
         """
         audit_key = self.key_lookup('Audit')
-        table_keys = self.table.elements
+        table_keys = self.table.bindings
+        hotkeys = settings.get_shortcuts()
 
         success = True
         # Run component table events
-        if event in table_keys:
+        if event in table_keys or event in hotkeys:
             table = self.table
 
             table.run_event(window, event, values)
@@ -1487,10 +1483,10 @@ class AuditSummary:
         else:
             self.tabs = []
             for tab_i, record_type in enumerate(record_tabs):
-                tab = AuditRecordTab(record_type, record_tabs[record_type])
+                record_tab = AuditRecordTab(record_type, record_tabs[record_type])
 
-                self.tabs.append(tab)
-                self.elements += tab.elements
+                self.tabs.append(record_tab)
+                #self.elements += record_tab.elements
 
         try:
             report = entry['Report']
@@ -1534,7 +1530,7 @@ class AuditSummary:
 
         return key
 
-    def fetch_tab(self, fetch_key, by_key: bool = False):
+    def fetch_tab(self, identifier, by_key: bool = False):
         """
         Fetch a transaction audit summary tab object from the list of tabs.
         """
@@ -1543,19 +1539,19 @@ class AuditSummary:
         if by_key is True:
             tab_item = None
             for tab in self.tabs:
-                if fetch_key in tab.bindings:
+                if identifier in tab.bindings:
                     tab_item = tab
                     break
 
             if tab_item is None:
-                raise KeyError('{TAB} not in list of audit rule summary tab elements'.format(TAB=fetch_key))
+                raise KeyError('{TAB} not in list of audit rule summary tab elements'.format(TAB=identifier))
         else:
             names = [i.name for i in tabs]
 
             try:
-                index = names.index(fetch_key)
+                index = names.index(identifier)
             except ValueError:
-                raise KeyError('{TAB} not in list of audit rule summary tabs'.format(TAB=fetch_key))
+                raise KeyError('{TAB} not in list of audit rule summary tabs'.format(TAB=identifier))
             else:
                 tab_item = tabs[index]
 
@@ -1588,9 +1584,8 @@ class AuditSummary:
         # Run a summary tab event
         tg_key = self.key_lookup('TG')
         tab_bttn_keys = ['-HK_TAB{}-'.format(i + 1) for i in range(len(self.tabs))]
-        #tab_keys = [i for j in self.tabs for i in j.elements]
         tab_keys = self.summary_events()
-        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
+        hotkeys = settings.get_shortcuts()
 
         if event in tab_bttn_keys:  # tab switching hotkeys
             # Get the element key corresponding the the tab number pressed
@@ -1607,14 +1602,14 @@ class AuditSummary:
                     window[tg_key].Widget.select(tab_index)
 
         # Run a table key event
-        elif event in tbl_bttn_keys:
-            # Fetch the transaction tab
+        elif event in hotkeys:
+            # Fetch the current transaction tab
             tab_key = window[tg_key].Get()
             try:
                 tab = self.fetch_tab(tab_key, by_key=True)
             except KeyError:
-                logger.error('AuditRule {NAME}: unable to find transaction tab associated with event key {KEY}'
-                             .format(NAME=self.name, KEY=event))
+                logger.error('AuditRule {NAME}: unable to find record tab associated with tab key {KEY}'
+                             .format(NAME=self.name, KEY=tab_key))
             else:
                 # Run the tab event
                 tab.run_event(window, event, values)
@@ -1845,7 +1840,7 @@ class AuditRecordTab:
         self.record = mod_records.AuditRecord(record_entry, level=0)
         self.record.metadata = []
         self.elements.extend(self.record.elements)
-        self.bindings = self.record.record_events()
+        self.bindings = self.elements + self.record.record_events()
 
         try:
             self.merge = bool(int(entry['MergeTransactions']))
@@ -1924,11 +1919,7 @@ class AuditRecordTab:
         """
         Run an audit summary record event.
         """
-        record = self.record
-        record_keys = record.record_events()
-
-        if event in record_keys:
-            self.record.run_event(window, event, values)
+        self.record.run_event(window, event, values)
 
     def load_record(self, params):
         """
