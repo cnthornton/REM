@@ -310,7 +310,7 @@ class AuditRule:
             if current_panel == self.last_panel:
                 for tab in self.summary.tabs:
                     # Reset audit record components
-                    tab.reset_components(window)
+                    tab.reset_record(window)
 
             # Return to previous display
             prev_subpanel = current_panel - 1
@@ -1027,7 +1027,7 @@ class AuditTransactionTab:
 
         # Layout
         audit_key = self.key_lookup('Audit')
-        main_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0))],
+        main_layout = [[self.table.layout(size=(tbl_width, tbl_height), padding=(0, 0))],
                        [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, disabled=True,
                                            button_color=(bttn_text_col, bttn_bg_col),
                                            disabled_button_color=(disabled_text_col, disabled_bg_col),
@@ -1837,7 +1837,8 @@ class AuditRecordTab:
                          ('Tab',)]
 
         record_entry = settings.records.fetch_rule(name)
-        self.record = mod_records.AuditRecord(record_entry, level=0)
+        #self.record = mod_records.AuditRecord(record_entry, level=0)
+        self.record = mod_records.DatabaseRecord(record_entry, level=0)
         self.record.metadata = []
         self.elements.extend(self.record.elements)
         self.bindings = self.elements + self.record.record_events()
@@ -1899,7 +1900,7 @@ class AuditRecordTab:
         """
         self.record.reset(window)
 
-    def reset_components(self, window):
+    def reset_components_old(self, window):
         """
         Reset summary tab record components.
         """
@@ -1914,6 +1915,13 @@ class AuditRecordTab:
             comp_entry.remove_unsaved_ids(record_ids=ids_to_remove)
 
             comp_table.reset(window)
+
+    def reset_record(self, window):
+        """
+        Reset summary tab record components.
+        """
+        for record_element in self.record.modules:
+            record_element.reset(window)
 
     def run_event(self, window, event, values):
         """
@@ -2084,7 +2092,7 @@ class AuditRecordTab:
         logger.debug('AuditRuleTab {NAME}: mapping records from the transaction tables to the audit record'
                      .format(NAME=self.name))
 
-        component_table = self.record.fetch_component('account')
+        component_table = self.record.fetch_element('account')
         header = component_table.df.columns.tolist()
         record_entry = settings.records.fetch_rule(component_table.record_type)
         append_df = pd.DataFrame(columns=header)

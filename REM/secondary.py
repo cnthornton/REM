@@ -280,7 +280,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
                sg.Col([
                    [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                   [sg.Col(record.layout(win_size=(width, height - bffr_height), view_only=view_only, ugroup=user_priv),
+                   [sg.Col(record.layout(view_only=view_only),
                            pad=(0, 0), background_color=bg_col, expand_x=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
                    [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
@@ -311,15 +311,11 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     record.update_display(window)
 
     # Event window
-    record_elements = record.record_events()
-    print('all record events:')
-    print(record_elements)
+    record_events = record.record_events()
     while True:
         event, values = window.read()
-        print('running record window event {}'.format(event))
 
         if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
-        #if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
             if savable or record.new:  # unsaved IDs should be removed if record can be saved or if newly created
                 record.remove_unsaved_ids()
@@ -352,15 +348,15 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
         if event == '-OK-':  # selected to accept record changes
             # Check if any data elements are in edit mode before saving. Attempt to save if so.
             elements_updated = True
-            for param_elem in record.parameters:
+            for record_element in record.record_elements():
                 try:
-                    edit_mode = param_elem.edit_mode
+                    edit_mode = record_element.edit_mode
                 except AttributeError:
-                    pass
+                    continue
                 else:
                     if edit_mode:  # element is being edited
                         # Attempt to save the data element value
-                        success = param_elem.run_event(window, param_elem.key_lookup('Save'), values)
+                        success = record_element.run_event(window, record_element.key_lookup('Save'), values)
                         if not success:
                             elements_updated = False
 
@@ -384,15 +380,15 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
         if event == '-SAVE-':  # selected to save the record (changes) to the database
             # Check if any data elements are in edit mode before saving. Attempt to save if so.
             elements_updated = True
-            for param_elem in record.parameters:
+            for record_element in record.record_elements():
                 try:
-                    edit_mode = param_elem.edit_mode
+                    edit_mode = record_element.edit_mode
                 except AttributeError:
                     pass
                 else:
                     if edit_mode:  # element is being edited
                         # Attempt to save the data element value
-                        success = param_elem.run_event(window, param_elem.key_lookup('Save'), values)
+                        success = record_element.run_event(window, record_element.key_lookup('Save'), values)
                         if not success:
                             elements_updated = False
 
@@ -465,7 +461,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
             continue
 
         # Update the record parameters with user-input
-        if event in record_elements or event in settings.get_shortcuts():  # selected a record event element or hotkey
+        if event in record_events or event in settings.get_shortcuts():  # selected a record event element or hotkey
             try:
                 record.run_event(window, event, values)
             except Exception as e:
@@ -1820,7 +1816,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                              background_color=header_col)]]
 
     # Import data table
-    tbl_layout = [[table.layout(width=width - tbl_diff, height=height * 0.9, padding=(0, (0, pad_v)))]]
+    tbl_layout = [[table.layout(size=(int(width - tbl_diff), int(height * 0.9)), padding=(0, (0, pad_v)))]]
 
     # Control buttons
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
@@ -1872,17 +1868,18 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     record_entry = settings.records.fetch_rule(table.record_type)
     import_rules = table.import_rules if table.import_rules else record_entry.import_rules
 
-    record_type = record_entry.group
-    if record_type in ('custom', 'account', 'bank_statement', 'cash_expense'):
-        record_class = mod_records.StandardRecord
-    elif record_type == 'bank_deposit':
-        record_class = mod_records.DepositRecord
-    elif record_type == 'audit':
-        record_class = mod_records.AuditRecord
-    else:
-        logger.error('failed to initialize record import window - unknown record layout type provided {}'
-                     .format(record_type))
-        return None
+    #record_type = record_entry.group
+    #if record_type in ('custom', 'account', 'bank_statement', 'cash_expense'):
+    #    record_class = mod_records.StandardRecord
+    #elif record_type == 'bank_deposit':
+    #    record_class = mod_records.DepositRecord
+    #elif record_type == 'audit':
+    #    record_class = mod_records.AuditRecord
+    #else:
+    #    logger.error('failed to initialize record import window - unknown record layout type provided {}'
+    #                 .format(record_type))
+    #    return None
+    record_class = mod_records.DatabaseRecord
 
     # Update display with default filter values
     elem_key = table.key_lookup('Element')
@@ -2054,7 +2051,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     height_key = 'HEIGHT'
     tbl_layout = [[sg.Canvas(key=width_key, size=(width, 0))],
                   [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
-                   sg.Col([[table.layout(width=tbl_width, height=height * 0.8, tooltip='Select rows to import')]],
+                   sg.Col([[table.layout(tooltip='Select rows to import', size=(tbl_width, int(height * 0.8)))]],
                           background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
                           vertical_scroll_only=True)]]
 

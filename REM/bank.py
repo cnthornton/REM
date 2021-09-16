@@ -1217,7 +1217,7 @@ class AccountEntry:
         tbl_height = height * 0.55
 
         # Layout
-        tbl_layout = [[self.table.layout(width=tbl_width, height=tbl_height, padding=(0, 0), tooltip=self.title)]]
+        tbl_layout = [[self.table.layout(tooltip=self.title, size=(tbl_width, tbl_height), padding=(0, 0))]]
 
         panel_key = self.key_lookup('Panel')
         layout = sg.Col(tbl_layout, key=panel_key, pad=(pad_frame, pad_frame), justification='c',

@@ -113,7 +113,7 @@ class RecordElement:
         try:
             self.tooltip = entry['Tooltip']
         except KeyError:
-            self.tooltip = None
+            self.tooltip = self.description
 
         # Dynamic variables
         self.edited = False
@@ -153,7 +153,9 @@ class TableElement(RecordElement):
 
         description (str): display title.
 
-        etype (str): program element type.
+        etype (str): record element type.
+
+        eclass (str): record element class.
 
         columns (list): list of table columns.
 
@@ -205,11 +207,11 @@ class TableElement(RecordElement):
         super().__init__(name, entry, parent)
 
         self.etype = 'table'
+        self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'FilterButton',
-                               'SummaryFrame', 'SummaryButton', 'Width', 'CollapseButton', 'CollapseFrame',
-                               'SummaryWidth', 'Options', 'Cancel', 'Sort', 'OptionsFrame', 'OptionsWidth',
-                               'WidthCol1', 'WidthCol2', 'WidthCol3')])
+                               'SummaryFrame', 'SummaryButton', 'Width', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
+                               'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3')])
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -498,11 +500,11 @@ class TableElement(RecordElement):
         try:
             self.nrow = int(entry['Rows'])
         except KeyError:
-            self.nrow = None
+            self.nrow = mod_const.TBL_NROW
         except ValueError:
             logger.warning('DataTable {TBL}: input to the Rows parameter must be an integer value'
                            .format(TBL=self.name))
-            self.nrow = None
+            self.nrow = mod_const.TBL_NROW
 
         try:
             row_color = entry['RowColor']
@@ -520,6 +522,8 @@ class TableElement(RecordElement):
             self.required_columns = entry['RequiredColumns']
         except KeyError:
             self.required_columns = []
+
+        self.level = 0
 
         # Dynamic attributes
         self._dimensions = (mod_const.TBL_WIDTH, self.nrow)
@@ -890,9 +894,6 @@ class TableElement(RecordElement):
             self.search_field = (search_col, search_value)
 
             self.update_display(window)
-
-        if event == self.key_lookup('CollapseButton'):
-            self.collapse_expand(window)
 
         if event == self.key_lookup('FilterButton'):
             self.collapse_expand(window, frame='filter')
@@ -1448,21 +1449,24 @@ class TableElement(RecordElement):
 
         return annotations
 
-    def layout(self, tooltip: str = None, nrow: int = None, height: int = None, width: int = None, font: tuple = None,
-               padding: tuple = None, collapsible: bool = False, editable: bool = True, overwrite: bool = False):
+    def layout(self, size: tuple = (None, None), padding: tuple = None, tooltip: str = None, editable: bool = True,
+               overwrite: bool = False, level: int = 0):
         """
-        Create table elements that have consistency in layout.
+        Generate a window layout for the table record element.
         """
         dtypes = self.columns
         table_name = self.description
         modifiers = self.modifiers
+
+        self.level = level
 
         display_df = self.format_display_values()
 
         tooltip = tooltip if tooltip is not None else self.tooltip
         search_field = self.search_field
 
-        disabled = True if editable is False and overwrite is False else False
+        is_disabled = False if (editable is True and level < 1) or overwrite is True else True
+        print('table {ELEM} is disabled: {DIS}'.format(ELEM=self.name, DIS=is_disabled))
 
         # Element keys
         keyname = self.key_lookup('Element')
@@ -1496,9 +1500,8 @@ class TableElement(RecordElement):
         pad_h = mod_const.HORZ_PAD
         pad_v = mod_const.VERT_PAD
 
-        font = font if font else mod_const.LARGE_FONT
+        font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_FONT
-        bold_l_font = mod_const.BOLD_HEADER_FONT
         font_size = font[1]
 
         # Hotkey text
@@ -1507,16 +1510,9 @@ class TableElement(RecordElement):
         filter_shortcut = hotkeys['-HK_TBL_FILTER-'][2]
 
         # Table dimensions
+        width, height = size
         row_height = mod_const.TBL_ROW_HEIGHT
-        if nrow:
-            nrow = nrow
-        elif nrow is None and height is not None:
-            # Expand 1 row every N-pixel increase in window size
-            initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
-            height_diff = int((height - mod_const.WIN_HEIGHT) / 40)
-            nrow = initial_nrow + height_diff if height_diff > -initial_nrow else 1
-        else:
-            nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
+        nrow = self.nrow
 
         width = width if width is not None else mod_const.TBL_WIDTH
         tbl_width = width - 16
@@ -1580,7 +1576,7 @@ class TableElement(RecordElement):
                     element_justification='c', vertical_alignment='t'),
              sg.Col(right_cols, pad=(0, 0), background_color=filter_bg_col, justification='r',
                     element_justification='c', vertical_alignment='t')],
-            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=disabled,
+            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=is_disabled,
                                 button_color=(alt_col, filter_head_col),
                                 disabled_button_color=(disabled_text_col, disabled_bg_col),
                                 tooltip='Apply table filters ({})'.format(filter_shortcut))]],
@@ -1692,7 +1688,7 @@ class TableElement(RecordElement):
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
 
         # Control buttons and totals row
-        row5 = self.action_layout(disabled=disabled)
+        row5 = self.action_layout(disabled=is_disabled)
 
         if self.tally_rule is None:
             total_desc = 'Rows:'
@@ -1754,41 +1750,8 @@ class TableElement(RecordElement):
             row6 = row7 = []
 
         # Layout
-        if collapsible is True:  # display the element as a collapsible frame
-            # First row
-            icon = self.icon
-            if icon is not None:
-                icon_path = settings.get_icon_path(icon)
-                if icon_path is not None:
-                    icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-                else:
-                    icon_layout = []
-            else:
-                icon_layout = []
-
-            # Element name
-            description_layout = [sg.Text(table_name, pad=((0, pad_el), 0), background_color=bg_col, font=bold_l_font,
-                                          auto_size_text=True)]
-
-            hide_key = self.key_lookup('CollapseButton')
-            collapse_layout = icon_layout + description_layout
-            collapse_layout.append(sg.Button('', pad=(0, 0), image_data=mod_const.HIDE_ICON, key=hide_key,
-                                             button_color=(text_col, bg_col), border_width=0))
-
-            # Second row
-            element_layout = sg.Frame('', [row1, row2, row3, row4, row5, row6, row7], background_color=header_col,
-                                      relief='ridge', border_width=2)
-
-            frame_key = self.key_lookup('CollapseFrame')
-            collapse_frame_layout = [sg.pin(sg.Col([[element_layout]], key=frame_key, pad=pad,
-                                                   background_color=header_col, visible=True,
-                                                   vertical_alignment='t', element_justification='l',
-                                                   metadata={'visible': True}))]
-
-            layout = sg.Col([collapse_layout, collapse_frame_layout], pad=padding, background_color=bg_col)
-        else:  # display the element in a single row
-            layout = sg.Frame('', [row1, row2, row3, row4, row5, row6, row7], pad=pad, element_justification='l',
-                              vertical_alignment='t', background_color=header_col, relief='ridge', border_width=2)
+        layout = sg.Frame('', [row1, row2, row3, row4, row5, row6, row7], pad=pad, element_justification='l',
+                          vertical_alignment='t', background_color=header_col, relief='ridge', border_width=2)
 
         return layout
 
@@ -1833,12 +1796,9 @@ class TableElement(RecordElement):
         if frame == 'filter':
             hide_key = self.key_lookup('FilterButton')
             frame_key = self.key_lookup('FilterFrame')
-        elif frame == 'summary':
+        else:
             hide_key = self.key_lookup('SummaryButton')
             frame_key = self.key_lookup('SummaryFrame')
-        else:
-            hide_key = self.key_lookup('CollapseButton')
-            frame_key = self.key_lookup('CollapseFrame')
 
         if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
             logger.debug('DataTable {TBL}: collapsing {FRAME} frame'.format(TBL=self.name, FRAME=frame))
@@ -1879,9 +1839,6 @@ class TableElement(RecordElement):
             width = widths[index]
             window[tbl_key].Widget.column(column, width=width)
 
-#        window[tbl_key].expand((True, True))
-#        window[tbl_key].table_frame.pack(expand=True, fill='both')
-
         # Update the number of rows in the display table
         window[tbl_key].update(num_rows=nrows)
 
@@ -1897,21 +1854,30 @@ class TableElement(RecordElement):
         else:
             width, height = window.size
 
+        current_dimensions = self._dimensions
+
         logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
-                     .format(TBL=self.name, W=int(width), H=int(height)))
+                     .format(TBL=self.name, W=width, H=height))
 
         # Resize the column widths
-        tbl_width = width - 16  # for border sizes on either side of the table
+        if width:
+            tbl_width = width - 16  # for border sizes on either side of the table
+        else:
+            tbl_width = current_dimensions[0]
 
         # Expand 1 row every N-pixel increase in window size
-        row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
-        initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
-        orig_height = initial_nrow * mod_const.TBL_ROW_HEIGHT
-        height_diff = int((height - orig_height) / row_rate)
+        if height:
+            row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
+            initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
+            orig_height = initial_nrow * mod_const.TBL_ROW_HEIGHT
+            height_diff = int((height - orig_height) / row_rate)
 
-        nrows = initial_nrow + height_diff if height_diff > -initial_nrow else 1
-        logger.debug('DataTable {NAME}: changing the number of rows in the table from {IROW} to {CROW} based on table '
-                     'size difference {DIFF}'.format(NAME=self.name, IROW=initial_nrow, CROW=nrows, DIFF=height_diff))
+            nrows = initial_nrow + height_diff if height_diff > -initial_nrow else 1
+            logger.debug('DataTable {NAME}: changing the number of rows in the table from {IROW} to {CROW} based on a '
+                         'table size difference of {DIFF}'.format(NAME=self.name, IROW=initial_nrow, CROW=nrows,
+                                                                  DIFF=height_diff))
+        else:
+            nrows = current_dimensions[1]
 
         self._dimensions = (tbl_width, nrows)
 
@@ -2177,6 +2143,31 @@ class TableElement(RecordElement):
             return {}
         else:
             return self.summarize_table()
+
+    def check_requirements(self):
+        """
+        Verify that the record element passes requirements.
+        """
+        comp_df = self.data()
+
+        required_columns = self.required_columns
+        for required_column in required_columns:
+            has_na = comp_df[required_column].isnull().any()
+            logger.debug('DataTable {NAME}: required column {COL} has NA values: {HAS}'
+                         .format(NAME=self.name, COL=required_column, HAS=has_na))
+            if has_na:
+                display_map = self.display_columns
+                try:
+                    display_column = display_map[required_column]
+                except KeyError:
+                    display_column = required_column
+
+                msg = 'missing values for required column {COL}'.format(COL=display_column)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return False
+
+        return True
 
     def has_value(self):
         """
@@ -2470,6 +2461,7 @@ class RecordTable(TableElement):
         self.bindings.extend(action_keys)
 
         self.etype = 'record_table'
+        self.eclass = 'referenes'
 
         try:
             modifiers = entry['Modifiers']
@@ -2548,7 +2540,7 @@ class RecordTable(TableElement):
         # Dynamic attributes
         self.import_df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
 
-    def _translate_row(self, row, level: int = 1, new_record: bool = False, references: dict = None):
+    def _translate_row_old(self, row, level: int = 1, new_record: bool = False, references: dict = None):
         """
         Translate row data into a record object.
         """
@@ -2575,10 +2567,29 @@ class RecordTable(TableElement):
 
         return record
 
+    def _translate_row(self, row, level: int = 1, new_record: bool = False, references: dict = None):
+        """
+        Translate row data into a record object.
+        """
+        record_entry = settings.records.fetch_rule(self.record_type)
+        record_class = mod_records.DatabaseRecord
+
+        record = record_class(record_entry, level=level)
+        record.initialize(row, new=new_record, references=references)
+
+        return record
+
     def reset(self, window):
         """
-        Reset data table to default.
+        Reset record table to default.
         """
+        # Attempt to remove any unsaved record IDs first
+        record_type = self.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+
+        ids_to_remove = self.df[self.id_column].values.tolist()
+        record_entry.remove_unsaved_ids(record_ids=ids_to_remove)
+
         # Reset dynamic attributes
         columns = list(self.columns)
         self.df = self._set_datatypes(pd.DataFrame(columns=columns))
@@ -2812,14 +2823,14 @@ class RecordTable(TableElement):
 
         return df
 
-    def load_record(self, index, level: int = 1, references: dict = None, savable: bool = True):
+    def load_record(self, index, level: int = None, references: dict = None, savable: bool = True):
         """
         Open selected record in new record window.
 
         Arguments:
             index (int): real index of the desired record to load.
 
-            level (int): level at which the record should be loaded [Default: load at top level 1]
+            level (int): level at which the record should be loaded [Default: current level + 1]
 
             references (dict): load record using custom reference dictionary.
 
@@ -2827,6 +2838,9 @@ class RecordTable(TableElement):
         """
         df = self.df.copy()
         modifiers = self.modifiers
+
+        level = level if level is not None else self.level + 1
+        print('loading record table record at level {}'.format(level))
 
         view_only = False if modifiers['edit'] is True else True
 
@@ -3016,6 +3030,7 @@ class ComponentTable(RecordTable):
         self.bindings.extend(action_keys)
 
         self.etype = 'component_table'
+        self.eclass = 'references'
 
         try:
             modifiers = entry['Modifiers']
@@ -3245,7 +3260,7 @@ class ComponentTable(RecordTable):
         Arguments:
             index (int): real index of the desired record to load.
 
-            level (int): level at which the record should be loaded [Default: load at top level 1]
+            level (int): level at which the record should be loaded [Default: current level + 1]
 
             references (dict): load record using custom reference dictionary.
 
@@ -3253,6 +3268,9 @@ class ComponentTable(RecordTable):
         """
         df = self.df.copy()
         modifiers = self.modifiers
+
+        level = level if level is not None else self.level + 1
+        print('loading component table record at level {}'.format(level))
 
         view_only = False if modifiers['edit'] is True else True
 
@@ -3548,6 +3566,8 @@ class ReferenceBox(RecordElement):
         """
         super().__init__(name, entry, parent)
         self.etype = 'refbox'
+        self.eclass = 'references'
+
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
                                'Approved')])
@@ -3560,10 +3580,10 @@ class ReferenceBox(RecordElement):
         try:
             modifiers = entry['Modifiers']
         except KeyError:
-            self.modifiers = {'open': None, 'delete': None, 'approve': None}
+            self.modifiers = {'open': None, 'delete': None, 'approve': None, 'require': False}
         else:
             self.modifiers = {'open': modifiers.get('open', None), 'delete': modifiers.get('delete', None),
-                              'approve': modifiers.get('approve', None)}
+                              'approve': modifiers.get('approve', None), 'require': modifiers.get('require', False)}
             for modifier in self.modifiers:
                 mod_value = self.modifiers[modifier]
                 if pd.isna(mod_value):
@@ -3595,6 +3615,8 @@ class ReferenceBox(RecordElement):
             self.colmap = entry['ColumnMap']
         except KeyError:
             self.colmap = {}
+
+        self.level = 0
 
         # Dynamic values
         self.record_id = None
@@ -3709,7 +3731,8 @@ class ReferenceBox(RecordElement):
         height_key = self.key_lookup('Height')
         window[height_key].set_size(size=(None, height))
 
-    def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), editable: bool = True, overwrite: bool = False):
+    def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), tooltip: str = None, editable: bool = True,
+               overwrite: bool = False, level: int = 0):
         """
         GUI layout for the reference box element.
         """
@@ -3718,6 +3741,8 @@ class ReferenceBox(RecordElement):
         aliases = self.aliases
         modifiers = self.modifiers
         warnings = self.notes if self.notes is not None else ''
+
+        self.level = level
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -3729,10 +3754,11 @@ class ReferenceBox(RecordElement):
 
         text_col = mod_const.TEXT_COL
         bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
-        tooltip = self.tooltip if self.tooltip else self.description
+        tooltip = tooltip if tooltip else self.tooltip
 
         # Allowed actions and visibility of component elements
-        is_disabled = False if editable is True else True
+        is_disabled = False if (editable is True and level < 1) else True
+        print('reference box {ELEM} is disabled: {DIS}'.format(ELEM=self.name, DIS=is_disabled))
         can_approve = True if (modifiers['approve'] is True and not is_disabled) or (overwrite is True) else False
         can_delete = True if (modifiers['delete'] is True and not is_disabled) or (overwrite is True) else False
         can_open = True if (modifiers['open'] is True and not is_disabled) or (overwrite is True) else False
@@ -3991,7 +4017,7 @@ class ReferenceBox(RecordElement):
 
         return reference
 
-    def load_record(self, level: int = 1):
+    def load_record_old(self, level: int = 1):
         """
         Load the reference record from the database.
 
@@ -4033,6 +4059,52 @@ class ReferenceBox(RecordElement):
         record.initialize(record_data, new=False)
 
         return record
+
+    def load_record(self, level: int = None):
+        """
+        Load the reference record from the database.
+
+        Arguments:
+            level (int): load the referenced record at the given depth [Default: current level + 1].
+
+        Returns:
+            record (DatabaseRecord): initialized database record.
+        """
+        record_entry = settings.records.fetch_rule(self.reference_type)
+        record_class = mod_records.DatabaseRecord
+
+        level = level if level is not None else self.level + 1
+        print('loading reference record at level {}'.format(level))
+
+        logger.info('ReferenceBox {NAME}: loading reference record {ID} of type {TYPE}'
+                    .format(NAME=self.name, ID=self.reference_id, TYPE=self.reference_type))
+
+        imports = record_entry.load_record_data(self.reference_id)
+        nrow = imports.shape[0]
+
+        if nrow < 1:
+            logger.warning('ReferenceBox {NAME}: record reference {REF} not found in the database'
+                           .format(NAME=self.name, REF=self.reference_id))
+            record_data = imports
+        elif nrow == 1:
+            record_data = imports.iloc[0]
+        else:
+            logger.warning('ReferenceBox {NAME}: more than one database entry found for record reference {REF}'
+                           .format(NAME=self.name, REF=self.reference_id))
+            record_data = imports.iloc[0]
+
+        record = record_class(record_entry, level=level)
+        record.initialize(record_data, new=False)
+
+        return record
+
+    def check_requirements(self):
+        """
+        Verify that the record element passes requirements.
+        """
+        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
+
+        return passed
 
     def has_value(self):
         """
@@ -4097,6 +4169,7 @@ class DataElement(RecordElement):
         """
         super().__init__(name, entry, parent)
         self.etype = 'text'
+        self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ['Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']])
 
@@ -4351,20 +4424,21 @@ class DataElement(RecordElement):
         window[elem_key].bind('<Button-1>', '+LCLICK+')
         window[save_key].bind('<Return>', '+RETURN+')
 
-    def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
+    def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), tooltip: str = None, editable: bool = True,
+               overwrite: bool = False, level: int = 0):
         """
         GUI layout for the data element.
         """
         modifiers = self.modifiers
 
         is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
-                       self.etype != 'text' else True)
+                       self.etype != 'text' and level < 2 else True)
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
 
         background = self.bg_col
-        tooltip = self.tooltip if self.tooltip else self.description
+        tooltip = tooltip if tooltip else self.tooltip
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -4635,6 +4709,14 @@ class DataElement(RecordElement):
                      .format(NAME=self.name, VAL=display_value))
 
         return str(display_value)
+
+    def check_requirements(self):
+        """
+        Verify that the record element passes requirements.
+        """
+        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
+
+        return passed
 
     def has_value(self):
         """
@@ -4952,8 +5034,9 @@ class ElementReference(RecordElement):
         super().__init__(name, entry, parent)
 
         self.etype = 'reference'
+        self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description',)])
+                              ('Description', 'Frame', 'Width')])
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -5032,11 +5115,34 @@ class ElementReference(RecordElement):
         display_value = self.format_display()
         window[self.key_lookup('Element')].update(value=display_value)
 
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the display element.
+        """
+        if not size:
+            width = 200  # default size in characters * 10
+            height = 1
+        else:
+            width, height = size
+
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(width, height))
+        window[elem_key].expand(expand_x=True)
+
     def run_event(self, window, event, values):
         """
         Run an element reference event.
         """
-        pass
+        elem_key = self.key_lookup('Element')
+
+        if event == elem_key:
+            new_value = self.format_value(values)
+            if new_value != self.value:
+                self.value = new_value
+                self.edited = True
+
+                self.update_display(window)
 
     def bind_keys(self, window):
         """
@@ -5045,28 +5151,30 @@ class ElementReference(RecordElement):
         elem_key = self.key_lookup('Element')
         window[elem_key].bind('<Button-1>', '+LCLICK+')
 
-    def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), editable: bool = True, overwrite: bool = False):
+    def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), tooltip: str = None, editable: bool = True,
+               overwrite: bool = False, level: int = 0):
         """
         GUI layout for the record element.
         """
         modifiers = self.modifiers
 
-        is_disabled = False if overwrite is True or editable is True else True
+        is_disabled = False if overwrite is True or (editable is True and level < 1) else True
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
 
         background = self.bg_col
-        tooltip = self.tooltip if self.tooltip else self.description
+        tooltip = tooltip if tooltip else self.tooltip
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
 
+        font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_HEADER_FONT
 
-        bg_col = mod_const.ACTION_COL if background is None else background
-        text_col = mod_const.TEXT_COL
+        bg_col = background
+        text_col = mod_const.DISABLED_TEXT_COL
 
         # Element Icon, if provided
         icon = self.icon
@@ -5088,28 +5196,18 @@ class ElementReference(RecordElement):
 
         # Element description and actions
         desc_key = self.key_lookup('Description')
-        edit_key = self.key_lookup('Edit')
-        update_key = self.key_lookup('Update')
-        save_key = self.key_lookup('Save')
-        cancel_key = self.key_lookup('Cancel')
-        bttn_vis = False if is_disabled is True else True
         description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=bg_col,
-                                      font=bold_font, auto_size_text=True, tooltip=tooltip),
-                              sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
-                                        button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
-                                        border_width=0, tooltip='Edit value'),
-                              sg.pin(
-                                  sg.Col([[sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
-                                                     pad=((0, pad_el), 0), button_color=(text_col, bg_col),
-                                                     border_width=0, tooltip='Save changes'),
-                                           sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
-                                                     pad=((0, pad_el), 0), button_color=(text_col, bg_col),
-                                                     border_width=0, tooltip='Cancel changes')
-                                           ]],
-                                         key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
+                                      font=bold_font, auto_size_text=True, tooltip=tooltip)]
 
         # Element layout
-        element_layout = self.element_layout(size=size, bg_col=bg_col, is_disabled=is_disabled)
+        width_key = self.key_lookup('Width')
+        elem_key = self.key_lookup('Element')
+        display_value = self.format_display()
+        element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
+                                  [sg.Text(display_value, key=elem_key, size=size, pad=(0, 0), background_color=bg_col,
+                                           text_color=text_col, font=font, enable_events=True, border_width=1,
+                                           relief='sunken', metadata={'name': self.name, 'disabled': is_disabled})]],
+                                 background_color=bg_col)]
 
         # Layout
         row1 = icon_layout + description_layout
@@ -5120,32 +5218,21 @@ class ElementReference(RecordElement):
 
         return layout
 
-    def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
-        """
-        Generate the layout for the data component of the record element.
-        """
-        font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        text_col = mod_const.TEXT_COL
-
-        elem_key = self.key_lookup('Element')
-        display_value = self.format_display()
-
-        layout = [sg.Text(display_value, key=elem_key, size=size, pad=(0, 0), background_color=bg_col,
-                          text_color=text_col, font=font, enable_events=True, border_width=1,
-                          relief='sunken', metadata={'name': self.name, 'disabled': is_disabled})]
-
-        return layout
-
-    def format_value(self, input_value):
+    def format_value(self, values):
         """
         Set the value of the element reference from user input.
 
         Arguments:
 
-            input_value: value input into the GUI element.
+            values (dict): single value or dictionary of reference element values.
         """
         dtype = self.dtype
+
+        # Update element display value
+        if isinstance(values, dict):  # dictionary of referenced element values
+            input_value = mod_dm.evaluate_operation(values, self.operation)
+        else:  # single value provided
+            input_value = values
 
         if input_value == '' or pd.isna(input_value):
             return None
@@ -5181,28 +5268,18 @@ class ElementReference(RecordElement):
 
         return display_value
 
-    def update_display(self, window, values: dict = None):
+    def update_display(self, window):
         """
         Format record element for display.
 
         Arguments:
             window: GUI window.
-
-            values: exported record values.
         """
         bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
         tooltip = self.description
 
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
-
-        # Update element display value
-        if values:
-            value = mod_dm.evaluate_operation(values, self.operation)
-            new_value = self.format_value(value)
-            if new_value != self.value:
-                self.value = new_value
-                self.edited = True
 
         display_value = self.format_display()
         window[elem_key].update(value=display_value)
@@ -5268,6 +5345,14 @@ class ElementReference(RecordElement):
             return {}
         else:
             return {self.name: self.value}
+
+    def check_requirements(self):
+        """
+        Verify that the record element passes requirements.
+        """
+        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
+
+        return passed
 
     def has_value(self):
         """

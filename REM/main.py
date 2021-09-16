@@ -523,7 +523,7 @@ def get_panels(account_methods, win_size: tuple = None):
             msg = 'creating layout for workflow method {ACCT}, rule {RULE}'\
                 .format(ACCT=account_method.name, RULE=rule.name)
             logger.debug(msg)
-            panels.append(rule.layout(win_size=win_size))
+            panels.append(rule.layout())
 
     # Layout
     pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
