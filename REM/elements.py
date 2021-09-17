@@ -787,6 +787,10 @@ class TableElement(RecordElement):
         self.index_map = {}
         self.edited = False
 
+        # Reset table filter parameters
+        for param in self.parameters:
+            param.reset(window)
+
         # Reset table dimensions
         self.set_table_dimensions(window)
 
@@ -2596,6 +2600,10 @@ class RecordTable(TableElement):
         self.import_df = self._set_datatypes(pd.DataFrame(columns=columns))
         self.index_map = {}
         self.edited = False
+
+        # Reset table filter parameters
+        for param in self.parameters:
+            param.reset(window)
 
         # Reset table dimensions
         self.set_table_dimensions(window)
