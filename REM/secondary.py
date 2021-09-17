@@ -579,14 +579,21 @@ def parameter_window(account, win_size: tuple = None):
 
     # Associated account parameters
     vis_conditions = {}
+    discard_bttns = {}
     for i, assoc_acct_name in enumerate(transactions):
         param_group = assoc_acct_name
         assoc_entry = transactions[assoc_acct_name]
         assoc_title = assoc_entry['Title']
 
+        discard_key = '-Discard{}-'.format(i)
+        discard_bttns[discard_key] = assoc_acct_name
         assoc_layout = [[sg.Col([[sg.Text(assoc_title, pad=(0, 0), font=bold_font, text_color=text_col,
                                           background_color=frame_col)]],
-                                expand_x=True, background_color=frame_col)],
+                                expand_x=True, background_color=frame_col, justification='l'),
+                         sg.Col([[sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, border_width=0,
+                                            pad=((0, pad_el * 2), 0), button_color=(text_col, frame_col),
+                                            tooltip='remove transaction account parameters')]],
+                                background_color=frame_col, justification='r')],
                         [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, 0))]]
 
         # Check if any configuration parameters for the associated account entry are related to the primary account
@@ -782,6 +789,23 @@ def parameter_window(account, win_size: tuple = None):
 
             continue
 
+        # Hide account parameter groups removed by the user
+        if event in discard_bttns:
+            # Find the parameter group to hide
+            discard_pgroup = discard_bttns[event]
+
+            pgroup_key = '-{}-'.format(discard_pgroup)
+            if window[pgroup_key].metadata['visible'] is True:  # set to invisible and reset the parameters
+                logger.debug('resetting parameter group {PGROUP}'.format(PGROUP=discard_pgroup))
+                window[pgroup_key].update(visible=False)
+                window[pgroup_key].metadata['visible'] = False
+                window[pgroup_key].hide_row()
+
+                # Reset parameters in the parameter groups that are no longer visible
+                pgroup_params = params[discard_pgroup]
+                for pgroup_param in pgroup_params:
+                    pgroup_param.reset(window)
+
         # Check value conditions for parameter groups. Enable visibility of groups that meet all conditions and disable
         # groups that do not.
         if check_conds:
@@ -802,7 +826,7 @@ def parameter_window(account, win_size: tuple = None):
                         success_groups = component_conditions[component_value]
                         logger.info('parameter value {VAL} matches {COMP} condition {COND} - enabling parameter groups:'
                                     ' {PGROUPS}'.format(VAL=primary_value, COMP=primary_component_name,
-                                                       COND=component_value, PGROUPS=', '.join(success_groups)))
+                                                        COND=component_value, PGROUPS=', '.join(success_groups)))
 
                         for trans_acct in transactions:
                             if trans_acct in success_groups:  # these pgroups passed the parameter condition
