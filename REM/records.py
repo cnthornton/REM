@@ -354,6 +354,8 @@ class RecordEntry:
         if table is None:
             table_statement = mod_db.format_tables(self.import_rules)
             id_col = mod_db.get_import_column(self.import_rules, id_field)
+            if not id_col:
+                id_col = id_field
         else:
             table_statement = table
             id_col = id_field
@@ -593,7 +595,7 @@ class RecordEntry:
             if export_columns:
                 references = table_entry['Columns']
             else:
-                references = {i: i for i in table_entry['Columns']}
+                references = {i: i for i in table_entry['Columns'].values()}
 
             try:
                 id_col = references[id_field]

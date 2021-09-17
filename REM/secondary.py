@@ -955,6 +955,10 @@ def database_importer_window(win_size: tuple = None):
                 continue
 
             # Prepare the record insertion statements
+            print('export df is:')
+            print(subset_df)
+
+            print('id field is {}'.format(settings.id_field))
             try:
                 statements = record_entry.save_database_records(subset_df.replace({np.nan: None}),
                                                                 id_field=settings.id_field, export_columns=False)
@@ -962,11 +966,12 @@ def database_importer_window(win_size: tuple = None):
                 msg = 'failed to upload {TYPE} record entries to the database - {ERR}'\
                     .format(TYPE=record_entry.name, ERR=e)
                 logger.exception(msg)
+                popup_error(msg)
 
                 return False
 
             # Prepare references for all associations where record entry is the primary record type
-            association_rules = record_entry.associatiion_rules
+            association_rules = record_entry.association_rules
             for rule_name in association_rules:
                 association_rule = association_rules[rule_name]
                 if not association_rule['Primary']:
@@ -981,6 +986,7 @@ def database_importer_window(win_size: tuple = None):
                     msg = 'failed to upload {TYPE} reference entries to the database for association rule {RULE} - ' \
                           '{ERR}'.format(TYPE=record_entry.name, RULE=rule_name, ERR=e)
                     logger.exception(msg)
+                    popup_error(msg)
 
                     return False
 
