@@ -212,13 +212,15 @@ class TableElement(RecordElement):
                               ('Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'FilterButton',
                                'SummaryFrame', 'SummaryButton', 'Width', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
                                'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3')])
+        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'SummaryButton', 'FilterButton',
+                                'Options', 'Cancel']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         return_key = '{}+RETURN+'.format(elem_key)
-        self.bindings = self.elements + [return_key]
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [return_key]
 
-        self._action_elements = [self.key_lookup('Element')]
+        self._action_events = [self.key_lookup('Element')]
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
         try:
@@ -325,7 +327,8 @@ class TableElement(RecordElement):
                 else:
                     if param_obj.name in self.columns:
                         self.parameters.append(param_obj)
-                        self.elements += param_obj.elements
+                        #self.elements += param_obj.elements
+                        self.bindings.extend(param_obj.event_bindings())
                     else:
                         logger.warning('DataTable {NAME}: filter parameters "{PARAM}" must be listed in '
                                        'the table columns'.format(NAME=name, PARAM=param))
@@ -777,9 +780,14 @@ class TableElement(RecordElement):
 
         return edited
 
-    def reset(self, window):
+    def reset(self, window, reset_filters: bool = True):
         """
         Reset the data table to default.
+
+        Arguments:
+            window (Window): GUI window.
+
+            reset_filters (bool): also reset filter parameter values [Default: True].
         """
         # Reset dynamic attributes
         columns = list(self.columns)
@@ -788,8 +796,9 @@ class TableElement(RecordElement):
         self.edited = False
 
         # Reset table filter parameters
-        for param in self.parameters:
-            param.reset(window)
+        if reset_filters:
+            for param in self.parameters:
+                param.reset(window)
 
         # Reset table dimensions
         self.set_table_dimensions(window)
@@ -873,7 +882,7 @@ class TableElement(RecordElement):
         return_key = '{}+RETURN+'.format(elem_key)
 
         param_elems = [i for param in self.parameters for i in param.elements]
-        action_events = self._action_elements
+        action_events = self._action_events
 
         update_event = False
 
@@ -2459,13 +2468,14 @@ class RecordTable(TableElement):
         super().__init__(name, entry, parent)
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Delete', 'Import')])
+        self._event_elements.extend(['Delete', 'Import'])
 
         action_keys = [self.key_lookup(i) for i in ('Delete', 'Import')]
-        self._action_elements.extend(action_keys)
+        self._action_events.extend(action_keys)
         self.bindings.extend(action_keys)
 
         self.etype = 'record_table'
-        self.eclass = 'referenes'
+        self.eclass = 'references'
 
         try:
             modifiers = entry['Modifiers']
@@ -2583,9 +2593,14 @@ class RecordTable(TableElement):
 
         return record
 
-    def reset(self, window):
+    def reset(self, window, reset_filters: bool = True):
         """
         Reset record table to default.
+
+        Arguments:
+            window (Window): GUI window.
+
+            reset_filters (bool): also reset filter parameter values [Default: True].
         """
         # Attempt to remove any unsaved record IDs first
         record_type = self.record_type
@@ -2602,8 +2617,9 @@ class RecordTable(TableElement):
         self.edited = False
 
         # Reset table filter parameters
-        for param in self.parameters:
-            param.reset(window)
+        if reset_filters:
+            for param in self.parameters:
+                param.reset(window)
 
         # Reset table dimensions
         self.set_table_dimensions(window)
@@ -3034,7 +3050,7 @@ class ComponentTable(RecordTable):
                               ('Add',)])
 
         action_keys = [self.key_lookup(i) for i in ('Add',)]
-        self._action_elements.extend(action_keys)
+        self._action_events.extend(action_keys)
         self.bindings.extend(action_keys)
 
         self.etype = 'component_table'
@@ -3163,7 +3179,10 @@ class ComponentTable(RecordTable):
 
         # All action events require a table update
         if update_event:
+            print('event {} is an update event - will update display'.format(event))
             self.update_display(window)
+        else:
+            print('event {} is not an update event - will not update display'.format(event))
 
         return update_event
 
@@ -3579,11 +3598,12 @@ class ReferenceBox(RecordElement):
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
                                'Approved')])
+        self._event_elements = ['RefID', 'Element', 'Approved', 'Unlink']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         hover_event = '{}+HOVER+'.format(elem_key)
-        self.bindings = self.elements + [hover_event]
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [hover_event]
 
         try:
             modifiers = entry['Modifiers']
@@ -4180,13 +4200,14 @@ class DataElement(RecordElement):
         self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ['Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']])
+        self._event_elements = ['Element', 'Edit', 'Save', 'Cancel']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         save_key = self.key_lookup('Save')
         lclick_event = '{}+LCLICK+'.format(elem_key)
         return_key = '{}+RETURN+'.format(save_key)
-        self.bindings = self.elements + [lclick_event, return_key]
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [lclick_event, return_key]
 
         try:
             dtype = entry['DataType']
@@ -4203,7 +4224,9 @@ class DataElement(RecordElement):
 
         # Add additional calendar element for input with datetime data types to list of editable elements
         if self.dtype in settings.supported_date_dtypes:
-            self.elements.append('-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id))
+            calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
+            self.elements.append(calendar_key)
+            self.bindings.append(calendar_key)
 
         # Modifiers
         try:
@@ -5048,7 +5071,7 @@ class ElementReference(RecordElement):
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        self.bindings = self.elements + ['{}+LCLICK+'.format(elem_key)]
+        self.bindings = ['{}+LCLICK+'.format(elem_key)]
 
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \

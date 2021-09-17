@@ -819,6 +819,8 @@ class RecordEntry:
                 continue
 
             linked_df = export_df[condition]
+            if linked_df.empty:
+                continue
 
             # Update the list of used reference IDs
             ignore_ids = list(set(ref_ids + record_ids))
@@ -2282,7 +2284,14 @@ class DatabaseRecord:
                     record_element.set_table_dimensions(window)
 
                     default_values = self.export_values(header=False, references=False).to_dict()
-                    record_element.add_row(record_date=self.record_date(), defaults=default_values)
+                    try:
+                        record_element.add_row(record_date=self.record_date(), defaults=default_values)
+                    except Exception as e:
+                        msg = 'failed to run table add event'
+                        logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                    else:
+                        record_element.update_display(window)
+                        update_event = True
                 else:
                     update_event = record_element.run_event(window, event, values)
             else:
@@ -2291,9 +2300,13 @@ class DatabaseRecord:
         if update_event:
             # Update any element references with new values
             record_values = self.export_values(header=False)
-            element_references = self.fetch_element('reference', by_type=True)
-            for record_element in element_references:
-                record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
+            try:
+                element_references = self.fetch_element('reference', by_type=True)
+            except KeyError:
+                pass
+            else:
+                for record_element in element_references:
+                    record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
 
         return True
 
@@ -2788,7 +2801,11 @@ class DatabaseRecord:
             del record_data
 
         # Prepare to save record references
-        refbox_elements = self.fetch_element('refbox', by_type=True)
+        try:
+            refbox_elements = self.fetch_element('refbox', by_type=True)
+        except KeyError:
+            refbox_elements = []
+
         for refbox in refbox_elements:
             association_rule = refbox.association_rule
 
@@ -2804,7 +2821,11 @@ class DatabaseRecord:
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
         # Prepare to save record components
-        component_tables = self.fetch_element('component_table', by_type=True)
+        try:
+            component_tables = self.fetch_element('component_table', by_type=True)
+        except KeyError:
+            component_tables = []
+
         for comp_table in component_tables:
             comp_type = comp_table.record_type
             comp_entry = settings.records.fetch_rule(comp_type)

@@ -1956,7 +1956,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 if record:
                     import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-                    table.reset(window)
+                    table.reset(window, reset_filters=False)
                     table.df = table.append(import_df)
                     table.update_display(window)
 
@@ -1976,7 +1976,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 if record:
                     import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-                    table.reset(window)
+                    table.reset(window, reset_filters=False)
                     table.df = table.append(import_df)
                     table.update_display(window)
 
@@ -1991,7 +1991,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             # Load the display records
             import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-            table.reset(window)
+            table.reset(window, reset_filters=False)
             table.df = table.append(import_df)
             table.update_display(window)
 

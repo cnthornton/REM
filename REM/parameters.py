@@ -56,6 +56,7 @@ class DataParameter:
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['Element', 'Header', 'Value', 'Description', 'Width']]
+        self._event_elements = ['Element']
 
         try:
             self.description = entry['Description']
@@ -162,6 +163,12 @@ class DataParameter:
         if event in self.elements:
             display_value = self.enforce_formatting(window, values, event)
             window[event].update(value=display_value)
+
+    def event_bindings(self):
+        """
+        Return a list of all possible event element keys.
+        """
+        return [self.key_lookup(i) for i in self._event_elements]
 
     def resize(self, window, size: tuple = None, pixels: bool = True):
         """
@@ -691,6 +698,7 @@ class DataParameterInput(DataParameter):
         # Add additional calendar element for input with datetime data types to list of editable elements
         if self.dtype in settings.supported_date_dtypes:
             self.elements.append('-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar'))
+            self._event_elements.append('Calendar')
 
         # Data type check
         if not self.dtype:

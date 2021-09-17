@@ -570,11 +570,12 @@ class BankRule:
             width, height = window.size  # current window size (width, height)
 
         # For every five-pixel increase in window size, increase frame size by one
-        layout_pad = 100  # default padding between the window and border of the frame
-        win_diff = width - mod_const.WIN_WIDTH
-        layout_pad = layout_pad + int(win_diff / 5)
+        #layout_pad = 100  # default padding between the window and border of the frame
+        #win_diff = width - mod_const.WIN_WIDTH
+        #layout_pad = layout_pad + int(win_diff / 5)
 
-        frame_width = width - layout_pad if layout_pad > 0 else width
+        #frame_width = width - layout_pad if layout_pad > 0 else width
+        frame_width = width - 40
         panel_width = frame_width - 36  # padding + scrollbar width
 
         width_key = self.key_lookup('FrameWidth')
@@ -583,7 +584,8 @@ class BankRule:
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        layout_height = height * 0.85  # height of the container panel, including buttons
+        #layout_height = height * 0.85  # height of the container panel, including buttons
+        layout_height = height - 80  # height of the container panel (minus padding and toolbar height)
         frame_height = layout_height - 120  # minus the approximate height of the button row and title bar, with padding
         panel_height = frame_height - 20  # minus top and bottom padding
 

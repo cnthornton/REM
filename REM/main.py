@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.8.6'
+__version__ = '3.9.0'
 
 import sys
 import tkinter as tk
@@ -940,7 +940,6 @@ def main():
                 continue
 
         # Action events
-        #if current_rule and (event in current_rule.elements or event in settings.hotkeys):
         if current_rule and (event in current_rule.events() or event in settings.hotkeys):
             logger.info('running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
             try:
