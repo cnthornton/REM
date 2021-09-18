@@ -1874,16 +1874,20 @@ class TableElement(RecordElement):
 
         # Resize the column widths
         if width:
-            tbl_width = width - 16  # for border sizes on either side of the table
+            tbl_width = width - 16  # approximate size of the table scrollbar and borders
         else:
             tbl_width = current_dimensions[0]
 
         # Expand 1 row every N-pixel increase in window size
         if height:
+            frame_key = self.key_lookup('FilterFrame')
+            frame_h = window[frame_key].get_size()[1]
+            tbl_height = height - frame_h
+
             row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
             initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
             orig_height = initial_nrow * mod_const.TBL_ROW_HEIGHT
-            height_diff = int((height - orig_height) / row_rate)
+            height_diff = int((tbl_height - orig_height) / row_rate)
 
             nrows = initial_nrow + height_diff if height_diff > -initial_nrow else 1
             logger.debug('DataTable {NAME}: changing the number of rows in the table from {IROW} to {CROW} based on a '
@@ -1933,7 +1937,8 @@ class TableElement(RecordElement):
 
         swidth_key = self.key_lookup('SummaryWidth')
         if self.summary_rules:
-            window[swidth_key].set_size(size=(tbl_width, None))
+            summary_w = tbl_width - 2  # table width minus borders
+            window[swidth_key].set_size(size=(summary_w, None))
 
     def append(self, add_df):
         """

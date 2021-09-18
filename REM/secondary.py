@@ -288,6 +288,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
 
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
+    window.hide()
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
@@ -296,19 +297,20 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     for element in record.record_elements():
         element.bind_keys(window)
 
-    # Resize window
+    # Resize window and update the record display
     screen_w, screen_h = window.get_screen_dimensions()
     wh_ratio = 0.95  # window width to height ratio
     win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
     win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
 
     record.resize(window, win_size=(win_w, win_h - bffr_height))
+    record.update_display(window)
     window.bind("<Configure>", window[height_key].Widget.config(height=int(win_h)))
+
+    # Center the record window
+    window.un_hide()
     window = center_window(window)
     current_w, current_h = [int(i) for i in window.size]
-
-    # Update record display
-    record.update_display(window)
 
     # Event window
     record_events = record.record_events()
@@ -1811,6 +1813,12 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     else:
         width, height = (int(mod_const.WIN_WIDTH * 0.2), int(mod_const.WIN_HEIGHT * 0.2))
 
+    # Prepare the associated record entry for the record table
+    record_entry = settings.records.fetch_rule(table.record_type)
+    import_rules = table.import_rules if table.import_rules else record_entry.import_rules
+
+    record_class = mod_records.DatabaseRecord
+
     # Layout
     record_col = None
     for colname in table.display_columns:
@@ -1870,6 +1878,15 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     # Finalize GUI window
     window = sg.Window('', layout, modal=True, resizable=True)
     window.finalize()
+    window.hide()
+
+    # Update the table display
+    table.update_display(window)
+
+    # Bind event keys
+    window = settings.set_shortcuts(window)
+    table_shortcuts = settings.get_shortcuts('Table')
+    table.bind_keys(window)
 
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
@@ -1887,41 +1904,15 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     table.resize(window, size=(win_w - tbl_diff, tbl_h))
 
+    window.un_hide()
     window = center_window(window)
-
-    # Bind event keys
-    window = settings.set_shortcuts(window)
-    table_shortcuts = settings.get_shortcuts('Table')
-    table.bind_keys(window)
-
-    # Prepare record
-    record_entry = settings.records.fetch_rule(table.record_type)
-    import_rules = table.import_rules if table.import_rules else record_entry.import_rules
-
-    #record_type = record_entry.group
-    #if record_type in ('custom', 'account', 'bank_statement', 'cash_expense'):
-    #    record_class = mod_records.StandardRecord
-    #elif record_type == 'bank_deposit':
-    #    record_class = mod_records.DepositRecord
-    #elif record_type == 'audit':
-    #    record_class = mod_records.AuditRecord
-    #else:
-    #    logger.error('failed to initialize record import window - unknown record layout type provided {}'
-    #                 .format(record_type))
-    #    return None
-    record_class = mod_records.DatabaseRecord
-
-    # Update display with default filter values
-    elem_key = table.key_lookup('Element')
-    filter_key = table.key_lookup('Filter')
-    table_elements = [i for i in table.bindings if i not in (elem_key, filter_key)]
-    #table_elements = [i for i in table.elements if i not in (tbl_key, filter_key)]
-
-    table.update_display(window)
 
     current_w, current_h = window.size
 
     # Main loop
+    elem_key = table.key_lookup('Element')
+    filter_key = table.key_lookup('Filter')
+    table_elements = [i for i in table.bindings if i not in (elem_key, filter_key)]
     while True:
         event, values = window.read(timeout=500)
 
@@ -2056,8 +2047,8 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     bg_col = mod_const.ACTION_COL
     header_col = mod_const.HEADER_COL
 
-    tbl_diff = 65
-    tbl_width = width - tbl_diff  # width minus border and padding
+    row_rate = 50
+    tbl_pad = (pad_frame * 2) + 8  # padding on both sides of the table
 
     # GUI layout
     header_layout = [[sg.Text('Import Missing Data', pad=(pad_frame, pad_frame), background_color=header_col,
@@ -2077,13 +2068,14 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     else:
         top_layout = [[]]
 
-    width_key = '-WIDTH-'
-    height_key = 'HEIGHT'
-    tbl_layout = [[sg.Canvas(key=width_key, size=(width, 0))],
-                  [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
-                   sg.Col([[table.layout(tooltip='Select rows to import', size=(tbl_width, int(height * 0.8)))]],
-                          background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
-                          vertical_scroll_only=True)]]
+    #width_key = '-WIDTH-'
+    #height_key = 'HEIGHT'
+    #tbl_layout = [[sg.Canvas(key=width_key, size=(width, 0))],
+    #              [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
+    #               sg.Col([[table.layout(tooltip='Select rows to import', size=(tbl_width, int(height * 0.8)))]],
+    #                      background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
+    #                      vertical_scroll_only=True)]]
+    tbl_layout = [[table.layout(padding=(pad_frame, 0), tooltip='Select rows to import')]]
 
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
                               pad=(pad_el, 0), tooltip='Cancel importing'),
@@ -2091,15 +2083,17 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
                               pad=(pad_el, 0), tooltip='Import the selected transaction orders')]]
 
     layout = [[sg.Col(header_layout, key='-HEADER-', pad=(0, 0), background_color=header_col, element_justification='l',
-                      expand_x=True, expand_y=True)],
+                      expand_x=True)],
               [sg.Col(top_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, expand_x=True,
                       vertical_alignment='t')],
-              [sg.Col(tbl_layout, pad=(0, 0), background_color=bg_col, expand_x=True, vertical_alignment='t')],
+              [sg.Col(tbl_layout, pad=(0, 0), background_color=bg_col, expand_x=True, expand_y=True,
+                      vertical_alignment='t')],
               [sg.Col(bttn_layout, key='-BUTTON-', pad=(0, (pad_v, pad_frame)), element_justification='c',
                       justification='c', expand_x=True, vertical_alignment='t')]]
 
     window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=True)
     window.finalize()
+    window.hide()
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
@@ -2116,12 +2110,16 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
               + window['-PARAMS-'].get_size()[1]
     tbl_h = win_h - other_h
+    tbl_w = win_w - tbl_pad
+    #tbl_h = win_h
 
-    window[width_key].set_size((win_w, None))
-    window[height_key].set_size((None, tbl_h))
+    #window[width_key].set_size((win_w, None))
+    #window[height_key].set_size((None, tbl_h))
 
-    table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
+    #table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
+    table.resize(window, size=(win_w, tbl_h), row_rate=row_rate)
 
+    window.un_hide()
     window = center_window(window)
     current_w, current_h = window.size
 
@@ -2143,14 +2141,17 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
-                      + window['-PARAMS-'].get_size()[1]
+            #other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
+            #          + window['-PARAMS-'].get_size()[1]
+            #tbl_h = win_h - other_h
+
+            #window[width_key].set_size((win_w, None))
+            #window[height_key].set_size((None, tbl_h))
+
+            #table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
+            tbl_w = win_w - tbl_pad
             tbl_h = win_h - other_h
-
-            window[width_key].set_size((win_w, None))
-            window[height_key].set_size((None, tbl_h))
-
-            table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
+            table.resize(window, size=(tbl_w, tbl_h), row_rate=row_rate)
 
             current_w, current_h = (win_w, win_h)
 
