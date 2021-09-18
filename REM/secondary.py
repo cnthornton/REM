@@ -2068,13 +2068,6 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     else:
         top_layout = [[]]
 
-    #width_key = '-WIDTH-'
-    #height_key = 'HEIGHT'
-    #tbl_layout = [[sg.Canvas(key=width_key, size=(width, 0))],
-    #              [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
-    #               sg.Col([[table.layout(tooltip='Select rows to import', size=(tbl_width, int(height * 0.8)))]],
-    #                      background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
-    #                      vertical_scroll_only=True)]]
     tbl_layout = [[table.layout(padding=(pad_frame, 0), tooltip='Select rows to import')]]
 
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
@@ -2109,15 +2102,10 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
     other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
               + window['-PARAMS-'].get_size()[1]
+
     tbl_h = win_h - other_h
     tbl_w = win_w - tbl_pad
-    #tbl_h = win_h
-
-    #window[width_key].set_size((win_w, None))
-    #window[height_key].set_size((None, tbl_h))
-
-    #table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
-    table.resize(window, size=(win_w, tbl_h), row_rate=row_rate)
+    table.resize(window, size=(tbl_w, tbl_h), row_rate=row_rate)
 
     window.un_hide()
     window = center_window(window)
@@ -2141,14 +2129,6 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            #other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
-            #          + window['-PARAMS-'].get_size()[1]
-            #tbl_h = win_h - other_h
-
-            #window[width_key].set_size((win_w, None))
-            #window[height_key].set_size((None, tbl_h))
-
-            #table.resize(window, size=(win_w - tbl_diff, tbl_h), row_rate=80)
             tbl_w = win_w - tbl_pad
             tbl_h = win_h - other_h
             table.resize(window, size=(tbl_w, tbl_h), row_rate=row_rate)

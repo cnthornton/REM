@@ -123,7 +123,7 @@ class RecordElement:
         Lookup a record element's GUI element key using the name of the component.
         """
         element_names = [i[1: -1].split('_')[-1] for i in self.elements]
-        #element_names = [re.match(r'-(.*?)-', i).group(1).split('_')[-1] for i in self.elements]
+        # element_names = [re.match(r'-(.*?)-', i).group(1).split('_')[-1] for i in self.elements]
         if component in element_names:
             key_index = element_names.index(component)
             key = self.elements[key_index]
@@ -209,10 +209,10 @@ class TableElement(RecordElement):
         self.etype = 'table'
         self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'FilterButton',
-                               'SummaryFrame', 'SummaryButton', 'Width', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
+                              ('Export', 'Total', 'Search', 'Filter', 'Fill', 'Frame0', 'FrameBttn0',
+                               'Frame1', 'FrameBttn1', 'Width', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
                                'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3')])
-        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'SummaryButton', 'FilterButton',
+        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1',
                                 'Options', 'Cancel']
 
         # Element-specific bindings
@@ -327,7 +327,7 @@ class TableElement(RecordElement):
                 else:
                     if param_obj.name in self.columns:
                         self.parameters.append(param_obj)
-                        #self.elements += param_obj.elements
+                        # self.elements += param_obj.elements
                         self.bindings.extend(param_obj.event_bindings())
                     else:
                         logger.warning('DataTable {NAME}: filter parameters "{PARAM}" must be listed in '
@@ -800,6 +800,19 @@ class TableElement(RecordElement):
             for param in self.parameters:
                 param.reset(window)
 
+        # Expand any collapsed frames
+        frames = [self.key_lookup('Frame{}'.format(i)) for i in range(2)]
+        for i, frame_key in enumerate(frames):
+            if window[frame_key].metadata['disabled']:
+                continue
+
+            if not window[frame_key].metadata['visible']:  # frame was collapsed at some point
+                hide_key = self.key_lookup('FrameBttn{}'.format(i))
+                window[hide_key].update(image_data=mod_const.HIDE_ICON)
+                window[frame_key].update(visible=True)
+
+            window[frame_key].metadata['visible'] = False
+
         # Reset table dimensions
         self.set_table_dimensions(window)
 
@@ -880,6 +893,7 @@ class TableElement(RecordElement):
         export_key = self.key_lookup('Export')
         filter_key = self.key_lookup('Filter')
         return_key = '{}+RETURN+'.format(elem_key)
+        frame_bttns = [self.key_lookup('FrameBttn{}'.format(i)) for i in range(2)]
 
         param_elems = [i for param in self.parameters for i in param.elements]
         action_events = self._action_events
@@ -889,14 +903,11 @@ class TableElement(RecordElement):
         # Hotkey actions
         if event in (return_key, '-HK_ENTER-'):
             event = elem_key
-
-        if event == '-HK_ESCAPE-':
+        elif event == '-HK_ESCAPE-':
             event = cancel_key
-
-        if event == '-HK_TBL_FILTER-':
+        elif event == '-HK_TBL_FILTER-':
             event = filter_key
-
-        if event == '-HK_TBL_OPTS-':
+        elif event == '-HK_TBL_OPTS-':
             event = options_key
 
         # Table events
@@ -908,14 +919,12 @@ class TableElement(RecordElement):
 
             self.update_display(window)
 
-        if event == self.key_lookup('FilterButton'):
-            self.collapse_expand(window, frame='filter')
-
-        if event == self.key_lookup('SummaryButton'):
-            self.collapse_expand(window, frame='summary')
+        elif event in frame_bttns:
+            frame_index = frame_bttns.index(event)
+            self.collapse_expand(window, index=frame_index)
 
         # Click filter Apply button to apply filtering to table
-        if event == filter_key:
+        elif event == filter_key:
             # Update parameter values
             for param in self.parameters:
                 param.value = param.format_value(values)
@@ -924,7 +933,7 @@ class TableElement(RecordElement):
             self.update_display(window)
 
         # Click to open table options panel
-        if event == options_key:
+        elif event == options_key:
             if window[frame_key].metadata['visible'] is False:
                 window[frame_key].metadata['visible'] = True
 
@@ -957,11 +966,11 @@ class TableElement(RecordElement):
             else:
                 self.set_table_dimensions(window)
 
-        if event == cancel_key:
+        elif event == cancel_key:
             self.set_table_dimensions(window)
 
         # Sort column selected from menu of sort columns
-        if event == sort_key:
+        elif event == sort_key:
             sort_on = self.sort_on
             display_map = {j: i for i, j in self.display_columns.items()}
 
@@ -984,7 +993,7 @@ class TableElement(RecordElement):
             self.update_display(window)
 
         # NA value fill method selected from menu of fill methods
-        if event == fill_key:
+        elif event == fill_key:
             display_map = {j: i for i, j in self.display_columns.items()}
 
             # Get selected rows, if any
@@ -1015,7 +1024,7 @@ class TableElement(RecordElement):
             try:
                 fill_col = display_map[display_col]
             except KeyError:
-                msg = 'fill display column {COL} must have a one-to-one mapping with a table display column'\
+                msg = 'fill display column {COL} must have a one-to-one mapping with a table display column' \
                     .format(COL=display_col)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -1027,7 +1036,7 @@ class TableElement(RecordElement):
             # Update the display table to show the new table values
             self.update_display(window)
 
-        if event in param_elems:
+        elif event in param_elems:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
@@ -1036,7 +1045,7 @@ class TableElement(RecordElement):
             else:
                 param.run_event(window, event, values)
 
-        if event == export_key:
+        elif event == export_key:
             outfile = sg.popup_get_file('', title='Export table display', save_as=True,
                                         default_extension='xlsx', no_window=True,
                                         file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
@@ -1055,7 +1064,7 @@ class TableElement(RecordElement):
             else:
                 logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
 
-        if event in action_events:
+        elif event in action_events:
             update_event = self.run_action_event(window, event, values)
 
         return update_event
@@ -1337,7 +1346,7 @@ class TableElement(RecordElement):
         is_numeric_dtype = pd.api.types.is_numeric_dtype
 
         if statistic and statistic not in self._supported_stats:
-            msg = 'unknown statistic {STAT} supplied for summarizing table column {COL}'\
+            msg = 'unknown statistic {STAT} supplied for summarizing table column {COL}' \
                 .format(STAT=statistic, COL=column)
             logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             statistic = None
@@ -1490,6 +1499,7 @@ class TableElement(RecordElement):
         cancel_key = self.key_lookup('Cancel')
         options_key = self.key_lookup('Options')
         sort_key = self.key_lookup('Sort')
+        summ_width = self.key_lookup('SummaryWidth')
         col1width_key = self.key_lookup('WidthCol1')
         col2width_key = self.key_lookup('WidthCol2')
         col3width_key = self.key_lookup('WidthCol3')
@@ -1605,13 +1615,14 @@ class TableElement(RecordElement):
             sg.Col([[sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=filter_head_col),
                      sg.Text('Table filters', pad=((0, pad_h), 0), text_color=select_text_col,
                              background_color=filter_head_col),
-                     sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FilterButton'),
+                     sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn0'),
                                button_color=(text_col, filter_head_col), border_width=0,
                                tooltip='Collapse filter panel')]],
                    pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
                    visible=visible_filter)]
-        row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('FilterFrame'), background_color=filter_bg_col,
-                              visible=visible_filter, expand_x=True, metadata={'visible': visible_filter}))]
+        row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('Frame0'), background_color=filter_bg_col,
+                              visible=visible_filter, expand_x=True,
+                              metadata={'visible': visible_filter, 'disabled': (not visible_filter)}))]
 
         # Table title
         row3 = []
@@ -1724,7 +1735,6 @@ class TableElement(RecordElement):
         # Table summary rows
         summary_rules = self.summary_rules
         if len(summary_rules) > 0:  # display summary is set and table contains summary rules
-            summ_width = self.key_lookup('SummaryWidth')
             summary_visible = modifiers['summary']
 
             summary_c1 = []
@@ -1748,19 +1758,19 @@ class TableElement(RecordElement):
                                         element_justification='r'),
                                  sg.Col(summary_c2, background_color=filter_bg_col, vertical_alignment='t',
                                         expand_x=True)]]
-
-            row6 = [sg.Col([[sg.Text('Summary', pad=((0, pad_h), 0), text_color='white',
-                                     background_color=filter_head_col),
-                             sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('SummaryButton'),
-                                       button_color=(text_col, filter_head_col), border_width=0,
-                                       tooltip='Collapse summary panel')]],
-                           pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
-                           visible=summary_visible)]
-            row7 = [sg.pin(sg.Col(summary_elements, key=self.key_lookup('SummaryFrame'), pad=(pad_h, pad_v),
-                                  background_color=filter_bg_col, visible=summary_visible, expand_x=True, expand_y=True,
-                                  metadata={'visible': summary_visible}))]
         else:
-            row6 = row7 = []
+            summary_elements = [[sg.Canvas(key=summ_width, size=(width, 0), background_color=filter_bg_col)]]
+            summary_visible = False
+
+        row6 = [sg.Col([[sg.Text('Summary', pad=((0, pad_h), 0), text_color='white', background_color=filter_head_col),
+                         sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn1'),
+                                   button_color=(text_col, filter_head_col), border_width=0,
+                                   tooltip='Collapse summary panel')]],
+                       pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
+                       visible=summary_visible)]
+        row7 = [sg.pin(sg.Col(summary_elements, key=self.key_lookup('Frame1'), pad=(pad_h, pad_v),
+                              background_color=filter_bg_col, visible=summary_visible, expand_x=True, expand_y=True,
+                              metadata={'visible': summary_visible, 'disabled': (not summary_visible)}))]
 
         # Layout
         layout = sg.Frame('', [row1, row2, row3, row4, row5, row6, row7], pad=pad, element_justification='l',
@@ -1802,7 +1812,27 @@ class TableElement(RecordElement):
             filter_key = self.key_lookup('Filter')
             window[filter_key].update(disabled=True)
 
-    def collapse_expand(self, window, frame: str = None):
+    def collapse_expand(self, window, index: int = 0):
+        """
+        Collapse record frames.
+        """
+        hide_key = self.key_lookup('FrameBttn{}'.format(index))
+        frame_key = self.key_lookup('Frame{}'.format(index))
+
+        if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
+            logger.debug('DataTable {NAME}: collapsing table frame {FRAME}'.format(NAME=self.name, FRAME=index))
+            window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
+            window[frame_key].update(visible=False)
+
+            window[frame_key].metadata['visible'] = False
+        else:  # not visible yet, so want to expand the frame
+            logger.debug('DataTable {NAME}: expanding table frame {FRAME}'.format(NAME=self.name, FRAME=index))
+            window[hide_key].update(image_data=mod_const.HIDE_ICON)
+            window[frame_key].update(visible=True)
+
+            window[frame_key].metadata['visible'] = True
+
+    def collapse_expand_old(self, window, frame: str = None):
         """
         Hide/unhide the filter table frame.
         """
@@ -1880,7 +1910,7 @@ class TableElement(RecordElement):
 
         # Expand 1 row every N-pixel increase in window size
         if height:
-            frame_key = self.key_lookup('FilterFrame')
+            frame_key = self.key_lookup('Frame0')  # the filter frame is the first table frame
             frame_h = window[frame_key].get_size()[1]
             tbl_height = height - frame_h
 
@@ -2221,18 +2251,18 @@ class TableElement(RecordElement):
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
 
         return mod_row
-        #row_values = self.set_conditional_values(mod_row).squeeze()
+        # row_values = self.set_conditional_values(mod_row).squeeze()
 
         # Update record table values
-        #print('original values: {}'.format(row))
-        #print('new values: {}'.format(row_values))
-        #if not row.equals(row_values):
+        # print('original values: {}'.format(row))
+        # print('new values: {}'.format(row_values))
+        # if not row.equals(row_values):
         #    print('new row values are the same as the original row values')
         #    df.loc[index] = row_values
         #    self.df = df
         #    self.edited = True
         #
-        #return df
+        # return df
 
     def set_defaults(self, row):
         """
@@ -2625,6 +2655,19 @@ class RecordTable(TableElement):
         if reset_filters:
             for param in self.parameters:
                 param.reset(window)
+
+        # Expand any collapsed frames
+        frames = [self.key_lookup('Frame{}'.format(i)) for i in range(2)]
+        for i, frame_key in enumerate(frames):
+            if window[frame_key].metadata['disabled']:
+                continue
+
+            if not window[frame_key].metadata['visible']:  # frame was collapsed at some point
+                hide_key = self.key_lookup('FrameBttn{}'.format(i))
+                window[hide_key].update(image_data=mod_const.HIDE_ICON)
+                window[frame_key].update(visible=True)
+
+            window[frame_key].metadata['visible'] = False
 
         # Reset table dimensions
         self.set_table_dimensions(window)
@@ -3466,7 +3509,7 @@ class ComponentTable(RecordTable):
                     df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
 
                     # Add import dataframe to data table object
-#                    import_table.df = import_df.append(df, ignore_index=True)
+                    #                    import_table.df = import_df.append(df, ignore_index=True)
                     import_table.df = self.append(df, imports=True)
         else:
             import_table.df = import_df
@@ -3822,7 +3865,8 @@ class ReferenceBox(RecordElement):
                                 sg.Image(data=mod_const.LINK_ICON, key=link_key, visible=hl_vis,
                                          pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
-                                                  not in aliases else aliases['IsHardLink'])),
+                                                                                                      not in aliases else
+                                                  aliases['IsHardLink'])),
                                 sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
                                          pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
@@ -4468,7 +4512,7 @@ class DataElement(RecordElement):
         modifiers = self.modifiers
 
         is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
-                       self.etype != 'text' and level < 2 else True)
+                                self.etype != 'text' and level < 2 else True)
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']

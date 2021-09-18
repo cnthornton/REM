@@ -1104,17 +1104,14 @@ class AccountEntry:
         """
         Reset the elements and attributes of the bank record tab.
         """
+        table = self.table
+
         # Reset the record table and the reference dataframe
-        self.table.reset(window)
+        table.reset(window)
         self.ref_df = None
 
         # Disable table element events
-        self.table.disable(window)
-
-        # Un-collapse the tab filter frame
-        filter_key = self.table.key_lookup('FilterFrame')
-        if window[filter_key].metadata['visible'] is False:
-            self.table.collapse_expand(window, frame='filter')
+        table.disable(window)
 
     def run_event(self, window, event, values):
         """
