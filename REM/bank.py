@@ -202,7 +202,7 @@ class BankRule:
 
         # The cancel button or cancel hotkey was pressed. If a reconciliation is in progress, reset the rule but stay
         # in the rule panel. If reconciliation is not in progress, return to home screen.
-        if event in (cancel_key, '-HK_ESCAPE-'):
+        elif event in (cancel_key, '-HK_ESCAPE-'):
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Reconciliation is currently in progress. Are you sure you would like to quit without saving?'
@@ -220,7 +220,7 @@ class BankRule:
 
         # The save button or enter hotkey was pressed. Save the account records and associated account records and
         # generate a summary report.
-        if event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
+        elif event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
             # Get output file from user
             acct = self.fetch_account(current_acct)
             default_title = acct.title + '.xlsx'
@@ -261,7 +261,7 @@ class BankRule:
 
         # Next button pressed - display next panel in transaction workflow. Wrap-around to first panel if next panel
         # goes beyond the number of items in the panel list
-        if (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
+        elif (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
             current_index = self.panels.index(self.current_panel)
             next_index = (current_index + 1) % len(self.panels)
             next_panel = self.panels[next_index]
@@ -298,7 +298,7 @@ class BankRule:
             self.current_panel = prev_panel
 
         # Switch directly between panels using the tab button hotkeys
-        if event in tab_bttn_keys:
+        elif event in tab_bttn_keys:
             # Determine which panel to act on
             tab_index = int(event[1:-1][-1]) - 1
 
@@ -317,7 +317,7 @@ class BankRule:
 
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
-        if event == param_key:
+        elif event == param_key:
             # Get the parameter settings
             params = mod_win2.parameter_window(self.fetch_account(current_acct))
 
@@ -363,7 +363,7 @@ class BankRule:
 
         # Reconcile button was pressed. Will run the reconcile method to find associations with the current primary
         # account and any associated accounts with data.
-        if event == reconcile_key:
+        elif event == reconcile_key:
             expand_search = values[expand_key]
 
             try:
@@ -1226,7 +1226,7 @@ class AccountEntry:
 
     def resize(self, window, size):
         """
-        Resize the reconciliation panel.
+        Resize the account panel.
         """
         width, height = size
 

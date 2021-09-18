@@ -1910,9 +1910,9 @@ class TableElement(RecordElement):
 
         # Expand 1 row every N-pixel increase in window size
         if height:
-            frame_key = self.key_lookup('Frame0')  # the filter frame is the first table frame
-            frame_h = window[frame_key].get_size()[1]
-            tbl_height = height - frame_h
+            frame_keys = [self.key_lookup('Frame{}'.format(i)) for i in range(2)]
+            frame_heights = [window[i].get_size()[1] for i in frame_keys]
+            tbl_height = height - sum(frame_heights)
 
             row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
             initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
@@ -3650,8 +3650,7 @@ class ReferenceBox(RecordElement):
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        hover_event = '{}+HOVER+'.format(elem_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [hover_event]
+        self.bindings = [self.key_lookup(i) for i in self._event_elements]
 
         try:
             modifiers = entry['Modifiers']
@@ -3730,10 +3729,6 @@ class ReferenceBox(RecordElement):
         del_key = self.key_lookup('Unlink')
         ref_key = self.key_lookup('RefID')
         approved_key = self.key_lookup('Approved')
-        hover_event = '{}+HOVER+'.format(elem_key)
-
-        if event == hover_event:
-            window[ref_key].set_focus()
 
         update_event = False
 
@@ -3788,8 +3783,7 @@ class ReferenceBox(RecordElement):
         """
         Add hotkey bindings to the data element.
         """
-        elem_key = self.key_lookup('Element')
-        window[elem_key].bind('<Enter>', '+HOVER+')
+        pass
 
     def resize(self, window, size: tuple = None):
         """
@@ -4409,8 +4403,7 @@ class DataElement(RecordElement):
 
         if event == '-HK_ENTER-':
             event = save_key
-
-        if event == '-HK_ESCAPE-':
+        elif event == '-HK_ESCAPE-':
             event = cancel_key
 
         # Set focus to the element and enable edit mode
@@ -4439,7 +4432,7 @@ class DataElement(RecordElement):
             self.edit_mode = True
 
         # Set element to inactive mode and update the element value
-        if event == save_key and currently_editing:
+        elif event == save_key and currently_editing:
             print('saving value changes and setting to inactive mode')
             # Update value of the data element
             try:
@@ -4476,7 +4469,7 @@ class DataElement(RecordElement):
 
             self.edit_mode = False
 
-        if event == cancel_key and currently_editing:
+        elif event == cancel_key and currently_editing:
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)

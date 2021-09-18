@@ -463,11 +463,6 @@ class AuditRule:
             tab = self.fetch_tab(tab_key, by_key=True)
             logger.debug('AuditRule {NAME}: moving to transaction audit tab {TAB}'.format(NAME=self.name, TAB=tab.name))
 
-            # Collapse the filter frame, if applicable
-            filter_key = tab.table.key_lookup('FilterFrame')
-            if window[filter_key].metadata['visible'] is True:
-                tab.table.collapse_expand(window, frame='filter')
-
             # Set the current tab index
             tabs = [i.key_lookup('Tab') for i in self.tabs]
             self.current_tab = tabs.index(tab_key)
