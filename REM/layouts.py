@@ -466,18 +466,19 @@ def importer_layout(win_size: tuple = None):
 
 
 # Panel layouts
-def home_screen(win_size: tuple = None):
+def home_screen(size):
     """
     Create layout for the home screen.
     """
     bg_col = mod_const.DEFAULT_COL
-    if win_size:
-        width, height = win_size
-    else:
-        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+    width, height = size
 
     #    layout = sg.Col([[sg.Image(filename=settings.logo, size=(int(width), int(height)),
-    layout = sg.Col([[sg.Image(filename=settings.logo, background_color=bg_col)]],
-                    key='-HOME-', element_justification='c', vertical_alignment='c', background_color=bg_col)
+    layout = sg.Col([[sg.Canvas(key='-HOME_WIDTH-', size=(width, 0))],
+                     [sg.Canvas(key='-HOME_HEIGHT-', size=(0, height)),
+                      sg.Image(filename=settings.logo, background_color=bg_col, key='-HOME_IMAGE-', size=(width, height))]],
+                    key='-HOME-', element_justification='c', vertical_alignment='c', background_color=bg_col, expand_y=True, expand_x=True, visible=False)
+    #layout = sg.Col([[sg.Image(filename=settings.logo, size=(width, height))]], key='-HOME-', expand_x=True,
+    #                expand_y=True, element_justification='c', vertical_alignment='c', background_color=bg_col)
 
     return layout

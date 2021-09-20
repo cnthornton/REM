@@ -303,6 +303,8 @@ class ToolBar:
         else:
             width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
+        toolbar_h = 55
+
         # Menu items
         menu_audit = self._define_menu('amenu')
         menu_reports = self._define_menu('rmenu')
@@ -322,7 +324,8 @@ class ToolBar:
         text_col = mod_const.TEXT_COL
 
         toolbar = [[sg.Canvas(key='-CANVAS_WIDTH-', size=(width, 0), visible=True)],
-                   [sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico,
+                   [sg.Canvas(size=(0, toolbar_h), visible=True),
+                    sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico,
                                            tooltip='Transaction Audits and Finance Reconciliations',
                                            button_color=(text_col, header_col), pad=(padding, padding), border_width=0),
                              sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
@@ -331,18 +334,18 @@ class ToolBar:
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip='Record Importing',
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
                                        disabled=True)]],
-                           justification='l', background_color=header_col, expand_x=True),
+                           justification='l', background_color=header_col, expand_x=True, vertical_alignment='c'),
                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
-                           justification='c', background_color=header_col, expand_x=True),
+                           justification='c', background_color=header_col, expand_x=True, vertical_alignment='c'),
                     sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', pad=(padding, padding), image_data=user_ico,
                                            button_color=(text_col, header_col), border_width=0,
                                            tooltip='User Settings'),
                              sg.ButtonMenu('', menu_menu, key='-MMENU-', pad=(padding, padding), image_data=menu_ico,
                                            button_color=(text_col, header_col), border_width=0,
                                            tooltip='Help and program settings')]],
-                           justification='r', background_color=header_col)]]
+                           justification='r', background_color=header_col, vertical_alignment='c')]]
 
-        layout = [sg.Frame('', toolbar, key='-TOOLBAR-', relief='groove', pad=(0, 0), background_color=header_col)]
+        layout = [sg.Frame('', toolbar, key='-TOOLBAR-', pad=(0, 0), relief='groove', background_color=header_col)]
 
         return layout
 
@@ -514,8 +517,12 @@ def get_panels(account_methods, win_size: tuple = None):
     else:
         width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
 
+    toolbar_h = 60  # toolbar height plus toolbar border
+    panel_w = width
+    panel_h = height - toolbar_h
+
     # Home page action panel
-    panels = [mod_lo.home_screen(win_size=(width, height))]
+    panels = [mod_lo.home_screen(size=(panel_w, panel_h))]
 
     # Add Audit rule with summary panel
     for account_method in account_methods:
@@ -523,12 +530,16 @@ def get_panels(account_methods, win_size: tuple = None):
             msg = 'creating layout for workflow method {ACCT}, rule {RULE}'\
                 .format(ACCT=account_method.name, RULE=rule.name)
             logger.debug(msg)
-            panels.append(rule.layout())
+            panels.append(rule.layout(size=(panel_w, panel_h)))
 
     # Layout
-    pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
-            sg.Col([[sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0,
-                             relief='flat')]], pad=(0, 10), justification='c', element_justification='c')]
+    #pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
+    #        sg.Col([[sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0,
+    #                         relief='flat')]], pad=(0, 10), justification='c', element_justification='c')]
+    #pane = [sg.Canvas(size=(2, panel_h), key='-CANVAS_HEIGHT-', visible=True, background_color='green'),
+    #        sg.Col([[sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0,
+    #                         relief='flat')]], justification='c', element_justification='c', vertical_alignment='t')]
+    pane = [sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0)]
 
     return pane
 
@@ -539,17 +550,23 @@ def resize_panels(window, rules):
     """
     width, height = window.size
 
-    # Update toolbar and pane elements
-    window['-CANVAS_HEIGHT-'].set_size((None, height))
-    window['-CANVAS_WIDTH-'].set_size((width, None))
+    toolbar_h = 60  # toolbar height plus toolbar border
 
+    # Update toolbar and pane elements
     panel_w = width if width >= mod_const.WIN_WIDTH else mod_const.WIN_WIDTH
-    panel_h = height if height >= mod_const.WIN_HEIGHT else mod_const.WIN_HEIGHT
+    panel_h = height - toolbar_h if height >= mod_const.WIN_HEIGHT else mod_const.WIN_HEIGHT - toolbar_h
+
+    #window['-CANVAS_HEIGHT-'].set_size((None, panel_h))
+    window['-CANVAS_WIDTH-'].set_size((panel_w, None))
+
+    # Reset size of the home panel
+    window['-HOME_HEIGHT-'].set_size((None, panel_h))
+    window['-HOME_WIDTH-'].set_size((panel_w, None))
 
     # Update audit rule elements
     for rule in rules:
         try:
-            rule.resize_elements(window, win_size=(panel_w, panel_h))
+            rule.resize_elements(window, (panel_w, panel_h))
         except Exception as e:
             msg = 'failed to resize window - {ERR}'.format(ERR=e)
             logger.exception(msg)

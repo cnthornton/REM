@@ -63,7 +63,7 @@ class AuditRule:
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Panel', 'TG', 'Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth', 'PanelHeight',
-                          'FrameHeight', 'FrameWidth')]
+                          'FrameHeight', 'FrameWidth', 'TransactionPanel')]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -144,7 +144,7 @@ class AuditRule:
 
         self.in_progress = False
 
-        self.panel_keys = {0: self.key_lookup('Panel'), 1: self.summary.element_key}
+        self.panel_keys = {0: self.key_lookup('TransactionPanel'), 1: self.summary.element_key}
         self.current_panel = 0
         self.first_panel = 0
         self.last_panel = 1
@@ -575,14 +575,11 @@ class AuditRule:
 
         return current_rule
 
-    def layout(self, win_size: tuple = None):
+    def layout(self, size):
         """
         Generate a GUI layout for the audit rule.
         """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+        width, height = size
 
         # Element parameters
         bttn_text_col = mod_const.WHITE_TEXT_COL
@@ -611,11 +608,12 @@ class AuditRule:
         panel_height = frame_height - 80
         tab_height = panel_height * 0.6
 
-        layout_pad = 120
-        win_diff = width - mod_const.WIN_WIDTH
-        layout_pad = layout_pad + (win_diff / 5)
+        #layout_pad = 120
+        #win_diff = width - mod_const.WIN_WIDTH
+        #layout_pad = layout_pad + (win_diff / 5)
 
-        frame_width = width - layout_pad if layout_pad > 0 else width
+        #frame_width = width - layout_pad if layout_pad > 0 else width
+        frame_width = width
         panel_width = frame_width - 30
         tab_width = panel_width - 30
 
@@ -627,7 +625,7 @@ class AuditRule:
         # Layout elements
         # Title
         panel_title = 'Transaction Audit: {}'.format(self.menu_title)
-        title_layout = [[sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
+        title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
 
         # Rule parameter elements
         if len(params) > 1:
@@ -646,10 +644,10 @@ class AuditRule:
                                    disabled_button_color=(disabled_text_col, disabled_bg_col),
                                    tooltip='Start transaction audit')]]
 
-        param_layout = [sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
-                               vertical_alignment='t', expand_x=True),
-                        sg.Col(start_layout, pad=(0, 0), background_color=bg_col, justification='r',
-                               element_justification='r', vertical_alignment='t')]
+        header = [sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
+                         vertical_alignment='t', expand_x=True),
+                  sg.Col(start_layout, pad=(0, 0), background_color=bg_col, justification='r',
+                         element_justification='r', vertical_alignment='t')]
 
         # Tab layout
         tg_key = self.key_lookup('TG')
@@ -667,75 +665,87 @@ class AuditRule:
                                  title_color=text_col, selected_background_color=bg_col, background_color=bg_col)]
 
         # Main panel layout
-        main_key = self.key_lookup('Panel')
-        main_layout = sg.Col([param_layout,
-                              [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-                              tg_layout],
-                             key=main_key, pad=(0, 0), background_color=bg_col, vertical_alignment='t',
-                             visible=True, expand_y=True, expand_x=True)
+        main_key = self.key_lookup('TransactionPanel')
+        #transaction_layout = sg.Col([param_layout,
+        #                             [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+        #                             tg_layout], key=main_key, pad=(0, 0), background_color=bg_col,
+        #                            vertical_alignment='t', visible=True, expand_y=True, expand_x=True)
+        transaction_layout = sg.Col([tg_layout], key=main_key, pad=(0, 0), background_color=bg_col,
+                                    vertical_alignment='t', visible=True, expand_y=True, expand_x=True)
 
         # Panels
-        summary_layout = self.summary.layout(win_size)
+        summary_layout = self.summary.layout(size)
 
-        panels = [main_layout, summary_layout]
+        panels = [transaction_layout, summary_layout]
 
         pw_key = self.key_lookup('PanelWidth')
         ph_key = self.key_lookup('PanelHeight')
-        panel_layout = [[sg.Canvas(key=pw_key, size=(panel_width, 0), background_color=bg_col)],
-                        [sg.Canvas(key=ph_key, size=(0, panel_height), background_color=bg_col),
-                         sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]]
+        panel_group = [[sg.Canvas(key=pw_key, size=(panel_width, 0), background_color=bg_col)],
+                       [sg.Canvas(key=ph_key, size=(0, panel_height), background_color=bg_col),
+                        sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]]
+
+        # Panel layout
+        panel_layout = sg.Col(panel_group, pad=(0, 0), background_color=bg_col, expand_x=True,
+                              vertical_alignment='t', visible=True, expand_y=True, scrollable=True,
+                              vertical_scroll_only=True)
 
         # Standard elements
-        cancel_key = self.key_lookup('Cancel')
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
+        cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        bttn_layout = [
-            sg.Col([[sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=((0, pad_el), 0), disabled=False,
-                               tooltip='Return to home screen')]],
-                   pad=(0, (pad_v, 0)), justification='l', expand_x=True),
-            sg.Col([[sg.Canvas(size=(0, 0), visible=True)]], justification='c', expand_x=True),
-            sg.Col([[sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=((0, pad_el), 0), disabled=True,
-                               tooltip='Return to audit ({})'.format(back_shortcut), metadata={'disabled': True}),
-                     sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=(pad_el, 0), disabled=True, tooltip='Review audit summary ({})'.format(next_shortcut),
-                               metadata={'disabled': True}),
-                     sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                               pad=((pad_el, 0), 0), disabled=True, metadata={'disabled': True},
-                               tooltip='Save to database and generate summary report')]],
-                   pad=(0, (pad_v, 0)), justification='r')]
+        bttn_layout = sg.Col([
+            [sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
+                       image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
+                       tooltip='Return to home screen'),
+             sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
+                       pad=((0, pad_el), 0), disabled=True, tooltip='Next panel ({})'.format(back_shortcut),
+                       metadata={'disabled': True}),
+             sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
+                       pad=((0, pad_el), 0), disabled=True, tooltip='Previous panel ({})'.format(next_shortcut),
+                       metadata={'disabled': True}),
+             sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                       pad=(0, 0), disabled=True, tooltip='Save to database and generate summary report',
+                       metadata={'disabled': True})
+             ]], background_color=bg_col, element_justification='c', expand_x=True)
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')
-        frame_layout = [sg.Frame('', [
-            [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
-            [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-            [sg.Col([[sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col)]], vertical_alignment='t'),
-             sg.Col(panel_layout, pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
-                    expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True)]],
-                                 background_color=bg_col, relief='raised')]
+        #layout = [[sg.Frame('', [
+        #    [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
+        #    [sg.Col(title_layout, pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+        #    [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
+        #     sg.Col(panel_layout, pad=((pad_frame, pad_v), pad_v), background_color=bg_col, vertical_alignment='t',
+        #            expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True)],
+        #    [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+        #    [bttn_layout]], background_color=bg_col, relief='raised')]]
+        layout = [[sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
+                  [sg.Col([[title_layout]], background_color=header_col, expand_x=True)],
+                  [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
+                   sg.Col([header,
+                           [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+                           [panel_layout],
+                           [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+                           [bttn_layout]],
+                          pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]]
 
-        layout = [frame_layout, bttn_layout]
+        #layout = [frame_layout, bttn_layout]
 
-        return sg.Col(layout, key=self.element_key, visible=False)
+        return sg.Col(layout, key=self.element_key, visible=False, background_color=bg_col)
 
-    def resize_elements(self, window, win_size: tuple = None):
+    def resize_elements(self, window, size):
         """
         Resize Audit Rule GUI elements.
         """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = window.size  # default to current window size
+        width, height = size
 
         # For every five-pixel increase in window size, increase frame size by one
-        layout_pad = 100  # default padding between the window and border of the frame
-        win_diff = width - mod_const.WIN_WIDTH
-        layout_pad = layout_pad + int(win_diff / 5)
+        #layout_pad = 100  # default padding between the window and border of the frame
+        #win_diff = width - mod_const.WIN_WIDTH
+        #layout_pad = layout_pad + int(win_diff / 5)
 
-        frame_width = width - layout_pad if layout_pad > 0 else width
+        #frame_width = width - layout_pad if layout_pad > 0 else width
+        frame_width = width
         panel_width = frame_width - 30
 
         width_key = self.key_lookup('FrameWidth')
@@ -744,9 +754,10 @@ class AuditRule:
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        layout_height = height * 0.85  # height of the container panel, including buttons
-        frame_height = layout_height - 120  # minus the approximate height of the button row and title bar, with padding
-        panel_height = frame_height - 20  # minus top and bottom padding
+        #layout_height = height * 0.85  # height of the container panel, including buttons
+        #frame_height = layout_height - 120  # minus the approximate height of the button row and title bar, with padding
+        frame_height = height  # minus button and header
+        panel_height = frame_height - 240  # minus panel title, padding, and button controls
 
         height_key = self.key_lookup('FrameHeight')
         window[height_key].set_size((None, frame_height))
@@ -755,7 +766,7 @@ class AuditRule:
         window[ph_key].set_size((None, panel_height))
 
         # Resize tab elements
-        tab_height = panel_height - 120  # minus size of the tabs and the panel title
+        tab_height = panel_height - 6  # minus size of the tabs and the panel title
         tab_width = panel_width - mod_const.FRAME_PAD * 2  # minus left and right padding
 
         tabs = self.tabs
@@ -1615,7 +1626,7 @@ class AuditSummary:
             else:
                 tab.run_event(window, event, values)
 
-    def layout(self, win_size: tuple = None):
+    def layout_old(self, win_size: tuple = None):
         """
         Generate a GUI layout for the Audit Rule Summary.
         """
@@ -1669,9 +1680,64 @@ class AuditSummary:
                                  selected_title_color=select_col, title_color=text_col)]
 
         # Panel layout
-        layout = sg.Col([title_layout, [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)], tg_layout],
+        layout = sg.Col([title_layout,
+                         [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+                         tg_layout],
                         key=self.element_key, background_color=bg_col, vertical_alignment='t', visible=False,
                         expand_y=True, expand_x=True)
+
+        return layout
+
+    def layout(self, win_size: tuple = None):
+        """
+        Generate a GUI layout for the Audit Rule Summary.
+        """
+        if win_size:
+            width, height = win_size
+        else:
+            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+
+        # Layout settings
+        pad_v = mod_const.VERT_PAD
+
+        bg_col = mod_const.ACTION_COL
+        inactive_col = mod_const.INACTIVE_COL
+        text_col = mod_const.TEXT_COL
+        select_col = mod_const.SELECT_TEXT_COL
+
+        font_h = mod_const.BOLD_FONT
+
+        # Element sizes
+        layout_height = height * 0.8
+        frame_height = layout_height * 0.70
+        panel_height = frame_height - 80
+        tab_height = panel_height * 0.6
+
+        layout_pad = 120
+        win_diff = width - mod_const.WIN_WIDTH
+        layout_pad = layout_pad + (win_diff / 5)
+
+        frame_width = width - layout_pad if layout_pad > 0 else width
+        panel_width = frame_width - 30
+        tab_width = panel_width - 30
+
+        # Record tabs
+        record_tabs = []
+        for tab in self.tabs:
+            tab_key = tab.key_lookup('Tab')
+            tab_title = tab.title
+            tab_layout = tab.record.layout(win_size=(tab_width, tab_height), ugroup=user.access_permissions())
+            record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col,
+                                      metadata={'visible': True, 'disabled': False}))
+
+        tg_key = self.key_lookup('TG')
+        tg_layout = sg.TabGroup([record_tabs], key=tg_key, pad=(0, 0), background_color=bg_col,
+                                tab_background_color=inactive_col, selected_background_color=bg_col,
+                                selected_title_color=select_col, title_color=text_col)
+
+        # Panel layout
+        layout = sg.Col([[tg_layout]], key=self.element_key, background_color=bg_col, vertical_alignment='t',
+                        visible=False, expand_y=True, expand_x=True)
 
         return layout
 

@@ -51,7 +51,7 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('MainPanel', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
+                         ('Panel', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
                           'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next')]
 
         try:
@@ -85,7 +85,7 @@ class BankRule:
             acct = AccountEntry(acct_id, acct_entry, parent=self.name)
             self.accts.append(acct)
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
-            #self.elements += acct.elements
+            # self.elements += acct.elements
 
         # Dynamic Attributes
         self.in_progress = False
@@ -269,7 +269,7 @@ class BankRule:
             # Reset panel sizes
             next_acct = self.fetch_account(next_panel, by_key=True)
             next_acct.table.set_table_dimensions(window)
-#            self.resize_elements(window)
+            #            self.resize_elements(window)
 
             # Hide current panel and un-hide the following panel
             window[self.current_panel].update(visible=False)
@@ -288,7 +288,7 @@ class BankRule:
             # Reset panel sizes
             prev_acct = self.fetch_account(prev_panel, by_key=True)
             prev_acct.table.set_table_dimensions(window)
-#            self.resize_elements(window)
+            #            self.resize_elements(window)
 
             # Hide current panel and un-hide the previous panel
             window[self.current_panel].update(visible=False)
@@ -433,14 +433,11 @@ class BankRule:
 
             return None
 
-    def layout(self, win_size: tuple = None):
+    def layout(self, size):
         """
         Generate a GUI layout for the bank reconciliation rule.
         """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+        width, height = size
 
         # Element parameters
         bttn_text_col = mod_const.WHITE_TEXT_COL
@@ -461,8 +458,7 @@ class BankRule:
         pad_frame = mod_const.FRAME_PAD
 
         # Element sizes
-        layout_height = height * 0.8
-        frame_height = layout_height * 0.70
+        frame_height = height
         panel_height = frame_height - 80
 
         layout_pad = 120
@@ -508,75 +504,82 @@ class BankRule:
 
         pw_key = self.key_lookup('PanelWidth')
         ph_key = self.key_lookup('PanelHeight')
-        panel_layout = [[sg.Canvas(key=pw_key, size=(panel_width, 0), background_color=bg_col)],
-                        [sg.Canvas(key=ph_key, size=(0, panel_height), background_color=bg_col),
-                         sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]]
+        panel_group = [[sg.Canvas(key=pw_key, size=(panel_width, 0), background_color=bg_col)],
+                       [sg.Canvas(key=ph_key, size=(0, panel_height), background_color=bg_col),
+                        sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]]
 
-        # Main Panel layout
-        main_key = self.key_lookup('Panel')
-        main_layout = sg.Col(panel_layout, pad=(0, 0), background_color=bg_col, expand_x=True,
-                             key=main_key, vertical_alignment='t', visible=True, expand_y=True, scrollable=True,
-                             vertical_scroll_only=True)
-
-        # Navigation elements
-        next_key = self.key_lookup('Next')
-        back_key = self.key_lookup('Back')
-        nav_layout = sg.Col(
-            [[sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                        pad=((0, pad_el), 0), disabled=True,
-                        tooltip='Return to audit ({})'.format(back_shortcut), metadata={'disabled': True}),
-              sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                        pad=(pad_el, 0), disabled=True, tooltip='Review audit ({})'.format(next_shortcut),
-                        metadata={'disabled': True})]],
-            pad=(0, 0), background_color=bg_col, element_justification='c', expand_x=True)
+        # Panel layout
+        panel_layout = sg.Col(panel_group, pad=(0, 0), background_color=bg_col, expand_x=True,
+                              vertical_alignment='t', visible=True, expand_y=True, scrollable=True,
+                              vertical_scroll_only=True)
 
         # Control elements
+        next_key = self.key_lookup('Next')
+        back_key = self.key_lookup('Back')
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        bttn_layout = [sg.Col([
+        bttn_layout = sg.Col([
             [sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
                        image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
-                       tooltip='Return to home screen ({})'.format(cancel_shortcut))]
-        ], pad=(0, (pad_v, 0)), justification='l', expand_x=True),
-            sg.Col([
-                [sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                           pad=((pad_el, 0), 0), disabled=True,
-                           tooltip='Save results ({})'.format(save_shortcut),
-                           metadata={'disabled': True})]
-            ], pad=(0, (pad_v, 0)), justification='r', element_justification='r')]
+                       tooltip='Return to home screen ({})'.format(cancel_shortcut)),
+             sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
+                       pad=((0, pad_el), 0), disabled=True, tooltip='Next panel ({})'.format(back_shortcut),
+                       metadata={'disabled': True}),
+             sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
+                       pad=((0, pad_el), 0), disabled=True, tooltip='Previous panel ({})'.format(next_shortcut),
+                       metadata={'disabled': True}),
+             sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                       pad=(0, 0), disabled=True, tooltip='Save results ({})'.format(save_shortcut),
+                       metadata={'disabled': True})
+             ]], background_color=bg_col, element_justification='c', expand_x=True)
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')
-        frame_layout = [sg.Frame('', [
-            [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
-            [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-            [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
-             sg.Col([header, [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)], [main_layout],
-                     [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)], [nav_layout]],
-                    pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]],
-                                 background_color=bg_col, relief='raised')]
+        #layout = [[sg.Frame('', [
+        #    [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
+        #    [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
+        #    [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
+        #     sg.Col([header,
+        #             [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+        #             [main_layout],
+        #             [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+        #             [nav_layout]],
+        #            pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]
+        #], background_color=bg_col, relief='raised')]]
+        layout = [[sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
+                  [sg.Col([[title_layout]], background_color=header_col, expand_x=True)],
+                  [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
+                   sg.Col([header,
+                          [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+                          [panel_layout],
+                          [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
+                          [bttn_layout]],
+                          pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]]
 
-        layout = [frame_layout, bttn_layout]
+        #layout = [frame_layout, bttn_layout]
 
-        return sg.Col(layout, key=self.element_key, visible=False)
+        return sg.Col(layout, key=self.element_key, visible=False, background_color=bg_col)
 
-    def resize_elements(self, window, win_size: tuple = None):
+    def resize_elements(self, window, size):
         """
         Resize Bank Reconciliation Rule GUI elements.
+
+        Arguments:
+            window (Window): GUI window.
+
+            size (tuple): new panel size (width, height).
         """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = window.size  # current window size (width, height)
+        width, height = size
 
         # For every five-pixel increase in window size, increase frame size by one
-        #layout_pad = 100  # default padding between the window and border of the frame
-        #win_diff = width - mod_const.WIN_WIDTH
-        #layout_pad = layout_pad + int(win_diff / 5)
+        # layout_pad = 100  # default padding between the window and border of the frame
+        # win_diff = width - mod_const.WIN_WIDTH
+        # layout_pad = layout_pad + int(win_diff / 5)
 
-        #frame_width = width - layout_pad if layout_pad > 0 else width
-        frame_width = width - 40
-        panel_width = frame_width - 36  # padding + scrollbar width
+        # frame_width = width - layout_pad if layout_pad > 0 else width
+        # frame_width = width - 40
+        frame_width = width
+        panel_width = frame_width - 38  # padding + scrollbar width
 
         width_key = self.key_lookup('FrameWidth')
         window[width_key].set_size((frame_width, None))
@@ -584,10 +587,10 @@ class BankRule:
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        #layout_height = height * 0.85  # height of the container panel, including buttons
-        layout_height = height - 80  # height of the container panel (minus padding and toolbar height)
-        frame_height = layout_height - 120  # minus the approximate height of the button row and title bar, with padding
-        panel_height = frame_height - 20  # minus top and bottom padding
+        # layout_height = height * 0.85  # height of the container panel, including buttons
+        # layout_height = height - 80  # height of the container panel (minus padding and toolbar height)
+        frame_height = height  # minus the approximate height of the button row and title bar, with padding
+        panel_height = frame_height - 220  # minus panel title, padding, and button row
 
         height_key = self.key_lookup('FrameHeight')
         window[height_key].set_size((None, frame_height))
@@ -1157,7 +1160,7 @@ class AccountEntry:
                     if table.modifiers['open'] is True:
                         record = table.load_record(index, level=0, savable=False, references={association_rule: ref_df})
                         if record is None:
-                            msg = 'unable to update references for record at index {IND} - no record was returned'\
+                            msg = 'unable to update references for record at index {IND} - no record was returned' \
                                 .format(IND=index)
                             logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
@@ -1182,10 +1185,13 @@ class AccountEntry:
                                 print('updating record {} reference with values:'.format(record_id))
                                 print(ref_values)
                                 try:
-                                    ref_df.loc[ref_df['RecordID'] == record_id, ref_values.index.tolist()] = ref_values.tolist()
+                                    ref_df.loc[ref_df[
+                                                   'RecordID'] == record_id, ref_values.index.tolist()] = ref_values.tolist()
                                 except KeyError as e:
-                                    msg = 'failed to update reference {REF} for record {ID}'.format(REF=refbox.name, ID=record_id)
-                                    logger.error('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                                    msg = 'failed to update reference {REF} for record {ID}'.format(REF=refbox.name,
+                                                                                                    ID=record_id)
+                                    logger.error(
+                                        'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             elif event == delete_key or (event == '-HK_TBL_DEL-' and can_delete):
                 reference_event = True
@@ -1211,7 +1217,7 @@ class AccountEntry:
 
     def layout(self, size):
         """
-        GUI layout for the bank record tab.
+        GUI layout for the account sub-panel.
         """
         width, height = size
 
@@ -1234,7 +1240,7 @@ class AccountEntry:
 
     def resize(self, window, size):
         """
-        Resize the account panel.
+        Resize the account sub-panel.
         """
         width, height = size
 
@@ -1278,8 +1284,8 @@ class AccountEntry:
         print(ref_df)
 
         # Update record reference columns
-#        df.update(ref_df)
-#        df.reset_index(inplace=True)
+        #        df.update(ref_df)
+        #        df.reset_index(inplace=True)
         df = df.drop(columns=ref_df.columns).join(ref_df)
         df.reset_index(inplace=True)
         print('dataframe after updating on record id:')
