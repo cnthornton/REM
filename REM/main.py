@@ -508,7 +508,7 @@ class ToolBar:
 
 
 # General functions
-def get_panels(account_methods, win_size: tuple = None):
+def panel_layout(account_methods, win_size: tuple = None):
     """
     Get the GUI layouts for the configuration-dependant panels.
     """
@@ -530,16 +530,11 @@ def get_panels(account_methods, win_size: tuple = None):
             msg = 'creating layout for workflow method {ACCT}, rule {RULE}'\
                 .format(ACCT=account_method.name, RULE=rule.name)
             logger.debug(msg)
+
             panels.append(rule.layout(size=(panel_w, panel_h)))
 
     # Layout
-    #pane = [sg.Canvas(size=(0, height), key='-CANVAS_HEIGHT-', visible=True),
-    #        sg.Col([[sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0,
-    #                         relief='flat')]], pad=(0, 10), justification='c', element_justification='c')]
-    #pane = [sg.Canvas(size=(2, panel_h), key='-CANVAS_HEIGHT-', visible=True, background_color='green'),
-    #        sg.Col([[sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0,
-    #                         relief='flat')]], justification='c', element_justification='c', vertical_alignment='t')]
-    pane = [sg.Pane(panels, key='-PANEWINDOW-', orientation='horizontal', show_handle=False, border_width=0)]
+    pane = [sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0)]
 
     return pane
 
@@ -624,7 +619,7 @@ def main():
     # Configure GUI layout
     toolbar = ToolBar([audit_rules, cash_rules, bank_rules], record_rules)
     layout = [toolbar.layout(win_size=(current_w, current_h)),
-              get_panels(acct_methods, win_size=(current_w, current_h))]
+              panel_layout(acct_methods, win_size=(current_w, current_h))]
 
     # Element keys and names
     audit_names = audit_rules.print_rules()
@@ -651,7 +646,7 @@ def main():
 
     # Initialize main window and login window
     window = sg.Window('REM Tila (v{VER})'.format(VER=__version__), layout, icon=settings.icon,
-                       font=mod_const.MAIN_FONT, size=(current_w, current_h), resizable=True,
+                       font=mod_const.MAIN_FONT, size=(current_w, current_h), resizable=True, margins=(0, 0),
                        return_keyboard_events=True)
     window.finalize()
     window.maximize()
@@ -670,8 +665,12 @@ def main():
     resize_panels(window, acct_rules)
     resized = False
 
-    # Event Loop
+    # Make home screen visible
+    window.refresh()
     home_panel = current_panel = '-HOME-'
+    window[home_panel].update(visible=True)
+
+    # Event Loop
     while True:
         event, values = window.read(timeout=100)
 

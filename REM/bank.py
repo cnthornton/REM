@@ -558,7 +558,7 @@ class BankRule:
 
         #layout = [frame_layout, bttn_layout]
 
-        return sg.Col(layout, key=self.element_key, visible=False, background_color=bg_col)
+        return sg.Col(layout, key=self.element_key, visible=False, background_color=bg_col, vertical_alignment='t')
 
     def resize_elements(self, window, size):
         """
