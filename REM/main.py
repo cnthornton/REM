@@ -543,10 +543,13 @@ def resize_panels(window, rules):
     window['-CANVAS_HEIGHT-'].set_size((None, height))
     window['-CANVAS_WIDTH-'].set_size((width, None))
 
+    panel_w = width if width >= mod_const.WIN_WIDTH else mod_const.WIN_WIDTH
+    panel_h = height if height >= mod_const.WIN_HEIGHT else mod_const.WIN_HEIGHT
+
     # Update audit rule elements
     for rule in rules:
         try:
-            rule.resize_elements(window)
+            rule.resize_elements(window, win_size=(panel_w, panel_h))
         except Exception as e:
             msg = 'failed to resize window - {ERR}'.format(ERR=e)
             logger.exception(msg)

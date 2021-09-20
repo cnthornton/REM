@@ -501,6 +501,8 @@ class RecordEntry:
 
         # Check if references exists in the table already
         exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
+        print('records already exist in the database:')
+        print(exists)
 
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
         export_df = df[[i for i in column_map if i in df.columns]].rename(columns=column_map)

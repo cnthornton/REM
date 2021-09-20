@@ -1166,7 +1166,15 @@ class AccountEntry:
                         # Update reference values
                         if table.modifiers['edit']:  # only update references if table is editable
                             record_id = record.record_id()
-                            for refbox in record.references:
+                            try:
+                                refboxes = record.fetch_element('refbox', by_type=True)
+                            except KeyError:
+                                msg = 'no references defined for record type {TYPE}'.format(TYPE=record.name)
+                                logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                                return False
+
+                            for refbox in refboxes:
                                 if refbox.association_rule != association_rule:
                                     continue
 
