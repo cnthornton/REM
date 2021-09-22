@@ -935,7 +935,7 @@ def main():
                 try:
                     acct_name = current_rule.menu_flags[selected_menu]
                 except KeyError:
-                    acct_name = selected_rule.name
+                    acct_name = selected_rule
 
                 # Fetch the primary account
                 current_acct = current_rule.fetch_account(acct_name)

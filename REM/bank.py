@@ -878,25 +878,24 @@ class BankRule:
         statements = {}
 
         # Prepare to save the account references
-        for panel in self.panels:
-            acct = self.fetch_account(panel, by_key=True)
+        acct = self.fetch_account(self.current_account)
 
-            record_type = acct.record_type
-            record_entry = settings.records.fetch_rule(record_type)
-            logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
-                         .format(NAME=self.name, ACCT=acct.name))
-            try:
-                statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
-                                                                   statements=statements)
-            except Exception as e:
-                msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
-                    .format(ACCT=acct.name, ERR=e)
-                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+        record_type = acct.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+        logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
+                     .format(NAME=self.name, ACCT=acct.name))
+        try:
+            statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
+                                                               statements=statements)
+        except Exception as e:
+            msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                .format(ACCT=acct.name, ERR=e)
+            logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                return False
+            return False
 
-            logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
-                        .format(NAME=self.name, ACCT=self.current_account))
+        logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
+                    .format(NAME=self.name, ACCT=self.current_account))
 
         sstrings = []
         psets = []
