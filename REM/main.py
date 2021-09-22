@@ -687,6 +687,11 @@ def main():
         # Resize screen
         if resized and current_panel != home_panel:
             if current_rule is not None:
+                if not current_rule.current_panel:
+                    resized = False
+
+                    continue
+
                 try:
                     window[current_rule.current_panel].update(visible=False)
                 except KeyError:
@@ -932,15 +937,15 @@ def main():
                 current_rule = bank_rules.fetch_rule(selected_rule)
 
                 # Use the menu flag to find the primary account
-                try:
-                    acct_name = current_rule.menu_flags[selected_menu]
-                except KeyError:
-                    acct_name = selected_rule
+                #try:
+                #    acct_name = current_rule.menu_flags[selected_menu]
+                #except KeyError:
+                #    acct_name = selected_rule
 
                 # Fetch the primary account
-                current_acct = current_rule.fetch_account(acct_name)
-                current_rule.current_account = current_acct.name
-                current_rule.current_panel = current_acct.key_lookup('Panel')
+                #current_acct = current_rule.fetch_account(acct_name)
+                #current_rule.current_account = current_acct.name
+                #current_rule.current_panel = current_acct.key_lookup('Panel')
 
                 # Clear the panel
                 current_rule.reset_rule(window, current=True)
@@ -950,7 +955,7 @@ def main():
 
                 current_panel = current_rule.element_key
                 window[current_panel].update(visible=True)
-                window[current_rule.current_panel].update(visible=True)
+                #window[current_rule.current_panel].update(visible=True)
 
                 # Disable toolbar
                 toolbar.disable(window)

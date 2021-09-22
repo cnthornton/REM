@@ -51,7 +51,7 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
+                         ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
                           'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next')]
 
         try:
@@ -119,19 +119,23 @@ class BankRule:
 
         return events
 
-    def fetch_account(self, account_id, by_key: bool = False):
+    def fetch_account(self, account_id, by_title: bool = False, by_key: bool = False):
         """
         Fetch a GUI parameter element by name or event key.
 
         Arguments:
             account_id (str): identifier used to find the correct account entry.
 
-            by_key (bool): identifier is an element of the account entry [Default: use account entry name].
+            by_title (bool): identifier is the title of an account [Default: False].
+
+            by_key (bool): identifier is an element of the account entry [Default: False].
         """
         account = None
         for acct in self.accts:
             if by_key:
                 elements = acct.elements
+            elif by_title:
+                elements = [acct.title]
             else:
                 elements = [acct.name]
 
@@ -156,6 +160,7 @@ class BankRule:
         current_rule = self.name
 
         reconcile_key = self.key_lookup('Reconcile')
+        entry_key = self.key_lookup('Entry')
         expand_key = self.key_lookup('Expand')
         param_key = self.key_lookup('Parameters')
         cancel_key = self.key_lookup('Cancel')
@@ -315,6 +320,35 @@ class BankRule:
                 # Reset current panel attribute
                 self.current_panel = select_panel
 
+        # An account was selected from the account entry dropdown. Selecting an account will display the associated
+        # sub-panel.
+        elif event == entry_key:
+            acct_title = values[event]
+            print('account selected is {}'.format(acct_title))
+            if not acct_title:
+                self.current_account = None
+                self.current_panel = None
+
+                # Disable the parameter selection button
+                window[param_key].update(disabled=True)
+
+                return current_rule
+
+            # Hide the current panel
+            if self.current_panel:
+                window[self.current_panel].update(visible=False)
+
+            # Set the new primary account account
+            current_acct = self.fetch_account(acct_title, by_title=True)
+            self.current_account = current_acct.name
+            self.current_panel = current_acct.key_lookup('Panel')
+
+            # Clear the panel
+            window[self.current_panel].update(visible=True)
+
+            # Enable the parameter selection button
+            window[param_key].update(disabled=False)
+
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
         elif event == param_key:
@@ -346,6 +380,10 @@ class BankRule:
 
                 # Update the display
                 self.update_display(window)
+
+                # Disable the account entry selection dropdown
+                window[entry_key].update(disabled=True)
+                window[param_key].update(disabled=True)
 
                 # Enable elements
                 window[save_key].update(disabled=False)
@@ -390,9 +428,13 @@ class BankRule:
         Reset rule to default.
         """
         panel_key = self.element_key
+        entry_key = self.key_lookup('Entry')
+        param_key = self.key_lookup('Parameters')
 
         # Disable current panel
-        window[self.current_panel].update(visible=False)
+        if self.current_panel:
+            window[self.current_panel].update(visible=False)
+
         window[panel_key].update(visible=False)
         window['-HOME-'].update(visible=True)
 
@@ -403,6 +445,9 @@ class BankRule:
         window[reconcile_key].update(disabled=True)
         window[save_key].update(disabled=True)
         window[expand_key].update(disabled=True, value=False)
+
+        # Enable the account entry selection dropdown
+        window[entry_key].update(disabled=False)
 
         # Disable the navigation buttons
         next_key = self.key_lookup('Next')
@@ -421,8 +466,12 @@ class BankRule:
 
         if current:
             window['-HOME-'].update(visible=False)
-            self.current_panel = self.panel_keys[self.current_account]
-            window[self.current_panel].update(visible=True)
+            if self.current_panel:
+                window[self.current_panel].update(visible=True)
+
+                # Enable the parameter selection button
+                window[param_key].update(disabled=False)
+
             window[panel_key].update(visible=True)
 
             return self.name
@@ -430,6 +479,12 @@ class BankRule:
             # Reset the current account display
             self.current_panel = None
             self.current_account = None
+
+            # Reset the account entry dropdown
+            window[entry_key].update(value='')
+
+            # Disable the parameter selection button
+            window[param_key].update(disabled=True)
 
             return None
 
@@ -483,10 +538,16 @@ class BankRule:
 
         # Header
         param_key = self.key_lookup('Parameters')
+        entry_key = self.key_lookup('Entry')
         reconcile_key = self.key_lookup('Reconcile')
         expand_key = self.key_lookup('Expand')
-        header = [sg.Col([[sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
-                                     button_color=(text_col, bg_col), tooltip='Set parameters')]],
+
+        entries = [i.title for i in self.accts]
+        header = [sg.Col([[sg.Combo(entries, default_value='', key=entry_key, size=(30, 1), pad=(pad_h, 0), font=font,
+                                    text_color=text_col, background_color=bg_col, disabled=False, enable_events=True,
+                                    tooltip='Select reconciliation account'),
+                           sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
+                                     button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
                          expand_x=True, justification='l', background_color=bg_col),
                   sg.Col([[sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
                                      button_color=(bttn_text_col, bttn_bg_col),
@@ -1050,14 +1111,6 @@ class AccountEntry:
             for transaction_acct in transactions:
                 cnfg_entry = transactions[transaction_acct]
                 trans_entry = {}
-                if 'TransactionType' not in cnfg_entry:
-                    msg = 'AccountEntry {NAME}: Transaction account {ACCT} is missing required parameter ' \
-                          '"TransactionType"'.format(NAME=name, ACCT=transaction_acct)
-                    logger.error(msg)
-
-                    continue
-                else:
-                    trans_entry['TransactionType'] = cnfg_entry['TransactionType']
 
                 if 'AssociationParameters' not in cnfg_entry:
                     msg = 'AccountEntry {NAME}: Transaction account {ACCT} is missing required parameter ' \
