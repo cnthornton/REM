@@ -585,12 +585,15 @@ class RecordEntry:
             raise ValueError('records argument must be one of DataFrame, Series, or dictionary')
 
         if df.empty:
+            logger.warning('RecordType {NAME}: no record provided for saving to the database')
+
             return statements
 
         exists = self.confirm_saved(df[id_field].values.tolist(), id_field=id_field)
+        print(exists)
 
         # Prepare a separate database transaction statement for each database table containing the record's data
-        columns = df.columns.values.tolist()
+        columns = df.columns.tolist()
         for table in export_rules:
             table_entry = export_rules[table]
 
@@ -650,12 +653,9 @@ class RecordEntry:
                 statements = user.prepare_insert_statement(table, export_columns, export_values, statements=statements)
 
         # If relevant, create or edit hard-linked reference records for new database records
-        new_df = df[[not i for i in exists]]
-        exist_df = df[exists]
+        new_df = df[[not i for i in exists]].rename(columns={id_field: 'RecordID'})
+        exist_df = df[exists].rename(columns={id_field: 'RecordID'})
         for association in association_rules:
-            if new_df.empty:
-                continue
-
             rule = association_rules[association]
 
             # Create or edit any hard-linked records
@@ -664,6 +664,9 @@ class RecordEntry:
                 record_type = self.name
 
                 for ref_type in link_rules:
+                    print('record type {NAME} has hard-linked rule to record of type {REF}'.format(NAME=record_type,
+                                                                                                   REF=ref_type))
+
                     ref_entry = settings.records.fetch_rule(ref_type)
                     link_rule = link_rules[ref_type]
                     try:
@@ -678,21 +681,32 @@ class RecordEntry:
                     sub_cols = [i for i in colmap if i in df.columns]
 
                     # Edit existing linked-records
-                    #df_sub_exist = exist_df[mod_dm.evaluate_rule(exist_df, condition)]
-                    #if df_sub_exist.empty:
-                    #    continue
 
-                    # Get IDs of the linked records
-                    #exist_ref_df = self.import_references(df_sub_exist['RecordID'].tolist(), association)
+                    # Get hard-linked references of the existing records
+                    current_ids = exist_df['RecordID'].tolist()
+                    exist_ref_df = self.import_references(current_ids, association)
 
-                    # Merge the relevant columns of the records dataframe with the reference dataframe
-                    #merged_df = pd.merge(df_sub_exist[['RecordID'] + sub_cols], exist_ref_df, on='RecordID')
-                    #merged_df = merged_df[['ReferenceID'] + sub_cols].rename(columns=colmap)
-                    #statements = ref_entry.save_database_records(merged_df.rename(columns={'ReferenceID': 'RecordID'}),
-                    #                                             statements=statements)
+                    exist_ref_df = exist_ref_df[exist_ref_df['IsHardLink']]
+                    print('existing references:')
+                    print(exist_ref_df)
+                    if not exist_ref_df.empty:
+                        # Merge the relevant columns of the records dataframe with the reference dataframe
+                        merged_df = pd.merge(exist_df[['RecordID'] + sub_cols], exist_ref_df, on='RecordID')
+
+                        # Subset the dataframe on the mapped columns and rename the columns
+                        merged_df = merged_df[['ReferenceID'] + sub_cols].rename(columns=colmap)
+                        merged_df.rename(columns={'ReferenceID': 'RecordID'}, inplace=True)
+
+                        # Edit the hard-linked records
+                        statements = ref_entry.save_database_records(merged_df, statements=statements)
 
                     # Create new hard-linked records
+                    if new_df.empty:
+                        continue
+
                     df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
+                    print('new records:')
+                    print(df_sub)
                     if df_sub.empty:
                         continue
 
@@ -711,12 +725,15 @@ class RecordEntry:
 
                     ref_ids = ref_entry.create_record_ids(ref_dates, offset=settings.get_date_offset())
 
+                    # Subset the dataframe on the mapped columns and rename the columns
                     ref_df = df_sub[sub_cols].rename(columns=colmap)
                     ref_df['RecordID'] = ref_ids
                     ref_df['RecordDate'] = ref_dates
+
+                    # Create the hard-linked records
                     statements = ref_entry.save_database_records(ref_df, statements=statements)
 
-                    # Create record references
+                    # Create the record references
                     ref_data = pd.DataFrame({'RecordID': primary_ids, 'ReferenceID': ref_ids,
                                              'ReferenceDate': datetime.datetime.now(), 'RecordType': record_type,
                                              'ReferenceType': ref_type, 'IsApproved': True, 'IsChild': False,
@@ -2928,9 +2945,9 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-#        success = user.write_db(sstrings, psets)
-        success = True
-        print(statements)
+        success = user.write_db(sstrings, psets)
+        #success = True
+        #print(statements)
 
         return success
 
@@ -3350,10 +3367,6 @@ class DatabaseRecord:
 
         # Create the layout for the record information panel
         sections = self.sections
-        print('record {NAME} is editable: {EDIT}'.format(NAME=self.name, EDIT=editable))
-        print('record {NAME} is a new record: {NEW}'.format(NAME=self.name, NEW=self.new))
-        print('record {NAME} was opened at level {LEVEL}'.format(NAME=self.name, LEVEL=self.level))
-        print('record {NAME} has permissions: {PERM}'.format(NAME=self.name, PERM=permissions))
 
         sections_layout = []
         for index, section_name in enumerate(sections):
@@ -3375,7 +3388,6 @@ class DatabaseRecord:
             for element_name in section_elements:
                 element = self.fetch_element(element_name)
                 element_class = element.eclass
-                print('record element {ELEM} has element class: {CLASS}'.format(ELEM=element_name, CLASS=element_class))
 
                 try:
                     can_edit = editable and permissions[element_class] in user_priv
@@ -3384,8 +3396,6 @@ class DatabaseRecord:
                     logger.warning('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     can_edit = False
-
-                print('record element {ELEM} has permissions for editing: {EDIT}'.format(ELEM=element_name, EDIT=can_edit))
 
                 element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=self.new,
                                                  level=self.level)]

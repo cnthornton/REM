@@ -603,10 +603,12 @@ class AuditRule:
         params = self.parameters
 
         # Element sizes
-        layout_height = height * 0.8
-        frame_height = layout_height * 0.70
-        panel_height = frame_height - 80
-        tab_height = panel_height * 0.6
+        #layout_height = height * 0.8
+        #frame_height = layout_height * 0.70
+        frame_height = height
+        panel_height = frame_height - 240  # minus panel title, padding, and button controls
+        #tab_height = panel_height * 0.6
+        tab_height = panel_height -6  # minus border sizes
 
         #layout_pad = 120
         #win_diff = width - mod_const.WIN_WIDTH
@@ -615,7 +617,8 @@ class AuditRule:
         #frame_width = width - layout_pad if layout_pad > 0 else width
         frame_width = width
         panel_width = frame_width - 30
-        tab_width = panel_width - 30
+        #tab_width = panel_width - 30
+        tab_width = panel_width - mod_const.FRAME_PAD * 2  # minus left and right padding
 
         # Keyboard shortcuts
         hotkeys = settings.hotkeys
@@ -1062,8 +1065,8 @@ class AuditTransactionTab:
         window[height_key].set_size(size=(None, height))
 
         # Reset table size
-        tbl_width = width - 30  # includes padding on both sides and scroll bar
-        tbl_height = int(height * 0.6)
+        tbl_width = width - 30  # minus padding and scroll bar
+        tbl_height = height - (mod_const.FRAME_PAD * 2 + 60)  # minus padding and audit button
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
 
     def run_event(self, window, event, values):
@@ -1747,10 +1750,14 @@ class AuditSummary:
         """
         width, height = size
 
+        #record_h = height - (mod_const.FRAME_PAD * 2)
+        record_h = height - 94
+        record_w = width
+
         tabs = self.tabs
         for tab in tabs:
             # Reset summary item attributes
-            tab.record.resize(window, win_size=(width, height * 0.9))
+            tab.record.resize(window, win_size=(record_w, record_h))
 
     def update_title(self, window, params):
         """
@@ -1789,8 +1796,8 @@ class AuditSummary:
         logger.info('AuditRuleSummary {NAME}: formatted summary title is {TITLE}'
                     .format(NAME=self.name, TITLE=summ_title))
 
-        title_key = self.key_lookup('Title')
-        window[title_key].update(value=summ_title)
+        #title_key = self.key_lookup('Title')
+        #window[title_key].update(value=summ_title)
 
         self.title = summ_title
 
@@ -1874,9 +1881,9 @@ class AuditSummary:
             sstrings.append(i)
             psets.append(j)
 
-#        success = user.write_db(sstrings, psets)
-        success = True
-        print(statements)
+        success = user.write_db(sstrings, psets)
+        #success = True
+        #print(statements)
 
         return success
 

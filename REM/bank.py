@@ -858,12 +858,12 @@ class BankRule:
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Insert the reference into the account records reference dataframe
-                ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, False, False, False, False]
+                ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, True, False, False, False]
                 acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
 
                 # Insert the reference into the associated account's reference dataframe
                 assoc_acct = self.fetch_account(assoc_acct_name)
-                ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, False, False, False, False]
+                ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, True, False, False, False]
                 assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
 
         logger.info('AuditRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'

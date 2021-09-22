@@ -700,8 +700,6 @@ class TableElement(RecordElement):
         dtype_map = self.columns
         header = df.columns.tolist()
 
-        logger.debug('DataTable {NAME}: setting column data types to configured data types'.format(NAME=self.name))
-
         if not isinstance(dtype_map, dict):
             logger.warning('DataTable {NAME}: unable to set column datatypes. Columns must be configured '
                            'as an object to specify data types'.format(NAME=self.name))
@@ -1196,12 +1194,8 @@ class TableElement(RecordElement):
             tbl_total = 0
 
         if is_float_dtype(type(tbl_total)):
-            logger.debug('DataTable {NAME}: table totals "{TOT}" are formatted as float'
-                         .format(NAME=self.name, TOT=tbl_total))
             tbl_total = '{:,.2f}'.format(tbl_total)
         else:
-            logger.debug('DataTable {NAME}: table totals "{TOT}" are formatted as a string'
-                         .format(NAME=self.name, TOT=tbl_total))
             tbl_total = str(tbl_total)
 
         total_key = self.key_lookup('Total')
@@ -1353,8 +1347,6 @@ class TableElement(RecordElement):
 
         df = df if df is not None else self.data()
 
-        logger.debug('DataTable {NAME}: summarizing table column {COL}'.format(NAME=self.name, COL=column))
-
         try:
             col_values = df[column]
         except KeyError:
@@ -1401,16 +1393,11 @@ class TableElement(RecordElement):
         """
         df = self.data() if df is None else df
 
-        logger.debug('DataTable {NAME}: summarizing display table on configured summary rules'.format(NAME=self.name))
-
         # Calculate totals defined by summary rules
         summary = {}
         rules = self.summary_rules
         for rule_name in rules:
             rule = rules[rule_name]
-
-            logger.debug('DataTable {NAME}: summarizing display table on configured summary rule "{RULE}"'
-                         .format(NAME=self.name, RULE=rule_name))
 
             column = rule['Column']
 
@@ -1488,7 +1475,6 @@ class TableElement(RecordElement):
         search_field = self.search_field
 
         is_disabled = False if (editable is True and level < 1) or overwrite is True else True
-        print('table {ELEM} is disabled: {DIS}'.format(ELEM=self.name, DIS=is_disabled))
 
         # Element keys
         keyname = self.key_lookup('Element')
@@ -2156,8 +2142,6 @@ class TableElement(RecordElement):
         if df.empty:
             return 0
 
-        logger.debug('DataTable {NAME}: calculating table totals'.format(NAME=self.name))
-
         total = 0
         if tally_rule is not None:
             try:
@@ -2362,9 +2346,6 @@ class TableElement(RecordElement):
             if column not in header:
                 df[column] = None
 
-            logger.debug('DataTable {NAME}: setting conditional values for column "{COL}"'
-                         .format(NAME=self.name, COL=column))
-
             entry = columns[column]
             if 'DefaultConditions' in entry:
                 default_rules = entry['DefaultConditions']
@@ -2378,8 +2359,6 @@ class TableElement(RecordElement):
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=False)
                 default_values = self._set_column_dtype(default_values, name=column)
-                logger.debug('DataTable {NAME}: assigning conditional values "{VAL}" to column "{COL}"'
-                             .format(NAME=self.name, VAL=default_values.values, COL=column))
                 df[column] = default_values
             else:
                 logger.warning('DataTable {NAME}: neither the "DefaultCondition" nor "DefaultRule" parameter was '
@@ -3828,7 +3807,6 @@ class ReferenceBox(RecordElement):
 
         # Allowed actions and visibility of component elements
         is_disabled = False if (editable is True and level < 1) else True
-        print('reference box {ELEM} is disabled: {DIS}'.format(ELEM=self.name, DIS=is_disabled))
         can_approve = True if (modifiers['approve'] is True and not is_disabled) or (overwrite is True) else False
         can_delete = True if (modifiers['delete'] is True and not is_disabled) or (overwrite is True) else False
         can_open = True if (modifiers['open'] is True and not is_disabled) or (overwrite is True) else False
@@ -4662,6 +4640,8 @@ class DataElement(RecordElement):
 
         if pd.isna(display_value) or not rules:
             return None
+        else:
+            display_value = settings.format_value(display_value, dtype=self.dtype)
 
         logger.debug('DataElement {NAME}: annotating display value on configured annotation rules'
                      .format(NAME=self.name))
@@ -5378,6 +5358,8 @@ class ElementReference(RecordElement):
 
         if pd.isna(display_value) or not rules:
             return None
+        else:
+            display_value = settings.format_value(display_value, dtype=self.dtype)
 
         logger.debug('ElementReference {NAME}: annotating display value on configured annotation rules'
                      .format(NAME=self.name))
