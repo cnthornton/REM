@@ -580,9 +580,9 @@ def parameter_window(account, win_size: tuple = None):
                                  metadata={'visible': True})])
 
     # Associated account parameters
-    vis_conditions = {}
     discard_bttns = {}
     for i, assoc_acct_name in enumerate(transactions):
+        print('association account is: {}'.format(assoc_acct_name))
         param_group = assoc_acct_name
         assoc_entry = transactions[assoc_acct_name]
         assoc_title = assoc_entry['Title']
@@ -597,20 +597,6 @@ def parameter_window(account, win_size: tuple = None):
                                             tooltip='remove transaction account parameters')]],
                                 background_color=frame_col, justification='r')],
                         [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, 0))]]
-
-        # Check if any configuration parameters for the associated account entry are related to the primary account
-        # parameters. These provide the conditions for which parameter groups are visible and which are hidden.
-        for component in assoc_entry:
-            if component in [i.name for i in params[primary_acct_name]]:
-                vis_condition = assoc_entry[component]
-
-                try:
-                    vis_conditions[component][vis_condition].append(param_group)
-                except KeyError:
-                    try:
-                        vis_conditions[component][vis_condition] = [param_group]
-                    except KeyError:
-                        vis_conditions[component] = {vis_condition: [param_group]}
 
         # Create the import parameter objects and layouts for the associated account
         assoc_params = assoc_entry['ImportParameters']
@@ -694,7 +680,6 @@ def parameter_window(account, win_size: tuple = None):
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
-    check_conds = True
     while True:
         event, values = window.read(timeout=100)
 
@@ -780,12 +765,6 @@ def parameter_window(account, win_size: tuple = None):
             index = element_names.index(event)
             parameter = event_params[index]
 
-            # Set check conditions flag to True if parameter belongs to the primary account and is a condition parameter
-            if event_acct == primary_acct_name and parameter.name in vis_conditions:
-                logger.debug('parameter event {EVENT} is a primary account {ACCT} event - will check parameter group '
-                             'conditions'.format(EVENT=event, ACCT=primary_acct_name))
-                check_conds = True
-
             # Run the parameter events
             parameter.run_event(window, event, values)
 
@@ -807,74 +786,6 @@ def parameter_window(account, win_size: tuple = None):
                 pgroup_params = params[discard_pgroup]
                 for pgroup_param in pgroup_params:
                     pgroup_param.reset(window)
-
-        # Check value conditions for parameter groups. Enable visibility of groups that meet all conditions and disable
-        # groups that do not.
-        if check_conds:
-            logger.debug('checking parameter group conditions')
-            primary_param_values = {i.name: i.format_value(values) for i in params[primary_acct_name] if not i.hidden}
-            pgroup_vis = {i: [] for i in transactions}
-            for primary_component_name in vis_conditions:
-                component_conditions = vis_conditions[primary_component_name]
-                for component_value in component_conditions:
-                    try:
-                        primary_value = primary_param_values[primary_component_name]
-                    except KeyError:
-                        logger.warning('missing condition parameter {KEY} from primary parameter values'
-                                       .format(KEY=primary_component_name))
-                        continue
-
-                    if component_value == primary_value:  # parameter value matches the given condition
-                        success_groups = component_conditions[component_value]
-                        logger.info('parameter value {VAL} matches {COMP} condition {COND} - enabling parameter groups:'
-                                    ' {PGROUPS}'.format(VAL=primary_value, COMP=primary_component_name,
-                                                        COND=component_value, PGROUPS=', '.join(success_groups)))
-
-                        for trans_acct in transactions:
-                            if trans_acct in success_groups:  # these pgroups passed the parameter condition
-                                pgroup_vis[trans_acct].append(True)
-                            else:  # these pgroups failed the parameter condition
-                                pgroup_vis[trans_acct].append(False)
-
-                        break
-
-            # Set visibility of the parameter groups based on the primary parameter conditions. Set visibility of
-            # failed parameter groups first to prevent layout issues.
-            passed_groups = []
-            failed_groups = []
-            for pgroup in pgroup_vis:
-                pgroup_success = all(pgroup_vis[pgroup]) if len(pgroup_vis[pgroup]) > 0 else False
-                logger.debug('parameter group {PGROUP} passed all visibility conditions: {SUC}'
-                             .format(PGROUP=pgroup, SUC=pgroup_success))
-                if pgroup_success:
-                    passed_groups.append(pgroup)
-                else:
-                    failed_groups.append(pgroup)
-
-            for pgroup in failed_groups:
-                pgroup_key = '-{}-'.format(pgroup)
-                if window[pgroup_key].metadata['visible'] is True:  # set to invisible and reset the parameters
-                    logger.debug('resetting parameter group {PGROUP}'.format(PGROUP=pgroup))
-                    window[pgroup_key].update(visible=False)
-                    window[pgroup_key].metadata['visible'] = False
-                    window[pgroup_key].hide_row()
-
-                    # Reset parameters in the parameter groups that are no longer visible
-                    pgroup_params = params[pgroup]
-                    for pgroup_param in pgroup_params:
-                        pgroup_param.reset(window)
-
-            for pgroup in passed_groups:
-                pgroup_key = '-{}-'.format(pgroup)
-                if window[pgroup_key].metadata['visible'] is False:  # parameter group should be visible to user
-                    logger.debug('setting parameter group {PGROUP} to visible'.format(PGROUP=pgroup))
-                    window[pgroup_key].update(visible=True)
-                    window[pgroup_key].unhide_row()
-                    window[pgroup_key].metadata['visible'] = True
-
-            check_conds = False
-
-            continue
 
     window.close()
     layout = None
