@@ -742,29 +742,47 @@ class BankRule:
             # Create the account-association account column mapping from the association rules
             assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
             colmap = {}
+            rule_map = {}
             for acct_colname in assoc_rules:
                 if acct_colname not in header:  # attempting to use a column that was not defined in the table config
                     msg = 'AssociationRule column {COL} is missing from the account data'.format(COL=acct_colname)
                     logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
-                    del assoc_rules[acct_colname]
 
                     continue
 
                 rule_entry = assoc_rules[acct_colname]
-                assoc_colname = rule_entry['Column']
-                if assoc_colname not in assoc_header:
-                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
-                        .format(COL=assoc_colname, ACCT=assoc_acct_name)
-                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
-                    del assoc_rules[acct_colname]
+                try:
+                    assoc_colname = rule_entry['Column']
+                except KeyError:
+                    assoc_value = rule_entry['Value']
 
-                    continue
+                    # Set the correct data type of the value
+                    col_dtype = df[acct_colname].dtype
+                    try:
+                        rule_entry['Value'] = settings.format_value(assoc_value, col_dtype)
+                    except ValueError:
+                        msg = 'unknown value {VAL} provided to transaction account {ACCT} association column "{COL}"' \
+                            .format(COL=acct_colname, ACCT=assoc_acct_name, VAL=assoc_value)
+                        logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
 
-                colmap[assoc_colname] = acct_colname
+                        continue
+                else:
+                    if assoc_colname not in assoc_header:
+                        msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
+                            .format(COL=assoc_colname, ACCT=assoc_acct_name)
+                        logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
 
-            colmap[assoc_acct.table.id_column] = "_RecordID_"
+                        continue
+
+                    colmap[assoc_colname] = acct_colname
+
+                rule_map[acct_colname] = rule_entry
+
+            # Store column mappers for fast recall during matching
+            assoc_ref_maps[assoc_acct_name] = rule_map
 
             # Remove all but the relevant columns from the association account table
+            colmap[assoc_acct.table.id_column] = "_RecordID_"
             assoc_df = assoc_df[list(colmap)]
 
             # Change column names of the association account table using the column map
@@ -773,9 +791,6 @@ class BankRule:
             # Add association account name and record type to the association account table
             assoc_df['_Account_'] = assoc_acct_name
             assoc_df['_RecordType_'] = assoc_acct.record_type
-
-            # Store column mappers for fast recall during matching
-            assoc_ref_maps[assoc_acct_name] = assoc_rules
 
             # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)
@@ -796,10 +811,27 @@ class BankRule:
                 # Subset merged df to include only the association records with the given account name
                 assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
 
-                # Select the columns that will be used to compare records
-                cols = list(assoc_ref_maps[assoc_acct_name])
+                assoc_rules = assoc_ref_maps[assoc_acct_name]
+                cols = []
+                passed = True
+                for col in assoc_rules:
+                    rule_entry = assoc_rules[col]
 
-                # Find exact matches between account record and the associated account records using relevant columns
+                    # Select the columns that will be used to compare records
+                    if 'Column' in rule_entry:
+                        cols.append(col)
+                    # Filter row on any static values declared by the association
+                    elif 'Value' in rule_entry:
+                        col_value = rule_entry['Value']
+                        if col_value != getattr(row, col):
+                            passed = False
+                            break
+
+                if not passed:
+                    continue
+
+                # Find exact matches between account record and the associated account records using only the
+                # relevant columns
                 row_vals = [getattr(row, i) for i in cols]
                 acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
                 matches = matches.append(acct_matches)
@@ -814,16 +846,29 @@ class BankRule:
                     # Subset merged df to include only the association records with the given account name
                     assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
 
-                    # Select columns that will be used to compare records
                     assoc_rules = assoc_ref_maps[assoc_acct_name]
                     cols = []
+                    passed = True
                     for col in assoc_rules:
                         rule_entry = assoc_rules[col]
-                        if rule_entry['Expand']:
-                            expanded_cols.append(col)
-                            continue
 
-                        cols.append(col)
+                        # Select the columns that will be used to compare records
+                        if 'Column' in rule_entry:
+                            if rule_entry['Expand']:
+                                expanded_cols.append(col)
+                                continue
+
+                            cols.append(col)
+                        # Filter row on any static values declared by the association
+                        elif 'Value' in rule_entry:
+                            col_value = rule_entry['Value']
+
+                            if col_value != getattr(row, col):
+                                passed = False
+                                break
+
+                    if not passed:
+                        continue
 
                     # Find exact matches between account record and the associated account records using relevant cols
                     row_vals = [getattr(row, i) for i in cols]
@@ -1112,15 +1157,6 @@ class AccountEntry:
                 cnfg_entry = transactions[transaction_acct]
                 trans_entry = {}
 
-                if 'AssociationParameters' not in cnfg_entry:
-                    msg = 'AccountEntry {NAME}: Transaction account {ACCT} is missing required parameter ' \
-                          '"AssociationParameters"'.format(NAME=name, ACCT=transaction_acct)
-                    logger.error(msg)
-
-                    continue
-                else:
-                    trans_entry['AssociationParameters'] = cnfg_entry['AssociationParameters']
-
                 if 'ImportParameters' not in cnfg_entry:
                     trans_entry['ImportParameters'] = {}
                 else:
@@ -1130,6 +1166,40 @@ class AccountEntry:
                     trans_entry['Title'] = transaction_acct
                 else:
                     trans_entry['Title'] = cnfg_entry['Title']
+
+                if 'AssociationParameters' not in cnfg_entry:
+                    msg = 'AccountEntry {NAME}: Transaction account {ACCT} is missing required parameter ' \
+                          '"AssociationParameters"'.format(NAME=name, ACCT=transaction_acct)
+                    logger.error(msg)
+
+                    continue
+
+                assoc_params = cnfg_entry['AssociationParameters']
+                params = {}
+                for assoc_column in list(assoc_params):
+                    if assoc_column not in self.table.columns:
+                        msg = 'AccountEntry {NAME}: the associated column "{COL}" for transaction account {ACCT} is ' \
+                              'not found in the list of table columns'\
+                            .format(NAME=name, ACCT=transaction_acct, COL=assoc_column)
+                        logger.error(msg)
+
+                        continue
+
+                    param_entry = assoc_params[assoc_column]
+                    if 'Column' not in assoc_params and 'Value' not in assoc_params:
+                        msg = 'AccountEntry {NAME}: the association parameter "{COL}" for transaction account {ACCT} ' \
+                              'requires either "Column" or "Value" to be specified in the configuration'\
+                            .format(NAME=name, ACCT=transaction_acct, COL=assoc_column)
+                        logger.error(msg)
+
+                        continue
+
+                    if 'Expand' not in assoc_params:
+                        param_entry['Expand'] = 0
+
+                    params[assoc_column] = param_entry
+
+                trans_entry['AssociationParameters'] = params
 
                 self.transactions[transaction_acct] = trans_entry
 
