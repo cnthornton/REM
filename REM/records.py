@@ -551,7 +551,7 @@ class RecordEntry:
         return statements
 
     def save_database_records(self, records, id_field: str = 'RecordID', statements: dict = None,
-                              export_columns: bool = True):
+                              export_columns: bool = True, ref_ids: list = []):
         """
         Create insert and update database transaction statements for records.
 
@@ -563,7 +563,10 @@ class RecordEntry:
             statements (dict): optional dictionary of database transaction statements to append to.
 
             export_columns (bool): use import column mapping to transform column names to database names before
-                exporting [Default: True]
+                exporting [Default: True].
+
+            ref_ids (list): list of references that have already been modified within the current save action.
+                Required to prevent endless recursion.
 
         Returns:
             statements (dict): dictionary of transactions statements.
@@ -686,7 +689,7 @@ class RecordEntry:
                     current_ids = exist_df['RecordID'].tolist()
                     exist_ref_df = self.import_references(current_ids, association)
 
-                    exist_ref_df = exist_ref_df[exist_ref_df['IsHardLink']]
+                    exist_ref_df = exist_ref_df[(exist_ref_df['IsHardLink']) & (~exist_ref_df['ReferenceID'].isin(ref_ids))]
                     print('existing references:')
                     print(exist_ref_df)
                     if not exist_ref_df.empty:
@@ -698,10 +701,10 @@ class RecordEntry:
                         merged_df.rename(columns={'ReferenceID': 'RecordID'}, inplace=True)
 
                         # Edit the hard-linked records
-                        statements = ref_entry.save_database_records(merged_df, statements=statements)
+                        statements = ref_entry.save_database_records(merged_df, statements=statements, ref_ids=current_ids)
 
                     # Create new hard-linked records
-                    if new_df.empty:
+                    if new_df.empty or not rule['Primary']:  # skip if no new records or records not primary in reftable
                         continue
 
                     df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
