@@ -1129,7 +1129,6 @@ class AuditTransactionTab:
                         .format(NAME=self.name, RULE=self.parent))
             self.table.df = self.table.append(df)
             self.table.initialize_defaults()
-            self.table._df = self.table.df
             data_loaded = True
 
         return data_loaded
@@ -2271,7 +2270,6 @@ class AuditRecord:
 
         # Add defaults to the account records
         component_table.df = component_table.initialize_defaults()
-        component_table._df = component_table.df
 
     def update_display(self, window):
         """

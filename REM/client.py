@@ -1183,7 +1183,7 @@ class SettingsManager:
 
                 raise ValueError(msg)
         elif isinstance(value, datetime.datetime) or is_datetime_dtype(value):
-            value_fmt = value
+            value_fmt = value.replace(tzinfo=None)
         else:
             msg = 'unable to convert value {VAL} of type "{TYPE}" to an datetime value' \
                 .format(VAL=value, TYPE=type(value))
@@ -1841,12 +1841,10 @@ def convert_datatypes(value):
     """
     Convert values with numpy data-types to native data-types.
     """
-    strptime = datetime.datetime.strptime
     is_float_dtype = pd.api.types.is_float_dtype
     is_integer_dtype = pd.api.types.is_integer_dtype
     is_bool_dtype = pd.api.types.is_bool_dtype
     is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-    date_fmt = settings.date_format
 
     if pd.isna(value):
         converted_value = None
@@ -1862,6 +1860,9 @@ def convert_datatypes(value):
     elif is_bool_dtype(type(value)) is True or isinstance(value, bool):
         converted_value = bool(value)
     elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):
+        strptime = datetime.datetime.strptime
+        date_fmt = settings.date_format
+
         converted_value = strptime(value.strftime(date_fmt), date_fmt)
     else:
         converted_value = str(value)

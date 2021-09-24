@@ -657,6 +657,7 @@ class TableElement(RecordElement):
         if dtype in ('date', 'datetime', 'timestamp', 'time'):
             try:
                 values = pd.to_datetime(column, errors='coerce', format=settings.date_format, utc=False)
+                #values = column.apply(settings.format_as_datetime)
             except ValueError:  # need to remove Time Zone information from column values
                 values = column.apply(lambda x: x.replace(tzinfo=None))
         elif dtype in ('int', 'integer', 'bigint'):
@@ -742,6 +743,7 @@ class TableElement(RecordElement):
                given index.
         """
         df = self.df
+        dtypes = self.columns
         header = df.columns.tolist()
 
         if isinstance(values, dict):
@@ -753,6 +755,7 @@ class TableElement(RecordElement):
 
         row_values = self.set_conditional_values(values)
         edited = False
+        edited_cols = []
         for column in row_values:  # iterate over row value columns
             if column not in header:
                 msg = 'row value column {COL} not found in the dataframe header'.format(COL=column)
@@ -761,8 +764,10 @@ class TableElement(RecordElement):
                 continue
 
             value = row_values[column].squeeze()  # reduce to scalar
-            if value != row[column]:
+            col_value = settings.format_value(row[column], dtypes[column])
+            if value != col_value:
                 edited = True
+                edited_cols.append(column)
 
                 try:
                     df.at[index, column] = value
@@ -775,6 +780,9 @@ class TableElement(RecordElement):
         if edited:
             df.at[index, self.edited_column] = True
             self.edited = True
+
+            for column in edited_cols:
+                df.loc[:, column] = self._set_column_dtype(df[column])
 
         return edited
 

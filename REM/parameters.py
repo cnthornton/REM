@@ -487,7 +487,7 @@ class DataParameter:
         """
         Set the data type of the provided value.
         """
-        strptime = datetime.datetime.strptime
+        #strptime = datetime.datetime.strptime
         group_sep = settings.thousands_sep
         dtype = self.dtype
 
@@ -525,41 +525,56 @@ class DataParameter:
                     raise ValueError(msg)
 
         elif dtype in settings.supported_bool_dtypes:
-            if isinstance(value, bool):
-                value_fmt = value
-            else:
-                try:
-                    value_fmt = bool(int(value))
-                except (ValueError, TypeError):
-                    try:
-                        value_fmt = bool(value)
-                    except ValueError:
-                        msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
-                                                       ERR='unable to convert value of type "{TYPE}"'.format(
-                                                           TYPE=type(value)))
-                        logger.warning(msg)
-
-                        raise ValueError(msg)
-
-        elif dtype in settings.supported_date_dtypes:
-            if isinstance(value, str):
-                try:
-                    value_fmt = strptime(value, '%Y-%m-%d')
-                except (ValueError, TypeError):
-                    msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
-                                                   ERR='unable to parse the provided date format')
-                    logger.warning(msg)
-
-                    raise ValueError(msg)
-            elif isinstance(value, datetime.datetime):
-                value_fmt = value
-            else:
-                msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
-                                               ERR='unable to convert value of type "{TYPE}"'.format(
-                                                   TYPE=type(value)))
+            try:
+                value_fmt = settings.format_as_bool(value)
+            except ValueError as e:
+                msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype, ERR=e)
                 logger.warning(msg)
 
                 raise ValueError(msg)
+
+            #if isinstance(value, bool):
+            #    value_fmt = value
+            #else:
+            #    try:
+            #        value_fmt = bool(int(value))
+            #    except (ValueError, TypeError):
+            #        try:
+            #            value_fmt = bool(value)
+            #        except ValueError:
+            #            msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+            #                                           ERR='unable to convert value of type "{TYPE}"'.format(
+            #                                               TYPE=type(value)))
+            #            logger.warning(msg)
+
+            #            raise ValueError(msg)
+
+        elif dtype in settings.supported_date_dtypes:
+            try:
+                value_fmt = settings.format_as_datetime(value, 'YYYY-MM-DD')
+            except ValueError as e:
+                msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype, ERR=e)
+                logger.warning(msg)
+
+                raise ValueError(msg)
+            #if isinstance(value, str):
+            #    try:
+            #        value_fmt = strptime(value, '%Y-%m-%d')
+            #    except (ValueError, TypeError):
+            #        msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+            #                                       ERR='unable to parse the provided date format')
+            #        logger.warning(msg)
+
+            #        raise ValueError(msg)
+            #elif isinstance(value, datetime.datetime):
+            #    value_fmt = value
+            #else:
+            #    msg = cnvrt_failure_msg.format(PARAM=self.name, VAL=value, DTYPE=dtype,
+            #                                   ERR='unable to convert value of type "{TYPE}"'.format(
+            #                                       TYPE=type(value)))
+            #    logger.warning(msg)
+
+            #    raise ValueError(msg)
 
         else:
             try:
