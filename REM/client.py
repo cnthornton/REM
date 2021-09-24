@@ -878,6 +878,9 @@ class SettingsManager:
         dec_sep = self.decimal_sep
         group_sep = self.thousands_sep
 
+        if pd.isna(value):
+            return '0.00'
+
         value = str(value)
 
         # Get the sign of the number
@@ -907,7 +910,7 @@ class SettingsManager:
         Format a datetime value for displaying based on configured date format.
 
         Arguments:
-            dt (datetime): datetime instance.
+            dt (datetime.datetime): datetime instance.
 
             offset (bool): add a localization-dependant offset to the display date [default: True].
         """

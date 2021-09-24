@@ -1818,30 +1818,6 @@ class TableElement(RecordElement):
 
             window[frame_key].metadata['visible'] = True
 
-    def collapse_expand_old(self, window, frame: str = None):
-        """
-        Hide/unhide the filter table frame.
-        """
-        if frame == 'filter':
-            hide_key = self.key_lookup('FilterButton')
-            frame_key = self.key_lookup('FilterFrame')
-        else:
-            hide_key = self.key_lookup('SummaryButton')
-            frame_key = self.key_lookup('SummaryFrame')
-
-        if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
-            logger.debug('DataTable {TBL}: collapsing {FRAME} frame'.format(TBL=self.name, FRAME=frame))
-            window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
-            window[frame_key].update(visible=False)
-
-            window[frame_key].metadata['visible'] = False
-        else:  # not visible yet, so want to expand the frame
-            logger.debug('DataTable {TBL}: expanding {FRAME} frame'.format(TBL=self.name, FRAME=frame))
-            window[hide_key].update(image_data=mod_const.HIDE_ICON)
-            window[frame_key].update(visible=True)
-
-            window[frame_key].metadata['visible'] = True
-
     def set_table_dimensions(self, window):
         """
         Reset column widths to calculated widths.
@@ -2567,33 +2543,6 @@ class RecordTable(TableElement):
 
         # Dynamic attributes
         self.import_df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
-
-    def _translate_row_old(self, row, level: int = 1, new_record: bool = False, references: dict = None):
-        """
-        Translate row data into a record object.
-        """
-        record_entry = settings.records.fetch_rule(self.record_type)
-        try:
-            record_group = record_entry.group
-        except AttributeError:
-            record_group = 'custom'
-
-        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
-            record_class = mod_records.StandardRecord
-        elif record_group == 'bank_deposit':
-            record_class = mod_records.DepositRecord
-        elif record_group == 'audit':
-            record_class = mod_records.AuditRecord
-        else:
-            msg = 'unknown record group provided {GROUP}'.format(GROUP=record_group)
-            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            record_class = mod_records.StandardRecord
-
-        record = record_class(record_entry, level=level)
-        record.initialize(row, new=new_record, references=references)
-
-        return record
 
     def _translate_row(self, row, level: int = 1, new_record: bool = False, references: dict = None):
         """
@@ -4065,49 +4014,6 @@ class ReferenceBox(RecordElement):
         reference = pd.Series(values, index=indices)
 
         return reference
-
-    def load_record_old(self, level: int = 1):
-        """
-        Load the reference record from the database.
-
-        Arguments:
-            level (int): load the referenced record at the given depth [Default: 1 - highest level].
-
-        Returns:
-            record (DatabaseRecord): initialized database record.
-        """
-        record_entry = settings.records.fetch_rule(self.reference_type)
-        record_group = record_entry.group
-        if record_group in ('custom', 'account', 'bank_statement', 'cash_expense'):
-            record_class = mod_records.StandardRecord
-        elif record_group == 'bank_deposit':
-            record_class = mod_records.DepositRecord
-        elif record_group == 'audit':
-            record_class = mod_records.AuditRecord
-        else:
-            raise TypeError('unknown record group provided {}'.format(record_group))
-
-        logger.info('ReferenceBox {NAME}: loading reference record {ID} of type {TYPE}'
-                    .format(NAME=self.name, ID=self.reference_id, TYPE=self.reference_type))
-
-        imports = record_entry.load_record_data(self.reference_id)
-        nrow = imports.shape[0]
-
-        if nrow < 1:
-            logger.warning('ReferenceBox {NAME}: record reference {REF} not found in the database'
-                           .format(NAME=self.name, REF=self.reference_id))
-            record_data = imports
-        elif nrow == 1:
-            record_data = imports.iloc[0]
-        else:
-            logger.warning('ReferenceBox {NAME}: more than one database entry found for record reference {REF}'
-                           .format(NAME=self.name, REF=self.reference_id))
-            record_data = imports.iloc[0]
-
-        record = record_class(record_entry, level=level)
-        record.initialize(record_data, new=False)
-
-        return record
 
     def load_record(self, level: int = None):
         """

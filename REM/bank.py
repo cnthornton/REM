@@ -188,12 +188,9 @@ class BankRule:
                 if isinstance(approved_records, str):
                     approved_records = [approved_records]
 
-                print('records deleted from the {} reference dataframe are:'.format(acct.name))
-                print(deleted_records)
-
                 # Update all account reference dataframe for currently active panels
                 for panel in self.panels:
-                    if panel == current_panel:  # dont' attempt to update the same panel's reference dataframe
+                    if panel == current_panel:  # do not attempt to update the same panel's reference dataframe
                         continue
 
                     ref_acct = self.fetch_account(panel, by_key=True)
@@ -324,7 +321,6 @@ class BankRule:
         # sub-panel.
         elif event == entry_key:
             acct_title = values[event]
-            print('account selected is {}'.format(acct_title))
             if not acct_title:
                 self.current_account = None
                 self.current_panel = None
@@ -367,8 +363,6 @@ class BankRule:
                                  .format(NAME=self.name, ACCT=acct_name))
                     acct = self.fetch_account(acct_name)
                     data_loaded = acct.load_data(acct_params)
-                    print(acct.table.df)
-                    print(acct.table.df.dtypes)
 
                     if not data_loaded:
                         return self.reset_rule(window, current=True)
@@ -411,12 +405,8 @@ class BankRule:
                 logger.exception('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
-                for acct_panel in self.panels:
-                    acct = self.fetch_account(acct_panel, by_key=True)
-
-                    self.update_display(window)
-                    print('{} reference dataframe after reconciliation'.format(acct.name))
-                    print(acct.ref_df)
+                # Update the sub-panel displays
+                self.update_display(window)
 
                 # Enable expanded search after an initial reconciliation is performed
                 window[expand_key].update(disabled=False)
@@ -596,17 +586,6 @@ class BankRule:
 
         fw_key = self.key_lookup('FrameWidth')
         fh_key = self.key_lookup('FrameHeight')
-        #layout = [[sg.Frame('', [
-        #    [sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
-        #    [sg.Col([[title_layout]], pad=(0, 0), justification='l', background_color=header_col, expand_x=True)],
-        #    [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
-        #     sg.Col([header,
-        #             [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-        #             [main_layout],
-        #             [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-        #             [nav_layout]],
-        #            pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]
-        #], background_color=bg_col, relief='raised')]]
         layout = [[sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
                   [sg.Col([[title_layout]], background_color=header_col, expand_x=True)],
                   [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
@@ -616,8 +595,6 @@ class BankRule:
                           [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
                           [bttn_layout]],
                           pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]]
-
-        #layout = [frame_layout, bttn_layout]
 
         return sg.Col(layout, key=self.element_key, visible=False, background_color=bg_col, vertical_alignment='t')
 
@@ -632,13 +609,6 @@ class BankRule:
         """
         width, height = size
 
-        # For every five-pixel increase in window size, increase frame size by one
-        # layout_pad = 100  # default padding between the window and border of the frame
-        # win_diff = width - mod_const.WIN_WIDTH
-        # layout_pad = layout_pad + int(win_diff / 5)
-
-        # frame_width = width - layout_pad if layout_pad > 0 else width
-        # frame_width = width - 40
         frame_width = width
         panel_width = frame_width - 38  # padding + scrollbar width
 
@@ -648,8 +618,6 @@ class BankRule:
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        # layout_height = height * 0.85  # height of the container panel, including buttons
-        # layout_height = height - 80  # height of the container panel (minus padding and toolbar height)
         frame_height = height  # minus the approximate height of the button row and title bar, with padding
         panel_height = frame_height - 220  # minus panel title, padding, and button row
 
@@ -683,7 +651,7 @@ class BankRule:
         Returns:
             success (bool): bank reconciliation was successful.
         """
-        # pd.set_option('display.max_columns', None)
+        pd.set_option('display.max_columns', None)
         ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
                     'IsChild', 'IsDeleted']
 
@@ -718,6 +686,7 @@ class BankRule:
         # Fetch associated account data
         transactions = acct.transactions
         assoc_ref_maps = {}
+        print(transactions)
         for assoc_acct_name in transactions:
             assoc_acct = self.fetch_account(assoc_acct_name)
             logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
@@ -751,31 +720,15 @@ class BankRule:
                     continue
 
                 rule_entry = assoc_rules[acct_colname]
-                try:
-                    assoc_colname = rule_entry['Column']
-                except KeyError:
-                    assoc_value = rule_entry['Value']
+                assoc_colname = rule_entry['Column']
+                if assoc_colname not in assoc_header:
+                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
+                        .format(COL=assoc_colname, ACCT=assoc_acct_name)
+                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
 
-                    # Set the correct data type of the value
-                    col_dtype = df[acct_colname].dtype
-                    try:
-                        rule_entry['Value'] = settings.format_value(assoc_value, col_dtype)
-                    except ValueError:
-                        msg = 'unknown value {VAL} provided to transaction account {ACCT} association column "{COL}"' \
-                            .format(COL=acct_colname, ACCT=assoc_acct_name, VAL=assoc_value)
-                        logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
+                    continue
 
-                        continue
-                else:
-                    if assoc_colname not in assoc_header:
-                        msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
-                            .format(COL=assoc_colname, ACCT=assoc_acct_name)
-                        logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
-
-                        continue
-
-                    colmap[assoc_colname] = acct_colname
-
+                colmap[assoc_colname] = acct_colname
                 rule_map[acct_colname] = rule_entry
 
             # Store column mappers for fast recall during matching
@@ -812,27 +765,15 @@ class BankRule:
                 assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
 
                 assoc_rules = assoc_ref_maps[assoc_acct_name]
-                cols = []
-                passed = True
-                for col in assoc_rules:
-                    rule_entry = assoc_rules[col]
-
-                    # Select the columns that will be used to compare records
-                    if 'Column' in rule_entry:
-                        cols.append(col)
-                    # Filter row on any static values declared by the association
-                    elif 'Value' in rule_entry:
-                        col_value = rule_entry['Value']
-                        if col_value != getattr(row, col):
-                            passed = False
-                            break
-
-                if not passed:
-                    continue
+                print('association rules are:')
+                print(assoc_rules)
+                cols = list(assoc_rules)
 
                 # Find exact matches between account record and the associated account records using only the
                 # relevant columns
                 row_vals = [getattr(row, i) for i in cols]
+                print('row value to match are:')
+                print(row_vals)
                 acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
                 matches = matches.append(acct_matches)
 
@@ -848,27 +789,15 @@ class BankRule:
 
                     assoc_rules = assoc_ref_maps[assoc_acct_name]
                     cols = []
-                    passed = True
                     for col in assoc_rules:
                         rule_entry = assoc_rules[col]
 
                         # Select the columns that will be used to compare records
-                        if 'Column' in rule_entry:
-                            if rule_entry['Expand']:
-                                expanded_cols.append(col)
-                                continue
+                        if rule_entry['Expand']:
+                            expanded_cols.append(col)
+                            continue
 
-                            cols.append(col)
-                        # Filter row on any static values declared by the association
-                        elif 'Value' in rule_entry:
-                            col_value = rule_entry['Value']
-
-                            if col_value != getattr(row, col):
-                                passed = False
-                                break
-
-                    if not passed:
-                        continue
+                        cols.append(col)
 
                     # Find exact matches between account record and the associated account records using relevant cols
                     row_vals = [getattr(row, i) for i in cols]
@@ -1186,16 +1115,18 @@ class AccountEntry:
                         continue
 
                     param_entry = assoc_params[assoc_column]
-                    if 'Column' not in assoc_params and 'Value' not in assoc_params:
+                    if 'Column' not in param_entry:
                         msg = 'AccountEntry {NAME}: the association parameter "{COL}" for transaction account {ACCT} ' \
-                              'requires either "Column" or "Value" to be specified in the configuration'\
+                              'requires the "Column" field to be specified in the configuration'\
                             .format(NAME=name, ACCT=transaction_acct, COL=assoc_column)
                         logger.error(msg)
 
                         continue
 
-                    if 'Expand' not in assoc_params:
-                        param_entry['Expand'] = 0
+                    try:
+                        param_entry['Expand'] = bool(int(entry['Expand']))
+                    except (KeyError, ValueError):
+                        param_entry['Expand'] = False
 
                     params[assoc_column] = param_entry
 
