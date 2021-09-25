@@ -1222,33 +1222,43 @@ class SettingsManager:
 
         return formatted_date
 
-    def set_shortcuts(self, window):
+    def set_shortcuts(self, window, hk_groups: list = None):
         """
         Bind keyboard shortcuts to text.
         """
+        if isinstance(hk_groups, str):
+            hk_groups = [hk_groups]
+
         hotkeys = self.hotkeys
         for hotkey in hotkeys:
             hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group = settings.hotkeys[hotkey]
+            if hk_groups and hotkey_group not in hk_groups:
+                continue
+
             try:
                 window.bind('<{}>'.format(hotkey_binding), hotkey)
             except Exception:
                 logger.exception('failed to bind keyboard shortcut {}'.format(hotkey_binding))
                 print(hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group)
+
                 raise
 
         return window
 
-    def get_shortcuts(self, group: str = None):
+    def get_shortcuts(self, hk_groups: list = None):
         """
         Return a list of hotkeys belonging to a given shortcut group.
         """
-        if not group:
+        if not hk_groups:
             return list(self.hotkeys)
+
+        if isinstance(hk_groups, str):
+            hk_groups = [hk_groups]
 
         elements = []
         for hotkey in self.hotkeys:
             hotkey_action, hotkey_binding, hotkey_shortcut, hotkey_group = settings.hotkeys[hotkey]
-            if hotkey_group == group:
+            if hotkey_group in hk_groups:
                 elements.append(hotkey)
 
         return elements
@@ -1850,8 +1860,6 @@ def convert_datatypes(value):
         converted_value = None
     elif is_float_dtype(type(value)) is True or isinstance(value, float):
         converted_value = float(value)
-    #    elif is_integer_dtype(type(value)) is True or isinstance(value, int):
-    #        converted_value = int(value)
     elif is_integer_dtype(type(value)) is True or isinstance(value, int):
         try:
             converted_value = int(value)

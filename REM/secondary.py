@@ -291,7 +291,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     window.hide()
 
     # Bind keys to events
-    window = settings.set_shortcuts(window)
+    window = settings.set_shortcuts(window, hk_groups=['Record', 'Navigation'])
 
     logger.debug('binding record element hotkeys')
     for element in record.record_elements():
@@ -1791,13 +1791,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     window.finalize()
     window.hide()
 
+    # Bind event keys
+    table.bind_keys(window)
+
     # Update the table display
     table.update_display(window)
-
-    # Bind event keys
-    window = settings.set_shortcuts(window)
-    table_shortcuts = settings.get_shortcuts('Table')
-    table.bind_keys(window)
 
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
@@ -1822,12 +1820,14 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Main loop
     elem_key = table.key_lookup('Element')
+    open_key = '{}+LCLICK+'.format(elem_key)
+    return_key = '{}+RETURN+'.format(elem_key)
     filter_key = table.key_lookup('Filter')
-    table_elements = [i for i in table.bindings if i not in (elem_key, filter_key)]
+    filter_hkey = '{}+FILTER+'.format(elem_key)
     while True:
         event, values = window.read(timeout=500)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-', '-HK_ESCAPE-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             break
 
         win_w, win_h = window.size
@@ -1844,7 +1844,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
             current_w, current_h = (win_w, win_h)
 
-        if enable_new and event in ('-NEW-', '-HK_ENTER-'):  # selected to create a new record
+        if enable_new and event == '-NEW-':  # selected to create a new record
             if table.record_type is None:
                 msg = 'failed to create a new record - missing required configuration parameter "RecordType"'
                 popup_error(msg)
@@ -1888,7 +1888,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
             continue
 
-        if event == elem_key:  # click to open record
+        if event in (open_key, return_key):  # click to open record
             # Close options panel, if open
             table.set_table_dimensions(window)
 
@@ -1909,7 +1909,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
                 continue
 
         # Run table filter event
-        if event in (filter_key, '-HK_TBL_FILTER-'):
+        elif event in (filter_key, filter_hkey):
             for param in table.parameters:
                 # Set parameter values from window elements
                 param.value = param.format_value(values)
@@ -1922,7 +1922,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             table.update_display(window)
 
         # Run table events
-        if event in table_elements or event in table_shortcuts:
+        else:
             table.run_event(window, event, values)
 
             continue

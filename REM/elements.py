@@ -212,15 +212,18 @@ class TableElement(RecordElement):
                               ('Export', 'Total', 'Search', 'Filter', 'Fill', 'Frame0', 'FrameBttn0',
                                'Frame1', 'FrameBttn1', 'Width', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
                                'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3')])
-        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1',
-                                'Options', 'Cancel']
+        #self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1',
+        #                        'Options', 'Cancel']
+        self._event_elements = ['Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         return_key = '{}+RETURN+'.format(elem_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [return_key]
+        open_key = '{}+LCLICK+'.format(elem_key)
+        filter_hkey = '{}+FILTER+'.format(elem_key)
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [open_key, return_key, filter_hkey]
 
-        self._action_events = [self.key_lookup('Element')]
+        self._action_events = [open_key, return_key]
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
         try:
@@ -898,25 +901,14 @@ class TableElement(RecordElement):
         fill_key = self.key_lookup('Fill')
         export_key = self.key_lookup('Export')
         filter_key = self.key_lookup('Filter')
-        return_key = '{}+RETURN+'.format(elem_key)
+        filter_hkey = '{}+FILTER+'.format(elem_key)
         frame_bttns = [self.key_lookup('FrameBttn{}'.format(i)) for i in range(2)]
 
-        param_elems = [i for param in self.parameters for i in param.elements]
+        #param_elems = [i for param in self.parameters for i in param.elements]
         action_events = self._action_events
 
-        update_event = False
-
-        # Hotkey actions
-        if event in (return_key, '-HK_ENTER-'):
-            event = elem_key
-        elif event == '-HK_ESCAPE-':
-            event = cancel_key
-        elif event == '-HK_TBL_FILTER-':
-            event = filter_key
-        elif event == '-HK_TBL_OPTS-':
-            event = options_key
-
         # Table events
+        update_event = False
         if event == search_key:
             # Update the search field value
             search_col = self.search_field[0]
@@ -930,10 +922,18 @@ class TableElement(RecordElement):
             self.collapse_expand(window, index=frame_index)
 
         # Click filter Apply button to apply filtering to table
-        elif event == filter_key:
+        elif event in (filter_key, filter_hkey):
             # Update parameter values
             for param in self.parameters:
-                param.value = param.format_value(values)
+                try:
+                    param.value = param.format_value(values)
+                except ValueError:
+                    msg = 'failed to filter table rows - incorrectly formatted value provided to filter parameter ' \
+                          '{PARAM}'.format(PARAM=param.description)
+                    logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
+
+                    return False
 
             # Update the display table to show the filtered table
             self.update_display(window)
@@ -1042,14 +1042,14 @@ class TableElement(RecordElement):
             # Update the display table to show the new table values
             self.update_display(window)
 
-        elif event in param_elems:
-            try:
-                param = self.fetch_parameter(event, by_key=True)
-            except KeyError:
-                logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
-                             .format(TBL=self.name, KEY=event))
-            else:
-                param.run_event(window, event, values)
+        #elif event in param_elems:
+        #    try:
+        #        param = self.fetch_parameter(event, by_key=True)
+        #    except KeyError:
+        #        logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
+        #                     .format(TBL=self.name, KEY=event))
+        #    else:
+        #        param.run_event(window, event, values)
 
         elif event == export_key:
             outfile = sg.popup_get_file('', title='Export table display', save_as=True,
@@ -1080,10 +1080,14 @@ class TableElement(RecordElement):
         Run a table action event.
         """
         elem_key = self.key_lookup('Element')
+        open_key = '{}+LCLICK+'.format(elem_key)
+        return_key = '{}+RETURN+'.format(elem_key)
         update_event = False
 
+        can_open = self.modifiers['edit']
+
         # Row click event
-        if event == elem_key and self.modifiers['edit']:
+        if event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -1117,6 +1121,8 @@ class TableElement(RecordElement):
         """
         elem_key = self.key_lookup('Element')
         window[elem_key].bind('<Return>', '+RETURN+')
+        window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+        window[elem_key].bind('<Control-f>', '+FILTER+')
 
     def update_display(self, window, annotations: dict = None):
         """
@@ -1658,8 +1664,10 @@ class TableElement(RecordElement):
         row4 = []
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
-        bind = True if editable is True else False
-        events = False
+        bind = False
+        #bind = True if editable is True else False
+        #events = False
+        events = True
 
         col_widths = self._calc_column_widths(width=tbl_width, size=font_size, pixels=False)
         row4.append(sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
@@ -2468,7 +2476,10 @@ class RecordTable(TableElement):
                               ('Delete', 'Import')])
         self._event_elements.extend(['Delete', 'Import'])
 
-        action_keys = [self.key_lookup(i) for i in ('Delete', 'Import')]
+        elem_key = self.key_lookup('Element')
+        delete_hkey = '{}+DELETE+'.format(elem_key)
+        import_hkey = '{}+IMPORT+'.format(elem_key)
+        action_keys = [self.key_lookup(i) for i in ('Delete', 'Import')] + [delete_hkey, import_hkey]
         self._action_events.extend(action_keys)
         self.bindings.extend(action_keys)
 
@@ -2564,6 +2575,18 @@ class RecordTable(TableElement):
 
         return record
 
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.key_lookup('Element')
+        window[elem_key].bind('<Return>', '+RETURN+')
+        window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+        window[elem_key].bind('<Control-f>', '+FILTER+')
+        window[elem_key].bind('<Key-BackSpace>', '+DELETE+')
+        window[elem_key].bind('<Control-d>', '+DELETE+')
+        window[elem_key].bind('<Control-i>', '+IMPORT+')
+
     def reset(self, window, reset_filters: bool = True):
         """
         Reset record table to default.
@@ -2616,16 +2639,22 @@ class RecordTable(TableElement):
         Run a table action event.
         """
         elem_key = self.key_lookup('Element')
+        open_key = '{}+LCLICK+'.format(elem_key)
+        return_key = '{}+RETURN+'.format(elem_key)
         delete_key = self.key_lookup('Delete')
+        delete_hkey = '{}+DELETE+'.format(elem_key)
         import_key = self.key_lookup('Import')
+        import_hkey = '{}+IMPORT+'.format(elem_key)
 
         update_event = False
 
+        can_open = self.modifiers['open']
+        can_edit = self.modifiers['edit']
         can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
         can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
 
         # Row click event
-        if event == elem_key and self.modifiers['open']:
+        if event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -2647,7 +2676,7 @@ class RecordTable(TableElement):
                 record = self.load_record(index)
 
                 # Update record table values
-                if record and self.modifiers['edit']:
+                if record and can_edit:
                     try:
                         record_values = record.export_values()
                     except Exception as e:
@@ -2657,7 +2686,7 @@ class RecordTable(TableElement):
                         update_event = self._update_row_values(index, record_values)
 
         # Delete rows button clicked
-        if (event == delete_key or event == '-HK_TBL_DEL-') and can_delete:
+        if event in (delete_key, delete_hkey) and can_delete:
             # Find rows selected by user for deletion
             select_row_indices = values[elem_key]
 
@@ -2673,7 +2702,7 @@ class RecordTable(TableElement):
                 update_event = True
 
         # Import rows button clicked
-        if (event == import_key or event == '-HK_TBL_IMPORT-') and can_import:
+        if event in (import_key, import_hkey) and can_import:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -3033,7 +3062,9 @@ class ComponentTable(RecordTable):
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Add',)])
 
-        action_keys = [self.key_lookup(i) for i in ('Add',)]
+        elem_key = self.key_lookup('Element')
+        add_hkey = '{}+ADD+'.format(elem_key)
+        action_keys = [self.key_lookup('Add'), add_hkey]
         self._action_events.extend(action_keys)
         self.bindings.extend(action_keys)
 
@@ -3072,23 +3103,42 @@ class ComponentTable(RecordTable):
 
             raise AttributeError(msg)
 
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.key_lookup('Element')
+        window[elem_key].bind('<Return>', '+RETURN+')
+        window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+        window[elem_key].bind('<Control-f>', '+FILTER+')
+        window[elem_key].bind('<Key-BackSpace>', '+DELETE+')
+        window[elem_key].bind('<Control-d>', '+DELETE+')
+        window[elem_key].bind('<Control-i>', '+IMPORT+')
+        window[elem_key].bind('<Control-a>', '+ADD+')
+
     def run_action_event(self, window, event, values):
         """
         Run a table action event.
         """
         elem_key = self.key_lookup('Element')
+        open_key = '{}+LCLICK+'.format(elem_key)
+        return_key = '{}+RETURN+'.format(elem_key)
         add_key = self.key_lookup('Add')
+        add_hkey = '{}+ADD+'.format(elem_key)
         delete_key = self.key_lookup('Delete')
+        delete_hkey = '{}+DELETE+'.format(elem_key)
         import_key = self.key_lookup('Import')
+        import_hkey = '{}+IMPORT+'.format(elem_key)
 
-        update_event = False
-
+        can_open = self.modifiers['open']
+        can_edit = self.modifiers['edit']
         can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
         can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
         can_add = not window[add_key].metadata['disabled'] and window[add_key].metadata['visible']
 
         # Row click event
-        if event == elem_key and self.modifiers['open']:
+        update_event = False
+        if event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -3110,7 +3160,7 @@ class ComponentTable(RecordTable):
                 record = self.load_record(index)
 
                 # Update record table values
-                if record and self.modifiers['edit']:
+                if record and can_edit:
                     try:
                         record_values = record.export_values()
                     except Exception as e:
@@ -3120,7 +3170,7 @@ class ComponentTable(RecordTable):
                         update_event = self._update_row_values(index, record_values)
 
         # Add row button clicked
-        if (event == add_key or event == '-HK_TBL_ADD-') and can_add:
+        if event in (add_key, add_hkey) and can_add:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -3133,7 +3183,7 @@ class ComponentTable(RecordTable):
                 update_event = True
 
         # Delete rows button clicked
-        if (event == delete_key or event == '-HK_TBL_DEL-') and can_delete:
+        if event in (delete_key, delete_hkey) and can_delete:
             # Find rows selected by user for deletion
             select_row_indices = values[elem_key]
 
@@ -3149,7 +3199,7 @@ class ComponentTable(RecordTable):
                 update_event = True
 
         # Import rows button clicked
-        if (event == import_key or event == '-HK_TBL_IMPORT-') and can_import:
+        if event in (import_key, import_hkey) and can_import:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -3163,10 +3213,12 @@ class ComponentTable(RecordTable):
 
         # All action events require a table update
         if update_event:
-            print('event {} is an update event - will update display'.format(event))
+            logger.debug('DataTable {NAME}: event {EVENT} is an update event - will update display'
+                         .format(NAME=self.name, EVENT=event))
             self.update_display(window)
         else:
-            print('event {} is not an update event - will not update display'.format(event))
+            logger.debug('DataTable {NAME}: event {EVENT} is not an update event - will not update display'
+                         .format(NAME=self.name, EVENT=event))
 
         return update_event
 
@@ -4139,10 +4191,10 @@ class DataElement(RecordElement):
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        save_key = self.key_lookup('Save')
         lclick_event = '{}+LCLICK+'.format(elem_key)
-        return_key = '{}+RETURN+'.format(save_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [lclick_event, return_key]
+        return_key = '{}+RETURN+'.format(elem_key)
+        escape_key = '{}+ESCAPE+'.format(elem_key)
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [lclick_event, return_key, escape_key]
 
         try:
             dtype = entry['DataType']
@@ -4285,7 +4337,9 @@ class DataElement(RecordElement):
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
         save_key = self.key_lookup('Save')
+        save_hkey = '{}+RETURN+'.format(elem_key)
         cancel_key = self.key_lookup('Cancel')
+        cancel_hkey = '{}+ESCAPE+'.format(elem_key)
         aux_key = self.key_lookup('Auxiliary')
         left_click = '{}+LCLICK+'.format(elem_key)
 
@@ -4293,13 +4347,8 @@ class DataElement(RecordElement):
 
         update_event = False
 
-        if event == '-HK_ENTER-':
-            event = save_key
-        elif event == '-HK_ESCAPE-':
-            event = cancel_key
-
         # Set focus to the element and enable edit mode
-        if (event == edit_key or event == left_click) and not currently_editing:
+        if event in (edit_key, left_click) and not currently_editing:
             window[elem_key].set_focus()
 
             if self.disabled:
@@ -4324,7 +4373,7 @@ class DataElement(RecordElement):
             self.edit_mode = True
 
         # Set element to inactive mode and update the element value
-        elif event == save_key and currently_editing:
+        elif event in (save_key, save_hkey) and currently_editing:
             print('saving value changes and setting to inactive mode')
             # Update value of the data element
             try:
@@ -4361,7 +4410,7 @@ class DataElement(RecordElement):
 
             self.edit_mode = False
 
-        elif event == cancel_key and currently_editing:
+        elif event in (cancel_key, cancel_hkey) and currently_editing:
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
@@ -4384,10 +4433,10 @@ class DataElement(RecordElement):
         Add hotkey bindings to the data element.
         """
         elem_key = self.key_lookup('Element')
-        save_key = self.key_lookup('Save')
 
         window[elem_key].bind('<Button-1>', '+LCLICK+')
-        window[save_key].bind('<Return>', '+RETURN+')
+        window[elem_key].bind('<Return>', '+RETURN+')
+        window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
 
     def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):

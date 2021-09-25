@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.9.3'
+__version__ = '3.9.5'
 
 import sys
 import tkinter as tk
@@ -653,7 +653,7 @@ def main():
     logger.info('starting the program')
 
     # Bind keyboard events
-    window = settings.set_shortcuts(window)
+    window = settings.set_shortcuts(window, hk_groups=['Navigation'])
 
     screen_w, screen_h = window.get_screen_dimensions()
     logger.debug('screen size is {W} x {H}'.format(W=screen_w, H=screen_h))
@@ -964,7 +964,7 @@ def main():
                 continue
 
         # Action events
-        if current_rule and (event in current_rule.events() or event in settings.hotkeys):
+        if current_rule and event in current_rule.events():
             logger.info('running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
             try:
                 current_rule_name = current_rule.run_event(window, event, values)

@@ -54,6 +54,9 @@ class BankRule:
                          ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
                           'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next')]
 
+        self.bindings = [self.key_lookup(i) for i in
+                         ('Cancel', 'Save', 'Back', 'Next', 'Entry', 'Parameters', 'Reconcile', 'Expand')]
+
         try:
             self.menu_title = entry['MenuTitle']
         except KeyError:
@@ -84,8 +87,9 @@ class BankRule:
 
             acct = AccountEntry(acct_id, acct_entry, parent=self.name)
             self.accts.append(acct)
+
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
-            # self.elements += acct.elements
+            self.bindings.extend(acct.events())
 
         # Dynamic Attributes
         self.in_progress = False
@@ -112,12 +116,7 @@ class BankRule:
         """
         Return a list of all events allowed under the rule.
         """
-        events = self.elements
-
-        for acct in self.accts:
-            events.extend(acct.elements)
-
-        return events
+        return self.bindings
 
     def fetch_account(self, account_id, by_title: bool = False, by_key: bool = False):
         """
@@ -167,12 +166,12 @@ class BankRule:
         save_key = self.key_lookup('Save')
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
-        acct_keys = [i for j in self.accts for i in j.elements]
-        tab_bttn_keys = ['-HK_TAB{}-'.format(i) for i in range(1, 10)]
-        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
 
-        # Run an account entry event.
-        if event in acct_keys or event in tbl_bttn_keys:
+        can_save = not window[save_key].metadata['disabled']
+
+        # Run an account entry event
+        acct_keys = [i for j in self.accts for i in j.bindings]
+        if event in acct_keys:
             current_panel = self.current_panel
             acct = self.fetch_account(current_panel, by_key=True)
 
@@ -202,9 +201,13 @@ class BankRule:
 
                 self.update_display(window)
 
+            return current_rule
+
+        # Run a rule panel event
+
         # The cancel button or cancel hotkey was pressed. If a reconciliation is in progress, reset the rule but stay
         # in the rule panel. If reconciliation is not in progress, return to home screen.
-        elif event in (cancel_key, '-HK_ESCAPE-'):
+        if event == cancel_key:
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Reconciliation is currently in progress. Are you sure you would like to quit without saving?'
@@ -222,7 +225,7 @@ class BankRule:
 
         # The save button or enter hotkey was pressed. Save the account records and associated account records and
         # generate a summary report.
-        elif event == save_key or (event == '-HK_ENTER-' and not window[save_key].metadata['disabled']):
+        elif event == save_key and can_save:
             # Get output file from user
             acct = self.fetch_account(current_acct)
             default_title = acct.title + '.xlsx'
@@ -263,7 +266,7 @@ class BankRule:
 
         # Next button pressed - display next panel in transaction workflow. Wrap-around to first panel if next panel
         # goes beyond the number of items in the panel list
-        elif (event == next_key) or (event == '-HK_RIGHT-' and not window[next_key].metadata['disabled']):
+        elif event == next_key and not window[next_key].metadata['disabled']:
             current_index = self.panels.index(self.current_panel)
             next_index = (current_index + 1) % len(self.panels)
             next_panel = self.panels[next_index]
@@ -282,7 +285,7 @@ class BankRule:
 
         # Back button pressed - display previous panel. Wrap-around to last panel if previous panel is less than the
         # number of items in the panel list
-        elif (event == back_key) or (event == '-HK_LEFT-' and not window[back_key].metadata['disabled']):
+        elif event == back_key and not window[back_key].metadata['disabled']:
             current_index = self.panels.index(self.current_panel)
             back_index = current_index - 1
             prev_panel = self.panels[back_index]
@@ -298,24 +301,6 @@ class BankRule:
 
             # Reset current panel attribute
             self.current_panel = prev_panel
-
-        # Switch directly between panels using the tab button hotkeys
-        elif event in tab_bttn_keys:
-            # Determine which panel to act on
-            tab_index = int(event[1:-1][-1]) - 1
-
-            try:
-                select_panel = self.panels[tab_index]
-            except IndexError:
-                return current_rule
-
-            if not window[back_key].metadata['disabled']:
-                # Hide current panel and un-hide the previous panel
-                window[self.current_panel].update(visible=False)
-                window[select_panel].update(visible=True)
-
-                # Reset current panel attribute
-                self.current_panel = select_panel
 
         # An account was selected from the account entry dropdown. Selecting an account will display the associated
         # sub-panel.
@@ -765,15 +750,11 @@ class BankRule:
                 assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
 
                 assoc_rules = assoc_ref_maps[assoc_acct_name]
-                print('association rules are:')
-                print(assoc_rules)
                 cols = list(assoc_rules)
 
                 # Find exact matches between account record and the associated account records using only the
                 # relevant columns
                 row_vals = [getattr(row, i) for i in cols]
-                print('row value to match are:')
-                print(row_vals)
                 acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
                 matches = matches.append(acct_matches)
 
@@ -794,7 +775,9 @@ class BankRule:
 
                         # Select the columns that will be used to compare records
                         if rule_entry['Expand']:
-                            expanded_cols.append(col)
+                            if col not in expanded_cols:
+                                expanded_cols.append(col)
+
                             continue
 
                         cols.append(col)
@@ -913,21 +896,32 @@ class BankRule:
         statements = {}
 
         # Prepare to save the account references
-        acct = self.fetch_account(self.current_account)
+        for panel in self.panels:
+            acct = self.fetch_account(panel, by_key=True)
 
-        record_type = acct.record_type
-        record_entry = settings.records.fetch_rule(record_type)
-        logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
-                     .format(NAME=self.name, ACCT=acct.name))
-        try:
-            statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
-                                                               statements=statements)
-        except Exception as e:
-            msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
-                .format(ACCT=acct.name, ERR=e)
-            logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            record_type = acct.record_type
+            record_entry = settings.records.fetch_rule(record_type)
 
-            return False
+            association_name = acct.association_rule
+            association_rule = record_entry.association_rules[association_name]
+
+            is_primary = association_rule['Primary']
+            if not is_primary:  # only save references if the record is the primary record in the reference table
+                logger.debug('BankRule {NAME}: account {ACCT} records are not primary records in the reference table '
+                             '... skipping'.format(NAME=self.name, ACCT=acct.name))
+                continue
+
+            logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
+                         .format(NAME=self.name, ACCT=acct.name))
+            try:
+                statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
+                                                                   statements=statements)
+            except Exception as e:
+                msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                    .format(ACCT=acct.name, ERR=e)
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return False
 
         logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
                     .format(NAME=self.name, ACCT=self.current_account))
@@ -1022,6 +1016,8 @@ class AccountEntry:
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Panel',)]
 
+        self.bindings = []
+
         try:
             self.title = entry['Title']
         except KeyError:
@@ -1049,7 +1045,8 @@ class AccountEntry:
             self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
         except KeyError:
             self.table = mod_elem.RecordTable(name, record_entry.import_table)
-        self.elements += self.table.elements
+
+        self.bindings.extend(self.table.bindings)
 
         try:
             self.parameters = entry['ImportParameters']
@@ -1124,7 +1121,7 @@ class AccountEntry:
                         continue
 
                     try:
-                        param_entry['Expand'] = bool(int(entry['Expand']))
+                        param_entry['Expand'] = bool(int(param_entry['Expand']))
                     except (KeyError, ValueError):
                         param_entry['Expand'] = False
 
@@ -1156,6 +1153,12 @@ class AccountEntry:
 
         return key
 
+    def events(self):
+        """
+        Return GUI event elements.
+        """
+        return self.bindings
+
     def reset(self, window):
         """
         Reset the elements and attributes of the bank record tab.
@@ -1175,19 +1178,24 @@ class AccountEntry:
         """
         pd.set_option('display.max_columns', None)
 
-        table_keys = self.table.elements
-        tbl_bttn_keys = ['-HK_TBL_ADD-', '-HK_TBL_DEL-', '-HK_TBL_IMPORT-', '-HK_TBL_FILTER-', '-HK_TBL_OPTS-']
+        table_keys = self.table.bindings
 
         reference_event = False
         # Run a record table event.
-        if event in table_keys or event in tbl_bttn_keys:
+        if event in table_keys:
             table = self.table
+
             tbl_key = self.table.key_lookup('Element')
+            open_key = '{}+LCLICK+'.format(tbl_key)
+            return_key = '{}+RETURN+'.format(tbl_key)
             delete_key = self.table.key_lookup('Delete')
+            delete_hkey = '{}+DELETE+'.format(tbl_key)
+
+            can_open = self.table.modifiers['open']
             can_delete = (not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible'])
 
             # Record was selected for opening
-            if event == tbl_key:
+            if event in (open_key, return_key) and can_open:
                 association_rule = self.association_rule
                 reference_event = True
                 ref_df = self.ref_df
@@ -1246,7 +1254,7 @@ class AccountEntry:
                                     logger.error(
                                         'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
-            elif event == delete_key or (event == '-HK_TBL_DEL-' and can_delete):
+            elif event in (delete_key, delete_hkey) and can_delete:
                 reference_event = True
 
                 # Find rows selected by user for deletion
@@ -1390,7 +1398,7 @@ class AccountEntry:
             parameters (list): list of data parameters to filter the records database table on.
 
         Returns:
-            success (bool): records and references were loaded successully.
+            success (bool): records and references were loaded successfully.
         """
         pd.set_option('display.max_columns', None)
 
