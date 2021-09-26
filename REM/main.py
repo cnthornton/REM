@@ -650,10 +650,6 @@ def main():
                        return_keyboard_events=True)
     window.finalize()
     window.maximize()
-    logger.info('starting the program')
-
-    # Bind keyboard events
-    window = settings.set_shortcuts(window, hk_groups=['Navigation'])
 
     screen_w, screen_h = window.get_screen_dimensions()
     logger.debug('screen size is {W} x {H}'.format(W=screen_w, H=screen_h))
@@ -665,12 +661,18 @@ def main():
     resize_panels(window, acct_rules)
     resized = False
 
-    # Make home screen visible
+    # Display the home panel
     window.refresh()
     home_panel = current_panel = '-HOME-'
     window[home_panel].update(visible=True)
 
+    # Bind keyboard events
+    window = settings.set_shortcuts(window, hk_groups=['Navigation'])
+    for acct_rule in acct_rules:
+        acct_rule.bind_keys(window)
+
     # Event Loop
+    logger.info('starting the program')
     while True:
         event, values = window.read(timeout=100)
 

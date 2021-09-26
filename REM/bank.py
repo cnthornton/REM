@@ -112,6 +112,17 @@ class BankRule:
 
         return key
 
+    def bind_keys(self, window):
+        """
+        Bind panel-element hotkeys.
+        """
+        # Bind events to element keys
+        logger.debug('BankRule {NAME}: binding record element hotkeys'.format(NAME=self.name))
+
+        # Bind account table hotkeys
+        for acct in self.accts:
+            acct.table.bind_keys(window)
+
     def events(self):
         """
         Return a list of all events allowed under the rule.
@@ -274,7 +285,6 @@ class BankRule:
             # Reset panel sizes
             next_acct = self.fetch_account(next_panel, by_key=True)
             next_acct.table.set_table_dimensions(window)
-            #            self.resize_elements(window)
 
             # Hide current panel and un-hide the following panel
             window[self.current_panel].update(visible=False)
@@ -293,7 +303,6 @@ class BankRule:
             # Reset panel sizes
             prev_acct = self.fetch_account(prev_panel, by_key=True)
             prev_acct.table.set_table_dimensions(window)
-            #            self.resize_elements(window)
 
             # Hide current panel and un-hide the previous panel
             window[self.current_panel].update(visible=False)
