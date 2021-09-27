@@ -4187,7 +4187,8 @@ class DataElement(RecordElement):
         self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ['Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']])
-        self._event_elements = ['Element', 'Edit', 'Save', 'Cancel']
+        #self._event_elements = ['Element', 'Edit', 'Save', 'Cancel']
+        self._event_elements = ['Edit', 'Save', 'Cancel']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')

@@ -1006,7 +1006,9 @@ class AccountEntry:
 
         ref_map (dict): reference columns to add to the records table along with their table aliases.
 
-        transactions (dict): source and sink dynamics of the account.
+        transactions (dict): money in and money out definitions.
+
+        void_transactions (dict): failed transaction definitions.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -1139,6 +1141,9 @@ class AccountEntry:
                 trans_entry['AssociationParameters'] = params
 
                 self.transactions[transaction_acct] = trans_entry
+
+        void_transactions = entry.get('VoidTransactions', entry.get('FailedTransactions', {}))
+        self.void_transactions = {}
 
         try:
             self.import_rules = entry['ImportRules']

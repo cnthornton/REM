@@ -116,7 +116,8 @@ class AuditRule:
 
         self.transactions = []
         try:
-            transaction_entries = entry['AuditTransactions']
+            transaction_entries = entry['Tabs']
+            #transaction_entries = entry['AuditTransactions']
         except KeyError:
             msg = 'AuditRule {NAME}: missing required parameter "AuditTransactions"'.format(NAME=name)
             mod_win2.popup_error(msg)
@@ -131,7 +132,8 @@ class AuditRule:
             self.bindings.extend(transaction.bindings)
 
         try:
-            records = entry['AuditRecords']
+            #records = entry['AuditRecords']
+            records = entry['Summary']['Tabs']
         except KeyError:
             msg = 'missing required parameter "AuditRecords"'
             logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -146,27 +148,9 @@ class AuditRule:
                 self.bindings.extend(record_tab.bindings)
 
         try:
-            report = entry['Report']
+            self._title = entry['Title']
         except KeyError:
-            msg = 'missing required configuration parameter "Report".'
-            logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise AttributeError(msg)
-
-        for tab_name in report:
-            report_tab = report[tab_name]
-            for section_name in report_tab:
-                section = report_tab[section_name]
-
-                if 'Title' not in section:
-                    section['Title'] = section_name
-                if 'Columns' not in section:
-                    msg = 'summary report {SEC} is missing required parameter "Columns"'.format(SEC=section_name)
-                    logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    raise AttributeError(msg)
-
-        self.report = report
+            self._title = '{} Summary'.format(name)
 
         self.in_progress = False
 
@@ -476,9 +460,6 @@ class AuditRule:
                     # Enable/Disable control buttons and parameter elements
                     self.toggle_parameters(window, 'disable')
 
-                    # Update summary panel title with rule parameter values
-                    #self.summary.update_title(window, self.parameters)
-
                     for transaction_tab in self.transactions:
                         # Enable table element events
                         transaction_tab.table.enable(window)
@@ -526,7 +507,9 @@ class AuditRule:
                                 return current_rule
 
             # Get output file from user
-            title = self.summary.title.replace(' ', '_')
+            report_title = self.update_title()
+
+            title = report_title.replace(' ', '_')
             outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
                                         default_extension='pdf', no_window=True,
                                         file_types=(('PDF - Portable Document Format', '*.pdf'),))
@@ -553,7 +536,7 @@ class AuditRule:
                         logger.info('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         # Save summary to excel or csv file
                         try:
-                            self.save_report(outfile)
+                            self.save_report(outfile, title=report_title)
                         except Exception as e:
                             msg = 'Save to file {FILE} failed - {ERR}'.format(FILE=outfile, ERR=e)
                             mod_win2.popup_error(msg)
@@ -791,7 +774,7 @@ class AuditRule:
         window[save_key].metadata['disabled'] = True
 
         # Switch to first tab in each panel
-        tg_key = self.key_lookup('TransactionsTG')
+        tg_key = self.key_lookup('TransactionTG')
         window[tg_key].Widget.select(0)
 
         tg_key = self.key_lookup('SummaryTG')
@@ -826,6 +809,47 @@ class AuditRule:
             return self.name
         else:
             return None
+
+    def update_title(self):
+        """
+        Update summary panel title to include audit parameters.
+        """
+        params = self.parameters
+
+        # Update summary title with parameter values, if specified in title format
+        try:
+            title_components = re.findall(r'\{(.*?)\}', self._title)
+        except TypeError:
+            title_components = []
+        else:
+            logger.debug('AuditRule {NAME}: report components are {COMPS}'
+                         .format(NAME=self.name, COMPS=title_components))
+
+        title_params = {}
+        for param in params:
+            param_col = param.name
+
+            # Check if parameter composes part of title
+            if param_col in title_components:
+                display_value = param.format_display()
+                logger.debug('AuditRule {NAME}: adding parameter value {VAL} to title'
+                             .format(NAME=self.name, VAL=display_value))
+                title_params[param_col] = display_value
+            else:
+                logger.warning('AuditRule {NAME}: parameter {PARAM} not found in title'
+                               .format(NAME=self.name, PARAM=param_col))
+
+        try:
+            summ_title = self._title.format(**title_params)
+        except KeyError as e:
+            logger.error('AuditRule {NAME}: formatting summary title failed due to {ERR}'
+                         .format(NAME=self.name, ERR=e))
+            summ_title = self._title
+
+        logger.info('AuditRule {NAME}: formatted summary title is {TITLE}'
+                    .format(NAME=self.name, TITLE=summ_title))
+
+        return summ_title
 
     def reset_parameters(self, window):
         """
@@ -888,17 +912,19 @@ class AuditRule:
 
         return success
 
-    def save_report(self, filename):
+    def save_report(self, filename, title: str = None):
         """
         Generate the summary report and save the report to the output file.
 
         Arguments:
             filename (str): save report to file.
 
+            title (str): name of the report [Default: generate from audit parameters].
+
         Returns:
             success (bool): saving report was successful.
         """
-        report_title = self.title
+        report_title = title if title else self.update_title()
 
         logger.info('AuditRule {NAME}: saving summary report {TITLE} to {FILE}'
                     .format(NAME=self.name, TITLE=report_title, FILE=filename))
@@ -1528,77 +1554,10 @@ class AuditTransaction:
         return comp_tup
 
 
-class AuditSummary:
-    """
-    AuditRule summary panel object.
-    """
-
-    def __init__(self, name, entry, parent=None):
-
-        self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
-        self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('TG', 'Title')]
-
-        try:
-            self._title = entry['Title']
-        except KeyError:
-            self._title = '{} Summary'.format(name)
-
-
-        # Dynamic attributes
-        self.title = None
-
-    def update_title(self, window, params):
-        """
-        Update summary panel title to include audit parameters.
-        """
-        # Update summary title with parameter values, if specified in title format
-        try:
-            title_components = re.findall(r'\{(.*?)\}', self._title)
-        except TypeError:
-            title_components = []
-        else:
-            logger.debug('AuditRuleSummary {NAME}: summary title components are {COMPS}'
-                         .format(NAME=self.name, COMPS=title_components))
-
-        title_params = {}
-        for param in params:
-            param_col = param.name
-
-            # Check if parameter composes part of title
-            if param_col in title_components:
-                display_value = param.format_display()
-                logger.debug('AuditRuleSummary {NAME}: adding parameter value {VAL} to title'
-                             .format(NAME=self.name, VAL=display_value))
-                title_params[param_col] = display_value
-            else:
-                logger.warning('AuditRuleSummary {NAME}: parameter {PARAM} not found in title'
-                               .format(NAME=self.name, PARAM=param_col))
-
-        try:
-            summ_title = self._title.format(**title_params)
-        except KeyError as e:
-            logger.error('AuditRuleSummary {NAME}: formatting summary title failed due to {ERR}'
-                         .format(NAME=self.name, ERR=e))
-            summ_title = self._title
-
-        logger.info('AuditRuleSummary {NAME}: formatted summary title is {TITLE}'
-                    .format(NAME=self.name, TITLE=summ_title))
-
-        #title_key = self.key_lookup('Title')
-        #window[title_key].update(value=summ_title)
-
-        self.title = summ_title
-
-
 class AuditRecord:
     """
     Class to store information about an audit record.
     """
-
     def __init__(self, name, entry, parent: str = None):
 
         self.name = name
@@ -1612,7 +1571,7 @@ class AuditRecord:
         self.record = mod_records.DatabaseRecord(record_entry, level=0)
         self.record.metadata = []
         self.elements.extend(self.record.elements)
-        self.bindings = self.elements + self.record.record_events()
+        self.bindings = self.record.record_events()
 
         try:
             self.merge = bool(int(entry['MergeTransactions']))

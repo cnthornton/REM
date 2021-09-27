@@ -1820,9 +1820,13 @@ class DatabaseRecord:
 
         # Run a record element event
         if record_element is not None:
-            print('record event {EVENT} is in record element {ELEM}'.format(EVENT=event, ELEM=record_element.name))
+            logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
+                         .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
             if record_element.etype == 'component_table':
-                if event == record_element.key_lookup('Add'):
+                elem_key = record_element.key_lookup('Element')
+                add_key = record_element.key_lookup('Add')
+                add_hkey = '{}+ADD+'.format(elem_key)
+                if event in (add_key, add_hkey):
                     # Close options panel, if open
                     record_element.set_table_dimensions(window)
 
