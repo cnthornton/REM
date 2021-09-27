@@ -11,6 +11,7 @@ import PySimpleGUI as sg
 
 import REM.constants as mod_const
 import REM.elements as mod_elem
+import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.client import logger, settings, user
 
@@ -51,11 +52,11 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Expand', 'Cancel', 'Save', 'FrameHeight',
+                         ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Cancel', 'Save', 'FrameHeight',
                           'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next')]
 
         self.bindings = [self.key_lookup(i) for i in
-                         ('Cancel', 'Save', 'Back', 'Next', 'Entry', 'Parameters', 'Reconcile', 'Expand')]
+                         ('Cancel', 'Save', 'Back', 'Next', 'Entry', 'Parameters', 'Reconcile')]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -72,6 +73,38 @@ class BankRule:
         except KeyError:  # default permission for a bank rule is 'admin'
             self.permissions = 'admin'
 
+        self.parameters = []
+        try:
+            params = entry['RuleParameters']
+        except KeyError:
+            msg = 'missing required parameter "RuleParameters"'
+            logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
+
+        for param_name in params:
+            param_entry = params[param_name]
+
+            param_layout = param_entry['ElementType']
+            if param_layout in ('dropdown', 'combo'):
+                param_class = mod_param.DataParameterCombo
+            elif param_layout in ('input', 'date'):
+                param_class = mod_param.DataParameterInput
+            elif param_layout in ('range', 'date_range'):
+                param_class = mod_param.DataParameterRange
+            elif param_layout == 'checkbox':
+                param_class = mod_param.DataParameterCheckbox
+            else:
+                msg = 'unknown type {TYPE} provided to RuleParameter {PARAM}' \
+                    .format(TYPE=param_layout, PARAM=param_name)
+                logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise AttributeError(msg)
+
+            param = param_class(param_name, param_entry)
+            self.parameters.append(param)
+            self.bindings.extend(param.event_bindings())
+
         try:
             accts = entry['Entries']
         except KeyError:
@@ -85,7 +118,7 @@ class BankRule:
         for acct_id in accts:  # account entries
             acct_entry = accts[acct_id]
 
-            acct = AccountEntry(acct_id, acct_entry, parent=self.name)
+            acct = BankAccount(acct_id, acct_entry, parent=self.name)
             self.accts.append(acct)
 
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
@@ -158,6 +191,25 @@ class BankRule:
                            .format(ACCT=account_id, NAME=self.name))
 
         return account
+
+    def fetch_parameter(self, element, by_key: bool = False):
+        """
+        Fetch a GUI parameter element by name or event key.
+        """
+        if by_key is True:
+            element_type = element[1:-1].split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.parameters]
+        else:
+            element_names = [i.name for i in self.parameters]
+
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.parameters[index]
+        else:
+            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
+                           .format(ELEM=element, NAME=self.name))
+
+        return parameter
 
     def run_event(self, window, event, values):
         """
@@ -263,7 +315,7 @@ class BankRule:
                     else:
                         msg = 'account records were successfully saved to the database'
                         mod_win2.popup_notice(msg)
-                        logger.info('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        logger.info('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         # Save summary to excel or csv file
                         try:
                             self.save_report(outfile)
@@ -347,13 +399,12 @@ class BankRule:
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
-                pd.set_option('display.max_columns', None)
                 for acct_name in params:
                     acct_params = params[acct_name]
                     if not acct_params:
                         continue
 
-                    logger.debug('AuditRule {NAME}: loading database records for account {ACCT}'
+                    logger.debug('BankRule {NAME}: loading database records for account {ACCT}'
                                  .format(NAME=self.name, ACCT=acct_name))
                     acct = self.fetch_account(acct_name)
                     data_loaded = acct.load_data(acct_params)
@@ -390,13 +441,16 @@ class BankRule:
         # Reconcile button was pressed. Will run the reconcile method to find associations with the current primary
         # account and any associated accounts with data.
         elif event == reconcile_key:
-            expand_search = values[expand_key]
+            expand_param = self.fetch_parameter('ExpandSearch')
+            failed_param = self.fetch_parameter('SearchVoid')
+            expand_search = values[expand_param.key_lookup('Element')]
+            search_for_failed = values[failed_param.key_lookup('Element')]
 
             try:
-                self.reconcile_statement(expand_search)
+                self.reconcile_statement(expand_search=expand_search, search_failed=search_for_failed)
             except Exception as e:
                 msg = 'failed to reconcile statement - {ERR}'.format(ERR=e)
-                logger.exception('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
                 # Update the sub-panel displays
@@ -478,6 +532,8 @@ class BankRule:
         """
         width, height = size
 
+        params = self.parameters
+
         # Element parameters
         bttn_text_col = mod_const.WHITE_TEXT_COL
         bttn_bg_col = mod_const.BUTTON_COL
@@ -524,7 +580,20 @@ class BankRule:
         param_key = self.key_lookup('Parameters')
         entry_key = self.key_lookup('Entry')
         reconcile_key = self.key_lookup('Reconcile')
-        expand_key = self.key_lookup('Expand')
+
+        # Rule parameter elements
+        if len(params) > 1:
+            param_pad = ((0, pad_h), 0)
+        else:
+            param_pad = (0, 0)
+
+        param_elements = [sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
+                                    button_color=(bttn_text_col, bttn_bg_col),
+                                    disabled_button_color=(disabled_text_col, disabled_bg_col),
+                                    tooltip='Run reconciliation')]
+        for param in params:
+            element_layout = param.layout(padding=param_pad, auto_size_desc=True)
+            param_elements.extend(element_layout)
 
         entries = [i.title for i in self.accts]
         header = [sg.Col([[sg.Combo(entries, default_value='', key=entry_key, size=(30, 1), pad=(pad_h, 0), font=font,
@@ -533,13 +602,7 @@ class BankRule:
                            sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
                                      button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
                          expand_x=True, justification='l', background_color=bg_col),
-                  sg.Col([[sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
-                                     button_color=(bttn_text_col, bttn_bg_col),
-                                     disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                     tooltip='Run reconciliation'),
-                           sg.Checkbox('Expand search', key=expand_key, background_color=bg_col, font=font,
-                                       disabled=True)]],
-                         pad=(0, 0), justification='r', background_color=bg_col)]
+                  sg.Col([param_elements], pad=(0, 0), justification='r', background_color=bg_col)]
 
         # Panels
         panels = []
@@ -635,25 +698,27 @@ class BankRule:
             acct = self.fetch_account(acct_panel, by_key=True)
             acct.update_display(window)
 
-    def reconcile_statement(self, expand: bool = False):
+    def reconcile_statement(self, expand_search: bool = False, search_failed: bool = False):
         """
         Run the primary Bank Reconciliation rule algorithm for the record tab.
 
         Arguments:
-            expand (bool): expand the search by ignoring association parameters designated as expanded [Default: False].
+            expand_search (bool): expand the search by ignoring association parameters designated as expanded
+                [Default: False].
+
+            search_failed (bool): search for failed transactions, such as mistaken payments and bounced cheques
+                [Default: False].
 
         Returns:
             success (bool): bank reconciliation was successful.
         """
         pd.set_option('display.max_columns', None)
-        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
-                    'IsChild', 'IsDeleted']
 
         # Fetch primary account and prepare data
         acct = self.fetch_account(self.current_account)
         logger.info('BankRule {NAME}: reconciling account {ACCT}'.format(NAME=self.name, ACCT=acct.name))
         logger.debug('BankRule {NAME}: expanded search is set to {VAL}'
-                     .format(NAME=self.name, VAL=('on' if expand else 'off')))
+                     .format(NAME=self.name, VAL=('on' if expand_search else 'off')))
 
         table = acct.table
         id_column = table.id_column
@@ -661,7 +726,7 @@ class BankRule:
         # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
         ref_df = acct.ref_df.copy()
         ref_df = ref_df[~ref_df['IsDeleted']]
-        df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), ref_df, how='left', on='RecordID')
+        df = pd.merge(table.data().drop(columns=list(acct._ref_map.values())), ref_df, how='left', on='RecordID')
         header = df.columns.tolist()
 
         if df.empty:
@@ -670,7 +735,15 @@ class BankRule:
         # Filter out records already associated with transaction account records
         logger.debug('BankRule {NAME}: dropping {ACCT} records that are already associated with a transaction '
                      'account record'.format(NAME=self.name, ACCT=acct.name))
-        df = df.drop(df[~df['ReferenceID'].isna()].index, axis=0)
+        df.drop(df[~df['ReferenceID'].isna()].index, axis=0, inplace=True)
+
+        # Filter out void transactions
+        if search_failed:
+            logger.debug('BankRule {NAME}: skipping void transactions from account {ACCT}'
+                         .format(NAME=self.name, ACCT=acct.name))
+            df = acct.search_void_transactions(df)
+        else:
+            df = acct.filter_void_transactions(df)
 
         # Initialize the merged associated account dataframe
         logger.debug('BankRule {NAME}: initializing the merged accounts table'.format(NAME=self.name, ACCT=acct.name))
@@ -693,7 +766,7 @@ class BankRule:
             # Merge the associated records and references tables
             assoc_ref_df = assoc_acct.ref_df.copy()
             assoc_ref_df = assoc_ref_df[~assoc_ref_df['IsDeleted']]
-            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct.ref_map.values())), assoc_ref_df, how='left',
+            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct._ref_map.values())), assoc_ref_df, how='left',
                                 on='RecordID')
             assoc_header = assoc_df.columns.tolist()
 
@@ -701,6 +774,14 @@ class BankRule:
             drop_conds = ~assoc_df['ReferenceID'].isna()
             drop_labels = assoc_df[drop_conds].index
             assoc_df = assoc_df.drop(drop_labels, axis=0)
+
+            # Filter out void transactions
+            if search_failed:
+                logger.debug('BankRule {NAME}: skipping void transactions from association account {ACCT}'
+                             .format(NAME=self.name, ACCT=assoc_acct_name))
+                assoc_df = assoc_acct.search_void_transactions(assoc_df)
+            else:
+                assoc_df = assoc_acct.filter_void_transactions(assoc_df)
 
             # Create the account-association account column mapping from the association rules
             assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
@@ -769,7 +850,7 @@ class BankRule:
 
             # Check matches and find correct association
             nmatch = matches.shape[0]
-            if nmatch == 0 and expand is True:  # no matching entries in the merged dataset
+            if nmatch == 0 and expand_search is True:  # no matching entries in the merged dataset
                 # Attempt to find matches using only the core columns
                 matches = pd.DataFrame(columns=merged_df.columns)
                 expanded_cols = []
@@ -829,14 +910,11 @@ class BankRule:
                     warning = '\n'.join(warning)
 
                     # Insert the reference into the account records reference dataframe
-                    ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, False, False, False, False]
-                    acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
+                    acct.add_reference(record_id, ref_id, ref_type, approved=False, warning=warning)
 
                     # Insert the reference into the associated account's reference dataframe
                     assoc_acct = self.fetch_account(assoc_acct_name)
-                    ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, False, False, False,
-                                  False]
-                    assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
+                    assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=False, warning=warning)
 
                 elif nmatch > 1:  # too many matches
                     msg = 'found more than one expanded match for account {ACCT} record "{RECORD}"' \
@@ -861,13 +939,11 @@ class BankRule:
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Insert the reference into the account records reference dataframe
-                ref_values = [ref_id, datetime.datetime.now(), ref_type, None, True, False, False, False]
-                acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
+                acct.add_reference(record_id, ref_id, ref_type, approved=True)
 
                 # Insert the reference into the associated account's reference dataframe
                 assoc_acct = self.fetch_account(assoc_acct_name)
-                ref_values = [record_id, datetime.datetime.now(), acct.record_type, None, True, False, False, False]
-                assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
+                assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=True)
 
             elif nmatch > 1:  # too many matches
                 nfound += 1
@@ -885,13 +961,11 @@ class BankRule:
                 merged_df.drop(matches.index.tolist()[0], inplace=True)
 
                 # Insert the reference into the account records reference dataframe
-                ref_values = [ref_id, datetime.datetime.now(), ref_type, warning, True, False, False, False]
-                acct.ref_df.loc[acct.ref_df['RecordID'] == record_id, ref_cols] = ref_values
+                acct.add_reference(record_id, ref_id, ref_type, approved=True, warning=warning)
 
                 # Insert the reference into the associated account's reference dataframe
                 assoc_acct = self.fetch_account(assoc_acct_name)
-                ref_values = [record_id, datetime.datetime.now(), acct.record_type, warning, True, False, False, False]
-                assoc_acct.ref_df.loc[assoc_acct.ref_df['RecordID'] == ref_id, ref_cols] = ref_values
+                assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=True, warning=warning)
 
         logger.info('AuditRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
                     .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
@@ -977,9 +1051,9 @@ class BankRule:
         return all(status)
 
 
-class AccountEntry:
+class BankAccount:
     """
-    Bank record tab.
+    Bank transaction account entry.
 
         name (str): rule name.
 
@@ -1004,7 +1078,9 @@ class AccountEntry:
 
         ref_df (DataFrame): table for storing record references.
 
-        ref_map (dict): reference columns to add to the records table along with their table aliases.
+        _col_map (dict): required account parameters with corresponding record names.
+
+        _ref_map (dict): reference columns to add to the records table along with their table aliases.
 
         transactions (dict): money in and money out definitions.
 
@@ -1037,7 +1113,7 @@ class AccountEntry:
         try:
             self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'AccountEntry {NAME}: missing required configuration parameter "RecordType".'.format(NAME=name)
+            msg = 'BankAccount {NAME}: missing required configuration parameter "RecordType".'.format(NAME=name)
             logger.error(msg)
 
             raise AttributeError(msg)
@@ -1063,26 +1139,32 @@ class AccountEntry:
             self.parameters = entry['ImportParameters']
         except KeyError:
             msg = 'no import parameters specified'
-            logger.warning('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.warning('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             self.parameters = {}
 
         try:
             ref_map = entry['ReferenceMap']
         except KeyError:
-            self.ref_map = {}
-        else:
-            ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
-                        'IsChild', 'IsDeleted']
-            self.ref_map = {}
-            for column in ref_map:
-                if column not in ref_cols:
-                    msg = 'reference map column {COL} is not a valid reference column name'.format(COL=column)
-                    logger.warning('AccountEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            ref_map = {}
+        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
+                    'IsChild', 'IsDeleted']
+        self._ref_map = {}
+        for column in ref_map:
+            if column not in ref_cols:
+                msg = 'reference map column {COL} is not a valid reference column name'.format(COL=column)
+                logger.warning('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                    continue
+                continue
 
-                self.ref_map[column] = ref_map[column]
+            self._ref_map[column] = ref_map[column]
+
+        try:
+            self._col_map = entry['ColumnMap']
+        except KeyError:
+            self._col_map = {'TransactionCode': 'TransactionCode', 'TransactionType': 'TransactionType',
+                             'Notes': 'Notes', 'Withdrawal': 'Withdrawal', 'Deposit': 'Deposit',
+                             }
 
         try:
             transactions = entry['Transactions']
@@ -1105,7 +1187,7 @@ class AccountEntry:
                     trans_entry['Title'] = cnfg_entry['Title']
 
                 if 'AssociationParameters' not in cnfg_entry:
-                    msg = 'AccountEntry {NAME}: Transaction account {ACCT} is missing required parameter ' \
+                    msg = 'BankAccount {NAME}: Transaction account {ACCT} is missing required parameter ' \
                           '"AssociationParameters"'.format(NAME=name, ACCT=transaction_acct)
                     logger.error(msg)
 
@@ -1115,7 +1197,7 @@ class AccountEntry:
                 params = {}
                 for assoc_column in list(assoc_params):
                     if assoc_column not in self.table.columns:
-                        msg = 'AccountEntry {NAME}: the associated column "{COL}" for transaction account {ACCT} is ' \
+                        msg = 'BankAccount {NAME}: the associated column "{COL}" for transaction account {ACCT} is ' \
                               'not found in the list of table columns'\
                             .format(NAME=name, ACCT=transaction_acct, COL=assoc_column)
                         logger.error(msg)
@@ -1124,7 +1206,7 @@ class AccountEntry:
 
                     param_entry = assoc_params[assoc_column]
                     if 'Column' not in param_entry:
-                        msg = 'AccountEntry {NAME}: the association parameter "{COL}" for transaction account {ACCT} ' \
+                        msg = 'BankAccount {NAME}: the association parameter "{COL}" for transaction account {ACCT} ' \
                               'requires the "Column" field to be specified in the configuration'\
                             .format(NAME=name, ACCT=transaction_acct, COL=assoc_column)
                         logger.error(msg)
@@ -1142,8 +1224,7 @@ class AccountEntry:
 
                 self.transactions[transaction_acct] = trans_entry
 
-        void_transactions = entry.get('VoidTransactions', entry.get('FailedTransactions', {}))
-        self.void_transactions = {}
+        self.void_transactions = entry.get('VoidTransactions', entry.get('FailedTransactions', {}))
 
         try:
             self.import_rules = entry['ImportRules']
@@ -1161,7 +1242,7 @@ class AccountEntry:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            logger.warning('AccountEntry {NAME}: component "{COMP}" not found in list of elements'
+            logger.warning('BankAccount {NAME}: component "{COMP}" not found in list of elements'
                            .format(NAME=self.name, COMP=component))
             key = None
 
@@ -1336,7 +1417,7 @@ class AccountEntry:
         """
         pd.set_option('display.max_columns', None)
 
-        ref_map = self.ref_map
+        ref_map = self._ref_map
         ref_df = self.ref_df.copy()
 
         if df is None:
@@ -1393,6 +1474,93 @@ class AccountEntry:
 
         return None
 
+    def search_void_transactions(self, df):
+        """
+        Set the correct transaction type for failed transaction records.
+        """
+        record_type = self.record_type
+        column_map = self._col_map
+
+        type_col = column_map['TransactionType']
+        failed_col = column_map['Void']
+        withdraw_col = column_map['Withdrawal']
+        deposit_col = column_map['Deposit']
+        date_col = column_map['TransactionDate']
+        tcode_col = column_map['TransactionCode']
+
+        # Search for bounced cheques
+        bc_entry = self.void_transactions.get('BouncedCheque', None)
+        if bc_entry:
+            bc_code = bc_entry.get('Code', 'RT')
+            bounced = df[(df[tcode_col] == bc_code) & (df[type_col] == 1)]
+            deposits = df[df[type_col] == 0]
+            matches = find_nearest_match(bounced.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
+                                         deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
+                                         date_range=bc_entry.get('DateRange', 1))
+            for match_pair in matches:
+                record_id, ref_id = match_pair
+
+                # Insert the reference into the account records reference dataframe
+                warning = bc_entry.get('Description', 'bounced check')
+
+                self.add_reference(record_id, ref_id, record_type, warning=warning)
+                self.add_reference(ref_id, record_id, record_type, warning=warning)
+
+                # Set the transaction code for the bounced cheque
+                df.loc[df['RecordID'].isin(match_pair), failed_col] = 1
+
+        df = self.filter_void_transactions(df)
+
+        # Search for mistaken payments
+        mp_entry = self.void_transactions.get('MistakenPayments', None)
+        if mp_entry:
+            withdrawals = df[df[type_col] == 1]
+            deposits = df[df[type_col] == 0]
+
+            matches = find_nearest_match(deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
+                                         withdrawals.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
+                                         date_range=bc_entry.get('DateRange', 1))
+
+            for match_pair in matches:
+                record_id, ref_id = match_pair
+
+                # Insert the reference into the account records reference dataframe
+                warning = mp_entry.get('Description', 'mistaken payment')
+
+                self.add_reference(record_id, ref_id, record_type, warning=warning)
+                self.add_reference(ref_id, record_id, record_type, warning=warning)
+
+                # Set the transaction code for the bounced cheque
+                df.loc[df['RecordID'].isin(match_pair), failed_col] = 1
+
+        df = self.filter_void_transactions(df)
+
+        return df
+
+    def filter_void_transactions(self, df: pd.DataFrame = None):
+        """
+        Remove void transactions from a dataframe.
+        """
+        column_map = self._col_map
+        failed_col = column_map['Void']
+
+        df = df if df is not None else self.table.data()
+
+        df.drop(df[df[failed_col] == 1], inplace=True)
+
+        return df
+
+    def add_reference(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None):
+        """
+        Add a record reference to the references dataframe.
+        """
+        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
+                    'IsChild', 'IsDeleted']
+
+        ref_values = [reference_id, datetime.datetime.now(), reftype, warning, approved, False, False, False]
+
+        self.ref_df.loc[self.ref_df['RecordID'] == record_id, ref_cols] = ref_values
+
     def update_display(self, window):
         """
         Update the panel's record table display.
@@ -1424,7 +1592,7 @@ class AccountEntry:
             df = record_entry.import_records(params=parameters, import_rules=self.import_rules)
         except Exception as e:
             msg = 'failed to import data from the database'
-            logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
 
             return False
@@ -1440,7 +1608,7 @@ class AccountEntry:
             import_df = record_entry.import_references(record_ids, rule_name)
         except Exception as e:
             msg = 'failed to import references from association rule {RULE}'.format(RULE=rule_name)
-            logger.exception('AccountEntry {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
 
             return False
@@ -1468,3 +1636,29 @@ class AccountEntry:
         print(self.ref_df.dtypes)
 
         return True
+
+
+def find_nearest_match(df, ref_df, amount_col: str = 'Amount', date_col: str = 'Date', id_col: str = 'RecordID',
+                       date_range: int = 1):
+    """
+    Find closest matches between transactions.
+    """
+    matches = []
+    for i, row in df.iterrows():
+        row_date = row[date_col]
+        record_id = row[id_col]
+        time_delta = datetime.timedelta(days=date_range)
+        compare_dates = ref_df[date_col]
+        match_df = ref_df[(ref_df[amount_col] == row[amount_col]) &
+                          (compare_dates >= row_date - time_delta) &
+                          (compare_dates <= row_date + time_delta)]
+
+        if match_df.empty:
+            continue
+
+        closest_ind = match_df[date_col].sub(row_date).abs().idxmin()
+        reference_id = match_df.iloc[closest_ind][id_col]
+        matches.append((record_id, reference_id))
+
+    return matches
+
