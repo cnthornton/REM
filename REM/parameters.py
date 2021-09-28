@@ -40,6 +40,8 @@ class DataParameter:
 
         icon (str): file name of the parameter's icon [Default: None].
 
+        aliases (dict): optional value aliases.
+
         value: value of the parameter's data storage elements.
     """
 
@@ -117,6 +119,18 @@ class DataParameter:
         else:
             self.required = required
 
+        # Display value aliases
+        try:
+            aliases = entry['Aliases']
+        except KeyError:
+            aliases = settings.fetch_alias_definition(self.name)
+
+        self.aliases = {}  # only str and int types can have aliases - aliases dict reversed during value formatting
+        if self.dtype in settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes:
+            for alias in aliases:  # alias should have same datatype as the element
+                alias_value = aliases[alias]
+                self.aliases[settings.format_value(alias, self.dtype)] = alias_value
+
         try:
             self.icon = entry['Icon']
         except KeyError:
@@ -139,6 +153,7 @@ class DataParameter:
 
         self.value = None
         self.bg_col = mod_const.ACTION_COL
+        self.auto_size = False
 
     def key_lookup(self, component):
         """
@@ -179,20 +194,22 @@ class DataParameter:
         else:
             width, height = mod_const.PARAM_SIZE_PX if pixels else mod_const.PARAM_SIZE_CHAR
 
-        # Set the parameter width
-        width_key = self.key_lookup('Width')
-        param_w = width if pixels else width * 10
-        window[width_key].set_size(size=(param_w, None))
+        auto_size = self.auto_size
 
         # Resize description at 40% of total width and the value element to take up the remaining space
         if pixels:
-            desc_w = int(width * 0.4)
-            elem_w = int(width * 0.6)
+            desc_w = int(width * 0.4) if not auto_size else 1
+            elem_w = int(width * 0.6) if not auto_size else 1
             desc_h = elem_h = height
+            param_w = width if not auto_size else 1
         else:
-            desc_w = int(width * 0.4) * 10
-            elem_w = int(width * 0.6) * 10
+            desc_w = int(width * 0.4) * 10 if not auto_size else 1
+            elem_w = int(width * 0.6) * 10 if not auto_size else 1
             desc_h = elem_h = int(height * 10) if height else None
+            param_w = width * 10 if not auto_size else 1
+
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(param_w, None))
 
         header_key = self.key_lookup('Header')
         window[header_key].set_size(size=(desc_w, desc_h))
@@ -226,10 +243,15 @@ class DataParameter:
         width, height = size
         if auto_size_desc:
             desc_w = 1
+            value_w = 1
+            layout_w = 1
             param_w = width
+            self.auto_size = True
         else:
             desc_w = int(width * 0.4) * 10
             param_w = int(width * 0.6)
+            value_w = 1
+            layout_w = width * 10
 
         # Parameter settings
         desc = '{}:'.format(self.description)
@@ -264,13 +286,13 @@ class DataParameter:
                                expand_y=True)
 
         value_key = self.key_lookup('Value')
-        param_layout = sg.Col([[sg.Canvas(key=value_key, size=(param_w, 0), background_color=bg_col)],
+        param_layout = sg.Col([[sg.Canvas(key=value_key, size=(value_w, 0), background_color=bg_col)],
                                self.element_layout(size=(param_w, height), bg_col=bg_col)],
                               background_color=bg_col, expand_y=True)
 
         width_key = self.key_lookup('Width')
         elem_layout = [header_layout, param_layout]
-        layout = [[sg.Canvas(key=width_key, size=(width * 10, 0), background_color=bg_col)], elem_layout]
+        layout = [[sg.Canvas(key=width_key, size=(layout_w, 0), background_color=bg_col)], elem_layout]
 
         return [sg.Frame('', layout, pad=padding, visible=visible, background_color=bg_col, relief=relief,
                          border_width=1)]
@@ -320,13 +342,17 @@ class DataParameter:
         group_sep = settings.thousands_sep
 
         dtype = self.dtype
+        aliases = {j: i for i, j in self.aliases.items()}
 
         value = values[elem_key]
         logger.debug('DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
                      .format(PARAM=self.name, VAL=value))
 
-        if value == '' or value is None or pd.isna(value):
+        if value == '' or pd.isna(value):
             return ''
+
+        if value in aliases:
+            return value
 
         elem_key = self.key_lookup('Element')
 
@@ -939,7 +965,7 @@ class DataParameterCombo(DataParameter):
 
         combo_values (list): list of possible values for the dropdown menu.
 
-        aliases (dict): optional combo value aliases.
+        aliases (dict): optional value aliases.
 
         icon (str): file name of the parameter's icon [Default: None].
 
@@ -959,7 +985,7 @@ class DataParameterCombo(DataParameter):
             self.dtype = 'varchar'
 
         # Dropdown values
-        param_def = settings.fetch_alias_definition(self.name)
+        #param_def = settings.fetch_alias_definition(self.name)
         try:
             combo_values = entry['Values']
         except KeyError:
@@ -970,7 +996,7 @@ class DataParameterCombo(DataParameter):
             self.combo_values = []
         else:
             self.combo_values = []
-            self.aliases = {}
+            #self.aliases = {}
             for combo_value in combo_values:
                 try:
                     value_fmt = self.set_datatype(combo_value)
@@ -982,26 +1008,25 @@ class DataParameterCombo(DataParameter):
                     self.combo_values.append(value_fmt)
 
                 # Add alias from parameter definition, if configured in the parameter definitions
-                if combo_value in param_def:
-                    self.aliases[combo_value] = param_def[combo_value]
-                else:
-                    msg = 'value {VAL} is not found in the alias definition'.format(VAL=combo_value)
-                    logger.debug('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                #if combo_value in param_def:
+                #    self.aliases[combo_value] = param_def[combo_value]
+                #else:
+                #    msg = 'value {VAL} is not found in the alias definition'.format(VAL=combo_value)
+                #    logger.debug('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
-        # Dropdown aliases
-        try:
-            aliases = entry['Aliases']
-        except KeyError:
-            if not self.aliases:
-                self.aliases = {self.set_datatype(i): i for i in self.combo_values}
-        else:
-            self.aliases = {}  # overwrite possible existing aliases set in parameter definitions
-            for combo_value in self.combo_values:
-                if combo_value not in aliases:
-                    self.aliases[combo_value] = combo_value
-                else:
-                    alias = aliases[combo_value]
-                    self.aliases[combo_value] = self.set_datatype(alias)
+        #try:
+        #    aliases = entry['Aliases']
+        #except KeyError:
+        #    if not self.aliases:
+        #        self.aliases = {self.set_datatype(i): i for i in self.combo_values}
+        #else:
+        #    self.aliases = {}  # overwrite possible existing aliases set in parameter definitions
+        #    for combo_value in self.combo_values:
+        #        if combo_value not in aliases:
+        #            self.aliases[combo_value] = combo_value
+        #        else:
+        #            alias = aliases[combo_value]
+        #            self.aliases[combo_value] = self.set_datatype(alias)
 
         # Set the default value
         if self.default in self.combo_values:
