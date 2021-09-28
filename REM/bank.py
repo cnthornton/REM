@@ -211,6 +211,13 @@ class BankRule:
 
         return parameter
 
+    def toggle_parameters(self, window, value='enable'):
+        """
+        Enable / Disable audit rule parameter elements.
+        """
+        for param in self.parameters:
+            param.toggle_elements(window, value)
+
     def run_event(self, window, event, values):
         """
         Run a bank reconciliation event.
@@ -223,7 +230,6 @@ class BankRule:
 
         reconcile_key = self.key_lookup('Reconcile')
         entry_key = self.key_lookup('Entry')
-        expand_key = self.key_lookup('Expand')
         param_key = self.key_lookup('Parameters')
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
@@ -239,9 +245,11 @@ class BankRule:
             acct = self.fetch_account(current_panel, by_key=True)
 
             ref_event = acct.run_event(window, event, values)
+            # Update reference dataframes when an account entry event is a reference event. A reference event is any
+            # event that may modify one side of a reference, which requires an update to the other side of the
+            # reference.
             if ref_event:
                 ref_df = acct.ref_df
-                print(ref_df)
                 deleted_records = ref_df.loc[ref_df['IsDeleted'], ['RecordID']].squeeze()
                 if isinstance(deleted_records, str):
                     deleted_records = [deleted_records]
@@ -250,9 +258,9 @@ class BankRule:
                 if isinstance(approved_records, str):
                     approved_records = [approved_records]
 
-                # Update all account reference dataframe for currently active panels
+                # Update account reference dataframes for currently active panels
                 for panel in self.panels:
-                    if panel == current_panel:  # do not attempt to update the same panel's reference dataframe
+                    if panel == current_panel:  # do not attempt to update the main account's reference dataframe
                         continue
 
                     ref_acct = self.fetch_account(panel, by_key=True)
@@ -435,6 +443,8 @@ class BankRule:
                     window[back_key].update(disabled=False)
                     window[back_key].metadata['disabled'] = False
 
+                self.toggle_parameters(window, 'enable')
+
                 # Mark that a reconciliation is currently in progress
                 self.in_progress = True
 
@@ -456,9 +466,6 @@ class BankRule:
                 # Update the sub-panel displays
                 self.update_display(window)
 
-                # Enable expanded search after an initial reconciliation is performed
-                window[expand_key].update(disabled=False)
-
         return current_rule
 
     def reset_rule(self, window, current: bool = False):
@@ -478,22 +485,22 @@ class BankRule:
 
         # Disable the reconciliation button
         reconcile_key = self.key_lookup('Reconcile')
-        expand_key = self.key_lookup('Expand')
         save_key = self.key_lookup('Save')
         window[reconcile_key].update(disabled=True)
         window[save_key].update(disabled=True)
-        window[expand_key].update(disabled=True, value=False)
 
         # Enable the account entry selection dropdown
         window[entry_key].update(disabled=False)
 
-        # Disable the navigation buttons
+        # Disable the navigation buttons and reconciliation modifier parameters
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         window[next_key].update(disabled=True)
         window[next_key].metadata['disabled'] = True
         window[back_key].update(disabled=True)
         window[back_key].metadata['disabled'] = True
+
+        self.toggle_parameters(window, 'disable')
 
         # Reset all account entries
         for acct in self.accts:
@@ -545,7 +552,6 @@ class BankRule:
 
         font = mod_const.MAIN_FONT
         font_h = mod_const.HEADER_FONT
-        font_bold = mod_const.BOLD_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
@@ -698,7 +704,7 @@ class BankRule:
             acct = self.fetch_account(acct_panel, by_key=True)
             acct.update_display(window)
 
-    def reconcile_statement(self, expand_search: bool = False, search_failed: bool = False):
+    def reconcile_statement_old(self, expand_search: bool = False, search_failed: bool = False):
         """
         Run the primary Bank Reconciliation rule algorithm for the record tab.
 
@@ -738,9 +744,9 @@ class BankRule:
         df.drop(df[~df['ReferenceID'].isna()].index, axis=0, inplace=True)
 
         # Filter out void transactions
+        logger.debug('BankRule {NAME}: skipping void transactions from account {ACCT}'
+                     .format(NAME=self.name, ACCT=acct.name))
         if search_failed:
-            logger.debug('BankRule {NAME}: skipping void transactions from account {ACCT}'
-                         .format(NAME=self.name, ACCT=acct.name))
             df = acct.search_void_transactions(df)
         else:
             df = acct.filter_void_transactions(df)
@@ -753,7 +759,6 @@ class BankRule:
         # Fetch associated account data
         transactions = acct.transactions
         assoc_ref_maps = {}
-        print(transactions)
         for assoc_acct_name in transactions:
             assoc_acct = self.fetch_account(assoc_acct_name)
             logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
@@ -776,9 +781,9 @@ class BankRule:
             assoc_df = assoc_df.drop(drop_labels, axis=0)
 
             # Filter out void transactions
+            logger.debug('BankRule {NAME}: skipping void transactions from association account {ACCT}'
+                         .format(NAME=self.name, ACCT=assoc_acct_name))
             if search_failed:
-                logger.debug('BankRule {NAME}: skipping void transactions from association account {ACCT}'
-                             .format(NAME=self.name, ACCT=assoc_acct_name))
                 assoc_df = assoc_acct.search_void_transactions(assoc_df)
             else:
                 assoc_df = assoc_acct.filter_void_transactions(assoc_df)
@@ -823,14 +828,12 @@ class BankRule:
             # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)
 
-        #        print(merged_df)
-        #        print(merged_df.dtypes)
-
         # Iterate over record rows, attempting to find matches in associated transaction records
-        logger.debug('AuditRule {NAME}: attempting to find associations for account {ACCT} records'
+        logger.debug('BankRule {NAME}: attempting to find associations for account {ACCT} records'
                      .format(NAME=self.name, ACCT=acct.name))
         nfound = 0
-        for row in df.itertuples():
+        #matched_indices = []
+        for index, row in df.iterrows():
             record_id = getattr(row, id_column)
 
             # Attempt to find a match for the record to each of the associated transaction accounts
@@ -889,7 +892,7 @@ class BankRule:
                     ref_id = results['_RecordID_']
                     ref_type = results['_RecordType_']
 
-                    logger.debug('AuditRule {NAME}: associating {ACCT} record {REFID} to account record {ID} from an '
+                    logger.debug('BankRule {NAME}: associating {ACCT} record {REFID} to account record {ID} from an '
                                  'expanded search'.format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id,
                                                           ID=record_id))
 
@@ -932,7 +935,7 @@ class BankRule:
                 ref_type = results['_RecordType_']
                 assoc_acct_name = results['_Account_']
 
-                logger.debug('AuditRule {NAME}: associating {ACCT} record {REFID} to account record {ID}'
+                logger.debug('BankRule {NAME}: associating {ACCT} record {REFID} to account record {ID}'
                              .format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id, ID=record_id))
 
                 # Remove the found match from the dataframe of unmatched associated account records
@@ -967,10 +970,376 @@ class BankRule:
                 assoc_acct = self.fetch_account(assoc_acct_name)
                 assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=True, warning=warning)
 
-        logger.info('AuditRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
+        logger.info('BankRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
                     .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
 
         return True
+
+    def reconcile_statement(self, expand_search: bool = False, search_failed: bool = False):
+        """
+        Run the primary Bank Reconciliation rule algorithm for the record tab.
+
+        Arguments:
+            expand_search (bool): expand the search by ignoring association parameters designated as expanded
+                [Default: False].
+
+            search_failed (bool): search for failed transactions, such as mistaken payments and bounced cheques
+                [Default: False].
+
+        Returns:
+            success (bool): bank reconciliation was successful.
+        """
+        pd.set_option('display.max_columns', None)
+
+        # Fetch primary account and prepare data
+        acct = self.fetch_account(self.current_account)
+        logger.info('BankRule {NAME}: reconciling account {ACCT}'.format(NAME=self.name, ACCT=acct.name))
+        logger.debug('BankRule {NAME}: expanded search is set to {VAL}'
+                     .format(NAME=self.name, VAL=('on' if expand_search else 'off')))
+
+        table = acct.table
+        id_column = table.id_column
+
+        # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
+        ref_df = acct.ref_df.copy()
+        ref_df = ref_df[~ref_df['IsDeleted']]
+        df = pd.merge(table.data().drop(columns=list(acct._ref_map.values())), ref_df, how='left', on='RecordID')
+        header = df.columns.tolist()
+
+        if df.empty:
+            return True
+
+        # Filter out records already associated with transaction account records
+        logger.debug('BankRule {NAME}: dropping {ACCT} records that are already associated with a transaction '
+                     'account record'.format(NAME=self.name, ACCT=acct.name))
+        df.drop(df[~df['ReferenceID'].isna()].index, axis=0, inplace=True)
+
+        # Filter out void transactions
+        logger.debug('BankRule {NAME}: skipping void transactions from account {ACCT}'
+                     .format(NAME=self.name, ACCT=acct.name))
+        if search_failed:
+            df = acct.search_void_transactions(df)
+        else:
+            df = acct.filter_void_transactions(df)
+
+        # Initialize the merged associated account dataframe
+        logger.debug('BankRule {NAME}: initializing the merged accounts table'.format(NAME=self.name, ACCT=acct.name))
+        required_fields = ['_Account_', '_RecordID_', '_RecordType_']
+        merged_df = pd.DataFrame(columns=required_fields)
+
+        # Fetch associated account data
+        transactions = acct.transactions
+        assoc_ref_maps = {}
+        for assoc_acct_name in transactions:
+            assoc_acct = self.fetch_account(assoc_acct_name)
+            logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
+                         .format(NAME=self.name, ACCT=assoc_acct.name))
+
+            assoc_df = assoc_acct.table.data()
+            if assoc_df.empty:  # no records loaded to match to, so skip
+                continue
+
+            # Merge the associated records and references tables
+            assoc_ref_df = assoc_acct.ref_df.copy()
+            assoc_ref_df = assoc_ref_df[~assoc_ref_df['IsDeleted']]
+            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct._ref_map.values())), assoc_ref_df, how='left',
+                                on='RecordID')
+            assoc_header = assoc_df.columns.tolist()
+
+            # Filter association account records that are already associated with a record
+            drop_conds = ~assoc_df['ReferenceID'].isna()
+            drop_labels = assoc_df[drop_conds].index
+            assoc_df = assoc_df.drop(drop_labels, axis=0)
+
+            # Filter out void transactions
+            logger.debug('BankRule {NAME}: skipping void transactions from association account {ACCT}'
+                         .format(NAME=self.name, ACCT=assoc_acct_name))
+            if search_failed:
+                assoc_df = assoc_acct.search_void_transactions(assoc_df)
+            else:
+                assoc_df = assoc_acct.filter_void_transactions(assoc_df)
+
+            # Create the account-association account column mapping from the association rules
+            assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
+            colmap = {}
+            rule_map = {}
+            for acct_colname in assoc_rules:
+                if acct_colname not in header:  # attempting to use a column that was not defined in the table config
+                    msg = 'AssociationRule column {COL} is missing from the account data'.format(COL=acct_colname)
+                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
+
+                    continue
+
+                rule_entry = assoc_rules[acct_colname]
+                assoc_colname = rule_entry['Column']
+                if assoc_colname not in assoc_header:
+                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
+                        .format(COL=assoc_colname, ACCT=assoc_acct_name)
+                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
+
+                    continue
+
+                colmap[assoc_colname] = acct_colname
+                rule_map[acct_colname] = rule_entry
+
+            # Store column mappers for fast recall during matching
+            assoc_ref_maps[assoc_acct_name] = rule_map
+
+            # Remove all but the relevant columns from the association account table
+            colmap[assoc_acct.table.id_column] = "_RecordID_"
+            assoc_df = assoc_df[list(colmap)]
+
+            # Change column names of the association account table using the column map
+            assoc_df.rename(columns=colmap, inplace=True)
+
+            # Add association account name and record type to the association account table
+            assoc_df['_Account_'] = assoc_acct_name
+            assoc_df['_RecordType_'] = assoc_acct.record_type
+
+            # Concatenate association tables
+            merged_df = merged_df.append(assoc_df, ignore_index=True)
+
+        # Iterate over record rows, attempting to find matches in associated transaction records
+        logger.debug('BankRule {NAME}: attempting to find associations for account {ACCT} records'
+                     .format(NAME=self.name, ACCT=acct.name))
+        nfound = 0
+        matched_indices = []
+        for index, row in df.iterrows():
+            record_id = getattr(row, id_column)
+
+            # Attempt to find a match for the record to each of the associated transaction accounts
+            matches = pd.DataFrame(columns=merged_df.columns)
+            for assoc_acct_name in assoc_ref_maps:
+                # Subset merged df to include only the association records with the given account name
+                assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
+
+                assoc_rules = assoc_ref_maps[assoc_acct_name]
+                cols = list(assoc_rules)
+
+                # Find exact matches between account record and the associated account records using only the
+                # relevant columns
+                row_vals = [getattr(row, i) for i in cols]
+                acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
+                matches = matches.append(acct_matches)
+
+            # Check matches and find correct association
+            nmatch = matches.shape[0]
+            if nmatch == 0:  # no matching entries in the merged dataset
+                continue
+
+            elif nmatch == 1:  # found one exact match
+                nfound += 1
+                matched_indices.append(index)
+
+                results = matches.iloc[0]
+                ref_id = results['_RecordID_']
+                ref_type = results['_RecordType_']
+                assoc_acct_name = results['_Account_']
+
+                logger.debug('BankRule {NAME}: associating {ACCT} record {REFID} to account record {ID}'
+                             .format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id, ID=record_id))
+
+                # Remove the found match from the dataframe of unmatched associated account records
+                merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                # Insert the reference into the account records reference dataframe
+                acct.add_reference(record_id, ref_id, ref_type, approved=True)
+
+                # Insert the reference into the associated account's reference dataframe
+                assoc_acct = self.fetch_account(assoc_acct_name)
+                assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=True)
+
+            elif nmatch > 1:  # too many matches
+                nfound += 1
+                matched_indices.append(index)
+
+                warning = 'found more than one match for account {ACCT} record "{RECORD}"' \
+                    .format(ACCT=self.current_account, RECORD=record_id)
+                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
+
+                # Match the first of the exact matches
+                results = matches.iloc[0]
+                ref_id = results['_RecordID_']
+                ref_type = results['_RecordType_']
+                assoc_acct_name = results['_Account_']
+
+                # Remove match from list of unmatched association records
+                merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                # Insert the reference into the account records reference dataframe
+                acct.add_reference(record_id, ref_id, ref_type, approved=True, warning=warning)
+
+                # Insert the reference into the associated account's reference dataframe
+                assoc_acct = self.fetch_account(assoc_acct_name)
+                assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=True, warning=warning)
+
+        if expand_search:
+            df.drop(matched_indices, inplace=True)
+            for index, row in df.iterrows():
+                record_id = getattr(row, id_column)
+
+                match = self.find_expanded_match(row, merged_df, assoc_ref_maps, expand_level=0)
+                if not match:
+                    continue
+
+                assoc_acct_name = match['_Account_']
+                ref_id = match['_RecordID_']
+                ref_type = match['_RecordType_']
+                warning = match['_Warning_']
+
+                logger.debug('BankRule {NAME}: associating {ACCT} record {REF_ID} to account record {ID} from an '
+                             'expanded search'.format(NAME=self.name, ACCT=assoc_acct_name, REF_ID=ref_id,
+                                                      ID=record_id))
+
+                # Remove the found match from the dataframe of unmatched associated account records
+                merged_df.drop(match.name, inplace=True)
+
+                # Insert the reference into the account records reference dataframe
+                acct.add_reference(record_id, ref_id, ref_type, approved=False, warning=warning)
+
+                # Insert the reference into the associated account's reference dataframe
+                assoc_acct = self.fetch_account(assoc_acct_name)
+                assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=False, warning=warning)
+
+                # Attempt to find matches using only the core columns
+                #matches = pd.DataFrame(columns=merged_df.columns)
+                #expanded_cols = []
+                #for assoc_acct_name in assoc_ref_maps:
+                #    # Subset merged df to include only the association records with the given account name
+                #    assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
+
+                #    assoc_rules = assoc_ref_maps[assoc_acct_name]
+                #    cols = []
+                #    for col in assoc_rules:
+                #        rule_entry = assoc_rules[col]
+
+                        # Select the columns that will be used to compare records
+                #        if rule_entry['Expand']:
+                #            if col not in expanded_cols:
+                #                expanded_cols.append(col)
+
+                #            continue
+
+                #        cols.append(col)
+
+                    # Find exact matches between account record and the associated account records using relevant cols
+                #    row_vals = [getattr(row, i) for i in cols]
+                #    acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
+                #    matches = matches.append(acct_matches)
+
+                #nmatch = matches.shape[0]
+                #if nmatch == 0:  # no matches found given the parameters supplied
+                #    continue
+
+                #elif nmatch == 1:  # potential match, add with a warning
+                #    nfound += 1
+
+                #    results = matches.iloc[0]
+                #    assoc_acct_name = results['_Account_']
+                #    ref_id = results['_RecordID_']
+                #    ref_type = results['_RecordType_']
+
+                #    logger.debug('BankRule {NAME}: associating {ACCT} record {REFID} to account record {ID} from an '
+                #                 'expanded search'.format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id,
+                #                                          ID=record_id))
+
+                    # Remove the found match from the dataframe of unmatched associated account records
+                #    merged_df.drop(matches.index.tolist()[0], inplace=True)
+
+                    # Determine appropriate warning for the expanded search
+                #    assoc_rules = assoc_ref_maps[assoc_acct_name]
+                #    warning = ["Potential false positive:"]
+                #    for column in expanded_cols:
+                #        if getattr(row, column) != results[column]:
+                #            alt_warn = 'values for expanded column {COL} do not match'.format(COL=column)
+                #            col_warning = assoc_rules[column].get('Description', alt_warn)
+                #            warning.append('- {}'.format(col_warning))
+
+                #    warning = '\n'.join(warning)
+
+                    # Insert the reference into the account records reference dataframe
+                #    acct.add_reference(record_id, ref_id, ref_type, approved=False, warning=warning)
+
+                    # Insert the reference into the associated account's reference dataframe
+                #    assoc_acct = self.fetch_account(assoc_acct_name)
+                #    assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=False, warning=warning)
+
+                #elif nmatch > 1:  # need to use the association parameters expand levels to find the best match
+                #    msg = 'found more than one expanded match for account {ACCT} record "{RECORD}" - searching for ' \
+                #          'the best match'.format(ACCT=self.current_account, RECORD=record_id)
+                #    logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    # Find the closest match by iterative expanded column inclusion
+
+                #    continue
+
+        logger.info('BankRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
+                    .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
+
+        return True
+
+    def find_expanded_match(self, row, ref_df, ref_map, expand_level: int = 0):
+        """
+        Attempt to find matching records using iterative expansion of reference columns.
+        """
+        results = None
+
+        matches = pd.DataFrame(columns=ref_df.columns)
+        expanded_cols = []
+        for assoc_acct_name in ref_map:
+            # Subset merged df to include only the association records with the given account name
+            assoc_df = ref_df[ref_df['_Account_'] == assoc_acct_name]
+
+            assoc_rules = ref_map[assoc_acct_name]
+            cols = []
+            for col in assoc_rules:
+                rule_entry = assoc_rules[col]
+
+                # Select the columns that will be used to compare records
+                param_level = rule_entry.get('Level', 0)
+                if param_level > expand_level:
+                    if col not in expanded_cols:
+                        expanded_cols.append(col)
+
+                    continue
+                else:
+                    cols.append(col)
+
+            # Find exact matches between account record and the associated account records using relevant cols
+            row_vals = [getattr(row, i) for i in cols]
+            acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
+            matches = matches.append(acct_matches)
+
+        nmatch = matches.shape[0]
+        if nmatch == 0:  # no matches found given the parameters supplied
+            results = None
+
+        elif nmatch == 1:  # potential match, add with a warning
+            results = matches.iloc[0]
+
+            # Determine appropriate warning for the expanded search
+            acct_name = results['_Account_']
+            assoc_rules = ref_map[acct_name]
+
+            warning = ["Potential false positive:"]
+            for column in expanded_cols:
+                if getattr(row, column) != results[column]:
+                    alt_warn = 'values for expanded column {COL} do not match'.format(COL=column)
+                    col_warning = assoc_rules[column].get('Description', alt_warn)
+                    warning.append('- {}'.format(col_warning))
+
+            warning = '\n'.join(warning)
+            results['_Warning_'] = warning
+
+        elif nmatch > 1:  # need to use the association parameters expand levels to find the best match
+            msg = 'found more than one expanded match for account {ACCT} row "{ROW}" - searching for ' \
+                  'the best match'.format(ACCT=self.current_account, ROW=row.name)
+            logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            # Find the closest match by iterative expanded column inclusion
+            results = self.find_expanded_match(row, matches, ref_map, expand_level=expand_level+1)
+
+        return results
 
     def save_references(self):
         """
@@ -985,6 +1354,20 @@ class BankRule:
             record_type = acct.record_type
             record_entry = settings.records.fetch_rule(record_type)
 
+            # Save any changes to the records to the records table
+            logger.debug('BankRule {NAME}: preparing account {ACCT} record statements'
+                         .format(NAME=self.name, ACCT=acct.name))
+            record_data = acct.table.data(edited_rows=True)
+            try:
+                statements = record_entry.save_database_records(record_data, statements=statements)
+            except Exception as e:
+                msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}' \
+                    .format(ACCT=acct.name, ERR=e)
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return False
+
+            # Save record references to the references table
             association_name = acct.association_rule
             association_rule = record_entry.association_rules[association_name]
 
@@ -1214,9 +1597,9 @@ class BankAccount:
                         continue
 
                     try:
-                        param_entry['Expand'] = bool(int(param_entry['Expand']))
+                        param_entry['Level'] = int(param_entry['Level'])
                     except (KeyError, ValueError):
-                        param_entry['Expand'] = False
+                        param_entry['Level'] = 0
 
                     params[assoc_column] = param_entry
 
@@ -1283,11 +1666,14 @@ class BankAccount:
             tbl_key = self.table.key_lookup('Element')
             open_key = '{}+LCLICK+'.format(tbl_key)
             return_key = '{}+RETURN+'.format(tbl_key)
+            add_key = self.key_lookup('Add')
+            add_hkey = '{}+ADD+'.format(tbl_key)
             delete_key = self.table.key_lookup('Delete')
             delete_hkey = '{}+DELETE+'.format(tbl_key)
 
             can_open = self.table.modifiers['open']
             can_delete = (not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible'])
+            can_add = (not window[add_key].metadata['disabled'] and window[add_key].metadata['visible'])
 
             # Record was selected for opening
             if event in (open_key, return_key) and can_open:
@@ -1338,14 +1724,12 @@ class BankAccount:
                                     continue
 
                                 ref_values = refbox.export_reference().drop(labels=['RecordID', 'RecordType'])
-                                print('updating record {} reference with values:'.format(record_id))
-                                print(ref_values)
                                 try:
-                                    ref_df.loc[ref_df[
-                                                   'RecordID'] == record_id, ref_values.index.tolist()] = ref_values.tolist()
+                                    ref_df.loc[ref_df['RecordID'] == record_id,
+                                               ref_values.index.tolist()] = ref_values.tolist()
                                 except KeyError as e:
-                                    msg = 'failed to update reference {REF} for record {ID}'.format(REF=refbox.name,
-                                                                                                    ID=record_id)
+                                    msg = 'failed to update reference {REF} for record {ID}'\
+                                        .format(REF=refbox.name, ID=record_id)
                                     logger.error(
                                         'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
@@ -1356,15 +1740,20 @@ class BankAccount:
                 select_row_indices = values[tbl_key]
 
                 # Get the real indices of the selected rows
-                try:
-                    indices = [table.index_map[i] for i in select_row_indices]
-                except KeyError:
-                    msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
-                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_notice(msg)
-                    indices = []
+                indices = table.get_real_index(select_row_indices)
 
                 self.delete_rows(indices)
+
+            elif event in (add_key, add_hkey) and can_add:
+                reference_event = True
+
+                # Find rows selected by user for approval
+                select_row_indices = values[tbl_key]
+
+                # Get the real indices of the selected rows
+                indices = table.get_real_index(select_row_indices)
+
+                self.approve_rows(indices)
 
             else:
                 table.run_event(window, event, values)
@@ -1449,9 +1838,39 @@ class BankAccount:
 
         return df
 
+    def approve_rows(self, indices):
+        """
+        Manually approve the selected records.
+
+        Arguments:
+            indices (list): list of real row indices.
+
+        Returns:
+            None
+        """
+        ref_df = self.ref_df
+        colmap = self._col_map
+        df = self.table.df
+
+        select_df = df.iloc[indices]
+
+        # Get record IDs of selected rows
+        record_ids = select_df[self.table.id_column].tolist()
+
+        # Set the approved column of the reference entries corresponding to the selected records to True.
+        logger.info('DataTable {TBL}: approving references for records {IDS}'
+                    .format(TBL=self.name, IDS=record_ids))
+        ref_df.loc[ref_df['RecordID'].isin(record_ids), ['IsApproved']] = True
+
+        # Set the approved column of the record to True
+        self.table.update_column(colmap['Approved'], [True], indices=indices)
+        #df.loc[df['RecordID'].isin(record_ids), colmap['IsApproved']] = True
+
+        return None
+
     def delete_rows(self, indices):
         """
-        Delete references using selected table indices.
+        Delete references using the selected table indices.
 
         Arguments:
             indices (list): list of row indices to remove references from.
@@ -1460,17 +1879,22 @@ class BankAccount:
             None
         """
         ref_df = self.ref_df
-        df = self.table.df.copy()
+        df = self.table.df
+        colmap = self._col_map
 
         select_df = df.iloc[indices]
 
         # Get record IDs of selected rows
         record_ids = select_df[self.table.id_column].tolist()
-        logger.info('DataTable {TBL}: removing references for records {IDS}'
-                    .format(TBL=self.name, IDS=record_ids))
 
         # Set the deleted column of the reference entries corresponding to the selected records to True.
+        logger.info('DataTable {TBL}: removing references for records {IDS}'
+                    .format(TBL=self.name, IDS=record_ids))
         ref_df.loc[ref_df['RecordID'].isin(record_ids), ['IsDeleted']] = True
+
+        # Set the approved column of the record to False
+        self.table.update_column(colmap['Approved'], [False], indices=indices)
+        #df.loc[df['RecordID'].isin(record_ids), colmap['IsApproved']] = False
 
         return None
 
@@ -1494,11 +1918,14 @@ class BankAccount:
             bc_code = bc_entry.get('Code', 'RT')
             bounced = df[(df[tcode_col] == bc_code) & (df[type_col] == 1)]
             deposits = df[df[type_col] == 0]
-            matches = find_nearest_match(bounced.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
-                                         deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
-                                         date_range=bc_entry.get('DateRange', 1))
+            matches = nearest_match(bounced.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
+                                    deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
+                                    'Date', on='Amount', value_range=bc_entry.get('DateRange', 1))
             for match_pair in matches:
-                record_id, ref_id = match_pair
+                record_ind, ref_ind = match_pair
+
+                record_id = bounced.loc[record_ind, 'RecordID']
+                ref_id = deposits.loc[ref_ind, 'RecordID']
 
                 # Insert the reference into the account records reference dataframe
                 warning = bc_entry.get('Description', 'bounced check')
@@ -1516,13 +1943,15 @@ class BankAccount:
         if mp_entry:
             withdrawals = df[df[type_col] == 1]
             deposits = df[df[type_col] == 0]
-
-            matches = find_nearest_match(deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
-                                         withdrawals.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
-                                         date_range=bc_entry.get('DateRange', 1))
+            matches = nearest_match(deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
+                                    withdrawals.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
+                                    'Date', on='Amount', value_range=bc_entry.get('DateRange', 1))
 
             for match_pair in matches:
-                record_id, ref_id = match_pair
+                record_ind, ref_ind = match_pair
+
+                record_id = deposits.loc[record_ind, 'RecordID']
+                ref_id = withdrawals.loc[ref_ind, 'RecordID']
 
                 # Insert the reference into the account records reference dataframe
                 warning = mp_entry.get('Description', 'mistaken payment')
@@ -1582,7 +2011,7 @@ class BankAccount:
         Returns:
             success (bool): records and references were loaded successfully.
         """
-        pd.set_option('display.max_columns', None)
+        #pd.set_option('display.max_columns', None)
 
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
@@ -1613,52 +2042,68 @@ class BankAccount:
 
             return False
 
-        print('imported records:')
-        print(df.head)
-        print('imported references:')
-        print(import_df)
-
         ref_df = pd.merge(df.loc[:, ['RecordID']], import_df, how='left', on='RecordID')
         ref_df['RecordType'].fillna(record_type, inplace=True)
-        print('reference df before changing types:')
-        print(ref_df)
 
         bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
         ref_df[bool_columns] = ref_df[bool_columns].fillna(False)
-        print('reference df after filling boolean na values:')
         ref_df = ref_df.astype({i: np.bool for i in bool_columns})
-        print(ref_df)
 
         self.ref_df = ref_df
-
-        print('reference dataframe after merging')
-        print(self.ref_df)
-        print(self.ref_df.dtypes)
 
         return True
 
 
-def find_nearest_match(df, ref_df, amount_col: str = 'Amount', date_col: str = 'Date', id_col: str = 'RecordID',
-                       date_range: int = 1):
+def nearest_match(df, ref_df, column, on: str = None, value_range: int = None):
     """
-    Find closest matches between transactions.
+    Find closest matches between dataframes on a shared column.
+
+    Arguments:
+        df (DataFrame): dataframe containing the rows to find matches for.
+
+        ref_df (DataFrame): reference dataframe to match to the dataframe rows.
+
+        column (str): name of the column used to find the closest match.
+
+        on (str): join the dataframe and the reference dataframe on the provided column before searching for the
+            closest match [Default: None]
+
+        value_range (int): optional filter range. The matching algorithm will only consider references with
+            column values within the provided range [Default: consider all values].
     """
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_integer_dtype = pd.api.types.is_integer_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+    if value_range:
+        dtype = ref_df[column].dtype
+        if is_datetime_dtype(dtype):
+            deviation = datetime.timedelta(days=value_range)
+        elif is_float_dtype(dtype) or is_integer_dtype(dtype):
+            deviation = value_range
+        else:
+            deviation = None
+    else:
+        deviation = None
+
     matches = []
     for i, row in df.iterrows():
-        row_date = row[date_col]
-        record_id = row[id_col]
-        time_delta = datetime.timedelta(days=date_range)
-        compare_dates = ref_df[date_col]
-        match_df = ref_df[(ref_df[amount_col] == row[amount_col]) &
-                          (compare_dates >= row_date - time_delta) &
-                          (compare_dates <= row_date + time_delta)]
+        row_value = row[column]
 
-        if match_df.empty:
+        if on:
+            match_df = ref_df[(ref_df[ref_df[on] == row[on]])]
+        else:
+            match_df = ref_df
+
+        if deviation is not None:
+            ref_values = match_df[column]
+            match_df = match_df[(ref_values >= row_value - deviation) &
+                                (ref_values <= row_value + deviation)]
+
+        if match_df.empty:  # no matches found after value filtering
             continue
 
-        closest_ind = match_df[date_col].sub(row_date).abs().idxmin()
-        reference_id = match_df.iloc[closest_ind][id_col]
-        matches.append((record_id, reference_id))
+        closest_ind = match_df[column].sub(row_value).abs().idxmin()
+        matches.append((i, closest_ind))
 
     return matches
-

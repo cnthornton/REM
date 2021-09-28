@@ -652,15 +652,24 @@ class TableElement(RecordElement):
     def _set_column_dtype(self, column, name: str = None, dtype: str = None):
         """
         Set the datatype for table column values based on the datatype map.
+
+        Arguments:
+            column (Series): pandas Series containing column values.
+
+            name (str): optional column name if not set in the series.
+
+            dtype (str): manually set the data type of the column to dtype [Default: set as configured data type].
         """
         dtype_map = self.columns
+
+        if not isinstance(column, pd.Series):
+            column = pd.Series(column)
 
         column_name = column.name if not name else name
         dtype = dtype_map[column_name] if not dtype else dtype
         if dtype in ('date', 'datetime', 'timestamp', 'time'):
             try:
                 values = pd.to_datetime(column, errors='coerce', format=settings.date_format, utc=False)
-                #values = column.apply(settings.format_as_datetime)
             except ValueError:  # need to remove Time Zone information from column values
                 values = column.apply(lambda x: x.replace(tzinfo=None))
         elif dtype in ('int', 'integer', 'bigint'):
@@ -847,6 +856,27 @@ class TableElement(RecordElement):
 
         return parameter
 
+    def get_real_index(self, selected):
+        """
+        Return the real indices of selected table rows.
+
+        Arguments:
+            selected (list): indices of the selected rows.
+        """
+        index_map = self.index_map
+
+        try:
+            if isinstance(selected, int):
+                real_ind = index_map[selected]
+            else:
+                real_ind = [index_map[i] for i in selected]
+        except KeyError:
+            msg = 'missing index information for one or more selected rows'.format(NAME=self.name)
+            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            real_ind = selected
+
+        return real_ind
+
     def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False):
         """
         Return the table dataframe.
@@ -904,7 +934,7 @@ class TableElement(RecordElement):
         filter_hkey = '{}+FILTER+'.format(elem_key)
         frame_bttns = [self.key_lookup('FrameBttn{}'.format(i)) for i in range(2)]
 
-        #param_elems = [i for param in self.parameters for i in param.elements]
+        param_elems = [i for param in self.parameters for i in param.elements]
         action_events = self._action_events
 
         # Table events
@@ -1004,28 +1034,16 @@ class TableElement(RecordElement):
 
             # Get selected rows, if any
             select_row_indices = values[elem_key]
-            print('display indices:')
-            print(select_row_indices)
 
             # Get the real indices of the selected rows
-            try:
-                indices = [self.index_map[i] for i in select_row_indices]
-            except KeyError:
-                msg = 'index information is missing from one or more of the selected table rows'.format(NAME=self.name)
+            indices = self.get_real_index(select_row_indices)
+            if len(indices) < 2:
+                msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_notice(msg)
 
                 return False
-            else:
-                print('real indices:')
-                print(indices)
-                if len(indices) < 1:
-                    msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
-                    logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                    return False
-
-            # Find selected fill method
+            # Find the selected column to fill
             display_col = values[fill_key]
             try:
                 fill_col = display_map[display_col]
@@ -1042,14 +1060,14 @@ class TableElement(RecordElement):
             # Update the display table to show the new table values
             self.update_display(window)
 
-        #elif event in param_elems:
-        #    try:
-        #        param = self.fetch_parameter(event, by_key=True)
-        #    except KeyError:
-        #        logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
-        #                     .format(TBL=self.name, KEY=event))
-        #    else:
-        #        param.run_event(window, event, values)
+        elif event in param_elems:
+            try:
+                param = self.fetch_parameter(event, by_key=True)
+            except KeyError:
+                logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
+                             .format(TBL=self.name, KEY=event))
+            else:
+                param.run_event(window, event, values)
 
         elif event == export_key:
             outfile = sg.popup_get_file('', title='Export table display', save_as=True,
@@ -1099,10 +1117,7 @@ class TableElement(RecordElement):
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Get the real index of the selected row
-                try:
-                    index = self.index_map[select_row_index]
-                except KeyError:
-                    index = select_row_index
+                index = self.get_real_index(select_row_index)
 
                 logger.debug('DataTable {NAME}: opening row at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
@@ -1457,12 +1472,8 @@ class TableElement(RecordElement):
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
-            #            logger.debug('DataTable {NAME}: annotation results of rule {RULE} are {RES}'
-            #                         .format(NAME=self.name, RULE=annot_code, RES=results.values))
             for row_index, result in results.iteritems():
                 if result:
-                    #                    logger.debug('DataTable {NAME}: table row {ROW} annotated on annotation code {CODE}'
-                    #                                 .format(NAME=self.name, ROW=row_index, CODE=annot_code))
                     if row_index in rows_annotated:
                         logger.warning('DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
                                        'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
@@ -2227,18 +2238,30 @@ class TableElement(RecordElement):
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
 
         return mod_row
-        # row_values = self.set_conditional_values(mod_row).squeeze()
 
-        # Update record table values
-        # print('original values: {}'.format(row))
-        # print('new values: {}'.format(row_values))
-        # if not row.equals(row_values):
-        #    print('new row values are the same as the original row values')
-        #    df.loc[index] = row_values
-        #    self.df = df
-        #    self.edited = True
-        #
-        # return df
+    def update_column(self, column, values, indices: list = None):
+        """
+        Replace the values of a table column.
+
+        Arguments:
+            column (str): name of the column to modify.
+
+            values (list): list, series, or scalar of new column values.
+
+            indices (list): optional list of row indices to modify [Default: update all rows].
+
+        """
+        df = self.df
+
+        if not indices:  # update all rows
+            indices = df.index.tolist()
+
+        values = self._set_column_dtype(values, name=column).squeeze()
+
+        df.loc[indices, column] = values
+        df.loc[indices, self.edited_column] = True
+
+        self.edited = True
 
     def set_defaults(self, row):
         """
@@ -2336,7 +2359,7 @@ class TableElement(RecordElement):
                 continue
 
             if column not in header:
-                df[column] = None
+                df.loc[:, column] = None
 
             entry = columns[column]
             if 'DefaultConditions' in entry:
@@ -2351,7 +2374,7 @@ class TableElement(RecordElement):
             elif 'DefaultRule' in entry:
                 default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=False)
                 default_values = self._set_column_dtype(default_values, name=column)
-                df[column] = default_values
+                df.loc[:, column] = default_values
             else:
                 logger.warning('DataTable {NAME}: neither the "DefaultCondition" nor "DefaultRule" parameter was '
                                'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
@@ -2666,10 +2689,7 @@ class RecordTable(TableElement):
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Get the real index of the selected row
-                try:
-                    index = self.index_map[select_row_index]
-                except KeyError:
-                    index = select_row_index
+                index = self.get_real_index(select_row_index)
 
                 logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
@@ -2691,13 +2711,8 @@ class RecordTable(TableElement):
             select_row_indices = values[elem_key]
 
             # Get the real indices of the selected rows
-            try:
-                indices = [self.index_map[i] for i in select_row_indices]
-            except KeyError:
-                msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_notice(msg)
-            else:
+            indices = self.get_real_index(select_row_indices)
+            if len(indices) > 0:
                 self.delete_rows(indices)
                 update_event = True
 
@@ -3150,12 +3165,9 @@ class ComponentTable(RecordTable):
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 # Get the real index of the selected row
-                try:
-                    index = self.index_map[select_row_index]
-                except KeyError:
-                    index = select_row_index
+                index = self.get_real_index(select_row_index)
 
-                logger.debug('DataTable {NAME}: loading record at real index {IND}'
+                logger.debug('DataTable {NAME}: loading record at index {IND}'
                              .format(NAME=self.name, IND=index))
                 record = self.load_record(index)
 
@@ -3188,13 +3200,8 @@ class ComponentTable(RecordTable):
             select_row_indices = values[elem_key]
 
             # Get the real indices of the selected rows
-            try:
-                indices = [self.index_map[i] for i in select_row_indices]
-            except KeyError:
-                msg = 'missing index information for one or more rows selected for deletion'.format(NAME=self.name)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_notice(msg)
-            else:
+            indices = self.get_real_index(select_row_indices)
+            if len(indices) > 0:
                 self.delete_rows(indices)
                 update_event = True
 

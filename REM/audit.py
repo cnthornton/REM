@@ -116,8 +116,8 @@ class AuditRule:
 
         self.transactions = []
         try:
-            transaction_entries = entry['Tabs']
-            #transaction_entries = entry['AuditTransactions']
+            #transaction_entries = entry['Tabs']
+            transaction_entries = entry['AuditTransactions']
         except KeyError:
             msg = 'AuditRule {NAME}: missing required parameter "AuditTransactions"'.format(NAME=name)
             mod_win2.popup_error(msg)
@@ -132,8 +132,8 @@ class AuditRule:
             self.bindings.extend(transaction.bindings)
 
         try:
-            #records = entry['AuditRecords']
-            records = entry['Summary']['Tabs']
+            records = entry['AuditRecords']
+            #records = entry['Summary']['Tabs']
         except KeyError:
             msg = 'missing required parameter "AuditRecords"'
             logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))

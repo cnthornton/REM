@@ -566,7 +566,7 @@ def parameter_window(account, win_size: tuple = None):
             continue
 
         param = param_class(param_name, param_entry)
-        primary_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left'))
+        primary_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left', auto_size_desc=False))
         for element in param.elements:
             param_keys[element] = primary_acct_name
 
@@ -627,7 +627,8 @@ def parameter_window(account, win_size: tuple = None):
                 continue
 
             param = param_class(assoc_param_name, assoc_param_entry)
-            assoc_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left'))
+            assoc_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left',
+                                             auto_size_desc=False))
             for element in param.elements:
                 param_keys[element] = assoc_acct_name
             try:
