@@ -227,6 +227,11 @@ class TableElement(RecordElement):
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
         try:
+            self.custom_actions = entry['CustomActions']
+        except KeyError:
+            self.custom_actions = {}
+
+        try:
             modifiers = entry['Modifiers']
         except KeyError:
             self.modifiers = {'edit': False, 'export': False, 'search': False, 'summary': False, 'filter': False,
@@ -756,7 +761,7 @@ class TableElement(RecordElement):
         """
         df = self.df
         dtypes = self.columns
-        header = df.columns.tolist()
+        header = list(dtypes)
 
         if isinstance(values, dict):
             values = pd.DataFrame(values)
@@ -1202,7 +1207,7 @@ class TableElement(RecordElement):
         if len(annotations) < 1:  # highlight table rows using configured annotation rules
             annotations = self.annotate_rows(df)
             row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
-        else:  # use custom annotations to highight table rows
+        else:  # use custom annotations to highlight table rows
             row_colors = [(i, j) for i, j in annotations.items()]
 
         # Format the table
@@ -1676,8 +1681,6 @@ class TableElement(RecordElement):
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
         bind = False
-        #bind = True if editable is True else False
-        #events = False
         events = True
 
         col_widths = self._calc_column_widths(width=tbl_width, size=font_size, pixels=False)
@@ -1795,13 +1798,35 @@ class TableElement(RecordElement):
         """
         Layout for the table action elements.
         """
-        return []
+        custom_bttns = self.custom_actions
+
+        # Element settings
+        text_col = mod_const.TEXT_COL  # standard text color
+        header_col = mod_const.TBL_HEADER_COL  # color of the header background
+        pad_el = mod_const.ELEM_PAD
+
+        # Layout
+        bttn_layout = []
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+
+            custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
+                                      border_width=2, button_color=(text_col, header_col), disabled=disabled,
+                                      visible=True, tooltip=custom_entry.get('Description', custom_bttn),
+                                      metadata={'visible': True, 'disabled': disabled})
+            bttn_layout.append(custom_layout)
+
+        layout = [sg.Col([bttn_layout], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
+                         background_color=header_col, expand_x=True)]
+
+        return layout
 
     def enable(self, window):
         """
         Enable data table element actions.
         """
         params = self.parameters
+        custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: enabling actions'.format(NAME=self.name))
 
@@ -1811,11 +1836,23 @@ class TableElement(RecordElement):
             filter_key = self.key_lookup('Filter')
             window[filter_key].update(disabled=False)
 
+        # Enable table modification buttons
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+            try:
+                bttn_key = custom_entry['Key']
+            except KeyError:
+                continue
+
+            window[bttn_key].update(disabled=False)
+            window[bttn_key].metadata['disabled'] = False
+
     def disable(self, window):
         """
         Disable data table element actions.
         """
         params = self.parameters
+        custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: disabling table actions'.format(NAME=self.name))
 
@@ -1824,6 +1861,17 @@ class TableElement(RecordElement):
             # Disable the apply filters button
             filter_key = self.key_lookup('Filter')
             window[filter_key].update(disabled=True)
+
+        # Disable table modification buttons
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+            try:
+                bttn_key = custom_entry['Key']
+            except KeyError:
+                continue
+
+            window[bttn_key].update(disabled=True)
+            window[bttn_key].metadata['disabled'] = True
 
     def collapse_expand(self, window, index: int = 0):
         """
@@ -2238,6 +2286,17 @@ class TableElement(RecordElement):
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
 
         return mod_row
+
+    def update_row(self, row, values):
+        """
+        Replace the values of a table row.
+
+        Arguments:
+            row (int): adjusted row index.
+
+            values (Series): values to replace.
+        """
+        self._update_row_values(row, values)
 
     def update_column(self, column, values, indices: list = None):
         """
@@ -2741,11 +2800,7 @@ class RecordTable(TableElement):
         """
         import_key = self.key_lookup('Import')
         delete_key = self.key_lookup('Delete')
-
-        # Element shortcuts
-        hotkeys = settings.hotkeys
-        delete_shortcut = hotkeys['-HK_TBL_DEL-'][2]
-        import_shortcut = hotkeys['-HK_TBL_IMPORT-'][2]
+        custom_bttns = self.custom_actions
 
         # Element settings
         text_col = mod_const.TEXT_COL  # standard text color
@@ -2756,13 +2811,22 @@ class RecordTable(TableElement):
         bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['import'],
-                                 tooltip='Import database records ({})'.format(import_shortcut),
+                                 tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
                        sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['delete'],
-                                 tooltip='Remove selected rows ({})'.format(delete_shortcut),
+                                 tooltip='Remove selected rows (CTRL+D)',
                                  metadata={'visible': self.modifiers['delete'], 'disabled': disabled})]
+
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+
+            custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
+                                      border_width=2, button_color=(text_col, header_col), disabled=disabled,
+                                      visible=True, tooltip=custom_entry.get('Description', custom_bttn),
+                                      metadata={'visible': True, 'disabled': disabled})
+            bttn_layout.append(custom_layout)
 
         layout = [sg.Col([bttn_layout], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
                          background_color=header_col, expand_x=True)]
@@ -2798,6 +2862,7 @@ class RecordTable(TableElement):
         params = self.parameters
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
+        custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
@@ -2814,6 +2879,16 @@ class RecordTable(TableElement):
         window[import_key].update(disabled=False)
         window[import_key].metadata['disabled'] = False
 
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+            try:
+                bttn_key = custom_entry['Key']
+            except KeyError:
+                continue
+
+            window[bttn_key].update(disabled=False)
+            window[bttn_key].metadata['disabled'] = False
+
     def disable(self, window):
         """
         Disable data table element actions.
@@ -2821,6 +2896,7 @@ class RecordTable(TableElement):
         params = self.parameters
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
+        custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
 
@@ -2836,6 +2912,16 @@ class RecordTable(TableElement):
 
         window[import_key].update(disabled=True)
         window[import_key].metadata['disabled'] = True
+
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+            try:
+                bttn_key = custom_entry['Key']
+            except KeyError:
+                continue
+
+            window[bttn_key].update(disabled=True)
+            window[bttn_key].metadata['disabled'] = True
 
     def append(self, add_df, imports: bool = False):
         """
@@ -3236,12 +3322,7 @@ class ComponentTable(RecordTable):
         import_key = self.key_lookup('Import')
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
-
-        # Element shortcuts
-        hotkeys = settings.hotkeys
-        add_shortcut = hotkeys['-HK_TBL_ADD-'][2]
-        delete_shortcut = hotkeys['-HK_TBL_DEL-'][2]
-        import_shortcut = hotkeys['-HK_TBL_IMPORT-'][2]
+        custom_bttns = self.custom_actions
 
         # Element settings
         text_col = mod_const.TEXT_COL  # standard text color
@@ -3252,17 +3333,26 @@ class ComponentTable(RecordTable):
         bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['import'],
-                                 tooltip='Import database records ({})'.format(import_shortcut),
+                                 tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
                        sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['add'],
-                                 tooltip='Create new component record ({})'.format(add_shortcut),
+                                 tooltip='Create new component record (CTRL+A)',
                                  metadata={'visible': self.modifiers['add'], 'disabled': disabled}),
                        sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['delete'],
-                                 tooltip='Remove selected rows ({})'.format(delete_shortcut),
+                                 tooltip='Remove selected rows (CTRL+D)',
                                  metadata={'visible': self.modifiers['delete'], 'disabled': disabled})]
+
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+
+            custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
+                                      border_width=2, button_color=(text_col, header_col), disabled=disabled,
+                                      visible=True, tooltip=custom_entry.get('Description', custom_bttn),
+                                      metadata={'visible': True, 'disabled': disabled})
+            bttn_layout.append(custom_layout)
 
         layout = [sg.Col([bttn_layout], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
                          background_color=header_col, expand_x=True)]
@@ -3277,6 +3367,7 @@ class ComponentTable(RecordTable):
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
+        custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
@@ -3296,6 +3387,16 @@ class ComponentTable(RecordTable):
         window[import_key].update(disabled=False)
         window[import_key].metadata['disabled'] = False
 
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+            try:
+                bttn_key = custom_entry['Key']
+            except KeyError:
+                continue
+
+            window[bttn_key].update(disabled=False)
+            window[bttn_key].metadata['disabled'] = False
+
     def disable(self, window):
         """
         Disable data table element actions.
@@ -3304,6 +3405,7 @@ class ComponentTable(RecordTable):
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
+        custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
 
@@ -3322,6 +3424,16 @@ class ComponentTable(RecordTable):
 
         window[import_key].update(disabled=True)
         window[import_key].metadata['disabled'] = True
+
+        for custom_bttn in custom_bttns:
+            custom_entry = custom_bttns[custom_bttn]
+            try:
+                bttn_key = custom_entry['Key']
+            except KeyError:
+                continue
+
+            window[bttn_key].update(disabled=True)
+            window[bttn_key].metadata['disabled'] = True
 
     def load_record(self, index, level: int = 1, references: dict = None, savable: bool = False):
         """
@@ -4194,7 +4306,6 @@ class DataElement(RecordElement):
         self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ['Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']])
-        #self._event_elements = ['Element', 'Edit', 'Save', 'Cancel']
         self._event_elements = ['Edit', 'Save', 'Cancel']
 
         # Element-specific bindings

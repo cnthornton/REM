@@ -1484,9 +1484,9 @@ class BankAccount:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel',)]
+                         ('Panel', 'Approve', 'Unapprove')]
 
-        self.bindings = []
+        self.bindings = [self.key_lookup(i) for i in ('Approve', 'Unapprove')]
 
         try:
             self.title = entry['Title']
@@ -1512,9 +1512,20 @@ class BankAccount:
             raise AttributeError(msg)
 
         try:
-            self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
+            table_entry = entry['DisplayTable']
         except KeyError:
-            self.table = mod_elem.RecordTable(name, record_entry.import_table)
+            table_entry = record_entry.import_table
+
+        action_bttns = {'Approve': {'Key': self.key_lookup('Approve'),
+                                    'Icon': mod_const.APPROVE_ICON,
+                                    'Description': 'Approve record reference'},
+                        'Unapprove': {'Key': self.key_lookup('Unapprove'),
+                                      'Icon': mod_const.UNAPPROVE_ICON,
+                                      'Description': 'Remove record reference'}}
+
+        table_entry['CustomActions'] = action_bttns
+
+        self.table = mod_elem.RecordTable(name, table_entry)
 
         self.bindings.extend(self.table.bindings)
 
@@ -1656,24 +1667,20 @@ class BankAccount:
         """
         pd.set_option('display.max_columns', None)
 
-        table_keys = self.table.bindings
+        table = self.table
+        table_keys = table.bindings
+        tbl_key = table.key_lookup('Element')
+        approve_key = self.key_lookup('Approve')
+        unapprove_key = self.key_lookup('Unapprove')
 
         reference_event = False
         # Run a record table event.
         if event in table_keys:
-            table = self.table
-
-            tbl_key = self.table.key_lookup('Element')
             open_key = '{}+LCLICK+'.format(tbl_key)
             return_key = '{}+RETURN+'.format(tbl_key)
-            add_key = self.key_lookup('Add')
-            add_hkey = '{}+ADD+'.format(tbl_key)
-            delete_key = self.table.key_lookup('Delete')
-            delete_hkey = '{}+DELETE+'.format(tbl_key)
 
-            can_open = self.table.modifiers['open']
-            can_delete = (not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible'])
-            can_add = (not window[add_key].metadata['disabled'] and window[add_key].metadata['visible'])
+            can_open = table.modifiers['open']
+            can_edit = table.modifiers['edit']
 
             # Record was selected for opening
             if event in (open_key, return_key) and can_open:
@@ -1686,7 +1693,7 @@ class BankAccount:
 
                 # Find row selected by user
                 try:
-                    select_row_index = values[event][0]
+                    select_row_index = values[tbl_key][0]
                 except IndexError:  # user double-clicked too quickly
                     msg = 'table row could not be selected'
                     logger.debug('DataTable {NAME}: {MSG}'.format(NAME=table.name, MSG=msg))
@@ -1699,7 +1706,7 @@ class BankAccount:
 
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
-                    if table.modifiers['open'] is True:
+                    if can_open:
                         record = table.load_record(index, level=0, savable=False, references={association_rule: ref_df})
                         if record is None:
                             msg = 'unable to update references for record at index {IND} - no record was returned' \
@@ -1709,8 +1716,20 @@ class BankAccount:
                             return False
 
                         # Update reference values
-                        if table.modifiers['edit']:  # only update references if table is editable
+                        if can_edit:  # only update references if table is editable
                             record_id = record.record_id()
+
+                            # Update record values
+                            try:
+                                record_values = record.export_values()
+                            except Exception as e:
+                                msg = 'unable to update row {IND} values'.format(IND=index)
+                                logger.exception(
+                                    'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                            else:
+                                table.update_row(index, record_values)
+
+                            # Update the references dataframe
                             try:
                                 refboxes = record.fetch_element('refbox', by_type=True)
                             except KeyError:
@@ -1733,30 +1752,30 @@ class BankAccount:
                                     logger.error(
                                         'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
-            elif event in (delete_key, delete_hkey) and can_delete:
-                reference_event = True
-
-                # Find rows selected by user for deletion
-                select_row_indices = values[tbl_key]
-
-                # Get the real indices of the selected rows
-                indices = table.get_real_index(select_row_indices)
-
-                self.delete_rows(indices)
-
-            elif event in (add_key, add_hkey) and can_add:
-                reference_event = True
-
-                # Find rows selected by user for approval
-                select_row_indices = values[tbl_key]
-
-                # Get the real indices of the selected rows
-                indices = table.get_real_index(select_row_indices)
-
-                self.approve_rows(indices)
-
             else:
                 table.run_event(window, event, values)
+
+        elif event == approve_key:
+            reference_event = True
+
+            # Find rows selected by user for approval
+            select_row_indices = values[tbl_key]
+
+            # Get the real indices of the selected rows
+            indices = table.get_real_index(select_row_indices)
+
+            self.approve_rows(indices)
+
+        elif event == unapprove_key:
+            reference_event = True
+
+            # Find rows selected by user for deletion
+            select_row_indices = values[tbl_key]
+
+            # Get the real indices of the selected rows
+            indices = table.get_real_index(select_row_indices)
+
+            self.unapprove_rows(indices)
 
         return reference_event
 
@@ -1864,11 +1883,13 @@ class BankAccount:
 
         # Set the approved column of the record to True
         self.table.update_column(colmap['Approved'], [True], indices=indices)
+        print('showing table indices: {}'.format(indices))
+        print(self.table.df.loc[indices])
         #df.loc[df['RecordID'].isin(record_ids), colmap['IsApproved']] = True
 
         return None
 
-    def delete_rows(self, indices):
+    def unapprove_rows(self, indices):
         """
         Delete references using the selected table indices.
 
@@ -1894,6 +1915,8 @@ class BankAccount:
 
         # Set the approved column of the record to False
         self.table.update_column(colmap['Approved'], [False], indices=indices)
+        print('showing table indices: {}'.format(indices))
+        print(self.table.df.loc[indices])
         #df.loc[df['RecordID'].isin(record_ids), colmap['IsApproved']] = False
 
         return None
