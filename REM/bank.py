@@ -13,7 +13,7 @@ import REM.constants as mod_const
 import REM.elements as mod_elem
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
-from REM.client import logger, settings, user
+from REM.client import logger, settings
 
 
 class BankRule:
@@ -53,7 +53,7 @@ class BankRule:
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Cancel', 'Save', 'FrameHeight',
-                          'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next')]
+                          'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next', 'Warnings')]
 
         self.bindings = [self.key_lookup(i) for i in
                          ('Cancel', 'Save', 'Back', 'Next', 'Entry', 'Parameters', 'Reconcile')]
@@ -483,6 +483,7 @@ class BankRule:
         panel_key = self.element_key
         entry_key = self.key_lookup('Entry')
         param_key = self.key_lookup('Parameters')
+        warn_key = self.key_lookup('Warnings')
 
         # Disable current panel
         if self.current_panel:
@@ -510,6 +511,9 @@ class BankRule:
 
         self.reset_parameters(window)
         self.toggle_parameters(window, 'disable')
+
+        # Clear the warning element
+        window[warn_key].update(value='')
 
         # Reset all account entries
         for acct in self.accts:
@@ -569,14 +573,10 @@ class BankRule:
 
         # Element sizes
         frame_height = height
-        panel_height = frame_height - 80
+        panel_height = frame_height - 220  # minus panel title, padding, and button row
 
-        layout_pad = 120
-        win_diff = width - mod_const.WIN_WIDTH
-        layout_pad = layout_pad + (win_diff / 5)
-
-        frame_width = width - layout_pad if layout_pad > 0 else width
-        panel_width = frame_width - 36
+        frame_width = width
+        panel_width = frame_width - 38  # padding + scrollbar width
 
         # Keyboard shortcuts
         hotkeys = settings.hotkeys
@@ -618,6 +618,13 @@ class BankRule:
                                      button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
                          expand_x=True, justification='l', background_color=bg_col),
                   sg.Col([param_elements], pad=(0, 0), justification='r', background_color=bg_col)]
+
+        # Reference warnings
+        warn_key = self.key_lookup('Warnings')
+        warn_w = width - 40  # width of the display panel minus padding on both sides
+        warn_h = 2
+        warn_layout = sg.Multiline('', key=warn_key, pad=(0, (pad_v, 0)), size=(warn_w, warn_h), font=font,
+                                   disabled=True, background_color=bg_col, text_color=disabled_text_col, border_width=1)
 
         # Panels
         panels = []
@@ -664,6 +671,7 @@ class BankRule:
                    sg.Col([header,
                           [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
                           [panel_layout],
+                          [warn_layout],
                           [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
                           [bttn_layout]],
                           pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]]
@@ -690,7 +698,7 @@ class BankRule:
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        frame_height = height  # minus the approximate height of the button row and title bar, with padding
+        frame_height = height
         panel_height = frame_height - 220  # minus panel title, padding, and button row
 
         height_key = self.key_lookup('FrameHeight')

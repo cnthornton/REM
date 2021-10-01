@@ -1583,7 +1583,7 @@ class TableElement(RecordElement):
 
         i = 0
         for parameter in filter_params:
-            param_cols = parameter.layout(padding=(0, pad_el), size=(param_w, 1), bg_col=filter_bg_col,
+            param_cols = parameter.layout(padding=(0, 0), size=(param_w, 1), bg_col=filter_bg_col,
                                           auto_size_desc=False, border=False)
             for param_layout in param_cols:
                 i += 1
