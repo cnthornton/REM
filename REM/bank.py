@@ -274,9 +274,10 @@ class BankRule:
             record_indices = results.get('RecordIndex')
             print('record indices {} were selected from account table {}'.format(record_indices, acct.name))
             if record_indices:
-                # If multiple rows selected, highlight the first record
-                record_index = min(record_indices)
-                record_warning = acct.fetch_reference_parameter('ReferenceNotes', record_index)
+                if len(record_indices) > 1:
+                    record_warning = None
+                else:
+                    record_warning = acct.fetch_reference_parameter('ReferenceNotes', record_indices).squeeze()
                 print('record reference has warning "{}"'.format(record_warning))
                 window[warn_key].update(value=settings.format_display(record_warning, 'varchar'))
 
@@ -1452,6 +1453,7 @@ class BankAccount:
                 else:
                     # Get the real index of the selected row
                     index = table.get_real_index(select_row_index)
+                    record_indices = [index]
 
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))

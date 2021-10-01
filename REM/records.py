@@ -1190,7 +1190,7 @@ class DatabaseRecord:
     Generic database record account.
 
     Attributes:
-        name (str): name of the configured record entry.
+        name (str): name of the parent record entry.
 
         id (int): record element number.
 
@@ -1200,19 +1200,17 @@ class DatabaseRecord:
 
         permissions (dict): dictionary mapping permission rules to permission groups
 
-        parameters (list): list of data and other GUI elements used to display information about the record.
-
-        references (list): list of reference records.
-
-        components (list): list of record components.
+        modules (list): list of record elements comprising the data component of the record.
 
         report (dict): report definition
     """
 
-    def __init__(self, record_entry, level: int = 0, record_layout: dict = None):
+    def __init__(self, name, entry, level: int = 0):
         """
         Arguments:
-            record_entry (class): configuration entry for the record.
+            name (str): name of the parent record entry (record type).
+
+            entry (class): configuration entry for the record layout.
 
             level (int): depth at which record was opened [Default: 0].
         """
@@ -1222,19 +1220,16 @@ class DatabaseRecord:
         self.delete_field = 'Deleted'
 
         # Record properties
-        self.record_entry = record_entry
         self.new = False
         self.level = level
 
-        self.name = record_entry.name
+        self.name = name
 
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
                           'DetailsFrame', 'Height', 'Width', 'DetailsTab', 'InfoTab', 'TG', 'FrameHeight',
                           'FrameWidth']]
-
-        entry = record_entry.record_layout if record_layout is None else record_layout
 
         # User access permissions
         try:
@@ -1442,7 +1437,7 @@ class DatabaseRecord:
             references = {}
 
         self.new = new
-        record_entry = self.record_entry
+        record_entry = settings.records.fetch_rule(self.name)
 
         if isinstance(data, pd.Series):
             record_data = data.to_dict()
@@ -1606,8 +1601,9 @@ class DatabaseRecord:
         Remove any unsaved IDs associated with the record, including the records own ID.
         """
         record_id = self.record_id()
-        record_entry = self.record_entry
         record_elements = self.record_elements()
+
+        record_entry = settings.records.fetch_rule(self.name)
 
         # Remove unsaved ID if record ID is found in the list of unsaved record IDs
         unsaved_ids = record_entry.get_unsaved_ids()

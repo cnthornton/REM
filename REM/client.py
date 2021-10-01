@@ -631,13 +631,10 @@ class SettingsManager:
 
             return {}
 
-        logger.debug('fetching alias definition for parameter {PARAM}'.format(PARAM=parameter))
-        try:
+        if parameter in aliases:
+            logger.debug('fetching alias definition for parameter {PARAM}'.format(PARAM=parameter))
             param_aliases = aliases[parameter]
-        except KeyError:
-            msg = 'no aliases found for parameter {PARAM}'.format(PARAM=parameter)
-            logger.debug(msg)
-
+        else:
             param_aliases = {}
 
         return param_aliases

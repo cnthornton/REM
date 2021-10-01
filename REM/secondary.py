@@ -1869,7 +1869,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
             record_data['RecordID'] = record_id
             record_data['RecordDate'] = record_date
 
-            record = record_class(record_entry, level=0)
+            record = record_class(record_entry.name, record_entry.record_layout, level=0)
             try:
                 record.initialize(record_data, new=True)
             except Exception as e:

@@ -1949,6 +1949,9 @@ class TableElement(RecordElement):
         if height:
             frame_keys = [self.key_lookup('Frame{}'.format(i)) for i in range(2)]
             frame_heights = [window[i].get_size()[1] for i in frame_keys]
+            print('frame heights are set to:')
+            print(frame_heights)
+            print('together the frame heights amount to {}'.format(sum(frame_heights)))
             tbl_height = height - sum(frame_heights)
 
             row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
@@ -2652,7 +2655,7 @@ class RecordTable(TableElement):
         record_entry = settings.records.fetch_rule(self.record_type)
         record_class = mod_records.DatabaseRecord
 
-        record = record_class(record_entry, level=level)
+        record = record_class(self.record_type, record_entry.record_layout, level=level)
         record.initialize(row, new=new_record, references=references)
 
         return record
@@ -4236,7 +4239,7 @@ class ReferenceBox(RecordElement):
                            .format(NAME=self.name, REF=self.reference_id))
             record_data = imports.iloc[0]
 
-        record = record_class(record_entry, level=level)
+        record = record_class(record_entry.name, record_entry.record_layout, level=level)
         record.initialize(record_data, new=False)
 
         return record
