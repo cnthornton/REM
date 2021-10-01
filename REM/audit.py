@@ -894,7 +894,8 @@ class AuditRule:
             try:
                 statements = audit_record.save_record(statements=statements)
             except Exception as e:
-                msg = 'failed to save {AUDIT} record {ID}'.format(AUDIT=tab.name, ID=tab.record.record_id())
+                msg = 'failed to save {AUDIT} record {ID}'\
+                    .format(AUDIT=audit_record.name, ID=audit_record.record.record_id())
                 logger.exception('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
                 return False

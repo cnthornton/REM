@@ -756,11 +756,11 @@ class BankRule:
         if search_failed:
             logger.debug('BankRule {NAME}: searching for void transactions for account {ACCT}'
                          .format(NAME=self.name, ACCT=acct.name))
-            df = acct.search_void_transactions(df)
+            df = acct.search_void(df)
         else:
             logger.debug('BankRule {NAME}: skipping void transactions from account {ACCT}'
                          .format(NAME=self.name, ACCT=acct.name))
-            df = acct.filter_void_transactions(df)
+            df = acct.filter_void(df)
 
         # Initialize the merged associated account dataframe
         logger.debug('BankRule {NAME}: initializing the merged accounts table'.format(NAME=self.name, ACCT=acct.name))
@@ -795,11 +795,11 @@ class BankRule:
             if search_failed:
                 logger.debug('BankRule {NAME}: searching for void transactions for account {ACCT}'
                              .format(NAME=self.name, ACCT=acct.name))
-                assoc_df = assoc_acct.search_void_transactions(assoc_df)
+                assoc_df = assoc_acct.search_void(assoc_df)
             else:
                 logger.debug('BankRule {NAME}: skipping void transactions from association account {ACCT}'
                              .format(NAME=self.name, ACCT=assoc_acct_name))
-                assoc_df = assoc_acct.filter_void_transactions(assoc_df)
+                assoc_df = assoc_acct.filter_void(assoc_df)
 
             # Create the account-association account column mapping from the association rules
             assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
@@ -1137,7 +1137,9 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+        #success = user.write_db(sstrings, psets)
+        print(statements)
+        success = True
 
         return success
 
@@ -1223,9 +1225,9 @@ class BankAccount:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel', 'Approve', 'Unapprove')]
+                         ('Panel', 'Approve', 'Reset')]
 
-        self.bindings = [self.key_lookup(i) for i in ('Approve', 'Unapprove')]
+        self.bindings = [self.key_lookup(i) for i in ('Approve', 'Reset')]
 
         try:
             self.title = entry['Title']
@@ -1257,10 +1259,12 @@ class BankAccount:
 
         action_bttns = {'Approve': {'Key': self.key_lookup('Approve'),
                                     'Icon': mod_const.APPROVE_ICON,
-                                    'Description': 'Approve record reference'},
-                        'Unapprove': {'Key': self.key_lookup('Unapprove'),
-                                      'Icon': mod_const.UNAPPROVE_ICON,
-                                      'Description': 'Remove record reference'}}
+                                    'Description': 'Approve record (CTRL+A)',
+                                    'Shortcut': 'Control-A'},
+                        'Reset': {'Key': self.key_lookup('Reset'),
+                                  'Icon': mod_const.RESET_ICON,
+                                  'Description': 'Reset record status (CTRL+R)',
+                                  'Shortcut': 'Control-R'}}
 
         table_entry['CustomActions'] = action_bttns
 
@@ -1410,7 +1414,7 @@ class BankAccount:
         table_keys = table.bindings
         tbl_key = table.key_lookup('Element')
         approve_key = self.key_lookup('Approve')
-        unapprove_key = self.key_lookup('Unapprove')
+        reset_key = self.key_lookup('Reset')
 
         reference_indices = None
         # Run a record table event.
@@ -1514,12 +1518,12 @@ class BankAccount:
             record_ids = table.df.loc[indices, table.id_column].tolist()
 
             try:
-                reference_indices = self.approve_records(record_ids)
+                reference_indices = self.approve(record_ids)
             except Exception as e:
                 msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
-        elif event == unapprove_key:
+        elif event == reset_key:
             # Find rows selected by user for deletion
             select_row_indices = values[tbl_key]
 
@@ -1529,11 +1533,15 @@ class BankAccount:
             # Get record IDs for the selected rows
             record_ids = table.df.loc[indices, table.id_column].tolist()
 
+            # Delete references and approval for the selected records
             try:
-                reference_indices = self.unapprove_records(record_ids)
+                reference_indices = self.unapprove(record_ids)
             except Exception as e:
                 msg = 'failed to unapprove records at table indices {INDS}'.format(INDS=indices)
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+            # Reset void transaction status
+            table.update_column(self._col_map['Void'], [False], indices=indices)
 
         return reference_indices
 
@@ -1581,7 +1589,7 @@ class BankAccount:
         Returns:
             df (DataFrame): dataframe of records merged with their corresponding reference entries.
         """
-        pd.set_option('display.max_columns', None)
+        #pd.set_option('display.max_columns', None)
 
         ref_map = self._ref_map
         ref_df = self.ref_df.copy()
@@ -1589,29 +1597,16 @@ class BankAccount:
         if df is None:
             df = self.table.data()
 
-        # Remove references that were deleted
-        #print('reference df to merge with the records df:')
-        #ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsDeleted']
-        #ref_df.loc[ref_df['IsDeleted'], ref_columns] = [np.nan, np.nan, np.nan, np.nan, False, False]
-        #print(ref_df)
-        #print(ref_df.dtypes)
-
         # Set index to record ID for updating
         df.set_index('RecordID', inplace=True)
         ref_df.set_index('RecordID', inplace=True)
 
         # Rename reference columns to record columns using the reference map
         mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
-        #print('reference df after column subsetting:')
-        #print(mapped_df)
 
         # Update record reference columns
-        #        df.update(ref_df)
-        #        df.reset_index(inplace=True)
         df = df.drop(columns=mapped_df.columns).join(mapped_df)
         df.reset_index(inplace=True)
-        #print('dataframe after updating on record id:')
-        #print(df)
 
         return df
 
@@ -1642,7 +1637,7 @@ class BankAccount:
             refs_to_delete = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID']
             print('BankAccount {}: removing references for:'.format(self.name))
             print(refs_to_delete)
-            self.unapprove_records(refs_to_delete.tolist())
+            self.unapprove(refs_to_delete.tolist())
 
             ref_df.drop(deleted_references.index, inplace=True)
             df = self.ref_df.copy()
@@ -1672,9 +1667,9 @@ class BankAccount:
 
         return df
 
-    def approve_records(self, record_ids):
+    def approve(self, record_ids):
         """
-        Manually approve the selected records.
+        Manually approve references for the selected records.
 
         Arguments:
             record_ids (list): list of record IDs to approve.
@@ -1690,17 +1685,11 @@ class BankAccount:
         ref_indices = ref_df.index[ref_df['RecordID'].isin(record_ids)]
         ref_df.loc[ref_indices, ['IsApproved']] = True
 
-        # Set the approved column of the record to True
-        #self.table.update_column(colmap['Approved'], [True], indices=indices)
-        #print('showing table indices: {}'.format(indices))
-        #print(self.table.df.loc[indices])
-        #df.loc[df['RecordID'].isin(record_ids), colmap['IsApproved']] = True
-
         return ref_indices.tolist()
 
-    def unapprove_records(self, record_ids):
+    def unapprove(self, record_ids):
         """
-        Delete references using the selected table indices.
+        Delete references for the selected records.
 
         Arguments:
             record_ids (list): list of record IDs corresponding to the records to remove references from.
@@ -1717,15 +1706,9 @@ class BankAccount:
         ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved']
         ref_df.loc[ref_indices, ref_columns] = [np.nan, np.nan, np.nan, np.nan, False]
 
-        # Set the approved column of the record to False
-        #self.table.update_column(colmap['Approved'], [False], indices=indices)
-        #print('showing table indices: {}'.format(indices))
-        #print(self.table.df.loc[indices])
-        #df.loc[df['RecordID'].isin(record_ids), colmap['IsApproved']] = False
-
         return ref_indices.tolist()
 
-    def search_void_transactions(self, df):
+    def search_void(self, df):
         """
         Set the correct transaction type for failed transaction records.
         """
@@ -1780,10 +1763,8 @@ class BankAccount:
                 self.add_reference(ref_id, record_id, record_type, warning=warning)
 
                 # Set the transaction code for the bounced cheque
-                df.loc[df['RecordID'].isin(match_pair), failed_col] = 1
                 void_records.extend(list(match_pair))
-
-        df = self.filter_void_transactions(df)
+                df.drop(df[df['RecordID'].isin(match_pair)].index, inplace=True)
 
         # Search for mistaken payments
         print('BankAccount {}: searching for mistaken payments'.format(self.name))
@@ -1811,10 +1792,8 @@ class BankAccount:
                 self.add_reference(ref_id, record_id, record_type, warning=warning)
 
                 # Set the transaction code for the bounced cheque
-                df.loc[df['RecordID'].isin(match_pair), failed_col] = 1
                 void_records.extend(list(match_pair))
-
-        df = self.filter_void_transactions(df)
+                df.drop(df[df['RecordID'].isin(match_pair)].index, inplace=True)
 
         # Update the record tables
         void_inds = self.table.df.loc[self.table.df['RecordID'].isin(void_records)].index.tolist()
@@ -1822,11 +1801,10 @@ class BankAccount:
             print('BankAccount {}: setting void column {} to true for indices:'.format(self.name, failed_col))
             print(void_inds)
             self.table.update_column(failed_col, [True], indices=void_inds)
-        #self.table.df.loc[self.table.df['RecordID'].isin(void_records), failed_col] = True
 
         return df
 
-    def filter_void_transactions(self, df: pd.DataFrame = None):
+    def filter_void(self, df: pd.DataFrame = None):
         """
         Remove void transactions from a dataframe.
         """
@@ -1838,7 +1816,7 @@ class BankAccount:
         except KeyError:
             return df
 
-        df.drop(df[df[failed_col] == 1].index, inplace=True)
+        df.drop(df[df[failed_col]].index, inplace=True)
 
         return df
 
