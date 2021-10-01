@@ -242,6 +242,7 @@ class BankRule:
         save_key = self.key_lookup('Save')
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
+        warn_key = self.key_lookup('Warnings')
 
         can_save = not window[save_key].metadata['disabled']
 
@@ -251,20 +252,14 @@ class BankRule:
             current_panel = self.current_panel
             acct = self.fetch_account(current_panel, by_key=True)
 
-            ref_indices = acct.run_event(window, event, values)
+            results = acct.run_event(window, event, values)
+
             # Update reference dataframes when an account entry event is a reference event. A reference event is any
             # event that may modify one side of a reference, which requires an update to the other side of the
             # reference.
+            ref_indices = results.get('ReferenceIndex')
             if ref_indices:
                 ref_df = acct.ref_df.copy()
-                #deleted_records = ref_df.loc[ref_df['IsDeleted'], ['RecordID']].squeeze()
-                #if isinstance(deleted_records, str):
-                #    deleted_records = [deleted_records]
-
-                #approved_records = ref_df.loc[ref_df['IsApproved'], ['RecordID']].squeeze()
-                #if isinstance(approved_records, str):
-                #    approved_records = [approved_records]
-
                 # Update account reference dataframes for currently active panels
                 for panel in self.panels:
                     if panel == current_panel:  # do not attempt to update the main account's reference dataframe
@@ -272,13 +267,18 @@ class BankRule:
 
                     ref_acct = self.fetch_account(panel, by_key=True)
                     ref_acct.ref_df = ref_acct.update_references(ref_df.loc[ref_indices])
-                #    assoc_ref_df = ref_acct.ref_df
-                #    assoc_ref_df.loc[assoc_ref_df['ReferenceID'].isin(deleted_records), ['IsDeleted']] = True
-                #    assoc_ref_df.loc[~assoc_ref_df['ReferenceID'].isin(deleted_records), ['IsDeleted']] = False
-                #    assoc_ref_df.loc[assoc_ref_df['ReferenceID'].isin(approved_records), ['IsApproved']] = True
-                #    assoc_ref_df.loc[~assoc_ref_df['ReferenceID'].isin(approved_records), ['IsApproved']] = False
 
                 self.update_display(window)
+
+            # Update warning element with the reference notes of the selected record, if any.
+            record_indices = results.get('RecordIndex')
+            print('record indices {} were selected from account table {}'.format(record_indices, acct.name))
+            if record_indices:
+                # If multiple rows selected, highlight the first record
+                record_index = min(record_indices)
+                record_warning = acct.fetch_reference_parameter('ReferenceNotes', record_index)
+                print('record reference has warning "{}"'.format(record_warning))
+                window[warn_key].update(value=settings.format_display(record_warning, 'varchar'))
 
             return current_rule
 
@@ -1062,7 +1062,7 @@ class BankRule:
 
         nmatch = matches.shape[0]
         if nmatch == 1:  # potential match, add with a warning
-            results = matches.iloc[0]
+            results = matches.iloc[0].copy()
 
             # Determine appropriate warning for the expanded search
             acct_name = results['_Account_']
@@ -1076,7 +1076,7 @@ class BankRule:
                     warning.append('- {}'.format(col_warning))
 
             warning = '\n'.join(warning)
-            results.loc[:, '_Warning_'] = warning
+            results['_Warning_'] = warning
 
         elif nmatch > 1:  # need to use the association parameters expand levels to find the best match
             msg = 'found more than one expanded match for account {ACCT} row "{ROW}" - searching for ' \
@@ -1424,7 +1424,10 @@ class BankAccount:
         approve_key = self.key_lookup('Approve')
         reset_key = self.key_lookup('Reset')
 
+        # Return values
         reference_indices = None
+        record_indices = None
+
         # Run a record table event.
         if event in table_keys:
             open_key = '{}+LCLICK+'.format(tbl_key)
@@ -1448,10 +1451,7 @@ class BankAccount:
                     logger.debug('DataTable {NAME}: {MSG}'.format(NAME=table.name, MSG=msg))
                 else:
                     # Get the real index of the selected row
-                    try:
-                        index = table.index_map[select_row_index]
-                    except KeyError:
-                        index = select_row_index
+                    index = table.get_real_index(select_row_index)
 
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
@@ -1512,6 +1512,19 @@ class BankAccount:
                                 else:
                                     reference_indices = reference_indices.tolist()
 
+            elif event == tbl_key:
+                table.run_event(window, event, values)
+
+                # Get index of the selected rows
+                try:
+                    select_indices = values[tbl_key]
+                except IndexError:  # user double-clicked too quickly
+                    msg = 'table row could not be selected'
+                    logger.debug('DataTable {NAME}: {MSG}'.format(NAME=table.name, MSG=msg))
+                else:
+                    # Get the real index of the selected row
+                    record_indices = table.get_real_index(select_indices)
+
             else:
                 table.run_event(window, event, values)
 
@@ -1545,13 +1558,13 @@ class BankAccount:
             try:
                 reference_indices = self.unapprove(record_ids)
             except Exception as e:
-                msg = 'failed to unapprove records at table indices {INDS}'.format(INDS=indices)
+                msg = 'failed to reset record references at table indices {INDS}'.format(INDS=indices)
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             # Reset void transaction status
             table.update_column(self._col_map['Void'], [False], indices=indices)
 
-        return reference_indices
+        return {'ReferenceIndex': reference_indices, 'RecordIndex': record_indices}
 
     def layout(self, size):
         """
@@ -1586,6 +1599,37 @@ class BankAccount:
         tbl_width = width - 30  # includes padding on both sides and scroll bar
         tbl_height = int(height * 0.55)
         self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
+
+    def fetch_reference_parameter(self, param, indices):
+        """
+        Fetch reference parameter values at provided record table row indices.
+        """
+        refmap = self._ref_map
+        header = self.table.df.columns.tolist()
+
+        try:
+            column = refmap[param]
+        except KeyError:
+            msg = 'reference parameter "{PARAM}" is not in the configured reference map'.format(PARAM=param)
+            logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return None
+
+        if column not in header:
+            msg = 'reference parameter "{PARAM}" is not in the configured reference map'.format(PARAM=param)
+            logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return None
+
+        try:
+            param_values = self.table.df.loc[indices, column]
+        except KeyError:
+            msg = 'row indices {INDS} are not found in the records table'.format(INDS=indices)
+            logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            param_values = None
+
+        return param_values
 
     def merge_references(self, df: pd.DataFrame = None):
         """

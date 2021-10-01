@@ -212,9 +212,8 @@ class TableElement(RecordElement):
                               ('Export', 'Total', 'Search', 'Filter', 'Fill', 'Frame0', 'FrameBttn0',
                                'Frame1', 'FrameBttn1', 'Width', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
                                'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3')])
-        #self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1',
-        #                        'Options', 'Cancel']
-        self._event_elements = ['Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
+        #self._event_elements = ['Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
+        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -1480,8 +1479,9 @@ class TableElement(RecordElement):
             for row_index, result in results.iteritems():
                 if result:
                     if row_index in rows_annotated:
-                        logger.warning('DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
-                                       'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
+                        continue
+                        #logger.warning('DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
+                        #               'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
                     else:
                         annotations[row_index] = annot_code
                         rows_annotated.append(row_index)
