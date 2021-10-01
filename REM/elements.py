@@ -3696,6 +3696,9 @@ class ComponentTable(RecordTable):
         ref_df = export_df[[self.id_column, self.deleted_column]]
         ref_df.rename(columns={self.id_column: 'ReferenceID', self.deleted_column: 'IsDeleted'}, inplace=True)
 
+        if ref_df.empty:
+            return ref_df
+
         ref_df.loc[:, 'RecordID'] = record_id
         ref_df.loc[:, 'RecordType'] = self.parent
         ref_df.loc[:, 'ReferenceDate'] = datetime.datetime.now()
@@ -3970,7 +3973,7 @@ class ReferenceBox(RecordElement):
                        sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
                                         text_color=text_col, font=bold_font, background_color=bg_col,
                                         tooltip=tooltip),
-                                sg.Image(data=mod_const.LINK_ICON, key=link_key, visible=hl_vis,
+                                sg.Image(data=mod_const.LINKED_ICON, key=link_key, visible=hl_vis,
                                          pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
                                                                                                       not in aliases else
