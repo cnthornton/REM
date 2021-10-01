@@ -1951,7 +1951,7 @@ class DatabaseRecord:
         # Add parameter values
         record_elements = self.modules
         for record_element in record_elements:
-            if record_element.eclass == 'references' and not references:
+            if record_element.eclass == 'references' and not references:  # reference boxes and component tables
                 continue
 
             values = {**values, **record_element.export_values(edited_only=edited_only)}

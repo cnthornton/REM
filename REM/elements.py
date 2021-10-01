@@ -725,8 +725,8 @@ class TableElement(RecordElement):
 
         for column_name in dtype_map:
             if column_name not in header:
-                logger.warning('DataTable {NAME}: "{COL}" is not in the dataframe header - setting initial value to NaN'
-                               .format(NAME=self.name, COL=column_name))
+                logger.warning('DataTable {NAME}: configured column "{COL}" is not in the dataframe header - setting '
+                               'initial value to NaN'.format(NAME=self.name, COL=column_name))
                 df[column_name] = None
 
             dtype = dtype_map[column_name]
@@ -775,7 +775,7 @@ class TableElement(RecordElement):
         edited_cols = []
         for column in row_values:  # iterate over row value columns
             if column not in header:
-                msg = 'row value column {COL} not found in the dataframe header'.format(COL=column)
+                msg = 'row value column "{COL}" not found in the dataframe header'.format(COL=column)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 continue
@@ -2438,7 +2438,7 @@ class TableElement(RecordElement):
                 logger.warning('DataTable {NAME}: neither the "DefaultCondition" nor "DefaultRule" parameter was '
                                'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
 
-        df = self._set_datatypes(df)
+        #df = self._set_datatypes(df)
 
         return df
 
@@ -3756,7 +3756,7 @@ class ReferenceBox(RecordElement):
         self._event_elements = ['RefID', 'Element', 'Approved', 'Unlink']
 
         # Element-specific bindings
-        elem_key = self.key_lookup('Element')
+        #elem_key = self.key_lookup('Element')
         self.bindings = [self.key_lookup(i) for i in self._event_elements]
 
         try:
@@ -3832,7 +3832,7 @@ class ReferenceBox(RecordElement):
         """
         Run a record reference event.
         """
-        elem_key = self.key_lookup('Element')
+        #elem_key = self.key_lookup('Element')
         del_key = self.key_lookup('Unlink')
         ref_key = self.key_lookup('RefID')
         approved_key = self.key_lookup('Approved')
@@ -3855,11 +3855,19 @@ class ReferenceBox(RecordElement):
             user_action = mod_win2.popup_confirm(msg)
 
             if user_action.upper() == 'OK':
-                # Set element to deleted in metadata
+                # Reset reference attributes
                 self.referenced = False
                 self.edited = True
-                update_event = True
 
+                self.reference_id = None
+                self.reference_type = None
+                self.date = None
+                self.notes = None
+                self.is_hardlink = False
+                self.is_pc = False
+                self.approved = False
+
+                update_event = True
                 self.update_display(window)
 
         # Update approved element
@@ -4208,10 +4216,8 @@ class ReferenceBox(RecordElement):
         record_class = mod_records.DatabaseRecord
 
         level = level if level is not None else self.level + 1
-        print('loading reference record at level {}'.format(level))
-
-        logger.info('ReferenceBox {NAME}: loading reference record {ID} of type {TYPE}'
-                    .format(NAME=self.name, ID=self.reference_id, TYPE=self.reference_type))
+        logger.info('ReferenceBox {NAME}: loading reference record {ID} of type {TYPE} at level {LEVEL}'
+                    .format(NAME=self.name, ID=self.reference_id, TYPE=self.reference_type, LEVEL=level))
 
         imports = record_entry.load_record_data(self.reference_id)
         nrow = imports.shape[0]
