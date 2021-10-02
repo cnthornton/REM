@@ -1895,8 +1895,8 @@ class TableElement(RecordElement):
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
-        layout = [sg.Col([bttn_layout], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
-                         background_color=header_col, expand_x=True)]
+        layout = [sg.Col([bttn_layout], justification='l', vertical_alignment='c', background_color=header_col,
+                         expand_x=True)]
 
         return layout
 
@@ -2032,7 +2032,7 @@ class TableElement(RecordElement):
         #print('height allocated to the table in pixels: {}'.format(height))
         #print('height offset size in pixels: {}'.format(height_offset))
         #print('height of the individual rows: {}'.format(row_rate))
-        #print('size of the actions bar: {}'.format(window[self.key_lookup('ActionsBar')].get_size()))
+        print('size of the actions bar: {}'.format(window[self.key_lookup('ActionsBar')].get_size()))
         #print('size of the title bar: {}'.format(window[self.key_lookup('TitleBar')].get_size()))
         #print('size of the summary bar: {}'.format(window[self.key_lookup('SummaryBar')].get_size()))
         #print('size of the filter bar: {}'.format(window[self.key_lookup('FilterBar')].get_size()))
@@ -2903,12 +2903,12 @@ class RecordTable(TableElement):
         pad_el = mod_const.ELEM_PAD
 
         # Layout
-        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
+        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['import'],
                                  tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
-                       sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
+                       sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['delete'],
                                  tooltip='Remove selected rows (CTRL+D)',
@@ -2923,8 +2923,8 @@ class RecordTable(TableElement):
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
-        layout = [sg.Col([bttn_layout], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
-                         background_color=header_col, expand_x=True)]
+        layout = [sg.Col([bttn_layout], justification='l', vertical_alignment='c', background_color=header_col,
+                         expand_x=True)]
 
         return layout
 
@@ -3425,16 +3425,16 @@ class ComponentTable(RecordTable):
         pad_el = mod_const.ELEM_PAD
 
         # Layout
-        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.IMPORT_ICON, border_width=2,
+        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['import'],
                                  tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
-                       sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
+                       sg.Button('', key=add_key, image_data=mod_const.TBL_ADD_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['add'],
                                  tooltip='Create new component record (CTRL+A)',
                                  metadata={'visible': self.modifiers['add'], 'disabled': disabled}),
-                       sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
+                       sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=2,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['delete'],
                                  tooltip='Remove selected rows (CTRL+D)',
@@ -3449,8 +3449,8 @@ class ComponentTable(RecordTable):
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
-        layout = [sg.Col([bttn_layout], pad=(pad_el, int(pad_el / 2)), justification='l', vertical_alignment='c',
-                         background_color=header_col, expand_x=True)]
+        layout = [sg.Col([bttn_layout], justification='l', vertical_alignment='c', background_color=header_col,
+                         expand_x=True)]
 
         return layout
 

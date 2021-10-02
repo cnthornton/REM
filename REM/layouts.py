@@ -29,7 +29,7 @@ def B2(*args, **kwargs):
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,
                         nrow: int = None, height: int = 800, width: int = 1200, font: tuple = None, pad: tuple = None,
-                        add_key: str = None, delete_key: str = None, total_key: str = None, table_name: str = ''):
+                        table_name: str = ''):
     """
     Create table elements that have consistency in layout.
     """
@@ -41,10 +41,7 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     header_col = mod_const.HEADER_COL
 
     pad_frame = mod_const.FRAME_PAD
-
     pad = pad if pad else (pad_frame, pad_frame)
-    pad_el = mod_const.ELEM_PAD
-    pad_v = mod_const.VERT_PAD
 
     font = font if font else mod_const.LARGE_FONT
     bold_font = mod_const.BOLD_FONT
@@ -64,42 +61,21 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
 
     lengths = mod_dm.calc_column_widths(header, width=width, font_size=font_size, pixels=False)
 
-    header_layout = []
-    balance_layout = []
-    if add_key:
-        header_layout.append(sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=2,
-                                       button_color=(text_col, alt_col), tooltip='Add new row to table'))
-        balance_layout.append(sg.Canvas(size=(24, 0), visible=True, background_color=header_col))
-    if delete_key:
-        header_layout.append(sg.Button('', key=delete_key, image_data=mod_const.MINUS_ICON, border_width=2,
-                                       button_color=(text_col, alt_col), tooltip='Remove selected row from table'))
-        balance_layout.append(sg.Canvas(size=(24, 0), visible=True, background_color=header_col))
-
-    if table_name or len(header_layout) > 0:
-        top_layout = [sg.Col([balance_layout], justification='r', background_color=header_col, expand_x=True),
-                      sg.Col([[sg.Text(table_name, pad=(0, 0), font=bold_font, background_color=alt_col)]],
-                             justification='c', background_color=header_col, expand_x=True),
-                      sg.Col([header_layout], justification='l', background_color=header_col)]
+    if table_name:
+        top_layout = [sg.Col([[sg.Text(table_name, pad=(0, 0), font=bold_font, background_color=alt_col)]],
+                             justification='c', background_color=header_col, expand_x=True)]
         frame_relief = 'ridge'
     else:
         top_layout = [sg.Canvas(size=(0, 0))]
         frame_relief = 'flat'
 
-    middle_layout = [sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
+    bottom_layout = [sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
                               row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                               text_color=text_col, selected_row_colors=(text_col, select_col), font=font,
                               display_row_numbers=False, auto_size_columns=False, col_widths=lengths,
                               enable_events=events, bind_return_key=bind, tooltip=tooltip, vertical_scroll_only=False)]
 
-    if total_key:
-        bottom_layout = [sg.Col([[sg.Text('Total:', pad=((0, pad_el), 0), font=bold_font, background_color=alt_col),
-                                  sg.Text('', key=total_key, size=(14, 1), pad=((pad_el, 0), 0), font=font,
-                                          background_color=bg_col, justification='r', relief='sunken')]],
-                                pad=(0, (pad_v, 0)), background_color=alt_col, justification='r')]
-    else:
-        bottom_layout = [sg.Canvas(size=(0, 0))]
-
-    layout = sg.Frame('', [top_layout, middle_layout, bottom_layout], pad=pad, element_justification='l',
+    layout = sg.Frame('', [top_layout, bottom_layout], pad=pad, element_justification='l',
                       vertical_alignment='t', background_color=alt_col, relief=frame_relief)
 
     return layout

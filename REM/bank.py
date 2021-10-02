@@ -1266,11 +1266,11 @@ class BankAccount:
             table_entry = record_entry.import_table
 
         action_bttns = {'Approve': {'Key': self.key_lookup('Approve'),
-                                    'Icon': mod_const.APPROVE_ICON,
+                                    'Icon': mod_const.TBL_APPROVE_ICON,
                                     'Description': 'Approve record (CTRL+A)',
                                     'Shortcut': 'Control-A'},
                         'Reset': {'Key': self.key_lookup('Reset'),
-                                  'Icon': mod_const.RESET_ICON,
+                                  'Icon': mod_const.TBL_RESET_ICON,
                                   'Description': 'Reset record status (CTRL+R)',
                                   'Shortcut': 'Control-R'}}
 
