@@ -232,7 +232,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     text_col = mod_const.TEXT_COL
     header_col = mod_const.HEADER_COL
 
-    font_h = mod_const.HEADER_FONT
+    font_h = mod_const.HEADING_FONT
 
     # User permissions
     user_priv = user.access_permissions()
@@ -509,7 +509,7 @@ def parameter_window(account, win_size: tuple = None):
     pad_h = mod_const.HORZ_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    font_h = mod_const.HEADER_FONT
+    font_h = mod_const.HEADING_FONT
     bold_font = mod_const.BOLD_FONT
 
     bg_col = mod_const.ACTION_COL
@@ -1746,7 +1746,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     # Window and element size parameters
     header_col = mod_const.HEADER_COL
 
-    header_font = mod_const.HEADER_FONT
+    header_font = mod_const.HEADING_FONT
 
     pad_el = mod_const.ELEM_PAD
     pad_v = mod_const.VERT_PAD
@@ -1946,7 +1946,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     params = params if params is not None else []
 
     # Window and element size parameters
-    font_h = mod_const.HEADER_FONT
+    font_h = mod_const.HEADING_FONT
     main_font = mod_const.MAIN_FONT
 
     pad_v = mod_const.VERT_PAD
@@ -2103,7 +2103,7 @@ def about():
     bg_col = mod_const.ACTION_COL
     header_col = mod_const.HEADER_COL
 
-    header_font = mod_const.HEADER_FONT
+    header_font = mod_const.HEADING_FONT
     sub_font = mod_const.BOLD_LARGE_FONT
     text_font = mod_const.LARGE_FONT
 
@@ -2162,7 +2162,7 @@ def edit_settings(win_size: tuple = None):
     pad_frame = mod_const.FRAME_PAD
     pad_v = mod_const.VERT_PAD
 
-    font_h = mod_const.HEADER_FONT
+    font_h = mod_const.HEADING_FONT
     header_col = mod_const.HEADER_COL
 
     # Keyboard shortcuts

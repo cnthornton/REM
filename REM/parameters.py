@@ -291,11 +291,12 @@ class DataParameter:
                               background_color=bg_col, expand_y=True)
 
         width_key = self.key_lookup('Width')
-        elem_layout = [header_layout, param_layout]
-        layout = [[sg.Canvas(key=width_key, size=(layout_w, 0), background_color=bg_col)], elem_layout]
+        elem_layout = [sg.Canvas(size=(0, 28), background_color=bg_col), header_layout, param_layout]
+        layout = [[sg.Canvas(key=width_key, size=(layout_w, 0), background_color=bg_col)],
+                  elem_layout]
 
         return [sg.Frame('', layout, pad=padding, visible=visible, background_color=bg_col, relief=relief,
-                         border_width=1)]
+                         border_width=1, vertical_alignment='c')]
 
     def element_layout(self, size: tuple = None, bg_col: str = None):
         """

@@ -565,7 +565,7 @@ class BankRule:
         text_col = mod_const.TEXT_COL
 
         font = mod_const.MAIN_FONT
-        font_h = mod_const.HEADER_FONT
+        font_h = mod_const.HEADING_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
@@ -691,20 +691,19 @@ class BankRule:
         width, height = size
 
         frame_width = width
-        panel_width = frame_width - 38  # padding + scrollbar width
-
         width_key = self.key_lookup('FrameWidth')
         window[width_key].set_size((frame_width, None))
 
+        panel_width = frame_width - 40  # minus frame padding
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        frame_height = height
-        panel_height = frame_height - 220  # minus panel title, padding, and button row
-
         height_key = self.key_lookup('FrameHeight')
-        window[height_key].set_size((None, frame_height))
+        window[height_key].set_size((None, height))
 
+        warn_h = 50
+        #print('the height of the warnings frame is: {}'.format(window[self.key_lookup('Warnings')].get_size()[1]))
+        panel_height = height - 240 - warn_h  # minus panel title, padding, button row, and
         ph_key = self.key_lookup('PanelHeight')
         window[ph_key].set_size((None, panel_height))
 
@@ -1597,10 +1596,13 @@ class BankAccount:
         """
         width, height = size
 
+        #print('current size of panel {} is {}'.format(self.name, window[self.key_lookup('Panel')].get_size()))
+
         # Reset table size
-        tbl_width = width - 30  # includes padding on both sides and scroll bar
-        tbl_height = int(height * 0.55)
-        self.table.resize(window, size=(tbl_width, tbl_height), row_rate=40)
+        tbl_width = width - 26  # minus the width of the panel scrollbar
+        tbl_height = height
+        #print('setting table height to {}'.format(tbl_height))
+        self.table.resize(window, size=(tbl_width, tbl_height))
 
     def fetch_reference_parameter(self, param, indices):
         """

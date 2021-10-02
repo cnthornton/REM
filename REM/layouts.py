@@ -127,10 +127,10 @@ def importer_layout(win_size: tuple = None):
     pad_h = mod_const.HORZ_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    font_h = mod_const.HEADER_FONT
+    font_h = mod_const.HEADING_FONT
     font_bold = mod_const.BOLD_FONT
     font_main = mod_const.MAIN_FONT
-    font_large = mod_const.BOLD_HEADER_FONT
+    font_large = mod_const.BOLD_HEADING_FONT
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys

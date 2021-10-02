@@ -564,7 +564,7 @@ class AuditRule:
         text_col = mod_const.TEXT_COL
         select_col = mod_const.SELECT_TEXT_COL
 
-        font_h = mod_const.HEADER_FONT
+        font_h = mod_const.HEADING_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
@@ -711,20 +711,19 @@ class AuditRule:
         width_key = self.key_lookup('FrameWidth')
         window[width_key].set_size((frame_width, None))
 
-        frame_height = height  # minus button and header
-        height_key = self.key_lookup('FrameHeight')
-        window[height_key].set_size((None, frame_height))
-
         panel_width = frame_width - 30
         pw_key = self.key_lookup('PanelWidth')
         window[pw_key].set_size((panel_width, None))
 
-        panel_height = frame_height - 240  # minus panel title, padding, and button controls
+        height_key = self.key_lookup('FrameHeight')
+        window[height_key].set_size((None, height))
+
+        panel_height = height - 240  # minus the panel title, padding, and button controls
         ph_key = self.key_lookup('PanelHeight')
         window[ph_key].set_size((None, panel_height))
 
         # Resize panel tab groups
-        tab_height = panel_height - 120  # minus size of the tabs and the panel title
+        tab_height = panel_height - 18  # minus height of a tab
         tab_width = panel_width - mod_const.FRAME_PAD * 2  # minus left and right padding
 
         # Resize transaction tabs
@@ -733,6 +732,7 @@ class AuditRule:
             transaction.resize_elements(window, size=(tab_width, tab_height))
 
         # Resize summary audit record tabs
+        #record_h = tab_height - 94
         record_h = tab_height - 94
         record_w = tab_width
 
@@ -1135,7 +1135,7 @@ class AuditTransaction:
                                            button_color=(bttn_text_col, bttn_bg_col),
                                            disabled_button_color=(disabled_text_col, disabled_bg_col),
                                            tooltip='Run audit on the transaction records', use_ttk_buttons=True)]],
-                               pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
+                               pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, element_justification='c',
                                expand_x=True)]]
 
         height_key = self.key_lookup('Height')
@@ -1161,10 +1161,21 @@ class AuditTransaction:
         height_key = self.key_lookup('Height')
         window[height_key].set_size(size=(None, height))
 
+        #print('resizing transaction tab: {}'.format(self.name))
+        #print('height allocated to the tab element: {}'.format(height))
+        #print('size of the tab element before resizing: {}'.format(window[self.key_lookup('Tab')].get_size()))
+        #print('size of the table frame before resizing: {}'.format(window[self.table.key_lookup('Table')].get_size()))
+        #print('size of the audit button: {}'.format(window[self.key_lookup('Audit')].get_size()))
+
         # Reset table size
-        tbl_width = width - 30  # minus padding and scroll bar
-        tbl_height = height - (mod_const.FRAME_PAD * 2 + 60)  # minus padding and audit button
-        self.table.resize(window, size=(tbl_width, tbl_height), row_rate=80)
+        audit_bttn_h = 30
+        tbl_width = width - 40  # minus padding and scroll bar
+        tbl_height = height - (mod_const.FRAME_PAD * 3 + audit_bttn_h)  # minus padding and audit button
+        #print('height allocated to the table: {}'.format(tbl_height))
+        self.table.resize(window, size=(tbl_width, tbl_height))
+
+        #print('size of the table frame after resizing: {}'.format(window[self.table.key_lookup('Table')].get_size()))
+        #print('size of the tab element after resizing: {}'.format(window[self.key_lookup('Tab')].get_size()))
 
     def run_event(self, window, event, values):
         """

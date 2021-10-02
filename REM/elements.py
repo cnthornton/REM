@@ -3,6 +3,7 @@ REM standard GUI element classes such as tables and information boxes.
 """
 
 import datetime
+from math import ceil as ceiling
 import re
 import sys
 from random import randint
@@ -209,11 +210,13 @@ class TableElement(RecordElement):
         self.etype = 'table'
         self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Export', 'Total', 'Search', 'Filter', 'Fill', 'Frame0', 'FrameBttn0',
-                               'Frame1', 'FrameBttn1', 'Width', 'SummaryWidth', 'Options', 'Cancel', 'Sort',
-                               'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3')])
-        #self._event_elements = ['Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
-        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
+                              ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'Frame0', 'FrameBttn0',
+                               'Frame1', 'FrameBttn1', 'Width', 'SummaryTable', 'Options', 'Cancel', 'Sort',
+                               'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3', 'TitleBar',
+                               'FilterBar', 'SummaryBar', 'ActionsBar')])
+        # self._event_elements = ['Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
+        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options',
+                                'Cancel']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -536,6 +539,7 @@ class TableElement(RecordElement):
         self.level = 0
 
         # Dynamic attributes
+        self._height_offset = 0
         self._dimensions = (mod_const.TBL_WIDTH, self.nrow)
 
         self.df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
@@ -559,25 +563,56 @@ class TableElement(RecordElement):
 
         return df
 
-    def _calc_column_widths(self, width: int = 1200, size: int = 13, pixels: bool = False):
+    def _update_column_widths(self, window, width: int = None, summary: bool = False):
+        """
+        Update the sizes of the data table or summary table columns.
+        """
+        if summary:
+            summary_rules = self.summary_rules
+            header = [summary_rules[summary_name].get('Description') for summary_name in summary_rules]
+            elem_key = self.key_lookup('SummaryTable')
+            widths = None
+        else:
+            header = list(self.display_columns.values())
+            elem_key = self.key_lookup('Element')
+            widths = self.widths
+
+        column_widths = self._calc_column_widths(header, width=width, pixels=True, widths=widths)
+        for index, column in enumerate(header):
+            column_width = column_widths[index]
+            window[elem_key].Widget.column(column, width=column_width)
+
+    def _calc_column_widths(self, header, width: int = None, size: int = None, pixels: bool = False, widths: dict = None):
         """
         Calculate the width of the table columns based on the number of columns displayed.
+
+        Arguments:
+            header (list): list of table headers.
+
+            width (int): width of the table.
+
+            size (int): font size of the table characters.
+
+            pixels (bool): width is in pixels instead of characters [Default: True].
+
+            widths (dict): column relative sizes [Default: all columns are equal].
         """
-        header = list(self.display_columns)
-        widths = self.widths
-
-        logger.debug('DataTable {NAME}: calculating table column widths'.format(NAME=self.name))
-
         # Size of data
         ncol = len(header)
 
         if ncol < 1:  # no columns in table
             return []
 
+        if not width:
+            width = mod_const.TBL_WIDTH
+
         # Set table width based on whether size in pixels or characters
         if pixels:
             tbl_width = width
         else:
+            if not size:
+                size = mod_const.TBL_FONT[1]
+
             tbl_width = width / size
 
         if widths is not None:
@@ -993,10 +1028,11 @@ class TableElement(RecordElement):
                 new_width = tbl_width - frame_w - 2 if tbl_width - frame_w - 2 > 0 else 0
                 logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                              'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
-                lengths = self._calc_column_widths(width=new_width, pixels=True)
-                for col_index, col_name in enumerate(header):
-                    col_width = lengths[col_index]
-                    window[elem_key].Widget.column(col_name, width=col_width)
+                self._update_column_widths(window, width=new_width)
+                # lengths = self._calc_column_widths(width=new_width, pixels=True)
+                # for col_index, col_name in enumerate(header):
+                #    col_width = lengths[col_index]
+                #    window[elem_key].Widget.column(col_name, width=col_width)
 
                 # Reveal the table frame
                 window[elem_key].update(visible=True)
@@ -1235,16 +1271,29 @@ class TableElement(RecordElement):
         window[total_key].update(value=tbl_total)
 
         # Update the table summary
-        table_summary = self.summarize_table(df)
-        for summary_name in table_summary:
-            summary_rule = self.summary_rules[summary_name]
-            summary_column = summary_rule['Column']
+        if self.summary_rules:
+            table_summary = self.summarize_table(df)
+            summary_values = []
+            for summary_name in table_summary:
+                summary_rule = self.summary_rules[summary_name]
 
-            summary_dtype = dtypes[summary_column]
-            summary_value = settings.format_display(table_summary[summary_name], summary_dtype)
+                summary_column = summary_rule['Column']
+                summary_dtype = dtypes[summary_column]
+                summary_value = settings.format_display(table_summary[summary_name], summary_dtype)
+                summary_values.append(summary_value)
 
-            summary_key = self.key_lookup(summary_name)
-            window[summary_key].update(value=summary_value)
+            window[self.key_lookup('SummaryTable')].update(values=[summary_values])
+
+        # table_summary = self.summarize_table(df)
+        # for summary_name in table_summary:
+        #    summary_rule = self.summary_rules[summary_name]
+        #    summary_column = summary_rule['Column']
+
+        #    summary_dtype = dtypes[summary_column]
+        #    summary_value = settings.format_display(table_summary[summary_name], summary_dtype)
+
+        #    summary_key = self.key_lookup(summary_name)
+        #    window[summary_key].update(value=summary_value)
 
         return display_df
 
@@ -1480,7 +1529,7 @@ class TableElement(RecordElement):
                 if result:
                     if row_index in rows_annotated:
                         continue
-                        #logger.warning('DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
+                        # logger.warning('DataTable {NAME}: table row {ROW} has passed two or more annotation rules ... '
                         #               'defaulting to the first configured'.format(NAME=self.name, ROW=row_index))
                     else:
                         annotations[row_index] = annot_code
@@ -1515,7 +1564,6 @@ class TableElement(RecordElement):
         cancel_key = self.key_lookup('Cancel')
         options_key = self.key_lookup('Options')
         sort_key = self.key_lookup('Sort')
-        summ_width = self.key_lookup('SummaryWidth')
         col1width_key = self.key_lookup('WidthCol1')
         col2width_key = self.key_lookup('WidthCol2')
         col3width_key = self.key_lookup('WidthCol3')
@@ -1539,9 +1587,12 @@ class TableElement(RecordElement):
         pad_h = mod_const.HORZ_PAD
         pad_v = mod_const.VERT_PAD
 
-        font = mod_const.LARGE_FONT
+        # font = mod_const.LARGE_FONT
+        font = mod_const.MAIN_FONT
         bold_font = mod_const.BOLD_FONT
-        font_size = font[1]
+        tbl_font = mod_const.TBL_FONT
+        header_font = mod_const.TBL_HEADER_FONT
+        font_size = tbl_font[1]
 
         # Hotkey text
         hotkeys = settings.hotkeys
@@ -1562,6 +1613,13 @@ class TableElement(RecordElement):
 
         header_col_size = 200
         option_col_size = 40
+
+        bar_h = 28  # height of the title and totals bars in pixels
+        cbar_h = 22  # height of the collapsible panel bars in pixels
+        bttn_h = 30  # height of the filter apply button
+        param_h = 28  # height of a single filter parameter row
+
+        height_offset = 0
 
         # Row layouts
 
@@ -1624,24 +1682,29 @@ class TableElement(RecordElement):
 
         if len(filter_params) > 0 and modifiers['filter'] is True:
             visible_filter = True
+            height_offset += cbar_h  # height of the collapsible bar
+            n_filter_rows = ceiling(i / 3) if use_center else ceiling(i / 2)
+            height_offset += n_filter_rows * param_h + 2 * n_filter_rows + bttn_h + 6   # height of the filter parameters plus apply button
         else:
             visible_filter = False
+            height_offset += 2  # invisible elements have a footprint
 
         row1 = [
-            sg.Col([[sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=filter_head_col),
+            sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=filter_head_col),
+                     sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=filter_head_col),
                      sg.Text('Table filters', pad=((0, pad_h), 0), text_color=select_text_col,
                              background_color=filter_head_col),
                      sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn0'),
                                button_color=(text_col, filter_head_col), border_width=0,
                                tooltip='Collapse filter panel')]],
-                   pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
-                   visible=visible_filter)]
+                   key=self.key_lookup('FilterBar'), element_justification='c', background_color=filter_head_col,
+                   expand_x=True, visible=visible_filter, vertical_alignment='c')]
         row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('Frame0'), background_color=filter_bg_col,
                               visible=visible_filter, expand_x=True,
                               metadata={'visible': visible_filter, 'disabled': (not visible_filter)}))]
 
         # Table title
-        row3 = []
+        title_bar = [sg.Canvas(size=(0, bar_h), background_color=header_col)]
         if modifiers['search'] and search_field is not None:
             search_layout = [
                 [sg.Frame('', [[sg.Image(data=mod_const.SEARCH_ICON, background_color=bg_col, pad=((0, pad_h), 0)),
@@ -1654,18 +1717,19 @@ class TableElement(RecordElement):
         else:
             search_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)]]
 
-        row3.append(sg.Col(search_layout, justification='l', element_justification='l', background_color=header_col))
+        title_bar.append(sg.Col(search_layout, justification='l', element_justification='l',
+                                background_color=header_col))
 
         if table_name is not None:
-            row3.append(sg.Col([[sg.Text(table_name, pad=(pad_el, int(pad_el / 2)), font=bold_font,
-                                         background_color=header_col)]], expand_x=True,
-                               justification='c', element_justification='c', background_color=header_col))
+            title_bar.append(sg.Col([[sg.Text(table_name, pad=(pad_el, int(pad_el / 2)), font=bold_font,
+                                              background_color=header_col)]], expand_x=True,
+                                    justification='c', element_justification='c', background_color=header_col))
         else:
-            row3.append(sg.Col([[sg.Canvas(size=(0, 0), background_color=header_col)]],
-                               justification='c', background_color=header_col, expand_x=True))
+            title_bar.append(sg.Col([[sg.Canvas(size=(0, 0), background_color=header_col)]],
+                                    justification='c', background_color=header_col, expand_x=True))
 
         if modifiers['options'] and any([modifiers['fill'], modifiers['sort'], modifiers['export']]):
-            row3.append(sg.Col([
+            title_bar.append(sg.Col([
                 [sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                 [sg.Button('', key=options_key, image_data=mod_const.OPTIONS_ICON, border_width=0,
                            button_color=(text_col, header_col),
@@ -1673,24 +1737,27 @@ class TableElement(RecordElement):
                 pad=((pad_el, pad_el), int(pad_el / 2)), justification='r', element_justification='r',
                 background_color=header_col, vertical_alignment='c'))
         else:
-            row3.append(sg.Col([[sg.Canvas(size=(header_col_size, 0), background_color=header_col)]],
-                               justification='r', element_justification='r', background_color=header_col))
+            title_bar.append(sg.Col([[sg.Canvas(size=(header_col_size, 0), background_color=header_col)]],
+                                    justification='r', element_justification='r', background_color=header_col))
+
+        row3 = [sg.Col([title_bar], key=self.key_lookup('TitleBar'), background_color=header_col, expand_x=True,
+                       vertical_alignment='c')]
+
+        height_offset += bar_h  # height of the title bar
 
         # Data table
         row4 = []
         header = display_df.columns.values.tolist()
         data = display_df.values.tolist()
-        bind = False
         events = True
 
-        col_widths = self._calc_column_widths(width=tbl_width, size=font_size, pixels=False)
+        col_widths = self._calc_column_widths(header, width=tbl_width, size=font_size, pixels=False, widths=self.widths)
         row4.append(sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
                              row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
-                             text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=font,
-                             display_row_numbers=False, auto_size_columns=False, col_widths=col_widths,
-                             enable_events=events, bind_return_key=bind, tooltip=tooltip, vertical_scroll_only=False,
-                             metadata={'events': events, 'bind': bind, 'disabled': False, 'visible': True,
-                                       'nrow': nrow}))
+                             text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
+                             header_font=header_font, display_row_numbers=False, auto_size_columns=False,
+                             col_widths=col_widths, enable_events=events, tooltip=tooltip, vertical_scroll_only=False,
+                             metadata={'disabled': False, 'visible': True}))
 
         # Table options
         options = [
@@ -1728,7 +1795,8 @@ class TableElement(RecordElement):
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
 
         # Control buttons and totals row
-        row5 = self.action_layout(disabled=is_disabled)
+        actions_bar = [sg.Canvas(size=(0, bar_h), background_color=header_col)]
+        actions_bar.extend(self.action_layout(disabled=is_disabled))
 
         if self.tally_rule is None:
             total_desc = 'Rows:'
@@ -1740,57 +1808,68 @@ class TableElement(RecordElement):
             init_totals = '{:,.2f}'.format(init_totals)
         else:
             init_totals = str(init_totals)
-        row5.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
-                                     background_color=header_col),
-                             sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
-                                     font=font, background_color=bg_col, justification='r', relief='sunken',
-                                     metadata={'name': self.name})]],
-                           pad=(pad_el, int(pad_el / 2)), vertical_alignment='b', justification='r',
-                           background_color=header_col))
+        actions_bar.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
+                                            background_color=header_col),
+                                    sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
+                                            font=font, background_color=bg_col, justification='r', relief='sunken',
+                                            metadata={'name': self.name})]],
+                                  pad=(pad_el, int(pad_el / 2)), vertical_alignment='b', justification='r',
+                                  background_color=header_col))
 
-        # Table summary rows
+        row5 = [sg.Col([actions_bar], key=self.key_lookup('ActionsBar'), background_color=header_col, expand_x=True,
+                       vertical_alignment='c')]
+
+        height_offset += bar_h  # height of the totals bar
+
+        # Table summary panel
         summary_rules = self.summary_rules
         if len(summary_rules) > 0:  # display summary is set and table contains summary rules
             summary_visible = modifiers['summary']
 
-            summary_c1 = []
-            summary_c2 = []
-            table_summary = self.summarize_table()
-            for summary_name in table_summary:
-                summary_rule = summary_rules[summary_name]
+            summary_headings = []
+            summary_values = []
+            tbl_summary = self.summarize_table()
+            for summary_name in tbl_summary:
+                summary_entry = summary_rules[summary_name]
+                summary_header = summary_entry.get('Description', summary_name)
+                summary_headings.append(summary_header)
 
-                summary_title = summary_rule['Description']
-                summary_column = summary_rule['Column']
-
+                summary_column = summary_entry.get('Column')
                 summary_dtype = dtypes[summary_column]
-                summary_value = settings.format_display(table_summary[summary_name], summary_dtype)
+                summary_value = settings.format_display(tbl_summary[summary_name], summary_dtype)
+                summary_values.append(summary_value)
 
-                summary_c1.append([sg.Text('{}:'.format(summary_title), pad=((0, pad_h), 0), font=font,
-                                           text_color=text_col, background_color=filter_bg_col)])
-                summary_c2.append([sg.Text(summary_value, key=self.key_lookup(summary_name), size=(14, 1), font=font,
-                                           justification='r', text_color=text_col, background_color=filter_bg_col)])
-            summary_elements = [[sg.Canvas(key=summ_width, size=(width, 0), background_color=filter_bg_col)],
-                                [sg.Col(summary_c1, background_color=filter_bg_col, vertical_alignment='t',
-                                        element_justification='r'),
-                                 sg.Col(summary_c2, background_color=filter_bg_col, vertical_alignment='t',
-                                        expand_x=True)]]
+            summary_key = self.key_lookup('SummaryTable')
+            summary_layout = [[sg.Table([summary_values], key=summary_key, headings=summary_headings, num_rows=1,
+                                        row_height=row_height, background_color=bg_col, text_color=text_col,
+                                        selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
+                                        header_font=header_font, display_row_numbers=False, auto_size_columns=True,
+                                        hide_vertical_scroll=True)]]
+
+            height_offset += cbar_h + row_height * 2  # height of the collapsible bar plus the summary table size
         else:
-            summary_elements = [[sg.Canvas(key=summ_width, size=(width, 0), background_color=filter_bg_col)]]
+            summary_layout = [[]]
             summary_visible = False
 
-        row6 = [sg.Col([[sg.Text('Summary', pad=((0, pad_h), 0), text_color='white', background_color=filter_head_col),
+            height_offset += 2  # invisible elements have a footprint
+
+        row6 = [sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=filter_head_col),
+                         sg.Text('Summary', pad=((0, pad_h), 0), text_color='white', background_color=filter_head_col),
                          sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn1'),
                                    button_color=(text_col, filter_head_col), border_width=0,
                                    tooltip='Collapse summary panel')]],
-                       pad=(0, 0), element_justification='c', background_color=filter_head_col, expand_x=True,
-                       visible=summary_visible)]
-        row7 = [sg.pin(sg.Col(summary_elements, key=self.key_lookup('Frame1'), pad=(pad_h, pad_v),
-                              background_color=filter_bg_col, visible=summary_visible, expand_x=True, expand_y=True,
+                       key=self.key_lookup('SummaryBar'), element_justification='c', background_color=filter_head_col,
+                       expand_x=True, visible=summary_visible, vertical_alignment='c')]
+        row7 = [sg.pin(sg.Col(summary_layout, key=self.key_lookup('Frame1'), background_color=filter_bg_col,
+                              visible=summary_visible, expand_x=True, expand_y=True, justification='c',
                               metadata={'visible': summary_visible, 'disabled': (not summary_visible)}))]
 
         # Layout
-        layout = sg.Frame('', [row1, row2, row3, row4, row5, row6, row7], pad=pad, element_justification='l',
-                          vertical_alignment='t', background_color=header_col, relief='ridge', border_width=2)
+        layout = sg.Frame('', [row1, row2, row3, row4, row5, row6, row7], key=self.key_lookup('Table'),
+                          pad=pad, element_justification='l', vertical_alignment='t', background_color=header_col,
+                          relief='ridge', border_width=2)
+
+        self._height_offset = height_offset
 
         return layout
 
@@ -1897,7 +1976,7 @@ class TableElement(RecordElement):
         """
         Reset column widths to calculated widths.
         """
-        display_columns = self.display_columns
+        # display_columns = self.display_columns
         dimensions = self._dimensions
 
         width, nrows = dimensions
@@ -1913,11 +1992,12 @@ class TableElement(RecordElement):
             window[frame_key].update(visible=False)
 
         # Update column widths
-        header = list(display_columns.values())
-        widths = self._calc_column_widths(width=width, pixels=True)
-        for index, column in enumerate(header):
-            width = widths[index]
-            window[tbl_key].Widget.column(column, width=width)
+        # header = list(display_columns.values())
+        # widths = self._calc_column_widths(width=width, pixels=True)
+        # for index, column in enumerate(header):
+        #    width = widths[index]
+        #    window[tbl_key].Widget.column(column, width=width)
+        self._update_column_widths(window, width)
 
         # Update the number of rows in the display table
         window[tbl_key].update(num_rows=nrows)
@@ -1925,7 +2005,7 @@ class TableElement(RecordElement):
         # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
         self.update_display(window)
 
-    def resize(self, window, size: tuple = None, row_rate: int = 80):
+    def resize(self, window, size: tuple = None, row_rate: int = None):
         """
         Resize the table element.
         """
@@ -1935,6 +2015,10 @@ class TableElement(RecordElement):
             width, height = window.size
 
         current_dimensions = self._dimensions
+        height_offset = self._height_offset
+        # row_rate = row_rate if row_rate is not None else 80
+        row_rate = row_rate if row_rate is not None else mod_const.TBL_ROW_HEIGHT
+        default_nrow = self.nrow
 
         logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
                      .format(TBL=self.name, W=width, H=height))
@@ -1945,24 +2029,30 @@ class TableElement(RecordElement):
         else:
             tbl_width = current_dimensions[0]
 
+        #print('height allocated to the table in pixels: {}'.format(height))
+        #print('height offset size in pixels: {}'.format(height_offset))
+        #print('height of the individual rows: {}'.format(row_rate))
+        #print('size of the actions bar: {}'.format(window[self.key_lookup('ActionsBar')].get_size()))
+        #print('size of the title bar: {}'.format(window[self.key_lookup('TitleBar')].get_size()))
+        #print('size of the summary bar: {}'.format(window[self.key_lookup('SummaryBar')].get_size()))
+        #print('size of the filter bar: {}'.format(window[self.key_lookup('FilterBar')].get_size()))
+        #print('size of the filter frame: {}'.format(window[self.key_lookup('Frame0')].get_size()))
+        #print('size of the summary frame: {}'.format(window[self.key_lookup('Frame1')].get_size()))
+        #print('current size of the table element: {}'.format(window[self.key_lookup('Element')].get_size()))
+        #print('current table dimensions are: {}'.format(current_dimensions))
+
         # Expand 1 row every N-pixel increase in window size
         if height:
-            frame_keys = [self.key_lookup('Frame{}'.format(i)) for i in range(2)]
-            frame_heights = [window[i].get_size()[1] for i in frame_keys]
-            print('frame heights are set to:')
-            print(frame_heights)
-            print('together the frame heights amount to {}'.format(sum(frame_heights)))
-            tbl_height = height - sum(frame_heights)
+            # Calculate the number of table rows to display based on the desired height of the table.  The desired
+            # height allocated to the data table minus the offset height composed of the heights of all the accessory
+            # elements, such as the title bar, actions, bar, summary panel, etc., minus the height of the header.
 
-            row_rate = row_rate if row_rate > mod_const.TBL_ROW_HEIGHT else mod_const.TBL_ROW_HEIGHT
-            initial_nrow = self.nrow if self.nrow is not None else mod_const.TBL_NROW
-            orig_height = initial_nrow * mod_const.TBL_ROW_HEIGHT
-            height_diff = int((tbl_height - orig_height) / row_rate)
+            #print('projected new height of the table element: {}'.format(tbl_height))
+            tbl_height = height - height_offset - row_rate
 
-            nrows = initial_nrow + height_diff if height_diff > -initial_nrow else 1
-            logger.debug('DataTable {NAME}: changing the number of rows in the table from {IROW} to {CROW} based on a '
-                         'table size difference of {DIFF}'.format(NAME=self.name, IROW=initial_nrow, CROW=nrows,
-                                                                  DIFF=height_diff))
+            projected_nrows = int((tbl_height - row_rate) / row_rate)
+            nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
+            print('number of rows to display based on table height and row height: {}'.format(nrows))
         else:
             nrows = current_dimensions[1]
 
@@ -1970,6 +2060,8 @@ class TableElement(RecordElement):
 
         # Resize the display table dimensions
         self.set_table_dimensions(window)
+
+        #print('size of the table element after resetting: {}'.format(window[self.key_lookup('Element')].get_size()))
 
         # Expand the table frames
         filter_params = self.parameters
@@ -2005,10 +2097,10 @@ class TableElement(RecordElement):
             for param in self.parameters:
                 param.resize(window, size=(param_w, None), pixels=True)
 
-        swidth_key = self.key_lookup('SummaryWidth')
+        # Fit the summary table to the frame
         if self.summary_rules:
-            summary_w = tbl_width - 2  # table width minus borders
-            window[swidth_key].set_size(size=(summary_w, None))
+            self._update_column_widths(window, width, summary=True)
+            window[self.key_lookup('SummaryTable')].update(num_rows=1)  # required for table size to update
 
     def append(self, add_df):
         """
@@ -2441,7 +2533,7 @@ class TableElement(RecordElement):
                 logger.warning('DataTable {NAME}: neither the "DefaultCondition" nor "DefaultRule" parameter was '
                                'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
 
-        #df = self._set_datatypes(df)
+        # df = self._set_datatypes(df)
 
         return df
 
@@ -3762,7 +3854,7 @@ class ReferenceBox(RecordElement):
         self._event_elements = ['RefID', 'Element', 'Approved', 'Unlink']
 
         # Element-specific bindings
-        #elem_key = self.key_lookup('Element')
+        # elem_key = self.key_lookup('Element')
         self.bindings = [self.key_lookup(i) for i in self._event_elements]
 
         try:
@@ -3838,7 +3930,7 @@ class ReferenceBox(RecordElement):
         """
         Run a record reference event.
         """
-        #elem_key = self.key_lookup('Element')
+        # elem_key = self.key_lookup('Element')
         del_key = self.key_lookup('Unlink')
         ref_key = self.key_lookup('RefID')
         approved_key = self.key_lookup('Approved')
@@ -4589,7 +4681,7 @@ class DataElement(RecordElement):
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
 
-        bold_font = mod_const.BOLD_HEADER_FONT
+        bold_font = mod_const.BOLD_HEADING_FONT
 
         bg_col = mod_const.ACTION_COL if background is None else background
         text_col = mod_const.TEXT_COL
@@ -5318,7 +5410,7 @@ class ElementReference(RecordElement):
         pad_h = mod_const.HORZ_PAD
 
         font = mod_const.LARGE_FONT
-        bold_font = mod_const.BOLD_HEADER_FONT
+        bold_font = mod_const.BOLD_HEADING_FONT
 
         bg_col = background
         text_col = mod_const.DISABLED_TEXT_COL

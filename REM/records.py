@@ -2436,7 +2436,7 @@ class DatabaseRecord:
         select_col = mod_const.SELECT_TEXT_COL
         frame_col = mod_const.FRAME_COL
 
-        bold_font = mod_const.BOLD_HEADER_FONT
+        bold_font = mod_const.BOLD_HEADING_FONT
         main_font = mod_const.MAIN_FONT
 
         pad_el = mod_const.ELEM_PAD

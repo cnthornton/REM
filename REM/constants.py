@@ -45,6 +45,8 @@ PARAM_SIZE_CHAR = (30, 1)  # characters
 MAIN_FONT = ('Arial', 12)
 BOLD_FONT = ('Arial', 12, 'bold')
 IT_FONT = ('Arial', 12, 'italic')
+TBL_FONT = ('Tahoma', 12)
+TBL_HEADER_FONT = ('Tahoma', 13)
 
 TOOLTIP_FONT = 'Arial 12'
 
@@ -54,7 +56,7 @@ MID_FONT = ('Arial', 11)
 BOLD_MID_FONT = ('Arial', 11, 'bold')
 LARGE_FONT = ('Arial', 13)
 BOLD_LARGE_FONT = ('Arial', 13, 'bold')
-HEADER_FONT = BOLD_HEADER_FONT = ('Arial', 14, 'bold')
+HEADING_FONT = BOLD_HEADING_FONT = ('Arial', 14, 'bold')
 UNDERLINE_FONT = ('Arial', 12, 'underline')
 
 # Window initial dimensions
@@ -64,7 +66,7 @@ WIN_WIDTH = 800  # 800 pixels
 # Tables
 TBL_WIDTH = 120  # default table width in characters
 TBL_WIDTH_PX = 1080  # default table width in pixels
-TBL_ROW_HEIGHT = 26  # default table row height
+TBL_ROW_HEIGHT = 25  # default table row height
 TBL_NROW = 5  # default table nrow
 TBL_ALT_COL = '#E5F4FD'  # default table alternate row color: light blue
 TBL_BG_COL = '#FFFFFF'  # default table background color: white
