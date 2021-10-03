@@ -749,7 +749,7 @@ class BankRule:
         # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
         ref_df = acct.ref_df.copy()
         ref_df = ref_df[~ref_df['IsDeleted']]
-        df = pd.merge(table.data().drop(columns=list(acct._ref_map.values())), ref_df, how='left', on='RecordID')
+        df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), ref_df, how='left', on='RecordID')
         header = df.columns.tolist()
 
         if df.empty:
@@ -790,7 +790,7 @@ class BankRule:
             # Merge the associated records and references tables
             assoc_ref_df = assoc_acct.ref_df.copy()
             assoc_ref_df = assoc_ref_df[~assoc_ref_df['IsDeleted']]
-            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct._ref_map.values())), assoc_ref_df, how='left',
+            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct.ref_map.values())), assoc_ref_df, how='left',
                                 on='RecordID')
             assoc_header = assoc_df.columns.tolist()
 
@@ -1212,7 +1212,7 @@ class BankAccount:
 
         _col_map (dict): required account parameters with corresponding record names.
 
-        _ref_map (dict): reference columns to add to the records table along with their table aliases.
+        ref_map (dict): reference columns to add to the records table along with their table aliases.
 
         transactions (dict): money in and money out definitions.
 
@@ -1277,8 +1277,12 @@ class BankAccount:
         table_entry['CustomActions'] = action_bttns
 
         self.table = mod_elem.RecordTable(name, table_entry)
-
         self.bindings.extend(self.table.bindings)
+
+        elem_key = self.table.key_lookup('Element')
+        approve_hkey = '{}+RETURN+'.format(elem_key)
+        reset_hkey = '{}+LCLICK+'.format(elem_key)
+        self.bindings.extend([approve_hkey, reset_hkey])
 
         try:
             self.parameters = entry['ImportParameters']
@@ -1294,7 +1298,7 @@ class BankAccount:
             ref_map = {}
         ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
                     'IsChild', 'IsDeleted']
-        self._ref_map = {}
+        self.ref_map = {}
         for column in ref_map:
             if column not in ref_cols:
                 msg = 'reference map column {COL} is not a valid reference column name'.format(COL=column)
@@ -1302,13 +1306,13 @@ class BankAccount:
 
                 continue
 
-            self._ref_map[column] = ref_map[column]
+            self.ref_map[column] = ref_map[column]
 
         try:
             self._col_map = entry['ColumnMap']
         except KeyError:
             self._col_map = {'TransactionCode': 'TransactionCode', 'TransactionType': 'TransactionType',
-                             'Notes': 'Notes', 'Withdrawal': 'Withdrawal', 'Deposit': 'Deposit',
+                             'Notes': 'Notes', 'Withdrawal': 'Withdrawal', 'Deposit': 'Deposit'
                              }
 
         try:
@@ -1393,6 +1397,14 @@ class BankAccount:
 
         return key
 
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.table.key_lookup('Element')
+        window[elem_key].bind('<Control-a>', '+APPROVE+')
+        window[elem_key].bind('<Control-r>', '+RESET+')
+
     def events(self):
         """
         Return GUI event elements.
@@ -1422,7 +1434,9 @@ class BankAccount:
         table_keys = table.bindings
         tbl_key = table.key_lookup('Element')
         approve_key = self.key_lookup('Approve')
+        approve_hkey = '{}+RETURN+'.format(tbl_key)
         reset_key = self.key_lookup('Reset')
+        reset_hkey = '{}+LCLICK+'.format(tbl_key)
 
         # Return values
         reference_indices = None
@@ -1529,7 +1543,7 @@ class BankAccount:
             else:
                 table.run_event(window, event, values)
 
-        elif event == approve_key:
+        elif event in (approve_key, approve_hkey):
             # Find rows selected by user for approval
             select_row_indices = values[tbl_key]
 
@@ -1545,7 +1559,7 @@ class BankAccount:
                 msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
-        elif event == reset_key:
+        elif event in (reset_key, reset_hkey):
             # Find rows selected by user for deletion
             select_row_indices = values[tbl_key]
 
@@ -1608,7 +1622,7 @@ class BankAccount:
         """
         Fetch reference parameter values at provided record table row indices.
         """
-        refmap = self._ref_map
+        refmap = self.ref_map
         header = self.table.df.columns.tolist()
 
         try:
@@ -1647,7 +1661,7 @@ class BankAccount:
         """
         #pd.set_option('display.max_columns', None)
 
-        ref_map = self._ref_map
+        ref_map = self.ref_map
         ref_df = self.ref_df.copy()
 
         if df is None:
