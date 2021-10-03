@@ -1029,10 +1029,6 @@ class TableElement(RecordElement):
                 logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                              'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
                 self._update_column_widths(window, width=new_width)
-                # lengths = self._calc_column_widths(width=new_width, pixels=True)
-                # for col_index, col_name in enumerate(header):
-                #    col_width = lengths[col_index]
-                #    window[elem_key].Widget.column(col_name, width=col_width)
 
                 # Reveal the table frame
                 window[elem_key].update(visible=True)
@@ -1882,7 +1878,7 @@ class TableElement(RecordElement):
         # Element settings
         text_col = mod_const.TEXT_COL  # standard text color
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
-        pad_el = mod_const.ELEM_PAD
+        highlight_col = mod_const.HIGHLIGHT_COL
 
         # Layout
         bttn_layout = []
@@ -1892,6 +1888,7 @@ class TableElement(RecordElement):
             custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
                                       border_width=2, button_color=(text_col, header_col), disabled=disabled,
                                       visible=True, tooltip=custom_entry.get('Description', custom_bttn),
+                                      highlight_colors=(highlight_col, highlight_col),
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
@@ -2900,17 +2897,17 @@ class RecordTable(TableElement):
         # Element settings
         text_col = mod_const.TEXT_COL  # standard text color
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
-        pad_el = mod_const.ELEM_PAD
+        highlight_col = mod_const.HIGHLIGHT_COL
 
         # Layout
         bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=2,
-                                 button_color=(text_col, header_col), disabled=disabled,
-                                 visible=self.modifiers['import'],
+                                 button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
+                                 disabled=disabled, visible=self.modifiers['import'],
                                  tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
                        sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=2,
-                                 button_color=(text_col, header_col), disabled=disabled,
-                                 visible=self.modifiers['delete'],
+                                 button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
+                                 disabled=disabled, visible=self.modifiers['delete'],
                                  tooltip='Remove selected rows (CTRL+D)',
                                  metadata={'visible': self.modifiers['delete'], 'disabled': disabled})]
 
@@ -2918,7 +2915,8 @@ class RecordTable(TableElement):
             custom_entry = custom_bttns[custom_bttn]
 
             custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
-                                      border_width=2, button_color=(text_col, header_col), disabled=disabled,
+                                      border_width=2, button_color=(text_col, header_col),
+                                      highlight_colors=(highlight_col, highlight_col), disabled=disabled,
                                       visible=True, tooltip=custom_entry.get('Description', custom_bttn),
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
@@ -3422,16 +3420,17 @@ class ComponentTable(RecordTable):
         # Element settings
         text_col = mod_const.TEXT_COL  # standard text color
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
-        pad_el = mod_const.ELEM_PAD
+        highlight_col = mod_const.HIGHLIGHT_COL
 
         # Layout
         bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=2,
-                                 button_color=(text_col, header_col), disabled=disabled,
-                                 visible=self.modifiers['import'],
+                                 button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
+                                 disabled=disabled, visible=self.modifiers['import'],
                                  tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
                        sg.Button('', key=add_key, image_data=mod_const.TBL_ADD_ICON, border_width=2,
-                                 button_color=(text_col, header_col), disabled=disabled, visible=self.modifiers['add'],
+                                 button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
+                                 disabled=disabled, visible=self.modifiers['add'],
                                  tooltip='Create new component record (CTRL+A)',
                                  metadata={'visible': self.modifiers['add'], 'disabled': disabled}),
                        sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=2,
@@ -3444,8 +3443,10 @@ class ComponentTable(RecordTable):
             custom_entry = custom_bttns[custom_bttn]
 
             custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
-                                      border_width=2, button_color=(text_col, header_col), disabled=disabled,
-                                      visible=True, tooltip=custom_entry.get('Description', custom_bttn),
+                                      border_width=2, button_color=(text_col, header_col),
+                                      highlight_colors=(highlight_col, highlight_col),
+                                      disabled=disabled, visible=True,
+                                      tooltip=custom_entry.get('Description', custom_bttn),
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
@@ -3851,11 +3852,14 @@ class ReferenceBox(RecordElement):
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
                                'Approved')])
-        self._event_elements = ['RefID', 'Element', 'Approved', 'Unlink']
+        self._event_elements = ['Element', 'Frame', 'Approved', 'Unlink']
 
         # Element-specific bindings
-        # elem_key = self.key_lookup('Element')
-        self.bindings = [self.key_lookup(i) for i in self._event_elements]
+        elem_key = self.key_lookup('Element')
+        return_key = '{}+RETURN+'.format(elem_key)
+        frame_key = self.key_lookup('Frame')
+        enter_key = '{}+FOCUS+'.format(frame_key)
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [return_key, enter_key]
 
         try:
             modifiers = entry['Modifiers']
@@ -3926,18 +3930,32 @@ class ReferenceBox(RecordElement):
 
         self.update_display(window)
 
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('Frame')
+        window[elem_key].bind('<Return>', '+RETURN+')
+        window[frame_key].bind('<ENTER>', '+FOCUS+')
+
     def run_event(self, window, event, values):
         """
         Run a record reference event.
         """
-        # elem_key = self.key_lookup('Element')
-        del_key = self.key_lookup('Unlink')
-        ref_key = self.key_lookup('RefID')
+        ref_key = self.key_lookup('Element')
+        return_key = '{}+RETURN+'.format(ref_key)
         approved_key = self.key_lookup('Approved')
+        del_key = self.key_lookup('Unlink')
+        frame_key = self.key_lookup('Frame')
+        enter_key = '{}+FOCUS+'.format(frame_key)
 
         update_event = False
 
         logger.info('ReferenceBox {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
+
+        if event == enter_key:
+            window[ref_key].set_focus()
 
         # Delete a reference from the record reference database table
         if event == del_key:
@@ -3977,7 +3995,7 @@ class ReferenceBox(RecordElement):
             update_event = True
 
         # Open reference record in a new record window
-        elif event == ref_key:
+        elif event in (ref_key, return_key):
             window[ref_key].set_focus()
 
             try:
@@ -3991,12 +4009,6 @@ class ReferenceBox(RecordElement):
                 mod_win2.record_window(record, view_only=True)
 
         return update_event
-
-    def bind_keys(self, window):
-        """
-        Add hotkey bindings to the data element.
-        """
-        pass
 
     def resize(self, window, size: tuple = None):
         """
@@ -4052,13 +4064,13 @@ class ReferenceBox(RecordElement):
         pc_vis = True if self.is_pc is True else False
 
         # Element layout
-        elem_key = self.key_lookup('Element')
+        ref_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('Frame')
         height_key = self.key_lookup('Height')
         discard_key = self.key_lookup('Unlink')
         link_key = self.key_lookup('HardLinkFlag')
         parent_key = self.key_lookup('ParentFlag')
         approved_key = self.key_lookup('Approved')
-        ref_key = self.key_lookup('RefID')
         date_key = self.key_lookup('RefDate')
 
         ref_date = settings.format_display_date(self.date) if not pd.isna(self.date) else None
@@ -4102,7 +4114,7 @@ class ReferenceBox(RecordElement):
 
         width_key = self.key_lookup('Width')
         layout = sg.Frame('', [[sg.Canvas(key=width_key, size=(width, 0))], elem_layout],
-                          key=elem_key, pad=padding, background_color=bg_col, relief='raised', visible=self.referenced,
+                          key=frame_key, pad=padding, background_color=bg_col, relief='raised', visible=self.referenced,
                           metadata={'deleted': False, 'name': self.name}, tooltip=warnings)
 
         return layout
@@ -4113,8 +4125,8 @@ class ReferenceBox(RecordElement):
         """
         link_key = self.key_lookup('HardLinkFlag')
         parent_key = self.key_lookup('ParentFlag')
-        elem_key = self.key_lookup('Element')
-        ref_key = self.key_lookup('RefID')
+        frame_key = self.key_lookup('Frame')
+        ref_key = self.key_lookup('Element')
         date_key = self.key_lookup('RefDate')
         approved_key = self.key_lookup('Approved')
         discard_key = self.key_lookup('Unlink')
@@ -4138,9 +4150,9 @@ class ReferenceBox(RecordElement):
 
         # Update visibility of the element
         if referenced:
-            window[elem_key].update(visible=True)
+            window[frame_key].update(visible=True)
         else:
-            window[elem_key].update(visible=False)
+            window[frame_key].update(visible=False)
 
         # Set flag badges and disable delete button if reference is a child or hard-linked
         if is_hl:
@@ -4157,11 +4169,11 @@ class ReferenceBox(RecordElement):
 
         # Set notes
         bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
-        window[elem_key].Widget.config(background=bg_col)
-        window[elem_key].Widget.config(highlightbackground=bg_col)
-        window[elem_key].Widget.config(highlightcolor=bg_col)
+        window[frame_key].Widget.config(background=bg_col)
+        window[frame_key].Widget.config(highlightbackground=bg_col)
+        window[frame_key].Widget.config(highlightcolor=bg_col)
 
-        window.Element(elem_key).SetTooltip(warnings)
+        window.Element(frame_key).SetTooltip(warnings)
 
     def import_reference(self, entry, new: bool = False):
         """

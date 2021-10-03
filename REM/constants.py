@@ -15,7 +15,7 @@ CANCEL_BUTTON_COL = '#FF6C5C'  # red
 TEXT_COL = '#000000'  # black
 SELECT_TEXT_COL = '#2A9DF4'  # blue
 SELECT_BG_COL = '#2A9DF4'  # blue
-HELP_TEXT_COL = '#616161'  # light grey
+HELP_TEXT_COL = HIGHLIGHT_COL = '#616161'  # light grey
 HEADER_COL = INPUT_COL = '#F8FAFC'  # light blue-grey
 HEADER_COL2 = '#F2F7F2'  # light green
 HEADER_COL3 = '#FEE3E2'  # light red
