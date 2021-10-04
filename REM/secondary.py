@@ -316,6 +316,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     record_events = record.record_events()
     while True:
         event, values = window.read()
+        print(event)
 
         if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
@@ -1752,7 +1753,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     pad_v = mod_const.VERT_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    tbl_diff = 55
+    tbl_diff = 26  # scrollbar width to subtract from the table width
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys
@@ -1782,8 +1783,8 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
               [sg.Col(title_layout, key='-HEADER-', pad=(0, 0), justification='l', background_color=header_col,
                       expand_x=True)],
               [sg.Col([[sg.Canvas(key=height_key, size=(0, height))]], vertical_alignment='t'),
-               sg.Col(tbl_layout, pad=((pad_frame, 0), 0), expand_x=True, expand_y=True,
-                      vertical_alignment='t', scrollable=True, vertical_scroll_only=True)],
+               sg.Col(tbl_layout, expand_x=True, expand_y=True, vertical_alignment='t', scrollable=True,
+                      vertical_scroll_only=True)],
               [sg.Col(bttn_layout, key='-BUTTON-', pad=(0, (pad_v, pad_frame)), justification='l',
                       element_justification='c', expand_x=True)]]
 
@@ -1806,7 +1807,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
         win_w = int(screen_w * 0.8)
         win_h = int(screen_h * 0.7)
 
-    other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1]
+    other_h = window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1]
     tbl_h = win_h - other_h if other_h < win_h else 100
 
     window[width_key].set_size((win_w, None))

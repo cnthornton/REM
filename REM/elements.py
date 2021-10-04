@@ -211,12 +211,11 @@ class TableElement(RecordElement):
         self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'Frame0', 'FrameBttn0',
-                               'Frame1', 'FrameBttn1', 'Width', 'SummaryTable', 'Options', 'Cancel', 'Sort',
+                               'Frame1', 'FrameBttn1', 'Width', 'SummaryTable', 'Sort', 'Options',
                                'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3', 'TitleBar',
                                'FilterBar', 'SummaryBar', 'ActionsBar')])
         # self._event_elements = ['Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
-        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options',
-                                'Cancel']
+        self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -572,15 +571,19 @@ class TableElement(RecordElement):
             header = [summary_rules[summary_name].get('Description') for summary_name in summary_rules]
             elem_key = self.key_lookup('SummaryTable')
             widths = None
+            nrow = 1
         else:
             header = list(self.display_columns.values())
             elem_key = self.key_lookup('Element')
             widths = self.widths
+            nrow = self._dimensions[1]
 
         column_widths = self._calc_column_widths(header, width=width, pixels=True, widths=widths)
         for index, column in enumerate(header):
             column_width = column_widths[index]
             window[elem_key].Widget.column(column, width=column_width)
+
+            window[elem_key].update(num_rows=nrow)  # required for table size to update
 
     def _calc_column_widths(self, header, width: int = None, size: int = None, pixels: bool = False, widths: dict = None):
         """
@@ -965,7 +968,6 @@ class TableElement(RecordElement):
         search_key = self.key_lookup('Search')
         options_key = self.key_lookup('Options')
         frame_key = self.key_lookup('OptionsFrame')
-        cancel_key = self.key_lookup('Cancel')
         sort_key = self.key_lookup('Sort')
         fill_key = self.key_lookup('Fill')
         export_key = self.key_lookup('Export')
@@ -1014,32 +1016,21 @@ class TableElement(RecordElement):
 
                 tbl_width, tbl_height = window[elem_key].get_size()
 
-                # Reveal the options panel
-                window[elem_key].update(visible=False)
-                window[frame_key].update(visible=True)
-                window[frame_key].expand(expand_row=True, expand_y=True, expand_x=True)
-                window.refresh()
-
-                frame_w, frame_h = window[frame_key].get_size()
-
                 # Reduce table size
-                columns = self.display_columns
-                header = list(columns.values())
-                new_width = tbl_width - frame_w - 2 if tbl_width - frame_w - 2 > 0 else 0
+                frame_w = 220
+                new_width = tbl_width - frame_w - 4 if tbl_width - frame_w - 4 > 0 else 0
                 logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
                              'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
                 self._update_column_widths(window, width=new_width)
 
-                # Reveal the table frame
-                window[elem_key].update(visible=True)
+                # Reveal the options frame
+                window[frame_key].update(visible=True)
+                window[frame_key].expand(expand_y=True)
 
                 # Update the display table to show annotations properly
                 self.update_display(window)
             else:
                 self.set_table_dimensions(window)
-
-        elif event == cancel_key:
-            self.set_table_dimensions(window)
 
         # Sort column selected from menu of sort columns
         elif event == sort_key:
@@ -1557,7 +1548,6 @@ class TableElement(RecordElement):
         search_key = self.key_lookup('Search')
         total_key = self.key_lookup('Total')
         fill_key = self.key_lookup('Fill')
-        cancel_key = self.key_lookup('Cancel')
         options_key = self.key_lookup('Options')
         sort_key = self.key_lookup('Sort')
         col1width_key = self.key_lookup('WidthCol1')
@@ -1573,17 +1563,14 @@ class TableElement(RecordElement):
         alt_col = self.row_color  # alternate row color
         bg_col = self.bg_col  # default primary table color is white
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
-        filter_bg_col = mod_const.DEFAULT_COL  # color of the filter parameter background
-        filter_head_col = mod_const.BORDER_COL  # color of filter header and selected row background
+        frame_col = mod_const.DEFAULT_COL  # background color of the table frames
+        border_col = mod_const.BORDER_COL  # background color of the collapsible bars and the table frame
 
-        pad_frame = mod_const.FRAME_PAD
-
-        pad = padding if padding and isinstance(padding, tuple) else (pad_frame, pad_frame)
+        pad = padding if padding and isinstance(padding, tuple) else (0, 0)
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
         pad_v = mod_const.VERT_PAD
 
-        # font = mod_const.LARGE_FONT
         font = mod_const.MAIN_FONT
         bold_font = mod_const.BOLD_FONT
         tbl_font = mod_const.TBL_FONT
@@ -1610,7 +1597,7 @@ class TableElement(RecordElement):
         header_col_size = 200
         option_col_size = 40
 
-        bar_h = 28  # height of the title and totals bars in pixels
+        bar_h = 26  # height of the title and totals bars in pixels
         cbar_h = 22  # height of the collapsible panel bars in pixels
         bttn_h = 30  # height of the filter apply button
         param_h = 28  # height of a single filter parameter row
@@ -1631,13 +1618,13 @@ class TableElement(RecordElement):
             param_w = int(width * 0.30 / 10)
             col1_w = col2_w = col3_w = int(width * 0.33)
 
-        left_cols = [[sg.Canvas(key=col1width_key, size=(col1_w, 0), background_color=filter_bg_col)]]
-        center_cols = [[sg.Canvas(key=col2width_key, size=(col2_w, 0), background_color=filter_bg_col)]]
-        right_cols = [[sg.Canvas(key=col3width_key, size=(col3_w, 0), background_color=filter_bg_col)]]
+        left_cols = [[sg.Canvas(key=col1width_key, size=(col1_w, 0), background_color=frame_col)]]
+        center_cols = [[sg.Canvas(key=col2width_key, size=(col2_w, 0), background_color=frame_col)]]
+        right_cols = [[sg.Canvas(key=col3width_key, size=(col3_w, 0), background_color=frame_col)]]
 
         i = 0
         for parameter in filter_params:
-            param_cols = parameter.layout(padding=(0, 0), size=(param_w, 1), bg_col=filter_bg_col,
+            param_cols = parameter.layout(padding=(0, 0), size=(param_w, 1), bg_col=frame_col,
                                           auto_size_desc=False, border=False)
             for param_layout in param_cols:
                 i += 1
@@ -1663,39 +1650,39 @@ class TableElement(RecordElement):
 
         filters = [[sg.Frame('', [
             [sg.Canvas(size=(width / 10, 0), key=self.key_lookup('Width'), background_color=alt_col)],
-            [sg.Col(left_cols, pad=(0, 0), background_color=filter_bg_col, justification='l',
+            [sg.Col(left_cols, pad=(0, 0), background_color=frame_col, justification='l',
                     element_justification='c', vertical_alignment='t'),
-             sg.Col(center_cols, pad=(0, 0), background_color=filter_bg_col, justification='c',
+             sg.Col(center_cols, pad=(0, 0), background_color=frame_col, justification='c',
                     element_justification='c', vertical_alignment='t'),
-             sg.Col(right_cols, pad=(0, 0), background_color=filter_bg_col, justification='r',
+             sg.Col(right_cols, pad=(0, 0), background_color=frame_col, justification='r',
                     element_justification='c', vertical_alignment='t')],
             [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=is_disabled,
-                                button_color=(alt_col, filter_head_col),
+                                button_color=(alt_col, border_col),
                                 disabled_button_color=(disabled_text_col, disabled_bg_col),
                                 tooltip='Apply table filters ({})'.format(filter_shortcut))]],
-                    element_justification='c', background_color=filter_bg_col, expand_x=True)]],
-                             border_width=1, background_color=filter_bg_col)]]
+                    element_justification='c', background_color=frame_col, expand_x=True)]],
+                             border_width=1, background_color=frame_col)]]
 
         if len(filter_params) > 0 and modifiers['filter'] is True:
             visible_filter = True
             height_offset += cbar_h  # height of the collapsible bar
             n_filter_rows = ceiling(i / 3) if use_center else ceiling(i / 2)
-            height_offset += n_filter_rows * param_h + 2 * n_filter_rows + bttn_h + 6   # height of the filter parameters plus apply button
+            height_offset += n_filter_rows * param_h + 2 * n_filter_rows + bttn_h + 8   # height of the filter parameters plus apply button
         else:
             visible_filter = False
             height_offset += 2  # invisible elements have a footprint
 
         row1 = [
-            sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=filter_head_col),
-                     sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=filter_head_col),
+            sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=border_col),
+                     sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=border_col),
                      sg.Text('Table filters', pad=((0, pad_h), 0), text_color=select_text_col,
-                             background_color=filter_head_col),
+                             background_color=border_col),
                      sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn0'),
-                               button_color=(text_col, filter_head_col), border_width=0,
+                               button_color=(text_col, border_col), border_width=0,
                                tooltip='Collapse filter panel')]],
-                   key=self.key_lookup('FilterBar'), element_justification='c', background_color=filter_head_col,
+                   key=self.key_lookup('FilterBar'), element_justification='c', background_color=border_col,
                    expand_x=True, visible=visible_filter, vertical_alignment='c')]
-        row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('Frame0'), background_color=filter_bg_col,
+        row2 = [sg.pin(sg.Col(filters, key=self.key_lookup('Frame0'), background_color=frame_col,
                               visible=visible_filter, expand_x=True,
                               metadata={'visible': visible_filter, 'disabled': (not visible_filter)}))]
 
@@ -1756,38 +1743,29 @@ class TableElement(RecordElement):
                              metadata={'disabled': False, 'visible': True}))
 
         # Table options
-        options = [
-            [sg.Col([[sg.Col([[sg.Canvas(size=(option_col_size, 0), background_color=filter_head_col)]],
-                             pad=(0, int(pad_el / 2)), background_color=filter_head_col, justification='l'),
-                      sg.Col([[sg.Text('Options', text_color=select_text_col, background_color=filter_head_col)]],
-                             pad=(0, int(pad_el / 2)), background_color=filter_head_col, element_justification='c',
-                             expand_x=True, vertical_alignment='c'),
-                      sg.Col([[sg.Canvas(size=(option_col_size, 0), background_color=filter_head_col)],
-                              [sg.Button('', image_data=mod_const.EXIT_ICON, key=cancel_key, border_width=0,
-                                         button_color=(text_col, filter_head_col))]],
-                             pad=(pad_el, int(pad_el / 2)), background_color=filter_head_col, justification='r',
-                             element_justification='r', vertical_alignment='c')]],
-                    pad=(0, (0, pad_v)), background_color=filter_head_col, vertical_alignment='c', expand_x=True)]]
+        options = [[sg.Col([[sg.Text('Options', text_color=select_text_col, background_color=border_col)]],
+                           pad=(0, (0, int(pad_v / 2))), background_color=border_col, vertical_alignment='c',
+                           element_justification='c', expand_x=True)]]
 
         if modifiers['fill']:
             fill_menu = ['&Fill', list(self.display_columns.values())]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
-                                          image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
+                                          image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                           button_color=(text_col, bg_col), tooltip='Fill NA values')])
 
         if modifiers['export']:
             options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON,
-                                      image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
+                                      image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                       button_color=(text_col, bg_col), tooltip='Export to spreadsheet')])
 
         if modifiers['sort']:
             sort_menu = ['&Sort', list(self.display_columns.values())]
             options.append(
                 [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON,
-                               image_size=(240, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
+                               image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                button_color=(text_col, bg_col), tooltip='Sort table on columns')])
 
-        row4.append(sg.Col(options, key=self.key_lookup('OptionsFrame'), background_color=filter_bg_col,
+        row4.append(sg.Col(options, key=self.key_lookup('OptionsFrame'), background_color=frame_col,
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
 
         # Control buttons and totals row
@@ -1809,11 +1787,11 @@ class TableElement(RecordElement):
                                     sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
                                             font=font, background_color=bg_col, justification='r', relief='sunken',
                                             metadata={'name': self.name})]],
-                                  pad=(pad_el, int(pad_el / 2)), vertical_alignment='b', justification='r',
-                                  background_color=header_col))
+                                  pad=(pad_el, 0), justification='r', element_justification='r', vertical_alignment='b',
+                                  background_color=header_col, expand_x=True, expand_y=False))
 
-        row5 = [sg.Col([actions_bar], key=self.key_lookup('ActionsBar'), background_color=header_col, expand_x=True,
-                       vertical_alignment='c')]
+        row5 = [sg.Col([actions_bar], key=self.key_lookup('ActionsBar'), background_color=header_col,
+                       vertical_alignment='c', expand_y=True, expand_x=True)]
 
         height_offset += bar_h  # height of the totals bar
 
@@ -1849,21 +1827,24 @@ class TableElement(RecordElement):
 
             height_offset += 2  # invisible elements have a footprint
 
-        row6 = [sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=filter_head_col),
-                         sg.Text('Summary', pad=((0, pad_h), 0), text_color='white', background_color=filter_head_col),
+        row6 = [sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=border_col),
+                         sg.Text('Summary', pad=((0, pad_h), 0), text_color='white', background_color=border_col),
                          sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn1'),
-                                   button_color=(text_col, filter_head_col), border_width=0,
+                                   button_color=(text_col, border_col), border_width=0,
                                    tooltip='Collapse summary panel')]],
-                       key=self.key_lookup('SummaryBar'), element_justification='c', background_color=filter_head_col,
+                       key=self.key_lookup('SummaryBar'), element_justification='c', background_color=border_col,
                        expand_x=True, visible=summary_visible, vertical_alignment='c')]
-        row7 = [sg.pin(sg.Col(summary_layout, key=self.key_lookup('Frame1'), background_color=filter_bg_col,
-                              visible=summary_visible, expand_x=True, expand_y=True, justification='c',
+
+        frame1_key = self.key_lookup('Frame1')
+        row7 = [sg.pin(sg.Col(summary_layout, key=frame1_key, background_color=frame_col, visible=summary_visible,
+                              expand_x=True, expand_y=True, justification='c', element_justification='c',
                               metadata={'visible': summary_visible, 'disabled': (not summary_visible)}))]
 
         # Layout
+        relief = 'ridge'
         layout = sg.Frame('', [row1, row2, row3, row4, row5, row6, row7], key=self.key_lookup('Table'),
                           pad=pad, element_justification='l', vertical_alignment='t', background_color=header_col,
-                          relief='ridge', border_width=2)
+                          relief=relief, border_width=2)
 
         self._height_offset = height_offset
 
@@ -1879,6 +1860,7 @@ class TableElement(RecordElement):
         text_col = mod_const.TEXT_COL  # standard text color
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
         highlight_col = mod_const.HIGHLIGHT_COL
+        bwidth = 1
 
         # Layout
         bttn_layout = []
@@ -1886,14 +1868,13 @@ class TableElement(RecordElement):
             custom_entry = custom_bttns[custom_bttn]
 
             custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
-                                      border_width=2, button_color=(text_col, header_col), disabled=disabled,
+                                      border_width=bwidth, button_color=(text_col, header_col), disabled=disabled,
                                       visible=True, tooltip=custom_entry.get('Description', custom_bttn),
                                       highlight_colors=(highlight_col, highlight_col),
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
-        layout = [sg.Col([bttn_layout], justification='l', vertical_alignment='c', background_color=header_col,
-                         expand_x=True)]
+        layout = [sg.Col([bttn_layout], justification='l', background_color=header_col, expand_x=True, expand_y=False)]
 
         return layout
 
@@ -1989,15 +1970,7 @@ class TableElement(RecordElement):
             window[frame_key].update(visible=False)
 
         # Update column widths
-        # header = list(display_columns.values())
-        # widths = self._calc_column_widths(width=width, pixels=True)
-        # for index, column in enumerate(header):
-        #    width = widths[index]
-        #    window[tbl_key].Widget.column(column, width=width)
         self._update_column_widths(window, width)
-
-        # Update the number of rows in the display table
-        window[tbl_key].update(num_rows=nrows)
 
         # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
         self.update_display(window)
@@ -2013,8 +1986,8 @@ class TableElement(RecordElement):
 
         current_dimensions = self._dimensions
         height_offset = self._height_offset
-        # row_rate = row_rate if row_rate is not None else 80
-        row_rate = row_rate if row_rate is not None else mod_const.TBL_ROW_HEIGHT
+        # row_h = row_h if row_h is not None else 80
+        row_h = row_rate if row_rate is not None else mod_const.TBL_ROW_HEIGHT
         default_nrow = self.nrow
 
         logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
@@ -2028,7 +2001,7 @@ class TableElement(RecordElement):
 
         #print('height allocated to the table in pixels: {}'.format(height))
         #print('height offset size in pixels: {}'.format(height_offset))
-        #print('height of the individual rows: {}'.format(row_rate))
+        #print('height of the individual rows: {}'.format(row_h))
         print('size of the actions bar: {}'.format(window[self.key_lookup('ActionsBar')].get_size()))
         #print('size of the title bar: {}'.format(window[self.key_lookup('TitleBar')].get_size()))
         #print('size of the summary bar: {}'.format(window[self.key_lookup('SummaryBar')].get_size()))
@@ -2045,9 +2018,9 @@ class TableElement(RecordElement):
             # elements, such as the title bar, actions, bar, summary panel, etc., minus the height of the header.
 
             #print('projected new height of the table element: {}'.format(tbl_height))
-            tbl_height = height - height_offset - row_rate
+            tbl_height = height - height_offset - row_h
 
-            projected_nrows = int((tbl_height - row_rate) / row_rate)
+            projected_nrows = int((tbl_height - row_h) / row_h)
             nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
             print('number of rows to display based on table height and row height: {}'.format(nrows))
         else:
@@ -2097,7 +2070,6 @@ class TableElement(RecordElement):
         # Fit the summary table to the frame
         if self.summary_rules:
             self._update_column_widths(window, width, summary=True)
-            window[self.key_lookup('SummaryTable')].update(num_rows=1)  # required for table size to update
 
     def append(self, add_df):
         """
@@ -2898,14 +2870,15 @@ class RecordTable(TableElement):
         text_col = mod_const.TEXT_COL  # standard text color
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
         highlight_col = mod_const.HIGHLIGHT_COL
+        bwidth = 1
 
         # Layout
-        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=2,
+        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=bwidth,
                                  button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
                                  disabled=disabled, visible=self.modifiers['import'],
                                  tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
-                       sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=2,
+                       sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=bwidth,
                                  button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
                                  disabled=disabled, visible=self.modifiers['delete'],
                                  tooltip='Remove selected rows (CTRL+D)',
@@ -2915,14 +2888,13 @@ class RecordTable(TableElement):
             custom_entry = custom_bttns[custom_bttn]
 
             custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
-                                      border_width=2, button_color=(text_col, header_col),
+                                      border_width=bwidth, button_color=(text_col, header_col),
                                       highlight_colors=(highlight_col, highlight_col), disabled=disabled,
                                       visible=True, tooltip=custom_entry.get('Description', custom_bttn),
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
-        layout = [sg.Col([bttn_layout], justification='l', vertical_alignment='c', background_color=header_col,
-                         expand_x=True)]
+        layout = [sg.Col([bttn_layout], justification='l', background_color=header_col, expand_x=True, expand_y=False)]
 
         return layout
 
@@ -3421,19 +3393,20 @@ class ComponentTable(RecordTable):
         text_col = mod_const.TEXT_COL  # standard text color
         header_col = mod_const.TBL_HEADER_COL  # color of the header background
         highlight_col = mod_const.HIGHLIGHT_COL
+        bwidth = 1
 
         # Layout
-        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=2,
+        bttn_layout = [sg.Button('', key=import_key, image_data=mod_const.TBL_IMPORT_ICON, border_width=bwidth,
                                  button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
                                  disabled=disabled, visible=self.modifiers['import'],
                                  tooltip='Import database records (CTRL+I)',
                                  metadata={'visible': self.modifiers['import'], 'disabled': disabled}),
-                       sg.Button('', key=add_key, image_data=mod_const.TBL_ADD_ICON, border_width=2,
+                       sg.Button('', key=add_key, image_data=mod_const.TBL_ADD_ICON, border_width=bwidth,
                                  button_color=(text_col, header_col), highlight_colors=(highlight_col, highlight_col),
                                  disabled=disabled, visible=self.modifiers['add'],
                                  tooltip='Create new component record (CTRL+A)',
                                  metadata={'visible': self.modifiers['add'], 'disabled': disabled}),
-                       sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=2,
+                       sg.Button('', key=delete_key, image_data=mod_const.TBL_DEL_ICON, border_width=bwidth,
                                  button_color=(text_col, header_col), disabled=disabled,
                                  visible=self.modifiers['delete'],
                                  tooltip='Remove selected rows (CTRL+D)',
@@ -3443,15 +3416,14 @@ class ComponentTable(RecordTable):
             custom_entry = custom_bttns[custom_bttn]
 
             custom_layout = sg.Button('', key=custom_entry.get('Key', None), image_data=custom_entry.get('Icon', None),
-                                      border_width=2, button_color=(text_col, header_col),
+                                      border_width=bwidth, button_color=(text_col, header_col),
                                       highlight_colors=(highlight_col, highlight_col),
                                       disabled=disabled, visible=True,
                                       tooltip=custom_entry.get('Description', custom_bttn),
                                       metadata={'visible': True, 'disabled': disabled})
             bttn_layout.append(custom_layout)
 
-        layout = [sg.Col([bttn_layout], justification='l', vertical_alignment='c', background_color=header_col,
-                         expand_x=True)]
+        layout = [sg.Col([bttn_layout], justification='l', background_color=header_col, expand_x=True, expand_y=False)]
 
         return layout
 
@@ -3850,7 +3822,7 @@ class ReferenceBox(RecordElement):
         self.eclass = 'references'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('RefID', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
+                              ('Frame', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
                                'Approved')])
         self._event_elements = ['Element', 'Frame', 'Approved', 'Unlink']
 
@@ -3858,8 +3830,8 @@ class ReferenceBox(RecordElement):
         elem_key = self.key_lookup('Element')
         return_key = '{}+RETURN+'.format(elem_key)
         frame_key = self.key_lookup('Frame')
-        enter_key = '{}+FOCUS+'.format(frame_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [return_key, enter_key]
+        focus_key = '{}+FOCUS+'.format(frame_key)
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [return_key, focus_key]
 
         try:
             modifiers = entry['Modifiers']
@@ -3937,7 +3909,7 @@ class ReferenceBox(RecordElement):
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
         window[elem_key].bind('<Return>', '+RETURN+')
-        window[frame_key].bind('<ENTER>', '+FOCUS+')
+        window[frame_key].bind('<Enter>', '+FOCUS+')
 
     def run_event(self, window, event, values):
         """
@@ -3948,13 +3920,13 @@ class ReferenceBox(RecordElement):
         approved_key = self.key_lookup('Approved')
         del_key = self.key_lookup('Unlink')
         frame_key = self.key_lookup('Frame')
-        enter_key = '{}+FOCUS+'.format(frame_key)
+        focus_key = '{}+FOCUS+'.format(frame_key)
 
         update_event = False
 
         logger.info('ReferenceBox {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
 
-        if event == enter_key:
+        if event == focus_key:
             window[ref_key].set_focus()
 
         # Delete a reference from the record reference database table
