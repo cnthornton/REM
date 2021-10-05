@@ -245,6 +245,7 @@ class BankRule:
         warn_key = self.key_lookup('Warnings')
 
         can_save = not window[save_key].metadata['disabled']
+        print('reconciliation can be saved: {}'.format(can_save))
 
         # Run an account entry event
         acct_keys = [i for j in self.accts for i in j.bindings]
@@ -443,6 +444,7 @@ class BankRule:
 
                 # Enable elements
                 window[save_key].update(disabled=False)
+                window[save_key].metadata['disabled'] = False
                 if len(self.panels) > 1:
                     window[reconcile_key].update(disabled=False)
 
@@ -498,6 +500,7 @@ class BankRule:
         save_key = self.key_lookup('Save')
         window[reconcile_key].update(disabled=True)
         window[save_key].update(disabled=True)
+        window[save_key].metadata['disabled'] = True
 
         # Enable the account entry selection dropdown
         window[entry_key].update(disabled=False)
@@ -1430,6 +1433,7 @@ class BankAccount:
         """
         pd.set_option('display.max_columns', None)
 
+        colmap = self._col_map
         table = self.table
         table_keys = table.bindings
         tbl_key = table.key_lookup('Element')
@@ -1478,7 +1482,7 @@ class BankAccount:
                                 .format(IND=index)
                             logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                            return False
+                            return {}
 
                         # Update reference values
                         if can_edit:  # only update references if table is editable
@@ -1506,7 +1510,7 @@ class BankAccount:
                                 msg = 'no references defined for record type {TYPE}'.format(TYPE=record.name)
                                 logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                                return False
+                                return {}
 
                             for refbox in refboxes:
                                 if refbox.association_rule != association_rule:
@@ -1559,6 +1563,12 @@ class BankAccount:
                 msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
+            # Update the status in the records table. This will also update the "is edited" column of the table to
+            # indicate that the records at the given indices were edited wherever the new values do not match the old
+            # values.
+            if 'Approved' in colmap:
+                table.update_column(colmap['Approved'], True, indices=indices)
+
         elif event in (reset_key, reset_hkey):
             # Find rows selected by user for deletion
             select_row_indices = values[tbl_key]
@@ -1577,7 +1587,8 @@ class BankAccount:
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             # Reset void transaction status
-            table.update_column(self._col_map['Void'], [False], indices=indices)
+            if 'Void' in colmap:
+                table.update_column(colmap['Void'], False, indices=indices)
 
         return {'ReferenceIndex': reference_indices, 'RecordIndex': record_indices}
 
@@ -1651,7 +1662,7 @@ class BankAccount:
 
     def merge_references(self, df: pd.DataFrame = None):
         """
-        Merge the records table and the reference table on any reference map columns.
+        Merge the records table and the reference table on configured reference map columns.
 
         Arguments:
             df (DataFrame): merge references with the provided records dataframe [Default: use full records dataframe].
@@ -1659,26 +1670,34 @@ class BankAccount:
         Returns:
             df (DataFrame): dataframe of records merged with their corresponding reference entries.
         """
-        #pd.set_option('display.max_columns', None)
+        pd.set_option('display.max_columns', None)
 
         ref_map = self.ref_map
         ref_df = self.ref_df.copy()
 
-        if df is None:
-            df = self.table.data()
+        df = self.table.data() if df is None else df
 
-        # Set index to record ID for updating
-        df.set_index('RecordID', inplace=True)
+        # Reorder the references dataframe to match the order of the records in the records table
         ref_df.set_index('RecordID', inplace=True)
+        ref_df = ref_df.reindex(index=df['RecordID'])
 
-        # Rename reference columns to record columns using the reference map
-        mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
+        # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
+        if df.shape[0] != ref_df.shape[0]:
+            logger.warning('BankAccount {NAME}: the records dataframe and reference dataframe of of unequal sizes'
+                           .format(NAME=self.name))
+            indices = df[df['Records'].isin(ref_df.index.tolist())].index
+        else:
+            indices = df.index.tolist()
 
-        # Update record reference columns
-        df = df.drop(columns=mapped_df.columns).join(mapped_df)
-        df.reset_index(inplace=True)
+        # Update the configured references columns in the records dataframe to be the same as the columns in references
+        # dataframe
+        for column in ref_map:
+            mapped_col = ref_map[column]
 
-        return df
+            new_values = ref_df[column].tolist()
+            self.table.update_column(mapped_col, new_values, indices=indices)
+
+        print(self.table.df)
 
     def update_references(self, ref_df):
         """
@@ -1774,7 +1793,7 @@ class BankAccount:
                     .format(TBL=self.name, IDS=record_ids))
         ref_indices = ref_df.index[ref_df['RecordID'].isin(record_ids)]
         ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved']
-        ref_df.loc[ref_indices, ref_columns] = [np.nan, np.nan, np.nan, np.nan, False]
+        ref_df.loc[ref_indices, ref_columns] = [None, None, None, None, False]
 
         return ref_indices.tolist()
 
@@ -1870,7 +1889,7 @@ class BankAccount:
         if len(void_inds) > 0:
             print('BankAccount {}: setting void column {} to true for indices:'.format(self.name, failed_col))
             print(void_inds)
-            self.table.update_column(failed_col, [True], indices=void_inds)
+            self.table.update_column(failed_col, True, indices=void_inds)
 
         return df
 
@@ -1906,7 +1925,7 @@ class BankAccount:
         Update the panel's record table display.
         """
         # Merge records and references dataframes
-        self.table.df = self.merge_references()
+        self.merge_references()
         self.table.df = self.table.set_conditional_values()
 
         # Update the display table
@@ -1961,6 +1980,25 @@ class BankAccount:
         ref_df = ref_df.astype({i: np.bool for i in bool_columns})
 
         self.ref_df = ref_df
+
+        # Merge the configured reference columns with the records table
+        ref_map = self.ref_map
+        ref_df = ref_df.copy()
+
+        df = self.table.data()
+
+        # Set index to record ID for updating
+        df.set_index('RecordID', inplace=True)
+        ref_df.set_index('RecordID', inplace=True)
+
+        # Rename reference columns to record columns using the reference map
+        mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
+
+        # Update record reference columns
+        df = df.drop(columns=mapped_df.columns).join(mapped_df)
+        df.reset_index(inplace=True)
+
+        self.table.df = df
 
         return True
 
