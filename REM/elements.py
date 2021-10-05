@@ -691,12 +691,12 @@ class TableElement(RecordElement):
 
         return df
 
-    def _set_column_dtype(self, column, name: str = None, dtype: str = None):
+    def _set_column_dtype(self, column_values, name: str = None, dtype: str = None):
         """
         Set the datatype for table column values based on the datatype map.
 
         Arguments:
-            column (Series): pandas Series containing column values.
+            column_values (Series): pandas Series containing column values.
 
             name (str): optional column name if not set in the series.
 
@@ -704,46 +704,46 @@ class TableElement(RecordElement):
         """
         dtype_map = self.columns
 
-        if not isinstance(column, pd.Series):
-            column = pd.Series(column)
+        if not isinstance(column_values, pd.Series):
+            column_values = pd.Series(column_values)
 
-        column_name = column.name if not name else name
+        column_name = column_values.name if not name else name
         dtype = dtype_map[column_name] if not dtype else dtype
         if dtype in ('date', 'datetime', 'timestamp', 'time'):
             try:
-                values = pd.to_datetime(column, errors='coerce', format=settings.date_format, utc=False)
+                values = pd.to_datetime(column_values, errors='coerce', format=settings.date_format, utc=False)
             except ValueError:  # need to remove Time Zone information from column values
-                values = column.apply(lambda x: x.replace(tzinfo=None))
+                values = column_values.apply(lambda x: x.replace(tzinfo=None))
         elif dtype in ('int', 'integer', 'bigint'):
             try:
-                values = column.astype('Int64')
+                values = column_values.astype('Int64')
             except TypeError:
-                values = column.astype(float).astype('Int64')
+                values = column_values.astype(float).astype('Int64')
         elif dtype == 'mediumint':
             try:
-                values = column.astype('Int32')
+                values = column_values.astype('Int32')
             except TypeError:
-                values = column.astype(float).astype('Int32')
+                values = column_values.astype(float).astype('Int32')
         elif dtype == 'smallint':
             try:
-                values = column.astype('Int16')
+                values = column_values.astype('Int16')
             except TypeError:
-                values = column.astype(float).astype('Int16')
+                values = column_values.astype(float).astype('Int16')
         elif dtype in ('tinyint', 'bit'):
             try:
-                values = column.astype('Int8')
+                values = column_values.astype('Int8')
             except TypeError:
-                values = column.astype(float).astype('Int8')
+                values = column_values.astype(float).astype('Int8')
         elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-            values = pd.to_numeric(column, errors='coerce', downcast='float')
+            values = pd.to_numeric(column_values, errors='coerce', downcast='float')
         elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-            values = pd.to_numeric(column, errors='coerce')
+            values = pd.to_numeric(column_values, errors='coerce')
         elif dtype in ('bool', 'boolean'):
-            values = column.fillna(False).astype(np.bool, errors='raise')
+            values = column_values.fillna(False).astype(np.bool, errors='raise')
         elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-            values = column.astype(np.object, errors='raise')
+            values = column_values.astype(np.object, errors='raise')
         else:
-            values = column.astype(np.object, errors='raise')
+            values = column_values.astype(np.object, errors='raise')
 
         return values
 
@@ -2372,19 +2372,36 @@ class TableElement(RecordElement):
             values (list): list, series, or scalar of new column values.
 
             indices (list): optional list of row indices to modify [Default: update all rows].
-
         """
         df = self.df
 
-        if not indices:  # update all rows
+        if isinstance(indices, type(None)):  # update all rows
             indices = df.index.tolist()
+        elif isinstance(indices, int):
+            indices = [indices]
 
-        values = self._set_column_dtype(values, name=column).squeeze()
+        if not isinstance(values, pd.Series):
+            values = pd.Series(values, index=indices)
 
+        values = self._set_column_dtype(values, name=column)
+
+        # Set "Is Edited" to True where existing column values do not match the update values
+        try:
+            col_values = df.loc[indices, column]
+            edited = ~((col_values.eq(values)) | (col_values.isna() & values.isna()))
+            edited_indices = edited[edited].index
+            if len(edited_indices) > 0:
+                print('column {} values were edited at indices: {}'.format(column, edited_indices.tolist()))
+
+                df.loc[edited_indices, self.edited_column] = True
+                self.edited = True
+        except (ValueError, IndexError):
+            msg = 'DataTable {NAME}: failed to update column "{COL}" - the length of the update values must be ' \
+                  'equal to the length of the indices to update'.format(NAME=self.name, COL=column)
+            raise IndexError(msg)
+
+        # Replace existing column values with new values
         df.loc[indices, column] = values
-        df.loc[indices, self.edited_column] = True
-
-        self.edited = True
 
     def set_defaults(self, row):
         """
