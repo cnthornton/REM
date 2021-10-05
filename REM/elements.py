@@ -1878,7 +1878,7 @@ class TableElement(RecordElement):
 
         return layout
 
-    def enable(self, window):
+    def enable(self, window, custom: bool = True):
         """
         Enable data table element actions.
         """
@@ -1894,15 +1894,16 @@ class TableElement(RecordElement):
             window[filter_key].update(disabled=False)
 
         # Enable table modification buttons
-        for custom_bttn in custom_bttns:
-            custom_entry = custom_bttns[custom_bttn]
-            try:
-                bttn_key = custom_entry['Key']
-            except KeyError:
-                continue
+        if custom:
+            for custom_bttn in custom_bttns:
+                custom_entry = custom_bttns[custom_bttn]
+                try:
+                    bttn_key = custom_entry['Key']
+                except KeyError:
+                    continue
 
-            window[bttn_key].update(disabled=False)
-            window[bttn_key].metadata['disabled'] = False
+                window[bttn_key].update(disabled=False)
+                window[bttn_key].metadata['disabled'] = False
 
     def disable(self, window):
         """
@@ -2380,6 +2381,13 @@ class TableElement(RecordElement):
         elif isinstance(indices, int):
             indices = [indices]
 
+        try:
+            col_values = df.loc[indices, column]
+        except IndexError:
+            msg = 'DataTable {NAME}: failed to update column "{COL}" - one or more row indices from {INDS} are ' \
+                  'missing from the table'.format(NAME=self.name, COL=column, INDS=indices)
+            raise IndexError(msg)
+
         if not isinstance(values, pd.Series):
             values = pd.Series(values, index=indices)
 
@@ -2387,18 +2395,16 @@ class TableElement(RecordElement):
 
         # Set "Is Edited" to True where existing column values do not match the update values
         try:
-            col_values = df.loc[indices, column]
             edited = ~((col_values.eq(values)) | (col_values.isna() & values.isna()))
-            edited_indices = edited[edited].index
-            if len(edited_indices) > 0:
-                print('column {} values were edited at indices: {}'.format(column, edited_indices.tolist()))
-
-                df.loc[edited_indices, self.edited_column] = True
-                self.edited = True
-        except (ValueError, IndexError):
+        except ValueError:
             msg = 'DataTable {NAME}: failed to update column "{COL}" - the length of the update values must be ' \
                   'equal to the length of the indices to update'.format(NAME=self.name, COL=column)
-            raise IndexError(msg)
+            raise ValueError(msg)
+        else:
+            edited_indices = edited[edited].index
+            if len(edited_indices) > 0:
+                df.loc[edited_indices, self.edited_column] = True
+                self.edited = True
 
         # Replace existing column values with new values
         df.loc[indices, column] = values
@@ -2937,7 +2943,7 @@ class RecordTable(TableElement):
 
         return row_ids
 
-    def enable(self, window):
+    def enable(self, window, custom: bool = True):
         """
         Enable data table element actions.
         """
@@ -2961,15 +2967,16 @@ class RecordTable(TableElement):
         window[import_key].update(disabled=False)
         window[import_key].metadata['disabled'] = False
 
-        for custom_bttn in custom_bttns:
-            custom_entry = custom_bttns[custom_bttn]
-            try:
-                bttn_key = custom_entry['Key']
-            except KeyError:
-                continue
+        if custom:
+            for custom_bttn in custom_bttns:
+                custom_entry = custom_bttns[custom_bttn]
+                try:
+                    bttn_key = custom_entry['Key']
+                except KeyError:
+                    continue
 
-            window[bttn_key].update(disabled=False)
-            window[bttn_key].metadata['disabled'] = False
+                window[bttn_key].update(disabled=False)
+                window[bttn_key].metadata['disabled'] = False
 
     def disable(self, window):
         """
@@ -3444,7 +3451,7 @@ class ComponentTable(RecordTable):
 
         return layout
 
-    def enable(self, window):
+    def enable(self, window, custom: bool = True):
         """
         Enable data table element actions.
         """
@@ -3472,15 +3479,16 @@ class ComponentTable(RecordTable):
         window[import_key].update(disabled=False)
         window[import_key].metadata['disabled'] = False
 
-        for custom_bttn in custom_bttns:
-            custom_entry = custom_bttns[custom_bttn]
-            try:
-                bttn_key = custom_entry['Key']
-            except KeyError:
-                continue
+        if custom:
+            for custom_bttn in custom_bttns:
+                custom_entry = custom_bttns[custom_bttn]
+                try:
+                    bttn_key = custom_entry['Key']
+                except KeyError:
+                    continue
 
-            window[bttn_key].update(disabled=False)
-            window[bttn_key].metadata['disabled'] = False
+                window[bttn_key].update(disabled=False)
+                window[bttn_key].metadata['disabled'] = False
 
     def disable(self, window):
         """

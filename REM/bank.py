@@ -432,8 +432,11 @@ class BankRule:
                     else:
                         self.panels.append(self.panel_keys[acct_name])
 
-                    # Enable table action buttons
-                    acct.table.enable(window)
+                    # Enable table action buttons, but only for the primary table
+                    if self.current_account != acct_name:
+                        acct.table.enable(window, custom=False)
+                    else:
+                        acct.table.enable(window)
 
                 # Update the display
                 self.update_display(window)
