@@ -465,9 +465,7 @@ class BankRule:
                     self.panels.append(self.panel_keys[acct_name])
 
                     # Enable table action buttons, but only for the primary table
-                    if self.current_account != acct_name:
-                        acct.table.enable(window, custom=False)
-                    else:
+                    if self.current_account == acct_name:
                         acct.table.enable(window)
 
                 # Update the display
@@ -938,7 +936,7 @@ class BankRule:
                 nfound += 1
                 matched_indices.append(index)
 
-                warning = 'found more than one match for account {ACCT} record "{RECORD}"' \
+                warning = 'Found more than one match for account {ACCT} record "{RECORD}"' \
                     .format(ACCT=self.current_account, RECORD=record_id)
                 logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
 
