@@ -588,7 +588,7 @@ class RecordEntry:
             raise ValueError('records argument must be one of DataFrame, Series, or dictionary')
 
         if df.empty:
-            logger.warning('RecordType {NAME}: no record provided for saving to the database')
+            logger.warning('RecordType {NAME}: no records provided for saving'.format(NAME=self.name))
 
             return statements
 
