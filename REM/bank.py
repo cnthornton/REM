@@ -398,12 +398,12 @@ class BankRule:
             if self.current_panel:
                 window[self.current_panel].update(visible=False)
 
-            # Set the new primary account account
+            # Set the current account attributes to the selected account
             current_acct = self.fetch_account(acct_title, by_title=True)
             self.current_account = current_acct.name
             self.current_panel = current_acct.key_lookup('Panel')
 
-            # Clear the panel
+            # Display the selected account table
             window[self.current_panel].update(visible=True)
 
             # Enable the parameter selection button

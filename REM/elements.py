@@ -577,6 +577,23 @@ class TableElement(RecordElement):
 
         return df
 
+    def _display_header(self):
+        """
+        Return the visible header of the display table.
+        """
+        display_map = self.display_columns
+        hidden_columns = self.hidden_columns
+        header = []
+        for column in display_map:
+            display_column = display_map[column]
+
+            if display_column in hidden_columns:
+                continue
+
+            header.append(display_column)
+
+        return header
+
     def _update_column_widths(self, window, width: int = None, summary: bool = False):
         """
         Update the sizes of the data table or summary table columns.
@@ -588,11 +605,12 @@ class TableElement(RecordElement):
             widths = None
             nrow = 1
         else:
-            header = list(self.display_columns.values())
+            header = self._display_header()
             elem_key = self.key_lookup('Element')
             widths = self.widths
             nrow = self._dimensions[1]
 
+        print('calculating widths for columns: {}'.format(header))
         column_widths = self._calc_column_widths(header, width=width, pixels=True, widths=widths)
         for index, column in enumerate(header):
             column_width = column_widths[index]
@@ -800,6 +818,38 @@ class TableElement(RecordElement):
                                  .format(NAME=self.name, VALS=column_values))
 
         return df
+
+    def _update_row_values_new(self, index, values):
+        """
+        Update row values at the given dataframe index.
+
+        Arguments:
+            index (int): real index of the row to update.
+
+            values (DataFrame): single row dataframe containing row values to use to update the dataframe at the
+               given index.
+        """
+        df = self.df
+        dtypes = self.columns
+        header = list(dtypes)
+
+        if isinstance(values, dict):
+            values = pd.DataFrame(values)
+        elif isinstance(values, pd.Series):
+            values = values.to_frame().T
+
+        row_values = self.set_conditional_values(values)
+        shared_cols = row_values.index
+        orig_values = df.loc[index, shared_cols]
+        indices = orig_values.compare(row_values).index
+        edited = False
+        if len(indices) > 0:
+            df.loc[[index], shared_cols] = row_values
+            df.at[index, self.edited_column] = True
+            self.edited = True
+            edited = True
+
+        return edited
 
     def _update_row_values(self, index, values):
         """
@@ -1755,7 +1805,9 @@ class TableElement(RecordElement):
             else:
                 vis_map.append(True)
 
-        col_widths = self._calc_column_widths(header, width=tbl_width, size=font_size, pixels=False, widths=self.widths)
+        display_header = self._display_header()
+        col_widths = self._calc_column_widths(display_header, width=tbl_width, size=font_size, pixels=False,
+                                              widths=self.widths)
         row4.append(sg.Table(data, key=keyname, headings=header, visible_column_map=vis_map, pad=(0, 0), num_rows=nrow,
                              row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
@@ -1769,7 +1821,7 @@ class TableElement(RecordElement):
                            element_justification='c', expand_x=True)]]
 
         if modifiers['fill']:
-            fill_menu = ['&Fill', list(self.display_columns.values())]
+            fill_menu = ['&Fill', display_header]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
                                           image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
                                           button_color=(text_col, bg_col), tooltip='Fill NA values')])
@@ -1780,7 +1832,7 @@ class TableElement(RecordElement):
                                       button_color=(text_col, bg_col), tooltip='Export to spreadsheet')])
 
         if modifiers['sort']:
-            sort_menu = ['&Sort', list(self.display_columns.values())]
+            sort_menu = ['&Sort', display_header]
             options.append(
                 [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON,
                                image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
@@ -1981,7 +2033,7 @@ class TableElement(RecordElement):
 
         width, nrows = dimensions
 
-        tbl_key = self.key_lookup('Element')
+        #tbl_key = self.key_lookup('Element')
         frame_key = self.key_lookup('OptionsFrame')
 
         logger.debug('DataTable {NAME}: resetting display table dimensions'.format(NAME=self.name))
@@ -3178,7 +3230,8 @@ class RecordTable(TableElement):
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
                         'RecordType': self.record_type, 'Description': self.description,
                         'ImportRules': import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
-                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1}
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
+                        'HiddenColumns': self.hidden_columns
                         }
 
         import_table = RecordTable(self.name, table_layout)
@@ -3699,7 +3752,8 @@ class ComponentTable(RecordTable):
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
                         'RecordType': self.record_type, 'Description': self.description,
                         'ImportRules': import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
-                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1}
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
+                        'HiddenColumns': self.hidden_columns,
                         }
 
         import_table = RecordTable(self.name, table_layout)
