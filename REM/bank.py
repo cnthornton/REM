@@ -425,12 +425,44 @@ class BankRule:
                     logger.debug('BankRule {NAME}: loading database records for account {ACCT}'
                                  .format(NAME=self.name, ACCT=acct_name))
                     acct = self.fetch_account(acct_name)
-                    data_loaded = acct.load_data(acct_params)
+                    try:
+                        df = acct.load_data(acct_params)
+                    except Exception as e:
+                        mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
 
-                    if not data_loaded:
                         return self.reset_rule(window, current=True)
-                    else:
-                        self.panels.append(self.panel_keys[acct_name])
+
+                    # Load the record references from the reference table connected with the association rule
+                    record_ids = df[acct.table.id_column].tolist()
+                    try:
+                        acct.ref_df = acct.load_references(record_ids)
+                    except Exception as e:
+                        mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
+
+                        return self.reset_rule(window, current=True)
+
+                    # Merge the configured reference columns with the records table
+                    ref_map = acct.ref_map
+                    ref_df = acct.ref_df.copy()
+
+                    # Set index to record ID for updating
+                    df.set_index('RecordID', inplace=True)
+                    ref_df.set_index('RecordID', inplace=True)
+
+                    # Rename reference columns to record columns using the reference map
+                    mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
+
+                    # Update record reference columns
+                    drop_cols = [i for i in mapped_df.columns if i in df.columns]
+                    print('dropping shared columns {} from the records table'.format(drop_cols))
+                    #df = df.drop(columns=mapped_df.columns).join(mapped_df)
+                    df = df.drop(columns=drop_cols).join(mapped_df)
+                    df.reset_index(inplace=True)
+
+                    # Update the record table dataframe with the data imported from the database
+                    acct.table.df = acct.table.append(df)
+
+                    self.panels.append(self.panel_keys[acct_name])
 
                     # Enable table action buttons, but only for the primary table
                     if self.current_account != acct_name:
@@ -1095,6 +1127,72 @@ class BankRule:
         return results
 
     def save_references(self):
+        """
+        Save record associations to the reference database.
+        """
+        statements = {}
+
+        # Prepare to save the account references and records
+        acct = self.fetch_account(self.current_account)
+
+        record_type = acct.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+
+        # Save any changes to the records to the records database table
+        logger.debug('BankRule {NAME}: preparing account {ACCT} record statements'
+                     .format(NAME=self.name, ACCT=acct.name))
+        record_data = acct.table.data(edited_rows=True)
+        try:
+            statements = record_entry.save_database_records(record_data, statements=statements)
+        except Exception as e:
+            msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}' \
+                .format(ACCT=acct.name, ERR=e)
+            logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            return False
+
+        # Save record references to the references table
+        association_name = acct.association_rule
+        association_rule = record_entry.association_rules[association_name]
+
+        save_df = acct.ref_df
+        try:
+            existing_df = acct.load_references(save_df['RecordID'].tolist())
+        except Exception as e:
+            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
+
+            return False
+
+        is_primary = association_rule['Primary']
+        if is_primary:  # only save references if the record is the primary record in the reference table
+            logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
+                         .format(NAME=self.name, ACCT=acct.name))
+            try:
+                statements = record_entry.save_database_references(ref_df, acct.association_rule,
+                                                                   statements=statements)
+            except Exception as e:
+                msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                    .format(ACCT=acct.name, ERR=e)
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return False
+
+        logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
+                    .format(NAME=self.name, ACCT=self.current_account))
+
+        sstrings = []
+        psets = []
+        for i, j in statements.items():
+            sstrings.append(i)
+            psets.append(j)
+
+        #success = user.write_db(sstrings, psets)
+        print(statements)
+        success = True
+
+        return success
+
+    def save_references_old(self):
         """
         Save record associations to the reference database.
         """
@@ -1931,7 +2029,61 @@ class BankAccount:
         # Update the display table
         self.table.update_display(window)
 
+    def load_references(self, record_ids):
+        """
+        Load record references from the database.
+        """
+        rule_name = self.association_rule
+        record_type = self.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+
+        # Import reference entries from the database
+        try:
+            import_df = record_entry.import_references(record_ids, rule_name)
+        except Exception as e:
+            msg = 'failed to import references from association rule {RULE}'.format(RULE=rule_name)
+            logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+            raise ImportError(msg)
+
+        # Create new reference entries for records with IDs not currently found in the database
+        ref_df = pd.merge(pd.DataFrame({'RecordID': record_ids}), import_df, how='left', on='RecordID')
+        ref_df['RecordType'].fillna(record_type, inplace=True)
+
+        # Set datatypes
+        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
+        ref_df[bool_columns] = ref_df[bool_columns].fillna(False)
+        ref_df = ref_df.astype({i: np.bool for i in bool_columns})
+
+        return ref_df
+
     def load_data(self, parameters):
+        """
+        Load record and reference data from the database based on the supplied parameter set.
+
+        Arguments:
+            parameters (list): list of data parameters to filter the records database table on.
+
+        Returns:
+            success (bool): records and references were loaded successfully.
+        """
+        #pd.set_option('display.max_columns', None)
+
+        record_type = self.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+
+        # Prepare the database query statement
+        try:
+            df = record_entry.import_records(params=parameters, import_rules=self.import_rules)
+        except Exception as e:
+            msg = 'failed to import data from the database'
+            logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+            raise ImportError(msg)
+
+        return df
+
+    def load_data_old(self, parameters):
         """
         Load record and reference data from the database based on the supplied parameter set.
 
@@ -1960,30 +2112,12 @@ class BankAccount:
         self.table.df = self.table.append(df)
 
         # Load the record references from the reference table connected with the association rule
-        rule_name = self.association_rule
         record_ids = df[self.table.id_column].tolist()
-
-        try:
-            import_df = record_entry.import_references(record_ids, rule_name)
-        except Exception as e:
-            msg = 'failed to import references from association rule {RULE}'.format(RULE=rule_name)
-            logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
-
-            return False
-
-        ref_df = pd.merge(df.loc[:, ['RecordID']], import_df, how='left', on='RecordID')
-        ref_df['RecordType'].fillna(record_type, inplace=True)
-
-        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        ref_df[bool_columns] = ref_df[bool_columns].fillna(False)
-        ref_df = ref_df.astype({i: np.bool for i in bool_columns})
-
-        self.ref_df = ref_df
+        self.ref_df = self.load_references(record_ids)
 
         # Merge the configured reference columns with the records table
         ref_map = self.ref_map
-        ref_df = ref_df.copy()
+        ref_df = self.ref_df.copy()
 
         df = self.table.data()
 
