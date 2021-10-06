@@ -1624,12 +1624,9 @@ class BankAccount:
         """
         width, height = size
 
-        #print('current size of panel {} is {}'.format(self.name, window[self.key_lookup('Panel')].get_size()))
-
         # Reset table size
         tbl_width = width - 26  # minus the width of the panel scrollbar
         tbl_height = height
-        #print('setting table height to {}'.format(tbl_height))
         self.table.resize(window, size=(tbl_width, tbl_height))
 
     def fetch_reference_parameter(self, param, indices):

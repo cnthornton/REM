@@ -160,7 +160,9 @@ class TableElement(RecordElement):
 
         columns (list): list of table columns.
 
-        display_columns (dict): dictionary mapping display names to table column rules.
+        display_columns (dict): display names of the table columns.
+
+        display_columns (dict): display columns to hide from the user.
 
         search_field (str): column used when searching the table.
 
@@ -284,6 +286,19 @@ class TableElement(RecordElement):
                 else:
                     msg = 'display column {COL} not found in the list of table columns'.format(COL=display_column)
                     logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+        try:
+            hidden_columns = entry['HiddenColumns']
+        except KeyError:
+            hidden_columns = []
+
+        self.hidden_columns = []
+        for hide_column in hidden_columns:
+            if hide_column in self.display_columns:
+                self.hidden_columns.append(self.display_columns[hide_column])
+            else:
+                msg = 'hidden column "{COL}" not found in the list of table display columns'.format(COL=hide_column)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         try:
             search_field = entry['SearchField']
@@ -1595,7 +1610,6 @@ class TableElement(RecordElement):
         isize = mod_const.IN1_SIZE
 
         header_col_size = 200
-        option_col_size = 40
 
         bar_h = 26  # height of the title and totals bars in pixels
         cbar_h = 22  # height of the collapsible panel bars in pixels
@@ -1730,12 +1744,19 @@ class TableElement(RecordElement):
 
         # Data table
         row4 = []
-        header = display_df.columns.values.tolist()
+        hidden_columns = self.hidden_columns
+        header = display_df.columns.tolist()
         data = display_df.values.tolist()
         events = True
+        vis_map = []
+        for display_column in header:
+            if display_column in hidden_columns:
+                vis_map.append(False)
+            else:
+                vis_map.append(True)
 
         col_widths = self._calc_column_widths(header, width=tbl_width, size=font_size, pixels=False, widths=self.widths)
-        row4.append(sg.Table(data, key=keyname, headings=header, pad=(0, 0), num_rows=nrow,
+        row4.append(sg.Table(data, key=keyname, headings=header, visible_column_map=vis_map, pad=(0, 0), num_rows=nrow,
                              row_height=row_height, alternating_row_color=alt_col, background_color=bg_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
                              header_font=header_font, display_row_numbers=False, auto_size_columns=False,
