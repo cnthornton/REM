@@ -1268,7 +1268,7 @@ class DataParameterRange(DataParameter):
                                                      date_format='YYYY-MM-DD')
 
             display_value = self.format_display()
-            window[event].update(text=display_value)
+            window[event].update(value=display_value)
 
     def reset(self, window):
         """
@@ -1299,7 +1299,6 @@ class DataParameterRange(DataParameter):
 
         # Element settings
         font = mod_const.LARGE_FONT
-        bttn_font = mod_const.MID_FONT
         bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         in_col = mod_const.INPUT_COL
         text_col = mod_const.TEXT_COL
@@ -1314,10 +1313,10 @@ class DataParameterRange(DataParameter):
 
         elem_key = self.key_lookup('Element')
         if not disabled:
-            layout = [sg.Button(button_text=display_value, key=elem_key, size=(elem_w, elem_h),
-                                font=bttn_font, button_color=(text_col, in_col),
-                                tooltip='Set value range for {}'.format(self.description),
-                                metadata={'value': [], 'disabled': disabled})]
+            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h),
+                              font=font, background_color=in_col, text_color=text_col, relief='ridge',
+                              tooltip='Set value range for {}'.format(self.description), enable_events=True,
+                              metadata={'value': [], 'disabled': disabled})]
         else:
             layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
                               background_color=bg_col, text_color=text_col, border_width=1,
