@@ -13,7 +13,7 @@ import REM.constants as mod_const
 import REM.elements as mod_elem
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
-from REM.client import logger, settings
+from REM.client import logger, settings, user
 
 
 class BankRule:
@@ -320,7 +320,7 @@ class BankRule:
             else:
                 # Save records to the program database
                 try:
-                    save_status = self.save_references()
+                    save_status = self.save()
                 except Exception as e:
                     msg = 'database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
@@ -984,88 +984,17 @@ class BankRule:
                 assoc_acct = self.fetch_account(assoc_acct_name)
                 assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=False, warning=warning)
 
-                # Attempt to find matches using only the core columns
-                #matches = pd.DataFrame(columns=merged_df.columns)
-                #expanded_cols = []
-                #for assoc_acct_name in assoc_ref_maps:
-                #    # Subset merged df to include only the association records with the given account name
-                #    assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
-
-                #    assoc_rules = assoc_ref_maps[assoc_acct_name]
-                #    cols = []
-                #    for col in assoc_rules:
-                #        rule_entry = assoc_rules[col]
-
-                        # Select the columns that will be used to compare records
-                #        if rule_entry['Expand']:
-                #            if col not in expanded_cols:
-                #                expanded_cols.append(col)
-
-                #            continue
-
-                #        cols.append(col)
-
-                    # Find exact matches between account record and the associated account records using relevant cols
-                #    row_vals = [getattr(row, i) for i in cols]
-                #    acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
-                #    matches = matches.append(acct_matches)
-
-                #nmatch = matches.shape[0]
-                #if nmatch == 0:  # no matches found given the parameters supplied
-                #    continue
-
-                #elif nmatch == 1:  # potential match, add with a warning
-                #    nfound += 1
-
-                #    results = matches.iloc[0]
-                #    assoc_acct_name = results['_Account_']
-                #    ref_id = results['_RecordID_']
-                #    ref_type = results['_RecordType_']
-
-                #    logger.debug('BankRule {NAME}: associating {ACCT} record {REFID} to account record {ID} from an '
-                #                 'expanded search'.format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id,
-                #                                          ID=record_id))
-
-                    # Remove the found match from the dataframe of unmatched associated account records
-                #    merged_df.drop(matches.index.tolist()[0], inplace=True)
-
-                    # Determine appropriate warning for the expanded search
-                #    assoc_rules = assoc_ref_maps[assoc_acct_name]
-                #    warning = ["Potential false positive:"]
-                #    for column in expanded_cols:
-                #        if getattr(row, column) != results[column]:
-                #            alt_warn = 'values for expanded column {COL} do not match'.format(COL=column)
-                #            col_warning = assoc_rules[column].get('Description', alt_warn)
-                #            warning.append('- {}'.format(col_warning))
-
-                #    warning = '\n'.join(warning)
-
-                    # Insert the reference into the account records reference dataframe
-                #    acct.add_reference(record_id, ref_id, ref_type, approved=False, warning=warning)
-
-                    # Insert the reference into the associated account's reference dataframe
-                #    assoc_acct = self.fetch_account(assoc_acct_name)
-                #    assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=False, warning=warning)
-
-                #elif nmatch > 1:  # need to use the association parameters expand levels to find the best match
-                #    msg = 'found more than one expanded match for account {ACCT} record "{RECORD}" - searching for ' \
-                #          'the best match'.format(ACCT=self.current_account, RECORD=record_id)
-                #    logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    # Find the closest match by iterative expanded column inclusion
-
-                #    continue
-
         logger.info('BankRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
                     .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
 
         return True
 
-    def find_expanded_match(self, row, ref_df, ref_map, expand_level: int = 0):
+    def find_expanded_match(self, row, ref_df, ref_map, expand_level: int = 0, closest_match: list = None):
         """
         Attempt to find matching records using iterative expansion of reference columns.
         """
         results = pd.Series()
+        ref_df['_Warning_'] = None
 
         matches = pd.DataFrame(columns=ref_df.columns)
         expanded_cols = []
@@ -1078,7 +1007,8 @@ class BankRule:
             for col in assoc_rules:
                 rule_entry = assoc_rules[col]
 
-                # Select the columns that will be used to compare records
+                # Select the columns that will be used to compare records. All expanded search columns with level
+                # greater than current level will be left flexible
                 param_level = rule_entry.get('Level', 0)
                 if param_level > expand_level:
                     if col not in expanded_cols:
@@ -1090,11 +1020,39 @@ class BankRule:
 
             # Find exact matches between account record and the associated account records using relevant cols
             row_vals = [getattr(row, i) for i in cols]
+            print('searching for matches on columns {} at level {}'.format(cols, expand_level))
+            print(row_vals)
+            print(assoc_df[cols])
             acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
             matches = matches.append(acct_matches)
 
         nmatch = matches.shape[0]
-        if nmatch == 1:  # potential match, add with a warning
+        if nmatch == 0:  # if level > 0, return to the previous expand level and find the closest match
+            if expand_level > 0:
+                prev_level = expand_level - 1
+                expanded_cols = []
+                for assoc_acct_name in ref_map:
+                    assoc_rules = ref_map[assoc_acct_name]
+                    for col in assoc_rules:
+                        rule_entry = assoc_rules[col]
+
+                        param_level = rule_entry.get('Level', 0)
+                        if param_level == expand_level:
+                            if col not in expanded_cols:
+                                expanded_cols.append(col)
+
+                msg = 'no matches found for account {ACCT}, row {ROW} at expanded search level {L} - returning to ' \
+                      'previous search level matches to find for the closest match on columns {COLS}' \
+                    .format(ACCT=self.current_account, ROW=row.name, L=expand_level, COLS=expanded_cols)
+                logger.info('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                results = self.find_expanded_match(row, ref_df, ref_map, expand_level=prev_level,
+                                                   closest_match=expanded_cols)
+            else:
+                msg = 'no matches found for account {ACCT}, row {ROW} from an expanded search'\
+                    .format(ACCT=self.current_account, ROW=row.name)
+                logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+        elif nmatch == 1:  # potential match, add with a warning
             results = matches.iloc[0].copy()
 
             # Determine appropriate warning for the expanded search
@@ -1111,19 +1069,31 @@ class BankRule:
             warning = '\n'.join(warning)
             results['_Warning_'] = warning
 
-        elif nmatch > 1:  # need to use the association parameters expand levels to find the best match
-            msg = 'found more than one expanded match for account {ACCT} row "{ROW}" - searching for ' \
-                  'the best match'.format(ACCT=self.current_account, ROW=row.name)
+        elif nmatch > 1:  # need to increase specificity to get the best match by adding higher level expand columns
+            msg = 'found more than one expanded match for account {ACCT}, row {ROW} at search level {L} - ' \
+                  'searching for the best match'.format(ACCT=self.current_account, ROW=row.name, L=expand_level)
             logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             # Find the closest match by iterative expanded column inclusion
-            results = self.find_expanded_match(row, matches, ref_map, expand_level=expand_level+1)
+            if not closest_match:
+                results = self.find_expanded_match(row, matches, ref_map, expand_level=expand_level+1)
+            else:
+                print('finding closest match for row {ROW} using expand columns {COL}'.format(ROW=row.name, COL=closest_match))
+                results = nearest_match(row, matches, closest_match)
+                if results.empty:
+                    msg = 'multiple matches found for account {ACCT}, row {ROW} but enough specificity in the data ' \
+                          'to narrow it down to one match'.format(ACCT=self.current_account, ROW=row.name)
+                    logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                else:
+                    warning = 'association is the result of searching for the closest match on {}'\
+                        .format(','.join(closest_match))
+                    results['_Warning_'] = warning
 
         return results
 
-    def save_references(self):
+    def save(self):
         """
-        Save record associations to the reference database.
+        Save record modifications and new record associations to the database.
         """
         statements = {}
 
@@ -1255,9 +1225,9 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
+        success = user.write_db(sstrings, psets)
         print(statements)
-        success = True
+        #success = True
 
         return success
 
@@ -1998,9 +1968,9 @@ class BankAccount:
             print('BankAccount {}: finding nearest matches for all records with code {}:'.format(self.name, bc_code))
             print(bounced)
             deposits = df[df[type_col] == 0]
-            matches = nearest_match(bounced.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
-                                    deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
-                                    'Date', on='Amount', value_range=bc_entry.get('DateRange', 1))
+            matches = nearest_matches(bounced.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
+                                      deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}), 'Date',
+                                      on='Amount', value_range=bc_entry.get('DateRange', 1))
 
             print('BankAccount {}: all matched indices:'.format(self.name))
             print(matches)
@@ -2028,9 +1998,9 @@ class BankAccount:
         if mp_entry:
             withdrawals = df[df[type_col] == 1]
             deposits = df[df[type_col] == 0]
-            matches = nearest_match(deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
-                                    withdrawals.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
-                                    'Date', on='Amount', value_range=mp_entry.get('DateRange', 1))
+            matches = nearest_matches(deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
+                                      withdrawals.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}), 'Date',
+                                      on='Amount', value_range=mp_entry.get('DateRange', 1))
 
             print('BankAccount {}: all matched indices:'.format(self.name))
             print(matches)
@@ -2206,7 +2176,48 @@ class BankAccount:
         return True
 
 
-def nearest_match(df, ref_df, column, on: str = None, value_range: int = None):
+def nearest_match(row, ref_df, columns):
+    """
+    Find closest matches between dataframes on a shared column.
+
+    Arguments:
+        row (Series): series containing the data to compare to the reference dataframe.
+
+        ref_df (DataFrame): reference dataframe to match to the dataframe rows.
+
+        columns (list): name of the columns used to find the closest match.
+    """
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_integer_dtype = pd.api.types.is_integer_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    match = pd.Series()
+
+    diffs = 1
+    for column in columns:
+        dtype = ref_df[column].dtype
+        if not (is_float_dtype(dtype) or is_integer_dtype(dtype) or is_datetime_dtype(dtype)):
+            msg = 'match column "{COL}" must have a numeric or datatime data type'.format(COL=column)
+            logger.warning(msg)
+
+            continue
+
+        diffs = diffs * (ref_df[column] - row[column])
+
+    if not isinstance(diffs, pd.Series):
+        return match
+
+    print('product of differences are:')
+    print(diffs)
+
+    min_diff = diffs.abs().idxmin()
+    print('index of minimum is: {}'.format(min_diff))
+    print(ref_df)
+    match = ref_df.loc[min_diff]
+
+    return match
+
+
+def nearest_matches(df, ref_df, column, on: str = None, value_range: int = None):
     """
     Find closest matches between dataframes on a shared column.
 
@@ -2226,9 +2237,9 @@ def nearest_match(df, ref_df, column, on: str = None, value_range: int = None):
     is_float_dtype = pd.api.types.is_float_dtype
     is_integer_dtype = pd.api.types.is_integer_dtype
     is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    dtype = ref_df[column].dtype
 
     if value_range:
-        dtype = ref_df[column].dtype
         if is_datetime_dtype(dtype):
             deviation = datetime.timedelta(days=value_range)
         elif is_float_dtype(dtype) or is_integer_dtype(dtype):

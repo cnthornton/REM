@@ -830,8 +830,8 @@ class TableElement(RecordElement):
                given index.
         """
         df = self.df
-        dtypes = self.columns
-        header = list(dtypes)
+        #dtypes = self.columns
+        #header = list(dtypes)
 
         if isinstance(values, dict):
             values = pd.DataFrame(values)
@@ -1720,7 +1720,8 @@ class TableElement(RecordElement):
                     element_justification='c', vertical_alignment='t'),
              sg.Col(right_cols, pad=(0, 0), background_color=frame_col, justification='r',
                     element_justification='c', vertical_alignment='t')],
-            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=is_disabled,
+            #[sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=is_disabled,
+            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=False,
                                 button_color=(alt_col, border_col),
                                 disabled_button_color=(disabled_text_col, disabled_bg_col),
                                 tooltip='Apply table filters ({})'.format(filter_shortcut))]],
@@ -1955,16 +1956,16 @@ class TableElement(RecordElement):
         """
         Enable data table element actions.
         """
-        params = self.parameters
+        #params = self.parameters
         custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: enabling actions'.format(NAME=self.name))
 
         # Enable filter parameters
-        if len(params) > 0 and self.modifiers['filter'] is True:
-            # Enable the apply filters button
-            filter_key = self.key_lookup('Filter')
-            window[filter_key].update(disabled=False)
+        #if len(params) > 0 and self.modifiers['filter'] is True:
+        #    # Enable the apply filters button
+        #    filter_key = self.key_lookup('Filter')
+        #    window[filter_key].update(disabled=False)
 
         # Enable table modification buttons
         if custom:
@@ -1982,16 +1983,16 @@ class TableElement(RecordElement):
         """
         Disable data table element actions.
         """
-        params = self.parameters
+        #params = self.parameters
         custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: disabling table actions'.format(NAME=self.name))
 
         # Enable filter parameters
-        if len(params) > 0 and self.modifiers['filter'] is True:
-            # Disable the apply filters button
-            filter_key = self.key_lookup('Filter')
-            window[filter_key].update(disabled=True)
+        #if len(params) > 0 and self.modifiers['filter'] is True:
+        #    # Disable the apply filters button
+        #    filter_key = self.key_lookup('Filter')
+        #    window[filter_key].update(disabled=True)
 
         # Disable table modification buttons
         for custom_bttn in custom_bttns:
@@ -3020,7 +3021,7 @@ class RecordTable(TableElement):
         """
         Enable data table element actions.
         """
-        params = self.parameters
+        #params = self.parameters
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
         custom_bttns = self.custom_actions
@@ -3028,10 +3029,10 @@ class RecordTable(TableElement):
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
         # Enable filter parameters
-        if len(params) > 0 and self.modifiers['filter'] is True:
-            # Enable the apply filters button
-            filter_key = self.key_lookup('Filter')
-            window[filter_key].update(disabled=False)
+        #if len(params) > 0 and self.modifiers['filter'] is True:
+        #    # Enable the apply filters button
+        #    filter_key = self.key_lookup('Filter')
+        #    window[filter_key].update(disabled=False)
 
         # Enable table modification buttons
         window[delete_key].update(disabled=False)
@@ -3055,7 +3056,7 @@ class RecordTable(TableElement):
         """
         Disable data table element actions.
         """
-        params = self.parameters
+        #params = self.parameters
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
         custom_bttns = self.custom_actions
@@ -3063,10 +3064,10 @@ class RecordTable(TableElement):
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
 
         # Disable filter parameters
-        if len(params) > 0 and self.modifiers['filter'] is True:
-            # Disable the apply filters button
-            filter_key = self.key_lookup('Filter')
-            window[filter_key].update(disabled=True)
+        #if len(params) > 0 and self.modifiers['filter'] is True:
+        #    # Disable the apply filters button
+        #    filter_key = self.key_lookup('Filter')
+        #    window[filter_key].update(disabled=True)
 
         # Disable table modification buttons
         window[delete_key].update(disabled=True)
@@ -3529,7 +3530,7 @@ class ComponentTable(RecordTable):
         """
         Enable data table element actions.
         """
-        params = self.parameters
+        #params = self.parameters
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
@@ -3538,10 +3539,10 @@ class ComponentTable(RecordTable):
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
         # Enable filter parameters
-        if len(params) > 0 and self.modifiers['filter'] is True:
-            # Enable the apply filters button
-            filter_key = self.key_lookup('Filter')
-            window[filter_key].update(disabled=False)
+        #if len(params) > 0 and self.modifiers['filter'] is True:
+        #    # Enable the apply filters button
+        #    filter_key = self.key_lookup('Filter')
+        #    window[filter_key].update(disabled=False)
 
         # Enable table modification buttons
         window[add_key].update(disabled=False)
@@ -3568,7 +3569,7 @@ class ComponentTable(RecordTable):
         """
         Disable data table element actions.
         """
-        params = self.parameters
+        #params = self.parameters
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
@@ -3577,10 +3578,10 @@ class ComponentTable(RecordTable):
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
 
         # Disable filter parameters
-        if len(params) > 0 and self.modifiers['filter'] is True:
-            # Disable the apply filters button
-            filter_key = self.key_lookup('Filter')
-            window[filter_key].update(disabled=True)
+        #if len(params) > 0 and self.modifiers['filter'] is True:
+        #    # Disable the apply filters button
+        #    filter_key = self.key_lookup('Filter')
+        #    window[filter_key].update(disabled=True)
 
         # Disable table modification buttons
         window[add_key].update(disabled=True)
