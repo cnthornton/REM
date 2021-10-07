@@ -819,38 +819,6 @@ class TableElement(RecordElement):
 
         return df
 
-    def _update_row_values_new(self, index, values):
-        """
-        Update row values at the given dataframe index.
-
-        Arguments:
-            index (int): real index of the row to update.
-
-            values (DataFrame): single row dataframe containing row values to use to update the dataframe at the
-               given index.
-        """
-        df = self.df
-        #dtypes = self.columns
-        #header = list(dtypes)
-
-        if isinstance(values, dict):
-            values = pd.DataFrame(values)
-        elif isinstance(values, pd.Series):
-            values = values.to_frame().T
-
-        row_values = self.set_conditional_values(values)
-        shared_cols = row_values.index
-        orig_values = df.loc[index, shared_cols]
-        indices = orig_values.compare(row_values).index
-        edited = False
-        if len(indices) > 0:
-            df.loc[[index], shared_cols] = row_values
-            df.at[index, self.edited_column] = True
-            self.edited = True
-            edited = True
-
-        return edited
-
     def _update_row_values(self, index, values):
         """
         Update row values at the given dataframe index.
@@ -862,46 +830,31 @@ class TableElement(RecordElement):
                given index.
         """
         df = self.df
-        dtypes = self.columns
-        header = list(dtypes)
+        header = df.columns.tolist()
 
         if isinstance(values, dict):
-            values = pd.DataFrame(values)
-        elif isinstance(values, pd.Series):
-            values = values.to_frame().T
+            values = pd.Series(values)
 
-        row = df.iloc[index]
+        values.name = index
 
         row_values = self.set_conditional_values(values)
+        shared_cols = [i for i in row_values.columns if i in header]
+
+        new_values = row_values[shared_cols]
+        orig_values = df.loc[[index], shared_cols]
+        diffs = orig_values.compare(new_values, align_axis=0).columns
+
         edited = False
-        edited_cols = []
-        for column in row_values:  # iterate over row value columns
-            if column not in header:
-                msg = 'row value column "{COL}" not found in the dataframe header'.format(COL=column)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                continue
-
-            value = row_values[column].squeeze()  # reduce to scalar
-            col_value = settings.format_value(row[column], dtypes[column])
-            if value != col_value:
-                edited = True
-                edited_cols.append(column)
-
-                try:
-                    df.at[index, column] = value
-                except KeyError:
-                    continue
-                except ValueError as e:
-                    logger.error('DataTable {NAME}: failed to assign value {VAL} to column {COL} at index {IND} - '
-                                 '{ERR}'.format(NAME=self.name, VAL=value, COL=column, IND=index, ERR=e))
-
-        if edited:
+        if len(diffs) > 0:
+            df.loc[[index], diffs] = new_values[diffs]
             df.at[index, self.edited_column] = True
-            self.edited = True
+            edited = True
 
-            for column in edited_cols:
+            # Reset the datatype of the edited columns
+            for column in diffs:
                 df.loc[:, column] = self._set_column_dtype(df[column])
+
+            self.edited = True
 
         return edited
 
