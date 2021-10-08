@@ -475,8 +475,6 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
 
                 continue
 
-
-
     window.close()
     layout = None
     window = None
@@ -543,7 +541,7 @@ def parameter_window(account, win_size: tuple = None):
     for param_name in acct_param_entry:
         param_entry = acct_param_entry[param_name]
         try:
-            param_layout = param_entry['ElementType']
+            param_etype = param_entry['ElementType']
         except KeyError:
             msg = 'no element type specified for primary account {ACCT} parameter {PARAM}' \
                 .format(ACCT=primary_acct_name, PARAM=param_name)
@@ -551,23 +549,24 @@ def parameter_window(account, win_size: tuple = None):
 
             continue
 
-        if param_layout == 'dropdown':
+        if param_etype == 'dropdown':
             param_class = mod_param.DataParameterCombo
-        elif param_layout == 'input':
+        elif param_etype == 'input':
             param_class = mod_param.DataParameterInput
-        elif param_layout == 'range':
+        elif param_etype == 'range':
             param_class = mod_param.DataParameterRange
-        elif param_layout == 'checkbox':
+        elif param_etype == 'checkbox':
             param_class = mod_param.DataParameterCheckbox
         else:
             msg = 'unknown element type "{TYPE}" provided to Transaction account {ACCT} import ' \
-                  'parameter {PARAM}'.format(TYPE=param_layout, ACCT=primary_acct_name, PARAM=param_name)
+                  'parameter {PARAM}'.format(TYPE=param_etype, ACCT=primary_acct_name, PARAM=param_name)
             logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
             continue
 
         param = param_class(param_name, param_entry)
-        primary_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left', auto_size_desc=False))
+        primary_layout.append(
+            param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left', auto_size_desc=False))
         for element in param.elements:
             param_keys[element] = primary_acct_name
 
@@ -581,63 +580,55 @@ def parameter_window(account, win_size: tuple = None):
                                  metadata={'visible': True})])
 
     # Associated account parameters
-    discard_bttns = {}
-    for i, assoc_acct_name in enumerate(transactions):
-        print('association account is: {}'.format(assoc_acct_name))
-        param_group = assoc_acct_name
-        assoc_entry = transactions[assoc_acct_name]
-        assoc_title = assoc_entry['Title']
+    for i, pgroup_name in enumerate(transactions):  # iterate over parameter groups
+        pgroup_entry = transactions[pgroup_name]
+        pgroup_title = pgroup_entry['Title']
 
-        discard_key = '-Discard{}-'.format(i)
-        discard_bttns[discard_key] = assoc_acct_name
-        assoc_layout = [[sg.Col([[sg.Text(assoc_title, pad=(0, 0), font=bold_font, text_color=text_col,
-                                          background_color=frame_col)]],
-                                expand_x=True, background_color=frame_col, justification='l'),
-                         sg.Col([[sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, border_width=0,
-                                            pad=((0, pad_el * 2), 0), button_color=(text_col, frame_col),
-                                            tooltip='remove transaction account parameters')]],
-                                background_color=frame_col, justification='r')],
-                        [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, 0))]]
+        pgroup_layout = [[sg.Col([[sg.Text(pgroup_title, pad=(0, 0), font=bold_font, text_color=text_col,
+                                           background_color=frame_col)]],
+                                 expand_x=True, background_color=frame_col, justification='l')],
+                         [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, 0))]]
 
         # Create the import parameter objects and layouts for the associated account
-        assoc_params = assoc_entry['ImportParameters']
-        for assoc_param_name in assoc_params:
-            assoc_param_entry = assoc_params[assoc_param_name]
+        pgroup_params = pgroup_entry['ImportParameters']
+        for param_name in pgroup_params:
+            param_entry = pgroup_params[param_name]
             try:
-                param_layout = assoc_param_entry['ElementType']
+                param_etype = param_entry['ElementType']
             except KeyError:
-                msg = 'no element type specified for primary account {ACCT} parameter {PARAM}' \
-                    .format(ACCT=assoc_acct_name, PARAM=assoc_param_name)
+                msg = 'no element type specified for parameter group {GROUP} parameter {PARAM}' \
+                    .format(GROUP=pgroup_name, PARAM=param_name)
                 logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
                 continue
 
-            if param_layout in ('dropdown', 'combo'):
+            if param_etype in ('dropdown', 'combo'):
                 param_class = mod_param.DataParameterCombo
-            elif param_layout in ('input', 'date'):
+            elif param_etype in ('input', 'date'):
                 param_class = mod_param.DataParameterInput
-            elif param_layout in ('range', 'date_range'):
+            elif param_etype in ('range', 'date_range'):
                 param_class = mod_param.DataParameterRange
-            elif param_layout == 'checkbox':
+            elif param_etype == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
             else:
-                msg = 'unknown element type "{TYPE}" provided to Transaction account {ACCT} import ' \
-                      'parameter {PARAM}'.format(TYPE=param_layout, ACCT=assoc_acct_name, PARAM=assoc_param_name)
+                msg = 'unknown element type "{TYPE}" provided to parameter group {GROUP} parameter {PARAM}'\
+                    .format(TYPE=param_etype, GROUP=pgroup_name, PARAM=param_name)
                 logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
                 continue
 
-            param = param_class(assoc_param_name, assoc_param_entry)
-            assoc_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left',
-                                             auto_size_desc=False))
-            for element in param.elements:
-                param_keys[element] = assoc_acct_name
+            param = param_class(param_name, param_entry)
+            pgroup_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left',
+                                              auto_size_desc=False))
             try:
-                params[assoc_acct_name].append(param)
+                params[pgroup_name].append(param)
             except KeyError:
-                params[assoc_acct_name] = [param]
+                params[pgroup_name] = [param]
 
-        params_layout.append([sg.Col(assoc_layout, key='-{}-'.format(param_group), pad=(pad_h, pad_v),
+            for element in param.bindings:
+                param_keys[element] = pgroup_name
+
+        params_layout.append([sg.Col(pgroup_layout, key='-{}-'.format(pgroup_name), pad=(pad_h, pad_v),
                                      background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
 
     # Control elements
@@ -655,7 +646,7 @@ def parameter_window(account, win_size: tuple = None):
                    [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
                    [sg.Col(params_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, scrollable=True,
-                           vertical_scroll_only=True, expand_x=True, expand_y=True)],
+                           vertical_scroll_only=True, expand_x=True, expand_y=True, vertical_alignment='t')],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
                    [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
                ], key='-FRAME-', pad=(0, 0), expand_y=True, expand_x=True)]]
@@ -674,8 +665,8 @@ def parameter_window(account, win_size: tuple = None):
 
     window[height_key].set_size(size=(None, int(win_h)))
     window[width_key].set_size(size=(int(win_w), None))
-    for acct_name in params:
-        for param in params[acct_name]:
+    for pgroup in params:
+        for param in params[pgroup]:
             param.resize(window, size=(int(win_w - 40), None), pixels=True)
 
     window = center_window(window)
@@ -701,8 +692,8 @@ def parameter_window(account, win_size: tuple = None):
             window[height_key].set_size(size=(None, int(win_h)))
             window[width_key].set_size(size=(int(win_w), None))
 
-            for acct_name in params:
-                for param in params[acct_name]:
+            for pgroup in params:
+                for param in params[pgroup]:
                     param.resize(window, size=(int(win_w - 40), None), pixels=True)
 
             current_w, current_h = (win_w, win_h)
@@ -715,23 +706,23 @@ def parameter_window(account, win_size: tuple = None):
 
         if event == '-LOAD-':
             ready_to_save = True
-            for acct_name in params:
+            for pgroup in params:
                 # Ignore parameters from hidden accounts
-                if not window['-{}-'.format(acct_name)].metadata['visible']:
-                    param_values[acct_name] = None
+                if not window['-{}-'.format(pgroup)].metadata['visible']:
+                    param_values[pgroup] = None
 
                     continue
 
                 # Verify that required parameters have values
-                acct_params = params[acct_name]
+                acct_params = params[pgroup]
                 has_values = []
                 for acct_param in acct_params:
                     acct_param.value = acct_param.format_value(values)
 
                     if not acct_param.has_value():  # no value set for parameter
                         if acct_param.required:  # parameter is required, so notify user that value must be provided
-                            msg = 'missing value from required account {ACCT} parameter {PARAM}'\
-                                .format(ACCT=acct_name, PARAM=acct_param.name)
+                            msg = 'missing value from required account {ACCT} parameter {PARAM}' \
+                                .format(ACCT=pgroup, PARAM=acct_param.name)
                             logger.warning(msg)
                             popup_error(msg)
                             has_values.append(False)
@@ -741,9 +732,9 @@ def parameter_window(account, win_size: tuple = None):
                             continue
 
                     try:
-                        param_values[acct_name].append(acct_param)
+                        param_values[pgroup].append(acct_param)
                     except KeyError:
-                        param_values[acct_name] = [acct_param]
+                        param_values[pgroup] = [acct_param]
 
                 if not all(has_values):
                     ready_to_save = False
@@ -756,38 +747,57 @@ def parameter_window(account, win_size: tuple = None):
 
         # Associated account parameter events
         if event in param_keys:
-            # Get the account associated with the parameter key
-            event_acct = param_keys[event]
+            # Fetch the parameter corresponding to the window event element
+            event_pgroup = param_keys[event]
+            pgroup_params = params[event_pgroup]
+            event_param = mod_param.fetch_parameter(pgroup_params, event, by_key=True)
 
-            # Fetch the relevant account parameter
-            event_params = params[event_acct]
-            element_type = event[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in event_params]
+            # Run the parameter event associated with the window element key
+            event_param.run_event(window, event, values)
 
-            index = element_names.index(event)
-            parameter = event_params[index]
+            # Propagate parameter value to other pgroup parameters that are related by name and element type and that do
+            # not currently have values
+            if event_param.has_value():
+                print('checking for parameters related to pgroup {} parameter {} currently without values'.format(event_pgroup, event_param.name))
+                for pgroup in params:
+                    if pgroup == event_pgroup:
+                        continue
 
-            # Run the parameter events
-            parameter.run_event(window, event, values)
+                    related_params = mod_param.fetch_parameter(params[pgroup], event_param.name)
+                    if related_params:
+                        if not isinstance(related_params, list):
+                            related_params = [related_params]
+                        print('other parameter group {} has related params {}'.format(pgroup, related_params))
+                        for related_param in related_params:
+                            if not related_param.has_value() and related_param.etype == event_param.etype:
+                                related_key = related_param.key_lookup('Element')
+                                print('setting value {} for related parameter {} from pgroup {}'.format(event_param.value, related_param.name, pgroup))
+                                related_param.format_value({related_key: event_param.value})
+                                print('parameter {} from pgroup {} has new value {}'.format(related_param.name, pgroup, related_param.value))
+
+                                display_value = related_param.format_display()
+                                window[related_key].update(value=display_value)
+                            else:
+                                print('related parameter {} from pgroup {} already has parameter values or has different etype'.format(related_param.name, pgroup))
 
             continue
 
         # Hide account parameter groups removed by the user
-        if event in discard_bttns:
-            # Find the parameter group to hide
-            discard_pgroup = discard_bttns[event]
+        #if event in discard_bttns:
+        #    # Find the parameter group to hide
+        #    discard_pgroup = discard_bttns[event]
 
-            pgroup_key = '-{}-'.format(discard_pgroup)
-            if window[pgroup_key].metadata['visible'] is True:  # set to invisible and reset the parameters
-                logger.debug('resetting parameter group {PGROUP}'.format(PGROUP=discard_pgroup))
-                window[pgroup_key].update(visible=False)
-                window[pgroup_key].metadata['visible'] = False
-                window[pgroup_key].hide_row()
+        #    pgroup_key = '-{}-'.format(discard_pgroup)
+        #    if window[pgroup_key].metadata['visible'] is True:  # set to invisible and reset the parameters
+        #        logger.debug('resetting parameter group {PGROUP}'.format(PGROUP=discard_pgroup))
+        #        window[pgroup_key].update(visible=False)
+        #        window[pgroup_key].metadata['visible'] = False
+        #        window[pgroup_key].hide_row()
 
-                # Reset parameters in the parameter groups that are no longer visible
-                pgroup_params = params[discard_pgroup]
-                for pgroup_param in pgroup_params:
-                    pgroup_param.reset(window)
+        #        # Reset parameters in the parameter groups that are no longer visible
+        #        pgroup_params = params[discard_pgroup]
+        #        for pgroup_param in pgroup_params:
+        #            pgroup_param.reset(window)
 
     window.close()
     layout = None
@@ -902,7 +912,7 @@ def database_importer_window(win_size: tuple = None):
                 statements = record_entry.save_database_records(subset_df.replace({np.nan: None}),
                                                                 id_field=settings.id_field, export_columns=False)
             except Exception as e:
-                msg = 'failed to upload {TYPE} record entries to the database - {ERR}'\
+                msg = 'failed to upload {TYPE} record entries to the database - {ERR}' \
                     .format(TYPE=record_entry.name, ERR=e)
                 logger.exception(msg)
                 popup_error(msg)
@@ -1151,17 +1161,17 @@ def database_importer_window(win_size: tuple = None):
                             for date_col in date_cols:
                                 try:
                                     if offset_oper == '+':
-                                        final_df.loc[:, date_col] = final_df[date_col]\
+                                        final_df.loc[:, date_col] = final_df[date_col] \
                                             .apply(lambda x: datetime.datetime.strptime(x, date_format) -
                                                              relativedelta(years=+date_offset))
                                     else:
-                                        final_df.loc[:, date_col] = final_df[date_col]\
+                                        final_df.loc[:, date_col] = final_df[date_col] \
                                             .apply(lambda x: datetime.datetime.strptime(x, date_format) +
                                                              relativedelta(years=+date_offset))
 
                                 except Exception as e:
                                     print(final_df[date_col])
-                                    msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}'\
+                                    msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}' \
                                         .format(COL=date_col, ERR=e)
                                     popup_error(msg)
                                     logger.exception(msg)
