@@ -103,7 +103,7 @@ class BankRule:
 
             param = param_class(param_name, param_entry)
             self.parameters.append(param)
-            self.bindings.extend(param.event_bindings())
+            self.bindings.extend(param.bindings)
 
         try:
             accts = entry['Entries']

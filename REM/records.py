@@ -17,6 +17,7 @@ import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
 import REM.database as mod_db
 import REM.elements as mod_elem
+import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.client import logger, server_conn, settings, user
@@ -1227,9 +1228,9 @@ class DatabaseRecord:
 
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
-                          'DetailsFrame', 'Height', 'Width', 'DetailsTab', 'InfoTab', 'TG', 'FrameHeight',
-                          'FrameWidth']]
+                         ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
+                          'DetailsFrame', 'Height', 'Width', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG',
+                          'Header', 'Record')]
 
         # User access permissions
         try:
@@ -1386,6 +1387,8 @@ class DatabaseRecord:
                 report['Subsections'] = {}
 
             self.report = report
+
+        self._minimum_height = 0
 
     def key_lookup(self, component):
         """
@@ -2415,14 +2418,11 @@ class DatabaseRecord:
 
         return report_dict
 
-    def layout(self, win_size: tuple = None, view_only: bool = False, ugroup: list = None):
+    def layout(self, size, view_only: bool = False, ugroup: list = None):
         """
         Generate a GUI layout for the database record.
         """
-        if win_size:
-            width, height = win_size
-        else:
-            width, height = (mod_const.WIN_WIDTH * 0.8, mod_const.WIN_HEIGHT * 0.8)
+        width, height = size
 
         # Permissions
         editable = False if (view_only is True and self.new is False) else True
@@ -2439,10 +2439,18 @@ class DatabaseRecord:
         bold_font = mod_const.BOLD_HEADING_FONT
         main_font = mod_const.MAIN_FONT
 
-        pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
         pad_h = mod_const.HORZ_PAD
         pad_frame = mod_const.FRAME_PAD
+
+        bar_h = 22
+        header_h = 32
+
+        min_h = header_h + bar_h
+        self._minimum_height = min_h
+
+        tab_w = width - pad_frame * 2
+        tab_h = height - (header_h + bar_h + pad_frame * 2)
 
         # Layout elements
 
@@ -2455,21 +2463,26 @@ class DatabaseRecord:
             else:
                 left_layout += param.layout(padding=((0, pad_h), 0), auto_size_desc=True, size=(20, 1))
 
-        header_layout = [[sg.Col([left_layout], pad=(0, 0), background_color=bg_col, justification='l',
-                                 element_justification='l', expand_x=True),
-                          sg.Col([right_layout], background_color=bg_col, justification='r',
-                                 element_justification='r')]]
+        header_key = self.key_lookup('Header')
+        header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
+                                 sg.Col([left_layout], background_color=bg_col, justification='l',
+                                        element_justification='l', expand_x=True, vertical_alignment='c'),
+                                 sg.Col([right_layout], background_color=bg_col, justification='r',
+                                        element_justification='r', vertical_alignment='c')]],
+                               key=header_key, background_color=bg_col)
 
         # Create the layout for the record information panel
         sections = self.sections
 
         sections_layout = []
+        frame_h = 0
         for index, section_name in enumerate(sections):
             section_entry = sections[section_name]
 
             section_title = section_entry['Title']
             section_bttn_key = self.key_lookup('SectionBttn{}'.format(index))
-            section_header = [sg.Col([[sg.Text(section_title, pad=((0, pad_h), 0), background_color=frame_col,
+            section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
+                                       sg.Text(section_title, pad=((0, pad_h), 0), background_color=frame_col,
                                                font=bold_font),
                                        sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key,
                                                  disabled=False,
@@ -2477,6 +2490,8 @@ class DatabaseRecord:
                                                  metadata={'visible': True, 'disabled': False})
                                        ]], background_color=frame_col, expand_x=True)]
             sections_layout.append(section_header)
+
+            frame_h += bar_h
 
             section_elements = section_entry['Elements']
             section_layout = []
@@ -2495,20 +2510,27 @@ class DatabaseRecord:
                 element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=self.new,
                                                  level=self.level)]
                 section_layout.append(element_layout)
+                frame_h += element.dimensions()[1]
 
             section_panel_key = self.key_lookup('SectionFrame{}'.format(index))
             sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key, background_color=bg_col,
                                                   visible=True, expand_x=True, metadata={'visible': True}))])
 
-        height_key = self.key_lookup('Height')
-        width_key = self.key_lookup('Width')
+        #width_key = self.key_lookup('Width')
+        tab_key = self.key_lookup('DetailsTab')
+        col_key = self.key_lookup('DetailsCol')
+        #details_tab = sg.Tab('{:^40}'.format('Details'),
+        #                     [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)],
+        #                      [sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
+        #                       sg.Col(sections_layout, key=col_key, pad=(0, pad_v), background_color=bg_col,
+        #                              expand_y=True, expand_x=True, scrollable=True, vertical_scroll_only=True,
+        #                              vertical_alignment='t', element_justification='l')]],
+        #                     key=tab_key, background_color=bg_col)
         details_tab = sg.Tab('{:^40}'.format('Details'),
-                             [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)],
-                              [sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
-                               sg.Col(sections_layout, pad=(0, pad_v), background_color=bg_col, expand_y=True,
-                                      expand_x=True, scrollable=True, vertical_scroll_only=True,
-                                      vertical_alignment='t')]],
-                             key=self.key_lookup('DetailsTab'), background_color=bg_col)
+                             [[sg.Col(sections_layout, key=col_key, size=(tab_w, tab_h), pad=(0, pad_v),
+                                      background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
+                                      vertical_scroll_only=True, vertical_alignment='t', element_justification='l')]],
+                             key=tab_key, background_color=bg_col)
 
         # Create layout for record metadata
         markable = True if (self.permissions['mark'] in user_priv and self.new is False and view_only is False) \
@@ -2529,56 +2551,86 @@ class DatabaseRecord:
             metadata_visible = False
             annotation_layout = [[]]
 
+        meta_tab_key = self.key_lookup('MetaTab')
+        meta_key = self.key_lookup('MetaCol')
         info_tab = sg.Tab('{:^40}'.format('Metadata'),
-                          [[sg.Col(annotation_layout, pad=(0, pad_v), background_color=bg_col, scrollable=True,
-                                   vertical_scroll_only=True, expand_x=True, expand_y=True,
-                                   vertical_alignment='t')]],
-                          key=self.key_lookup('InfoTab'), background_color=bg_col, visible=metadata_visible)
+                          [[sg.Col(annotation_layout, key=meta_key, pad=(0, pad_v), size=(tab_w, tab_h),
+                                   background_color=bg_col, scrollable=True, vertical_scroll_only=True, expand_x=True,
+                                   expand_y=True, vertical_alignment='t', element_justification='l')]],
+                          key=meta_tab_key, background_color=bg_col, visible=metadata_visible)
 
-        main_layout = [[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
-                                    background_color=inactive_col, tab_background_color=inactive_col,
-                                    selected_background_color=bg_col, selected_title_color=select_col,
-                                    title_color=text_col, border_width=0, tab_location='topleft', font=main_font)]]
+        #main_layout = [[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
+        #                            background_color=inactive_col, tab_background_color=inactive_col,
+        #                            selected_background_color=bg_col, selected_title_color=select_col,
+        #                            title_color=text_col, border_width=0, tab_location='topleft', font=main_font)]]
+        main_layout = sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
+                                  background_color=inactive_col, tab_background_color=inactive_col,
+                                  selected_background_color=bg_col, selected_title_color=select_col,
+                                  title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
 
         # Pane elements must be columns
-        layout = [[sg.Col(header_layout, pad=(pad_frame, pad_v), background_color=bg_col, expand_x=True)],
-                  [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)]]
+        #layout = [[sg.Col(header_layout, key=self.key_lookup('Header'), pad=(pad_frame, pad_v), background_color=bg_col,
+        #                  expand_x=True)],
+        #          [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)]]
+        #height_key = self.key_lookup('Height')
+        #layout = [[sg.Canvas(key=height_key, size=(0, height)),
+        #           sg.Col([[header_layout], [main_layout]], pad=(pad_frame, pad_frame), background_color=bg_col,
+        #                  expand_x=True, expand_y=True)]]
+        record_key = self.key_lookup('Record')
+        layout = [[sg.Col([[header_layout], [main_layout]], key=record_key, pad=(pad_frame, pad_frame),
+                          background_color=bg_col, expand_x=True, expand_y=True)]]
 
         return layout
 
-    def resize(self, window, win_size: tuple = None):
+    def resize(self, window, size):
         """
         Resize the record elements.
         """
-        if win_size is not None:
-            width, height = win_size
-        else:
-            width, height = window.size
+        width, height = size
 
         logger.debug('Record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id(), W=width, H=height))
 
-        # Expand the frame width and height
-        width_key = self.key_lookup('Width')
-        window.bind("<Configure>", window[width_key].Widget.config(width=int(width - 40)))
+        # Expand the record containers
+        min_h = self._minimum_height
+        record_h = height if height > min_h else min_h
 
-        height_key = self.key_lookup('Height')
-        window.bind("<Configure>", window[height_key].Widget.config(height=int(height)))
+        print('the minimum height allowed for the record layout is: {}'.format(min_h))
+        print('the size of the record header is: {}'.format(window[self.key_lookup('Header')].get_size()))
+        #height_key = self.key_lookup('Height')
+        #window.bind("<Configure>", window[height_key].Widget.config(height=int(record_h)))
+
+        # Set the size of the record container
+        record_size = (width, record_h)
+        mod_lo.set_size(window, self.key_lookup('Record'), record_size)
+
+        # Set the size of the tab containers
+        bffr_h = 32 + 22 + 40
+        tab_size = (width - 40, height - bffr_h)
+        mod_lo.set_size(window, self.key_lookup('DetailsCol'), tab_size)
+        mod_lo.set_size(window, self.key_lookup('MetaCol'), tab_size)
 
         # Expand the size of the record elements
         for record_element in self.modules:
             etype = record_element.etype
             if etype == 'multiline':  # multiline data elements
-                elem_size = (width - 60, None)
+                elem_h = None
+                elem_w = width - 60
             elif etype == 'table':  # data table elements
-                elem_size = (width - 60, None)
+                elem_h = None
+                elem_w = width - 60
             elif etype == 'refbox':  # data table elements
-                elem_size = (width - 62, 40)
+                elem_h = mod_const.REFBOX_HEIGHT
+                elem_w = width - 62
             elif etype == 'component_table':
-                elem_size = (width - 64, int(height * 0.2))  # each component table has height 20% of window height
+                elem_h = None
+                elem_w = width - 64
             else:  # data element types or element reference
-                elem_size = (int(width * 0.5), None)
+                elem_h = None
+                elem_w = int(width * 0.5)
 
-            record_element.resize(window, size=elem_size)
+            elem_size = (elem_w, elem_h)
+            elem_size = record_element.resize(window, size=elem_size)
+            print('size of record element {} is: {}'.format(record_element.name, elem_size))
 
     def collapse_expand(self, window, index: int = 0):
         """

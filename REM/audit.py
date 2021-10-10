@@ -112,11 +112,10 @@ class AuditRule:
 
             param = param_class(param_name, param_entry)
             self.parameters.append(param)
-            self.bindings.extend(param.event_bindings())
+            self.bindings.extend(param.bindings)
 
         self.transactions = []
         try:
-            #transaction_entries = entry['Tabs']
             transaction_entries = entry['AuditTransactions']
         except KeyError:
             msg = 'AuditRule {NAME}: missing required parameter "AuditTransactions"'.format(NAME=name)
@@ -133,7 +132,6 @@ class AuditRule:
 
         try:
             records = entry['AuditRecords']
-            #records = entry['Summary']['Tabs']
         except KeyError:
             msg = 'missing required parameter "AuditRecords"'
             logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -640,7 +638,7 @@ class AuditRule:
         for tab in self.records:
             tab_key = tab.key_lookup('Tab')
             tab_title = tab.title
-            tab_layout = tab.record.layout(win_size=(tab_width, tab_height), ugroup=user.access_permissions())
+            tab_layout = tab.record.layout((tab_width, tab_height), ugroup=user.access_permissions())
             record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col,
                                       metadata={'visible': True, 'disabled': False}))
 
@@ -732,13 +730,13 @@ class AuditRule:
             transaction.resize_elements(window, size=(tab_width, tab_height))
 
         # Resize summary audit record tabs
-        #record_h = tab_height - 94
-        record_h = tab_height - 94
+        record_h = tab_height - 200
+        #record_h = tab_height
         record_w = tab_width
 
         records = self.records
         for audit_record in records:
-            audit_record.record.resize(window, win_size=(record_w, record_h))
+            audit_record.record.resize(window, (record_w, record_h))
 
     def reset_rule(self, window, current: bool = False):
         """

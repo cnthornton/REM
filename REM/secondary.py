@@ -218,7 +218,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     if win_size:
         width, height = win_size
     else:
-        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+        width, height = (int(mod_const.WIN_WIDTH * 0.2), int(mod_const.WIN_HEIGHT))
 
     record_id = record.record_id()
 
@@ -274,21 +274,33 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
                                   tooltip='Save record changes to the database')]]
 
     # Window layout
-    bffr_height = 240  # window height minus space reserved for the title and buttons
-    height_key = '-HEIGHT-'
-    layout = [[sg.Col([[sg.Canvas(key=height_key, size=(1, height))]]),
-               sg.Col([
-                   [sg.Col(title_layout, background_color=header_col, expand_x=True)],
-                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                   [sg.Col(record.layout(view_only=view_only),
-                           pad=(0, 0), background_color=bg_col, expand_x=True)],
-                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-                   [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
-               ], pad=(0, 0), expand_y=True, expand_x=True)]]
+    bffr_height = 100  # window height minus space reserved for the title and buttons
+    #height_key = '-HEIGHT-'
+    #layout = [[sg.Col([[sg.Canvas(key=height_key, size=(1, height))]]),
+    #           sg.Col([
+    #               [sg.Col(title_layout, background_color=header_col, expand_x=True)],
+    #               [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+    #               [sg.Col(record.layout((width, height-bffr_height), view_only=view_only),
+    #                       background_color=bg_col, expand_x=True)],
+    #               [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+    #               [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
+    #           ], pad=(0, 0), expand_y=True, expand_x=True)]]
+    layout = [[sg.Col(title_layout, key='-TITLE-', background_color=header_col, expand_x=True)],
+              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+              [sg.Col(record.layout((width, height-bffr_height), view_only=view_only), key='-RECORDS-',
+                      background_color=bg_col, expand_x=True)],
+              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+              [sg.Col(bttn_layout, key='-BUTTONS-', pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]]
 
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
     window.hide()
+
+    print('record initialized with size: {}'.format((width, height-bffr_height)))
+    print('title bar has size: {}'.format(window['-TITLE-'].get_size()))
+    print('buttons have size: {}'.format(window['-BUTTONS-'].get_size()))
+    print('record column has size: {}'.format(window['-RECORDS-'].get_size()))
+    print('separators should have combined size of 2')
 
     # Bind keys to events
     window = settings.set_shortcuts(window, hk_groups=['Record', 'Navigation'])
@@ -303,9 +315,12 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
     win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
 
-    record.resize(window, win_size=(win_w, win_h - bffr_height))
+    #window.bind("<Configure>", window[height_key].Widget.config(height=win_h))
+
+    record_w = win_w
+    record_h = int(win_h - bffr_height)
+    record.resize(window, (record_w, record_h))
     record.update_display(window)
-    window.bind("<Configure>", window[height_key].Widget.config(height=int(win_h)))
 
     # Center the record window
     window.un_hide()
@@ -333,8 +348,10 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            window.bind("<Configure>", window[height_key].Widget.config(height=int(win_h)))
-            record.resize(window, win_size=(win_w, win_h - bffr_height))
+            #window.bind("<Configure>", window[height_key].Widget.config(height=win_h))
+            record_w = win_w
+            record_h = int(win_h - bffr_height)
+            record.resize(window, (record_w, record_h))
 
             current_w, current_h = (win_w, win_h)
 
@@ -1970,7 +1987,6 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     bg_col = mod_const.ACTION_COL
     header_col = mod_const.HEADER_COL
 
-    row_rate = 50
     tbl_pad = (pad_frame * 2) + 8  # padding on both sides of the table
 
     # GUI layout
@@ -2023,12 +2039,12 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
         win_w = int(screen_w * 0.8)
         win_h = int(screen_h * 0.8)
 
-    other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] \
-              + window['-PARAMS-'].get_size()[1]
+    other_h = (30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] +
+               window['-PARAMS-'].get_size()[1])
 
     tbl_h = win_h - other_h
     tbl_w = win_w - tbl_pad
-    table.resize(window, size=(tbl_w, tbl_h), row_rate=row_rate)
+    table.resize(window, size=(tbl_w, tbl_h))
 
     window.un_hide()
     window = center_window(window)
@@ -2054,7 +2070,7 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             # Update sizable elements
             tbl_w = win_w - tbl_pad
             tbl_h = win_h - other_h
-            table.resize(window, size=(tbl_w, tbl_h), row_rate=row_rate)
+            table.resize(window, size=(tbl_w, tbl_h))
 
             current_w, current_h = (win_w, win_h)
 

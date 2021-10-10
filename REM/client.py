@@ -1051,8 +1051,8 @@ class SettingsManager:
         """
         Return a tuple of all supported dtypes.
         """
-        dtypes = self.supported_float_dtypes + self.supported_int_dtypes + self.supported_bool_dtypes + \
-                 self.supported_date_dtypes + self.supported_str_dtypes + self.supported_cat_dtypes
+        dtypes = (self.supported_float_dtypes + self.supported_int_dtypes + self.supported_bool_dtypes +
+                  self.supported_date_dtypes + self.supported_str_dtypes + self.supported_cat_dtypes)
 
         return tuple(set(dtypes))
 
@@ -1060,9 +1060,6 @@ class SettingsManager:
         """
         Set the data type of the provided value.
         """
-        if pd.isna(value) or value == '':
-            return None
-
         cnvrt_failure_msg = 'failed to format value "{VAL}" as "{DTYPE}" - {ERR}'
         if dtype in self.supported_float_dtypes:
             try:
@@ -1109,6 +1106,9 @@ class SettingsManager:
         """
         Format a value as a boolean.
         """
+        if pd.isna(value) or value == '':
+            return False
+
         if isinstance(value, bool):
             value_fmt = value
         else:
@@ -1129,8 +1129,11 @@ class SettingsManager:
         """
         Format a value as an integer.
         """
-        group_sep = group_sep if group_sep else settings.thousands_sep
-        dec_sep = dec_sep if dec_sep else settings.decimal_sep
+        group_sep = group_sep if group_sep else self.thousands_sep
+        dec_sep = dec_sep if dec_sep else self.decimal_sep
+
+        if pd.isna(value) or value == '':
+            return None
 
         try:
             value_fmt = int(value)
@@ -1149,8 +1152,11 @@ class SettingsManager:
         """
         Format a value as a float.
         """
-        group_sep = group_sep if group_sep else settings.thousands_sep
-        dec_sep = dec_sep if dec_sep else settings.decimal_sep
+        group_sep = group_sep if group_sep else self.thousands_sep
+        dec_sep = dec_sep if dec_sep else self.decimal_sep
+
+        if pd.isna(value) or value == '':
+            return None
 
         try:
             value_fmt = float(value)
@@ -1171,6 +1177,9 @@ class SettingsManager:
         """
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         date_format = self.format_date_str(date_format) if date_format else self.date_format
+
+        if pd.isna(value) or value == '':
+            return None
 
         if isinstance(value, str):
             try:
