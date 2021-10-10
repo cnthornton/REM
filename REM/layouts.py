@@ -8,7 +8,21 @@ import REM.data_manipulation as mod_dm
 from REM.client import logger, settings, user
 
 
-# Schema Layout Classes
+# Modifier functions
+def set_size(window, element_key, size):
+    """
+    Set new size for container-like elements.
+    """
+    options = {'width': size[0], 'height': size[1]}
+
+    element = window[element_key]
+    if element.Scrollable or element.Size != (None, None):
+        element.Widget.canvas.configure(**options)
+        element.contents_changed()
+    else:
+        element.Widget.pack_propagate(0)
+        element.set_size(size)
+
 
 # GUI Element Functions
 def B1(*args, **kwargs):
