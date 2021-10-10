@@ -63,6 +63,8 @@ UNDERLINE_FONT = ('Arial', 12, 'underline')
 WIN_HEIGHT = 600  # 500 pixels
 WIN_WIDTH = 800  # 800 pixels
 
+# Record Elements
+
 # Tables
 TBL_WIDTH = 120  # default table width in characters
 TBL_WIDTH_PX = 1080  # default table width in pixels
@@ -75,7 +77,16 @@ TBL_HEADER_COL = '#EFF2F4'  # table header color: light blue
 TBL_SELECT_COL = '#B3B3B3'  # table selected row color: medium-dark gray
 TBL_ERROR_COL = '#FF6C5C'  # default color for rows containing errors: red
 
-# Icon base64 images
+# Reference boxes
+REFBOX_HEIGHT = 82
+REFBOX_WIDTH = 120
+
+# Data Elements
+DE_HEIGHT = 52
+DE_WIDTH = 20
+MULTI_HEIGHT = 78
+
+# Icons (base64 images)
 REPORT_ICON = b'iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAYAAACM/rhtAAALvnpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4aWYAAHjarZlpkuO6EYT' \
               b'/4xQ+ArbCchysEb6Bj++vAEqt7pl57znCo2hRJEEslVmZBY5Z//n3Nv/iX4jWmii5pJqS5V+ssfrGj2Lvv3q+nY3n+/zzr3vu' \
               b'+3XzvuG5FDiGe5rb075xXb4eePfTv183pbxHuh09N14dBh3Z82N+TpLr/l538emorvsj1ZI/p9r9PY6n4ZnK89etjc' \

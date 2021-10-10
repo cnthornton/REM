@@ -352,7 +352,7 @@ class TableElement(RecordElement):
                     if param_obj.name in self.columns:
                         self.parameters.append(param_obj)
                         # self.elements += param_obj.elements
-                        self.bindings.extend(param_obj.event_bindings())
+                        self.bindings.extend(param_obj.bindings)
                     else:
                         logger.warning('DataTable {NAME}: filter parameters "{PARAM}" must be listed in '
                                        'the table columns'.format(NAME=name, PARAM=param))
@@ -2003,29 +2003,40 @@ class TableElement(RecordElement):
         # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
         self.update_display(window)
 
-    def resize(self, window, size: tuple = None, row_rate: int = None):
+    def dimensions(self):
+        """
+        Return the current dimensions of the element.
+        """
+        tbl_width, nrow = self._dimensions
+        width = tbl_width + 16
+
+        height_offset = self._height_offset
+        row_h = mod_const.TBL_ROW_HEIGHT
+        height = (nrow * row_h) + height_offset + row_h  # add height offset and header col
+
+        return (width, height)
+
+    def resize(self, window, size: tuple = None):
         """
         Resize the table element.
         """
-        if size is not None:
+        current_w, current_h = self.dimensions()
+        if size:
             width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
         else:
-            width, height = window.size
+            new_w, new_h = (current_w, current_h)
 
-        current_dimensions = self._dimensions
         height_offset = self._height_offset
-        # row_h = row_h if row_h is not None else 80
-        row_h = row_rate if row_rate is not None else mod_const.TBL_ROW_HEIGHT
+        row_h = mod_const.TBL_ROW_HEIGHT
         default_nrow = self.nrow
 
         logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
-                     .format(TBL=self.name, W=width, H=height))
+                     .format(TBL=self.name, W=new_w, H=new_h))
 
         # Resize the column widths
-        if width:
-            tbl_width = width - 16  # approximate size of the table scrollbar and borders
-        else:
-            tbl_width = current_dimensions[0]
+        tbl_width = new_w - 16  # approximate size of the table scrollbar and borders
 
         #print('height allocated to the table in pixels: {}'.format(height))
         #print('height offset size in pixels: {}'.format(height_offset))
@@ -2039,20 +2050,16 @@ class TableElement(RecordElement):
         #print('current size of the table element: {}'.format(window[self.key_lookup('Element')].get_size()))
         #print('current table dimensions are: {}'.format(current_dimensions))
 
-        # Expand 1 row every N-pixel increase in window size
-        if height:
-            # Calculate the number of table rows to display based on the desired height of the table.  The desired
-            # height allocated to the data table minus the offset height composed of the heights of all the accessory
-            # elements, such as the title bar, actions, bar, summary panel, etc., minus the height of the header.
+        # Calculate the number of table rows to display based on the desired height of the table.  The desired
+        # height allocated to the data table minus the offset height composed of the heights of all the accessory
+        # elements, such as the title bar, actions, bar, summary panel, etc., minus the height of the header.
 
-            #print('projected new height of the table element: {}'.format(tbl_height))
-            tbl_height = height - height_offset - row_h
+        #print('projected new height of the table element: {}'.format(tbl_height))
+        tbl_height = new_h - height_offset - row_h
 
-            projected_nrows = int((tbl_height - row_h) / row_h)
-            nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
-            print('number of rows to display based on table height and row height: {}'.format(nrows))
-        else:
-            nrows = current_dimensions[1]
+        projected_nrows = int((tbl_height - row_h) / row_h)
+        nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
+        print('number of rows to display based on table height and row height: {}'.format(nrows))
 
         self._dimensions = (tbl_width, nrows)
 
@@ -2098,6 +2105,8 @@ class TableElement(RecordElement):
         # Fit the summary table to the frame
         if self.summary_rules:
             self._update_column_widths(window, width, summary=True)
+
+        return window[self.key_lookup('Table')].get_size()
 
     def append(self, add_df):
         """
@@ -3939,6 +3948,8 @@ class ReferenceBox(RecordElement):
         self.approved = False
         self.referenced = False
 
+        self._dimensions = (mod_const.REFBOX_WIDTH, mod_const.REFBOX_HEIGHT)
+
     def reset(self, window):
         """
         Reset the reference box to default.
@@ -4036,28 +4047,15 @@ class ReferenceBox(RecordElement):
 
         return update_event
 
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the reference box element.
-        """
-        if size is None:
-            width = int(window.size[0] * 0.5 / 11)
-            height = 40
-        else:
-            width, height = size
-
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(width, None))
-
-        height_key = self.key_lookup('Height')
-        window[height_key].set_size(size=(None, height))
-
-    def layout(self, size: tuple = (200, 40), padding: tuple = (0, 0), tooltip: str = None, editable: bool = True,
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
         """
         GUI layout for the reference box element.
         """
+        size = self._dimensions if not size else size
+        self._dimensions = size
         width, height = size
+
         is_approved = self.approved
         aliases = self.aliases
         modifiers = self.modifiers
@@ -4109,13 +4107,11 @@ class ReferenceBox(RecordElement):
                                 sg.Image(data=mod_const.LINKED_ICON, key=link_key, visible=hl_vis,
                                          pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
-                                                                                                      not in aliases else
-                                                  aliases['IsHardLink'])),
+                                                  not in aliases else aliases['IsHardLink'])),
                                 sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
                                          pad=(0, (0, pad_v)), background_color=bg_col,
                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
-                                                                                                   not in aliases else
-                                                  aliases['IsParentChild']))],
+                                                  not in aliases else aliases['IsParentChild']))],
                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
                                         enable_events=can_open, text_color=select_text_col, font=font,
                                         background_color=bg_col,
@@ -4141,9 +4137,37 @@ class ReferenceBox(RecordElement):
         width_key = self.key_lookup('Width')
         layout = sg.Frame('', [[sg.Canvas(key=width_key, size=(width, 0))], elem_layout],
                           key=frame_key, pad=padding, background_color=bg_col, relief='raised', visible=self.referenced,
-                          metadata={'deleted': False, 'name': self.name}, tooltip=warnings)
+                          metadata={'deleted': False, 'name': self.name}, tooltip=warnings, vertical_alignment='c')
 
         return layout
+
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the reference box element.
+        """
+        current_w, current_h = self.dimensions()
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+        else:
+            new_w, new_h = (current_w, current_h)
+
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(new_w, None))
+
+        height_key = self.key_lookup('Height')
+        window[height_key].set_size(size=(None, new_h))
+
+        self._dimensions = (new_w, new_h)
+
+        return window[self.key_lookup('Frame')].get_size()
+
+    def dimensions(self):
+        """
+        Return the current dimensions of the element.
+        """
+        return self._dimensions
 
     def update_display(self, window):
         """
@@ -4524,6 +4548,7 @@ class DataElement(RecordElement):
             self.default = None
 
         # Dynamic variables
+        self._dimensions = (mod_const.DE_WIDTH, mod_const.DE_HEIGHT)
         self.value = self.default
 
         logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
@@ -4571,21 +4596,6 @@ class DataElement(RecordElement):
 
         # Update the element display
         self.update_display(window)
-
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the display element.
-        """
-        if not size:
-            width = 200  # default size in characters * 10
-            height = 1
-        else:
-            width, height = size
-
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(width, height))
-        window[elem_key].expand(expand_x=True)
 
     def run_event(self, window, event, values):
         """
@@ -4699,7 +4709,7 @@ class DataElement(RecordElement):
         window[elem_key].bind('<Return>', '+RETURN+')
         window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
 
-    def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), tooltip: str = None, editable: bool = True,
+    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
         """
         GUI layout for the data element.
@@ -4707,10 +4717,14 @@ class DataElement(RecordElement):
         modifiers = self.modifiers
 
         is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
-                                self.etype != 'text' and level < 2 else True)
+                       self.etype != 'text' and level < 2 else True)
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
+
+        size = self._dimensions if not size else size
+        width, height = size
+        self._dimensions = size
 
         background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
@@ -4780,7 +4794,7 @@ class DataElement(RecordElement):
         # Element layout
         width_key = self.key_lookup('Width')
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-                                  self.element_layout(size=size, bg_col=bg_col, is_disabled=is_disabled)],
+                                  self.element_layout(size=(width, 1), bg_col=bg_col, is_disabled=is_disabled)],
                                  background_color=bg_col)]
 
         # Layout
@@ -4792,7 +4806,7 @@ class DataElement(RecordElement):
 
         return layout
 
-    def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
+    def element_layout(self, size: tuple = None, bg_col: str = None, is_disabled: bool = True):
         """
         Generate the layout for the data component of the data element.
         """
@@ -4808,6 +4822,33 @@ class DataElement(RecordElement):
                           relief='sunken', metadata={'name': self.name, 'disabled': is_disabled})]
 
         return layout
+
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the display element.
+        """
+        current_w, current_h = self.dimensions()
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+        else:
+            new_w, new_h = (current_w, current_h)
+
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(new_w, None))
+        window[elem_key].expand(expand_x=True)
+
+        self._dimensions = (new_w, new_h)
+
+        return window[self.key_lookup('Frame')].get_size()
+
+    def dimensions(self):
+        """
+        Return the current dimensions of the element.
+        """
+        return self._dimensions
 
     def update_display(self, window):
         """
@@ -5368,6 +5409,8 @@ class ElementReference(RecordElement):
             self.default = None
 
         # Dynamic attributes
+        self._dimensions = (mod_const.DE_WIDTH, mod_const.DE_HEIGHT)
+
         self.value = self.default
         logger.debug('ElementReference {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value '
                      '{DEF} and formatted value {VAL}'
@@ -5392,21 +5435,6 @@ class ElementReference(RecordElement):
         display_value = self.format_display()
         window[self.key_lookup('Element')].update(value=display_value)
 
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the display element.
-        """
-        if not size:
-            width = 200  # default size in characters * 10
-            height = 1
-        else:
-            width, height = size
-
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(width, height))
-        window[elem_key].expand(expand_x=True)
-
     def run_event(self, window, event, values):
         """
         Run an element reference event.
@@ -5428,7 +5456,7 @@ class ElementReference(RecordElement):
         elem_key = self.key_lookup('Element')
         window[elem_key].bind('<Button-1>', '+LCLICK+')
 
-    def layout(self, padding: tuple = (0, 0), size: tuple = (20, 1), tooltip: str = None, editable: bool = True,
+    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
         """
         GUI layout for the record element.
@@ -5439,6 +5467,10 @@ class ElementReference(RecordElement):
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
+
+        size = self._dimensions if not size else size
+        width, height = size
+        self._dimensions = size
 
         background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
@@ -5481,9 +5513,10 @@ class ElementReference(RecordElement):
         elem_key = self.key_lookup('Element')
         display_value = self.format_display()
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-                                  [sg.Text(display_value, key=elem_key, size=size, pad=(0, 0), background_color=bg_col,
-                                           text_color=text_col, font=font, enable_events=True, border_width=1,
-                                           relief='sunken', metadata={'name': self.name, 'disabled': is_disabled})]],
+                                  [sg.Text(display_value, key=elem_key, size=(width, 1), pad=(0, 0),
+                                           background_color=bg_col, text_color=text_col, font=font, enable_events=True,
+                                           border_width=1, relief='sunken',
+                                           metadata={'name': self.name, 'disabled': is_disabled})]],
                                  background_color=bg_col)]
 
         # Layout
@@ -5494,6 +5527,33 @@ class ElementReference(RecordElement):
         layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
 
         return layout
+
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the display element.
+        """
+        current_w, current_h = self.dimensions()
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+        else:
+            new_w, new_h = (current_w, current_h)
+
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(new_w, None))
+        window[elem_key].expand(expand_x=True)
+
+        self._dimensions = (new_w, new_h)
+
+        return window[self.key_lookup('Frame')].get_size()
+
+    def dimensions(self):
+        """
+        Return the current dimensions of the element.
+        """
+        return self._dimensions
 
     def format_value(self, values):
         """
