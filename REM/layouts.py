@@ -16,12 +16,17 @@ def set_size(window, element_key, size):
     options = {'width': size[0], 'height': size[1]}
 
     element = window[element_key]
-    if element.Scrollable or element.Size != (None, None):
-        element.Widget.canvas.configure(**options)
-        element.contents_changed()
-    else:
-        element.Widget.pack_propagate(0)
-        element.set_size(size)
+    try:
+        if element.Scrollable or element.Size != (None, None):
+            element.Widget.canvas.configure(**options)
+            element.contents_changed()
+        else:
+            element.Widget.pack_propagate(0)
+            element.set_size(size)
+    except AttributeError:
+        window[element_key].set_size(size)
+
+    window.refresh()
 
 
 # GUI Element Functions
