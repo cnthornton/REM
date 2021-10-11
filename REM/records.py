@@ -1389,6 +1389,7 @@ class DatabaseRecord:
             self.report = report
 
         self._minimum_height = 0
+        self._padding = (0, 0)
 
     def key_lookup(self, component):
         """
@@ -2418,7 +2419,7 @@ class DatabaseRecord:
 
         return report_dict
 
-    def layout(self, size, view_only: bool = False, ugroup: list = None):
+    def layout(self, size, padding: tuple = None, view_only: bool = False, ugroup: list = None):
         """
         Generate a GUI layout for the database record.
         """
@@ -2439,9 +2440,12 @@ class DatabaseRecord:
         bold_font = mod_const.BOLD_HEADING_FONT
         main_font = mod_const.MAIN_FONT
 
+        pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
-        pad_h = mod_const.HORZ_PAD
-        pad_frame = mod_const.FRAME_PAD
+
+        padding = self._padding if not padding else padding
+        self._padding = padding
+        pad_w, pad_h = padding
 
         bar_h = 22
         header_h = 32
@@ -2449,8 +2453,8 @@ class DatabaseRecord:
         min_h = header_h + bar_h
         self._minimum_height = min_h
 
-        tab_w = width - pad_frame * 2
-        tab_h = height - (header_h + bar_h + pad_frame * 2)
+        tab_w = width - pad_w * 2
+        tab_h = height - (header_h + bar_h + pad_h * 2)
 
         # Layout elements
 
@@ -2459,9 +2463,9 @@ class DatabaseRecord:
         right_layout = []
         for param in self.headers:
             if param.justification == 'right':
-                right_layout += param.layout(padding=((0, pad_h), 0), auto_size_desc=True, size=(20, 1))
+                right_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
             else:
-                left_layout += param.layout(padding=((0, pad_h), 0), auto_size_desc=True, size=(20, 1))
+                left_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
 
         header_key = self.key_lookup('Header')
         header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
@@ -2482,7 +2486,7 @@ class DatabaseRecord:
             section_title = section_entry['Title']
             section_bttn_key = self.key_lookup('SectionBttn{}'.format(index))
             section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
-                                       sg.Text(section_title, pad=((0, pad_h), 0), background_color=frame_col,
+                                       sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col,
                                                font=bold_font),
                                        sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key,
                                                  disabled=False,
@@ -2516,16 +2520,8 @@ class DatabaseRecord:
             sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key, background_color=bg_col,
                                                   visible=True, expand_x=True, metadata={'visible': True}))])
 
-        #width_key = self.key_lookup('Width')
         tab_key = self.key_lookup('DetailsTab')
         col_key = self.key_lookup('DetailsCol')
-        #details_tab = sg.Tab('{:^40}'.format('Details'),
-        #                     [[sg.Canvas(size=(width, 0), key=width_key, background_color=bg_col)],
-        #                      [sg.Canvas(size=(0, height), key=height_key, background_color=bg_col),
-        #                       sg.Col(sections_layout, key=col_key, pad=(0, pad_v), background_color=bg_col,
-        #                              expand_y=True, expand_x=True, scrollable=True, vertical_scroll_only=True,
-        #                              vertical_alignment='t', element_justification='l')]],
-        #                     key=tab_key, background_color=bg_col)
         details_tab = sg.Tab('{:^40}'.format('Details'),
                              [[sg.Col(sections_layout, key=col_key, size=(tab_w, tab_h), pad=(0, pad_v),
                                       background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
@@ -2559,25 +2555,14 @@ class DatabaseRecord:
                                    expand_y=True, vertical_alignment='t', element_justification='l')]],
                           key=meta_tab_key, background_color=bg_col, visible=metadata_visible)
 
-        #main_layout = [[sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
-        #                            background_color=inactive_col, tab_background_color=inactive_col,
-        #                            selected_background_color=bg_col, selected_title_color=select_col,
-        #                            title_color=text_col, border_width=0, tab_location='topleft', font=main_font)]]
         main_layout = sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
                                   background_color=inactive_col, tab_background_color=inactive_col,
                                   selected_background_color=bg_col, selected_title_color=select_col,
                                   title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
 
         # Pane elements must be columns
-        #layout = [[sg.Col(header_layout, key=self.key_lookup('Header'), pad=(pad_frame, pad_v), background_color=bg_col,
-        #                  expand_x=True)],
-        #          [sg.Col(main_layout, pad=(pad_frame, (0, pad_frame)), background_color=bg_col, expand_x=True)]]
-        #height_key = self.key_lookup('Height')
-        #layout = [[sg.Canvas(key=height_key, size=(0, height)),
-        #           sg.Col([[header_layout], [main_layout]], pad=(pad_frame, pad_frame), background_color=bg_col,
-        #                  expand_x=True, expand_y=True)]]
         record_key = self.key_lookup('Record')
-        layout = [[sg.Col([[header_layout], [main_layout]], key=record_key, pad=(pad_frame, pad_frame),
+        layout = [[sg.Col([[header_layout], [main_layout]], key=record_key, pad=padding,
                           background_color=bg_col, expand_x=True, expand_y=True)]]
 
         return layout
@@ -2594,18 +2579,19 @@ class DatabaseRecord:
         min_h = self._minimum_height
         record_h = height if height > min_h else min_h
 
-        print('the minimum height allowed for the record layout is: {}'.format(min_h))
-        print('the size of the record header is: {}'.format(window[self.key_lookup('Header')].get_size()))
-        #height_key = self.key_lookup('Height')
-        #window.bind("<Configure>", window[height_key].Widget.config(height=int(record_h)))
+        pad_w, pad_h = self._padding
+        scroll_w = mod_const.SCROLL_WIDTH
+        tab_h = 22
+        header_h = 32
 
         # Set the size of the record container
-        record_size = (width, record_h)
+        record_w = width - pad_w * 2
+        record_size = (record_w, record_h)
         mod_lo.set_size(window, self.key_lookup('Record'), record_size)
 
         # Set the size of the tab containers
-        bffr_h = 32 + 22 + 40
-        tab_size = (width - 40, height - bffr_h)
+        bffr_h = tab_h + header_h + pad_h * 2
+        tab_size = (record_w, height - bffr_h)
         mod_lo.set_size(window, self.key_lookup('DetailsCol'), tab_size)
         mod_lo.set_size(window, self.key_lookup('MetaCol'), tab_size)
 
@@ -2614,23 +2600,22 @@ class DatabaseRecord:
             etype = record_element.etype
             if etype == 'multiline':  # multiline data elements
                 elem_h = None
-                elem_w = width - 60
+                elem_w = width - (pad_w * 2 + scroll_w)
             elif etype == 'table':  # data table elements
                 elem_h = None
-                elem_w = width - 60
+                elem_w = width - (pad_w * 2 + scroll_w)
             elif etype == 'refbox':  # data table elements
                 elem_h = mod_const.REFBOX_HEIGHT
-                elem_w = width - 62
+                elem_w = width - (pad_w * 2 + scroll_w)
             elif etype == 'component_table':
                 elem_h = None
-                elem_w = width - 64
+                elem_w = width - (pad_w * 2 + scroll_w)
             else:  # data element types or element reference
                 elem_h = None
                 elem_w = int(width * 0.5)
 
             elem_size = (elem_w, elem_h)
-            elem_size = record_element.resize(window, size=elem_size)
-            print('size of record element {} is: {}'.format(record_element.name, elem_size))
+            record_element.resize(window, size=elem_size)
 
     def collapse_expand(self, window, index: int = 0):
         """
