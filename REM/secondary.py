@@ -210,15 +210,12 @@ def debug_window():
     return window
 
 
-def record_window(record, win_size: tuple = None, view_only: bool = False, modify_database: bool = True):
+def record_window(record, view_only: bool = False, modify_database: bool = True):
     """
     Display the record window.
     """
     # Initial window size
-    if win_size:
-        width, height = win_size
-    else:
-        width, height = (int(mod_const.WIN_WIDTH * 0.2), int(mod_const.WIN_HEIGHT))
+    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.8), mod_const.WIN_HEIGHT)
 
     record_id = record.record_id()
 
@@ -236,24 +233,32 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
 
     # User permissions
     user_priv = user.access_permissions()
-    savable = True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False and \
-                      modify_database is True else False
-    deletable = True if record.permissions['delete'] in user_priv and record.level < 1 and view_only is False and \
-                        modify_database is True and record.new is False else False
+    savable = (True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False and
+                modify_database is True else False)
+    deletable = (True if record.permissions['delete'] in user_priv and record.level < 1 and view_only is False and
+                 modify_database is True and record.new is False else False)
     printable = True if record.report is not None and record.permissions['report'] in user_priv else False
 
     # Window Title
+    bffr_h = 2 + pad_el * 2
+
     title = record.title
-    title_layout = [[sg.Col([[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]],
-                            expand_x=True, justification='l', background_color=header_col),
+    title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
+    title_layout = [[sg.Canvas(size=(title_w, title_h), background_color=bg_col),
+                     sg.Col([[sg.Text(title, pad=(pad_frame, 0), font=font_h, background_color=header_col)]],
+                            expand_x=True, justification='l', vertical_alignment='c', background_color=header_col),
                      sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.REPORT_ICON, border_width=0,
-                                        pad=(pad_frame, pad_el), button_color=(text_col, header_col),
+                                        pad=(pad_frame, 0), button_color=(text_col, header_col),
                                         visible=printable, tooltip='Generate record report')]],
-                            justification='r', element_justification='r', background_color=header_col)]]
+                            justification='r', element_justification='r', vertical_alignment='c',
+                            background_color=header_col)]]
+    bffr_h += title_h
 
     # Button layout
+    bttn_h = mod_const.BTTN_HEIGHT
     if savable:
-        bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+        bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+                        sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=deletable,
                                   tooltip='Delete the record from the database'),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
@@ -263,7 +268,8 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
                                   pad=(pad_el, 0), visible=True,
                                   tooltip='Save record changes to the database')]]
     else:
-        bttn_layout = [[sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+        bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+                        sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=deletable,
                                   tooltip='Delete the record from the database'),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
@@ -273,34 +279,25 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
                                   pad=(pad_el, 0), visible=False,
                                   tooltip='Save record changes to the database')]]
 
+    bffr_h += bttn_h
+
+    print('buffer size is set to: {}'.format(bffr_h))
+    # Record layout
+    record_w = min_w
+    record_h = min_h - bffr_h
+    record_layout = record.layout((record_w, record_h), padding=(pad_frame, pad_el), view_only=view_only)
+
     # Window layout
-    bffr_height = 100  # window height minus space reserved for the title and buttons
-    #height_key = '-HEIGHT-'
-    #layout = [[sg.Col([[sg.Canvas(key=height_key, size=(1, height))]]),
-    #           sg.Col([
-    #               [sg.Col(title_layout, background_color=header_col, expand_x=True)],
-    #               [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-    #               [sg.Col(record.layout((width, height-bffr_height), view_only=view_only),
-    #                       background_color=bg_col, expand_x=True)],
-    #               [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-    #               [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
-    #           ], pad=(0, 0), expand_y=True, expand_x=True)]]
-    layout = [[sg.Col(title_layout, key='-TITLE-', background_color=header_col, expand_x=True)],
-              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-              [sg.Col(record.layout((width, height-bffr_height), view_only=view_only), key='-RECORDS-',
-                      background_color=bg_col, expand_x=True)],
-              [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
-              [sg.Col(bttn_layout, key='-BUTTONS-', pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]]
+    layout = [[sg.Col(title_layout, key='-TITLE-', background_color=header_col, vertical_alignment='c', expand_x=True)],
+              [sg.HorizontalSeparator(color=mod_const.INACTIVE_COL)],
+              [sg.Col(record_layout, key='-RECORDS-', background_color=bg_col, expand_x=True, expand_y=True)],
+              [sg.HorizontalSeparator(color=mod_const.INACTIVE_COL)],
+              [sg.Col(bttn_layout, key='-BUTTONS-', justification='l', element_justification='c',
+                      vertical_alignment='c', expand_x=True)]]
 
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
     window.hide()
-
-    print('record initialized with size: {}'.format((width, height-bffr_height)))
-    print('title bar has size: {}'.format(window['-TITLE-'].get_size()))
-    print('buttons have size: {}'.format(window['-BUTTONS-'].get_size()))
-    print('record column has size: {}'.format(window['-RECORDS-'].get_size()))
-    print('separators should have combined size of 2')
 
     # Bind keys to events
     window = settings.set_shortcuts(window, hk_groups=['Record', 'Navigation'])
@@ -315,11 +312,10 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
     win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
 
-    #window.bind("<Configure>", window[height_key].Widget.config(height=win_h))
+    record_w = win_w if win_w >= min_w else min_w
+    record_h = win_h - bffr_h if win_h >= min_h else min_h
+    record.resize(window, size=(record_w, record_h))
 
-    record_w = win_w
-    record_h = int(win_h - bffr_height)
-    record.resize(window, (record_w, record_h))
     record.update_display(window)
 
     # Center the record window
@@ -330,8 +326,7 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
     # Event window
     record_events = record.record_events()
     while True:
-        event, values = window.read()
-        print(event)
+        event, values = window.read(timeout=100)
 
         if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
@@ -347,11 +342,13 @@ def record_window(record, win_size: tuple = None, view_only: bool = False, modif
             logger.debug('current window size is {W} x {H}'.format(W=current_w, H=current_h))
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
+            print('title bar has size: {}'.format(window['-TITLE-'].get_size()))
+            print('buttons have size: {}'.format(window['-BUTTONS-'].get_size()))
+
             # Update sizable elements
-            #window.bind("<Configure>", window[height_key].Widget.config(height=win_h))
-            record_w = win_w
-            record_h = int(win_h - bffr_height)
-            record.resize(window, (record_w, record_h))
+            record_w = win_w if win_w >= min_w else min_w
+            record_h = win_h - bffr_h if win_h >= min_h else min_h
+            record.resize(window, size=(record_w, record_h))
 
             current_w, current_h = (win_w, win_h)
 
@@ -1744,14 +1741,11 @@ def database_importer_window(win_size: tuple = None):
     return True
 
 
-def record_import_window(table, win_size: tuple = None, enable_new: bool = False):
+def record_import_window(table, enable_new: bool = False):
     """
     Display the import from database window.
     """
-    if win_size:
-        width, height = win_size
-    else:
-        width, height = (int(mod_const.WIN_WIDTH * 0.2), int(mod_const.WIN_HEIGHT * 0.2))
+    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.8), int(mod_const.WIN_HEIGHT * 0.8))
 
     # Prepare the associated record entry for the record table
     record_entry = settings.records.fetch_rule(table.record_type)
@@ -1777,10 +1771,7 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     header_font = mod_const.HEADING_FONT
 
     pad_el = mod_const.ELEM_PAD
-    pad_v = mod_const.VERT_PAD
     pad_frame = mod_const.FRAME_PAD
-
-    tbl_diff = 26  # scrollbar width to subtract from the table width
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys
@@ -1788,32 +1779,31 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     new_shortcut = hotkeys['-HK_ENTER-'][2]
 
     # Title
+    title_h = mod_const.TITLE_HEIGHT
     title = 'Import {TYPE} records'.format(TYPE=table.description)
-    title_layout = [[sg.Canvas(size=(0, 1), pad=(0, pad_v), visible=True, background_color=header_col)],
-                    [sg.Text(title, pad=((pad_frame, 0), (0, pad_v)), font=header_font,
-                             background_color=header_col)]]
-
-    # Import data table
-    tbl_layout = [[table.layout(size=(int(width - tbl_diff), int(height * 0.9)), padding=(0, (0, pad_v)))]]
+    title_layout = [[sg.Canvas(size=(0, title_h), background_color=header_col),
+                     sg.Text(title, pad=(pad_frame, 0), background_color=header_col, font=header_font)]]
 
     # Control buttons
-    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    bttn_h = mod_const.BTTN_HEIGHT
+    bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+                    sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
                               disabled=False,
                               tooltip='Cancel data import ({})'.format(cancel_shortcut)),
                     sg.Button('', key='-NEW-', image_data=mod_const.NEW_ICON, image_size=mod_const.BTTN_SIZE,
                               pad=((0, pad_el), 0), visible=enable_new,
                               tooltip='Create new record ({})'.format(new_shortcut))]]
 
-    width_key = '-WIDTH-'
-    height_key = '-HEIGHT-'
-    layout = [[sg.Canvas(key=width_key, size=(width, 0))],
-              [sg.Col(title_layout, key='-HEADER-', pad=(0, 0), justification='l', background_color=header_col,
-                      expand_x=True)],
-              [sg.Col([[sg.Canvas(key=height_key, size=(0, height))]], vertical_alignment='t'),
-               sg.Col(tbl_layout, expand_x=True, expand_y=True, vertical_alignment='t', scrollable=True,
-                      vertical_scroll_only=True)],
-              [sg.Col(bttn_layout, key='-BUTTON-', pad=(0, (pad_v, pad_frame)), justification='l',
-                      element_justification='c', expand_x=True)]]
+    other_h = title_h + bttn_h
+
+    # Import data table
+    tbl_layout = [[table.layout(size=(min_w, min_h - other_h))]]
+
+    layout = [[sg.Col(title_layout, key='-HEADER-', background_color=header_col,
+                      vertical_alignment='c', element_justification='l', justification='l', expand_x=True)],
+              [sg.Col(tbl_layout, expand_x=True, expand_y=True, vertical_alignment='t')],
+              [sg.Col(bttn_layout, key='-BUTTON-', justification='l', element_justification='c', vertical_alignment='c',
+                      expand_x=True)]]
 
     # Finalize GUI window
     window = sg.Window('', layout, modal=True, resizable=True)
@@ -1828,19 +1818,12 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
 
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
-    if win_size:
-        win_w, win_h = win_size
-    else:
-        win_w = int(screen_w * 0.8)
-        win_h = int(screen_h * 0.7)
+    win_w = int(screen_w * 0.8)
+    win_h = int(screen_h * 0.8)
 
-    other_h = window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1]
-    tbl_h = win_h - other_h if other_h < win_h else 100
-
-    window[width_key].set_size((win_w, None))
-    window[height_key].set_size((None, tbl_h))
-
-    table.resize(window, size=(win_w - tbl_diff, tbl_h))
+    tbl_w = win_w if win_w > min_w else min_w
+    tbl_h = win_h - other_h if win_h > min_h else min_h - other_h
+    table.resize(window, size=(tbl_w, tbl_h))
 
     window.un_hide()
     window = center_window(window)
@@ -1862,15 +1845,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
         win_w, win_h = window.size
         if win_w != current_w or win_h != current_h:
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
-            other_h = 30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1]
-            tbl_h = win_h - other_h if other_h < win_h else 100
+            tbl_w = win_w if win_w > min_w else min_w
+            tbl_h = win_h - other_h if win_h > min_h else min_h - other_h
 
             # Update sizable elements
-            window[width_key].set_size((win_h, None))
-            window[height_key].set_size((None, tbl_h))
-
-            table.resize(window, size=(win_w - tbl_diff, tbl_h))
-
+            table.resize(window, size=(tbl_w, tbl_h))
             current_w, current_h = (win_w, win_h)
 
         if enable_new and event == '-NEW-':  # selected to create a new record
@@ -1962,14 +1941,11 @@ def record_import_window(table, win_size: tuple = None, enable_new: bool = False
     gc.collect()
 
 
-def import_window(table, import_rules, win_size: tuple = None, program_database: bool = False, params: list = None):
+def import_window(table, import_rules, program_database: bool = False, params: list = None):
     """
     Display the importer window.
     """
-    if win_size:
-        width, height = win_size
-    else:
-        width, height = (int(mod_const.WIN_WIDTH * 0.2), int(mod_const.WIN_HEIGHT * 0.2))
+    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.8), int(mod_const.WIN_HEIGHT * 0.8))
 
     params = params if params is not None else []
 
@@ -1987,13 +1963,15 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     bg_col = mod_const.ACTION_COL
     header_col = mod_const.HEADER_COL
 
-    tbl_pad = (pad_frame * 2) + 8  # padding on both sides of the table
+    tbl_pad = pad_frame * 2  # padding on both sides of the table
 
     # GUI layout
-    header_layout = [[sg.Text('Import Missing Data', pad=(pad_frame, pad_frame), background_color=header_col,
-                              font=font_h)]]
+    title_h = mod_const.TITLE_HEIGHT
+    header_layout = [[sg.Canvas(size=(0, title_h), background_color=header_col),
+                      sg.Text('Import Missing Data', pad=(pad_frame, 0), background_color=header_col, font=font_h)]]
 
     # Search parameter layout
+    param_h = 60
     param_layout = []
     for param in params:
         element_layout = param.layout(padding=((0, pad_h), 0))
@@ -2007,21 +1985,23 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
     else:
         top_layout = [[]]
 
-    tbl_layout = [[table.layout(padding=(pad_frame, 0), tooltip='Select rows to import')]]
-
-    bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
+    bttn_h = mod_const.BTTN_HEIGHT
+    bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+                    sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
                               pad=(pad_el, 0), tooltip='Cancel importing'),
                     sg.Button('', key='-IMPORT-', image_data=mod_const.DB_IMPORT_ICON, image_size=mod_const.BTTN_SIZE,
                               pad=(pad_el, 0), tooltip='Import the selected transaction orders')]]
 
-    layout = [[sg.Col(header_layout, key='-HEADER-', pad=(0, 0), background_color=header_col, element_justification='l',
-                      expand_x=True)],
-              [sg.Col(top_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, expand_x=True,
-                      vertical_alignment='t')],
-              [sg.Col(tbl_layout, pad=(0, 0), background_color=bg_col, expand_x=True, expand_y=True,
-                      vertical_alignment='t')],
-              [sg.Col(bttn_layout, key='-BUTTON-', pad=(0, (pad_v, pad_frame)), element_justification='c',
-                      justification='c', expand_x=True, vertical_alignment='t')]]
+    other_h = title_h + bttn_h + param_h
+
+    tbl_size = (min_w - tbl_pad, min_h - other_h)
+    tbl_layout = [[table.layout(padding=(pad_frame, 0), size=tbl_size, tooltip='Select rows to import')]]
+
+    layout = [[sg.Col(header_layout, key='-HEADER-', background_color=header_col, element_justification='l',
+                      vertical_alignment='c', expand_x=True)],
+              [sg.Col(top_layout, key='-PARAMS-', background_color=bg_col, vertical_alignment='c', expand_x=True)],
+              [sg.Col(tbl_layout, background_color=bg_col, expand_x=True, expand_y=True, vertical_alignment='t')],
+              [sg.Col(bttn_layout, key='-BUTTON-', element_justification='c', expand_x=True, vertical_alignment='c')]]
 
     window = sg.Window('Import Data', layout, font=main_font, modal=True, resizable=True)
     window.finalize()
@@ -2033,17 +2013,11 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
 
     # Resize and center the screen
     screen_w, screen_h = window.get_screen_dimensions()
-    if win_size:
-        win_w, win_h = win_size
-    else:
-        win_w = int(screen_w * 0.8)
-        win_h = int(screen_h * 0.8)
+    win_w = int(screen_w * 0.8)
+    win_h = int(screen_h * 0.8)
 
-    other_h = (30 + window['-HEADER-'].get_size()[1] + window['-BUTTON-'].get_size()[1] +
-               window['-PARAMS-'].get_size()[1])
-
-    tbl_h = win_h - other_h
-    tbl_w = win_w - tbl_pad
+    tbl_w = win_w - tbl_pad if win_w > min_w else min_w - tbl_pad
+    tbl_h = win_h - other_h if win_h > min_h else min_h - other_h
     table.resize(window, size=(tbl_w, tbl_h))
 
     window.un_hide()
@@ -2068,8 +2042,8 @@ def import_window(table, import_rules, win_size: tuple = None, program_database:
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            tbl_w = win_w - tbl_pad
-            tbl_h = win_h - other_h
+            tbl_w = win_w - tbl_pad if win_w > min_w else min_w - tbl_pad
+            tbl_h = win_h - other_h if win_h > min_h else min_h - other_h
             table.resize(window, size=(tbl_w, tbl_h))
 
             current_w, current_h = (win_w, win_h)
