@@ -1229,8 +1229,7 @@ class DatabaseRecord:
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
-                          'DetailsFrame', 'Height', 'Width', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG',
-                          'Header', 'Record')]
+                          'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
 
         # User access permissions
         try:

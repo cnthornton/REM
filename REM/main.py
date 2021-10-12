@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.9.8'
+__version__ = '3.9.10'
 
 import sys
 import tkinter as tk
@@ -543,15 +543,17 @@ def resize_panels(window, rules):
     """
     Resize GUI elements when the window is resized.
     """
+    min_w, min_h = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
     width, height = window.size
 
     toolbar_h = 60  # toolbar height plus toolbar border
 
     # Update toolbar and pane elements
-    panel_w = width if width >= mod_const.WIN_WIDTH else mod_const.WIN_WIDTH
-    panel_h = height - toolbar_h if height >= mod_const.WIN_HEIGHT else mod_const.WIN_HEIGHT - toolbar_h
+    panel_w = width if width >= min_w else min_w
+    panel_h = height - toolbar_h if height >= min_h else min_h - toolbar_h
+    logger.debug('setting window size to {W} x {H}'.format(W=width, H=height))
+    logger.debug('panels will have size to {W} x {H}'.format(W=panel_w, H=panel_h))
 
-    #window['-CANVAS_HEIGHT-'].set_size((None, panel_h))
     window['-CANVAS_WIDTH-'].set_size((panel_w, None))
 
     # Reset size of the home panel

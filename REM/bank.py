@@ -627,6 +627,12 @@ class BankRule:
         # Title
         panel_title = 'Bank Reconciliation: {}'.format(self.menu_title)
         title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
+        #title_key = self.key_lookup('Title')
+        #title_layout = sg.Col([[sg.Canvas(size=(0, title_h), background_color=header_col),
+        #                        sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h,
+        #                                background_color=header_col)]],
+        #                      key=title_key, size=(title_w, title_h), background_color=header_col,
+        #                      vertical_alignment='c', element_justification='l', justification='l', expand_x=True)
 
         # Header
         param_key = self.key_lookup('Parameters')

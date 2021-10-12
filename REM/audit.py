@@ -720,10 +720,6 @@ class AuditRule:
         """
         width, height = size
         pad_frame = mod_const.FRAME_PAD
-        #print('height allocated to the panel: {}'.format(height))
-        #print('the size of the title row is: {}'.format(window[self.key_lookup('Title')].get_size()))
-        #print('the size of the buttons row is: {}'.format(window[self.key_lookup('Buttons')].get_size()))
-        #print('the size of the header row is: {}'.format(window[self.key_lookup('Header')].get_size()))
 
         pad_h = 12
         bttn_h = mod_const.BTTN_HEIGHT
@@ -738,19 +734,13 @@ class AuditRule:
 
         tab_w = frame_w  # frame width minus the size of the column scrollbar
         tab_h = frame_h - header_h - pad_h  # frame height minus header and padding
-        #pg_key = self.key_lookup('PanelGroup')
-        #window[pg_key].set_size((tab_w, tab_h))
-
-        #print('title bar and buttons have heights: {}'.format((title_h, bttn_h)))
-        #print('height allocated to the tab frame is: {}'.format(frame_h))
-        #print('heights of the header and the horizontal lines with padding: {}'.format((header_h, pad_h)))
-        #print('height allocated to the tab is: {}'.format(tab_h))
-
-        #print('new size of the panel: {}'.format(window[frame_key].get_size()))
 
         panels_key = self.key_lookup('Panels')
         mod_lo.set_size(window, panels_key, (tab_w, tab_h))
-        #print('new size of the tab panel: {}'.format(window[panels_key].get_size()))
+
+        print('resizing to: {}'.format(size))
+        print('setting frame height to {} after accounting for the title bar ({}) and buttons ({})'.format(frame_h, title_h, bttn_h))
+        print('setting tab height to {} after accounting for the parameters ({}) and padding ({})'.format(frame_h, header_h, pad_h))
 
         # Resize panel tab groups
 
@@ -1012,7 +1002,7 @@ class AuditTransaction:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ['Tab', 'Audit', 'Width', 'Height']]
+                         ('Tab', 'Audit', 'Sizer')]
 
         self.bindings = [self.key_lookup(i) for i in ('Audit',)]
 
@@ -1151,64 +1141,54 @@ class AuditTransaction:
 
         pad_frame = mod_const.FRAME_PAD
 
+        font = mod_const.MAIN_FONT
+
         # Element sizes
-        tbl_width = width - 40
-        tbl_height = height * 0.8
+        bffr_h = (18 + 4) + pad_frame * 3 + 30  # height of the tabs, padding, and button
+        tbl_width = width - pad_frame * 2
+        tbl_height = height - bffr_h
 
         # Layout
         audit_key = self.key_lookup('Audit')
         main_layout = [[self.table.layout(size=(tbl_width, tbl_height), padding=(0, 0))],
-                       [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, disabled=True,
+                       [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, pad=(0, pad_frame), disabled=True, font=font,
                                            button_color=(bttn_text_col, bttn_bg_col),
                                            disabled_button_color=(disabled_text_col, disabled_bg_col),
                                            tooltip='Run audit on the transaction records', use_ttk_buttons=True)]],
-                               pad=(pad_frame, (pad_frame, 0)), background_color=bg_col, element_justification='c',
-                               expand_x=True)]]
+                               pad=(0, 0), background_color=bg_col, element_justification='c',
+                               expand_x=True, expand_y=True, vertical_alignment='c')]]
 
-        height_key = self.key_lookup('Height')
-        width_key = self.key_lookup('Width')
-        layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
-                  [sg.Canvas(key=height_key, size=(0, height), background_color=bg_col),
-                   sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='t',
-                          background_color=bg_col, expand_x=True)]]
+        layout = [[sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='c',
+                          background_color=bg_col, expand_x=True, expand_y=True)]]
 
         return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col, visible=visible,
-                      disabled=False, metadata={'visible': visible, 'disabled': False})
+                      disabled=False, font=font, metadata={'visible': visible, 'disabled': False})
 
     def resize_elements(self, window, size):
         """
         Resize the transaction tab.
         """
         width, height = size
-        #frame_w = width
-        #frame_h = height - 20  # minus height of a tab
         frame_pad = mod_const.FRAME_PAD
+        font = mod_const.MAIN_FONT
 
-        tab_key = self.key_lookup('Tab')
-        window[tab_key].set_size((width, height))
+        print('setting tab size to: {}'.format(size))
 
         # Reset tab element size
-        #width_key = self.key_lookup('Width')
-        #window[width_key].set_size(size=(frame_w, None))
+        tab_key = self.key_lookup('Tab')
+        #window[tab_key].set_size((width, height))
+        mod_lo.set_size(window, tab_key, (width, height))
 
-        #height_key = self.key_lookup('Height')
-        #window[height_key].set_size(size=(None, frame_h))
+        print('new tab size is: {}'.format(window[tab_key].get_size()))
 
-        #print('resizing transaction tab: {}'.format(self.name))
-        #print('height allocated to the tab element: {}'.format(height))
-        #print('size of the tab element before resizing: {}'.format(window[self.key_lookup('Tab')].get_size()))
-        #print('size of the table frame before resizing: {}'.format(window[self.table.key_lookup('Table')].get_size()))
-        print('size of the audit button: {}'.format(window[self.key_lookup('Audit')].get_size()))
+        # Reset the tab table element size
+        audit_key = self.key_lookup('Audit')
+        print('the size of the button is: {}'.format(window[audit_key].get_size()))
 
-        # Reset table size
-        other_h = 30 + 20 + frame_pad * 3  # height of the tabs, padding, and button
+        bffr_h = (18 + 4) + frame_pad * 3 + 30  # height of the tabs, padding, and button
         tbl_width = width - frame_pad * 2  # minus padding
-        tbl_height = height - other_h
-        #print('height allocated to the table: {}'.format(tbl_height))
+        tbl_height = height - bffr_h
         self.table.resize(window, size=(tbl_width, tbl_height))
-
-        #print('size of the table frame after resizing: {}'.format(window[self.table.key_lookup('Table')].get_size()))
-        #print('size of the tab element after resizing: {}'.format(window[self.key_lookup('Tab')].get_size()))
 
     def run_event(self, window, event, values):
         """

@@ -17,14 +17,16 @@ def set_size(window, element_key, size):
 
     element = window[element_key]
     try:
-        if element.Scrollable or element.Size != (None, None):
-            element.Widget.canvas.configure(**options)
-            element.contents_changed()
-        else:
-            element.Widget.pack_propagate(0)
-            element.set_size(size)
+        scrollable = element.Scrollable
     except AttributeError:
-        window[element_key].set_size(size)
+        scrollable = False
+
+    if scrollable:
+        element.Widget.canvas.configure(**options)
+        element.contents_changed()
+    else:
+        element.Widget.pack_propagate(0)
+        element.set_size(size)
 
     window.refresh()
 

@@ -40,6 +40,10 @@ IN1_SIZE = 20
 BTTN_SIZE = (60, 30)
 PARAM_SIZE_PX = (300, 10)  # pixels
 PARAM_SIZE_CHAR = (30, 1)  # characters
+TITLE_WIDTH = 300
+TITLE_HEIGHT = 60
+SCROLL_WIDTH = 16
+BTTN_HEIGHT = 70
 
 # Text
 MAIN_FONT = ('Arial', 12)
@@ -59,9 +63,9 @@ BOLD_LARGE_FONT = ('Arial', 13, 'bold')
 HEADING_FONT = BOLD_HEADING_FONT = ('Arial', 14, 'bold')
 UNDERLINE_FONT = ('Arial', 12, 'underline')
 
-# Window initial dimensions
-WIN_HEIGHT = 600  # 500 pixels
-WIN_WIDTH = 800  # 800 pixels
+# Window initial dimensions / minimum resolution (in pixels)
+WIN_HEIGHT = 740  # support for 1024 x 768 screen resolution
+WIN_WIDTH = 996  # support for 1024 x 768 screen resolution
 
 # Record Elements
 

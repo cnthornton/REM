@@ -213,10 +213,9 @@ class TableElement(RecordElement):
         self.eclass = 'data'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'Frame0', 'FrameBttn0',
-                               'Frame1', 'FrameBttn1', 'Width', 'SummaryTable', 'Sort', 'Options',
-                               'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3', 'TitleBar',
-                               'FilterBar', 'SummaryBar', 'ActionsBar')])
-        # self._event_elements = ['Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options', 'Cancel']
+                               'Frame1', 'FrameBttn1', 'SummaryTable', 'Sort', 'Options', 'OptionsFrame',
+                               'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3', 'TitleBar', 'FilterBar',
+                               'SummaryBar', 'ActionsBar')])
         self._event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'FrameBttn0', 'FrameBttn1', 'Options']
 
         # Element-specific bindings
@@ -618,7 +617,8 @@ class TableElement(RecordElement):
 
             window[elem_key].update(num_rows=nrow)  # required for table size to update
 
-    def _calc_column_widths(self, header, width: int = None, size: int = None, pixels: bool = False, widths: dict = None):
+    def _calc_column_widths(self, header, width: int = None, size: int = None, pixels: bool = False,
+                            widths: dict = None):
         """
         Calculate the width of the table columns based on the number of columns displayed.
 
@@ -747,6 +747,8 @@ class TableElement(RecordElement):
                 values = pd.to_datetime(column_values, errors='coerce', format=settings.date_format, utc=False)
             except ValueError:  # need to remove Time Zone information from column values
                 values = column_values.apply(lambda x: x.replace(tzinfo=None))
+
+            values = values.dt.tz_localize(None)
         elif dtype in ('int', 'integer', 'bigint'):
             try:
                 values = column_values.astype('Int64')
@@ -1665,27 +1667,23 @@ class TableElement(RecordElement):
                     logger.warning('DataTable {NAME}: cannot assign layout for table filter parameter {PARAM}'
                                    .format(NAME=self.name, PARAM=parameter.name))
 
-        filters = [[sg.Frame('', [
-            [sg.Canvas(size=(width / 10, 0), key=self.key_lookup('Width'), background_color=alt_col)],
-            [sg.Col(left_cols, pad=(0, 0), background_color=frame_col, justification='l',
-                    element_justification='c', vertical_alignment='t'),
-             sg.Col(center_cols, pad=(0, 0), background_color=frame_col, justification='c',
-                    element_justification='c', vertical_alignment='t'),
-             sg.Col(right_cols, pad=(0, 0), background_color=frame_col, justification='r',
-                    element_justification='c', vertical_alignment='t')],
-            #[sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=is_disabled,
-            [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=False,
-                                button_color=(alt_col, border_col),
-                                disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                tooltip='Apply table filters ({})'.format(filter_shortcut))]],
-                    element_justification='c', background_color=frame_col, expand_x=True)]],
-                             border_width=1, background_color=frame_col)]]
+        filters = [[sg.Col(left_cols, pad=(0, 0), background_color=frame_col, justification='l',
+                           element_justification='c', vertical_alignment='t'),
+                    sg.Col(center_cols, pad=(0, 0), background_color=frame_col, justification='c',
+                           element_justification='c', vertical_alignment='t'),
+                    sg.Col(right_cols, pad=(0, 0), background_color=frame_col, justification='r',
+                           element_justification='c', vertical_alignment='t')],
+                   [sg.Col([[mod_lo.B2('Apply', key=self.key_lookup('Filter'), pad=(0, pad_el * 2), disabled=False,
+                                       button_color=(alt_col, border_col),
+                                       disabled_button_color=(disabled_text_col, disabled_bg_col),
+                                       tooltip='Apply table filters ({})'.format(filter_shortcut))]],
+                           element_justification='c', background_color=frame_col, expand_x=True)]]
 
         if len(filter_params) > 0 and modifiers['filter'] is True:
             visible_filter = True
             height_offset += cbar_h  # height of the collapsible bar
             n_filter_rows = ceiling(i / 3) if use_center else ceiling(i / 2)
-            height_offset += n_filter_rows * param_h + 2 * n_filter_rows + bttn_h + 8   # height of the filter parameters plus apply button
+            height_offset += n_filter_rows * param_h + 2 * n_filter_rows + bttn_h + 8  # height of the filter parameters plus apply button
         else:
             visible_filter = False
             height_offset += 2  # invisible elements have a footprint
@@ -1905,20 +1903,125 @@ class TableElement(RecordElement):
 
         return layout
 
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the table element.
+        """
+        current_w, current_h = self.dimensions()
+        border_w = 1
+        scroll_w = mod_const.SCROLL_WIDTH
+
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height - border_w * 4
+            new_w = current_w if width is None else width - border_w * 4
+        else:
+            new_w, new_h = (current_w, current_h)
+
+        height_offset = self._height_offset
+        row_h = mod_const.TBL_ROW_HEIGHT
+        default_nrow = self.nrow
+
+        logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
+                     .format(TBL=self.name, W=new_w, H=new_h))
+
+        # Resize the column widths
+        tbl_width = new_w - scroll_w  # approximate size of the table scrollbar
+
+        # Calculate the number of table rows to display based on the desired height of the table.  The desired
+        # height allocated to the data table minus the offset height composed of the heights of all the accessory
+        # elements, such as the title bar, actions, bar, summary panel, etc., minus the height of the header.
+        tbl_height = new_h - height_offset - row_h
+        projected_nrows = int((tbl_height - row_h) / row_h)
+        nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
+
+        # Resize the display table dimensions
+        self._dimensions = (tbl_width, nrows)
+        self.set_table_dimensions(window)
+
+        # Expand the table frames
+        filter_params = self.parameters
+        if len(filter_params) > 0 and self.modifiers['filter'] is True:
+            # Resize the filter parameters
+            col1width_key = self.key_lookup('WidthCol1')
+            col2width_key = self.key_lookup('WidthCol2')
+            col3width_key = self.key_lookup('WidthCol3')
+
+            if len(filter_params) <= 2 or len(filter_params) == 4:
+                param_w = int(new_w * 0.35)
+                col_widths = [int(new_w * 0.45), int(new_w * 0.1), int(new_w * 0.45)]
+            else:
+                param_w = int(new_w * 0.30)
+                col_widths = [int(new_w * 0.33) for _ in range(3)]
+
+            remainder = new_w - sum(col_widths)
+            index = 0
+            for one in [1 for _ in range(int(remainder))]:
+                if index > 2:  # restart at first column
+                    index = 0
+                col_widths[index] += one
+                index += one
+
+            col1_w, col2_w, col3_w = col_widths
+            window[col1width_key].set_size(size=(col1_w, None))
+            window[col2width_key].set_size(size=(col2_w, None))
+            window[col3width_key].set_size(size=(col3_w, None))
+
+            for param in self.parameters:
+                param.resize(window, size=(param_w, None), pixels=True)
+
+        # Fit the summary table to the frame
+        if self.summary_rules:
+            self._update_column_widths(window, new_w, summary=True)
+
+        return window[self.key_lookup('Table')].get_size()
+
+    def set_table_dimensions(self, window):
+        """
+        Reset column widths to calculated widths.
+        """
+        # display_columns = self.display_columns
+        dimensions = self._dimensions
+
+        width, nrows = dimensions
+
+        # tbl_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('OptionsFrame')
+
+        logger.debug('DataTable {NAME}: resetting display table dimensions'.format(NAME=self.name))
+
+        # Close options panel, if open
+        if window[frame_key].metadata['visible'] is True:
+            window[frame_key].metadata['visible'] = False
+            window[frame_key].update(visible=False)
+
+        # Update column widths
+        self._update_column_widths(window, width)
+
+        # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
+        self.update_display(window)
+
+    def dimensions(self):
+        """
+        Return the current dimensions of the element.
+        """
+        tbl_width, nrow = self._dimensions
+        width = tbl_width + 16
+
+        height_offset = self._height_offset
+        row_h = mod_const.TBL_ROW_HEIGHT
+        height = (nrow * row_h) + height_offset + row_h  # add height offset and header col
+
+        return (width, height)
+
     def enable(self, window, custom: bool = True):
         """
         Enable data table element actions.
         """
-        #params = self.parameters
+        # params = self.parameters
         custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: enabling actions'.format(NAME=self.name))
-
-        # Enable filter parameters
-        #if len(params) > 0 and self.modifiers['filter'] is True:
-        #    # Enable the apply filters button
-        #    filter_key = self.key_lookup('Filter')
-        #    window[filter_key].update(disabled=False)
 
         # Enable table modification buttons
         if custom:
@@ -1936,16 +2039,10 @@ class TableElement(RecordElement):
         """
         Disable data table element actions.
         """
-        #params = self.parameters
+        # params = self.parameters
         custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: disabling table actions'.format(NAME=self.name))
-
-        # Enable filter parameters
-        #if len(params) > 0 and self.modifiers['filter'] is True:
-        #    # Disable the apply filters button
-        #    filter_key = self.key_lookup('Filter')
-        #    window[filter_key].update(disabled=True)
 
         # Disable table modification buttons
         for custom_bttn in custom_bttns:
@@ -1977,136 +2074,6 @@ class TableElement(RecordElement):
             window[frame_key].update(visible=True)
 
             window[frame_key].metadata['visible'] = True
-
-    def set_table_dimensions(self, window):
-        """
-        Reset column widths to calculated widths.
-        """
-        # display_columns = self.display_columns
-        dimensions = self._dimensions
-
-        width, nrows = dimensions
-
-        #tbl_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('OptionsFrame')
-
-        logger.debug('DataTable {NAME}: resetting display table dimensions'.format(NAME=self.name))
-
-        # Close options panel, if open
-        if window[frame_key].metadata['visible'] is True:
-            window[frame_key].metadata['visible'] = False
-            window[frame_key].update(visible=False)
-
-        # Update column widths
-        self._update_column_widths(window, width)
-
-        # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
-        self.update_display(window)
-
-    def dimensions(self):
-        """
-        Return the current dimensions of the element.
-        """
-        tbl_width, nrow = self._dimensions
-        width = tbl_width + 16
-
-        height_offset = self._height_offset
-        row_h = mod_const.TBL_ROW_HEIGHT
-        height = (nrow * row_h) + height_offset + row_h  # add height offset and header col
-
-        return (width, height)
-
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the table element.
-        """
-        current_w, current_h = self.dimensions()
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
-        else:
-            new_w, new_h = (current_w, current_h)
-
-        height_offset = self._height_offset
-        row_h = mod_const.TBL_ROW_HEIGHT
-        default_nrow = self.nrow
-
-        logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
-                     .format(TBL=self.name, W=new_w, H=new_h))
-
-        # Resize the column widths
-        tbl_width = new_w - 16  # approximate size of the table scrollbar and borders
-
-        #print('height allocated to the table in pixels: {}'.format(height))
-        #print('height offset size in pixels: {}'.format(height_offset))
-        #print('height of the individual rows: {}'.format(row_h))
-        print('size of the actions bar: {}'.format(window[self.key_lookup('ActionsBar')].get_size()))
-        #print('size of the title bar: {}'.format(window[self.key_lookup('TitleBar')].get_size()))
-        #print('size of the summary bar: {}'.format(window[self.key_lookup('SummaryBar')].get_size()))
-        #print('size of the filter bar: {}'.format(window[self.key_lookup('FilterBar')].get_size()))
-        #print('size of the filter frame: {}'.format(window[self.key_lookup('Frame0')].get_size()))
-        #print('size of the summary frame: {}'.format(window[self.key_lookup('Frame1')].get_size()))
-        #print('current size of the table element: {}'.format(window[self.key_lookup('Element')].get_size()))
-        #print('current table dimensions are: {}'.format(current_dimensions))
-
-        # Calculate the number of table rows to display based on the desired height of the table.  The desired
-        # height allocated to the data table minus the offset height composed of the heights of all the accessory
-        # elements, such as the title bar, actions, bar, summary panel, etc., minus the height of the header.
-
-        #print('projected new height of the table element: {}'.format(tbl_height))
-        tbl_height = new_h - height_offset - row_h
-
-        projected_nrows = int((tbl_height - row_h) / row_h)
-        nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
-        print('number of rows to display based on table height and row height: {}'.format(nrows))
-
-        self._dimensions = (tbl_width, nrows)
-
-        # Resize the display table dimensions
-        self.set_table_dimensions(window)
-
-        #print('size of the table element after resetting: {}'.format(window[self.key_lookup('Element')].get_size()))
-
-        # Expand the table frames
-        filter_params = self.parameters
-        if len(filter_params) > 0 and self.modifiers['filter'] is True:
-            width_key = self.key_lookup('Width')
-            window[width_key].set_size((width, None))
-
-            # Resize the filter parameters
-            col1width_key = self.key_lookup('WidthCol1')
-            col2width_key = self.key_lookup('WidthCol2')
-            col3width_key = self.key_lookup('WidthCol3')
-
-            if len(filter_params) <= 2 or len(filter_params) == 4:
-                param_w = int(width * 0.35)
-                col_widths = [int(width * 0.45), int(width * 0.1), int(width * 0.45)]
-            else:
-                param_w = int(width * 0.30)
-                col_widths = [int(width * 0.33) for _ in range(3)]
-
-            remainder = width - sum(col_widths)
-            index = 0
-            for one in [1 for _ in range(int(remainder))]:
-                if index > 2:  # restart at first column
-                    index = 0
-                col_widths[index] += one
-                index += one
-
-            col1_w, col2_w, col3_w = col_widths
-            window[col1width_key].set_size(size=(col1_w, None))
-            window[col2width_key].set_size(size=(col2_w, None))
-            window[col3width_key].set_size(size=(col3_w, None))
-
-            for param in self.parameters:
-                param.resize(window, size=(param_w, None), pixels=True)
-
-        # Fit the summary table to the frame
-        if self.summary_rules:
-            self._update_column_widths(window, width, summary=True)
-
-        return window[self.key_lookup('Table')].get_size()
 
     def append(self, add_df):
         """
@@ -2983,7 +2950,7 @@ class RecordTable(TableElement):
         """
         Enable data table element actions.
         """
-        #params = self.parameters
+        # params = self.parameters
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
         custom_bttns = self.custom_actions
@@ -2991,7 +2958,7 @@ class RecordTable(TableElement):
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
         # Enable filter parameters
-        #if len(params) > 0 and self.modifiers['filter'] is True:
+        # if len(params) > 0 and self.modifiers['filter'] is True:
         #    # Enable the apply filters button
         #    filter_key = self.key_lookup('Filter')
         #    window[filter_key].update(disabled=False)
@@ -3018,7 +2985,7 @@ class RecordTable(TableElement):
         """
         Disable data table element actions.
         """
-        #params = self.parameters
+        # params = self.parameters
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
         custom_bttns = self.custom_actions
@@ -3026,7 +2993,7 @@ class RecordTable(TableElement):
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
 
         # Disable filter parameters
-        #if len(params) > 0 and self.modifiers['filter'] is True:
+        # if len(params) > 0 and self.modifiers['filter'] is True:
         #    # Disable the apply filters button
         #    filter_key = self.key_lookup('Filter')
         #    window[filter_key].update(disabled=True)
@@ -3492,7 +3459,7 @@ class ComponentTable(RecordTable):
         """
         Enable data table element actions.
         """
-        #params = self.parameters
+        # params = self.parameters
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
@@ -3501,7 +3468,7 @@ class ComponentTable(RecordTable):
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
         # Enable filter parameters
-        #if len(params) > 0 and self.modifiers['filter'] is True:
+        # if len(params) > 0 and self.modifiers['filter'] is True:
         #    # Enable the apply filters button
         #    filter_key = self.key_lookup('Filter')
         #    window[filter_key].update(disabled=False)
@@ -3531,7 +3498,7 @@ class ComponentTable(RecordTable):
         """
         Disable data table element actions.
         """
-        #params = self.parameters
+        # params = self.parameters
         add_key = self.key_lookup('Add')
         delete_key = self.key_lookup('Delete')
         import_key = self.key_lookup('Import')
@@ -3540,7 +3507,7 @@ class ComponentTable(RecordTable):
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
 
         # Disable filter parameters
-        #if len(params) > 0 and self.modifiers['filter'] is True:
+        # if len(params) > 0 and self.modifiers['filter'] is True:
         #    # Disable the apply filters button
         #    filter_key = self.key_lookup('Filter')
         #    window[filter_key].update(disabled=True)
@@ -3885,8 +3852,7 @@ class ReferenceBox(RecordElement):
         self.eclass = 'references'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Frame', 'RefDate', 'Unlink', 'Width', 'Height', 'ParentFlag', 'HardLinkFlag',
-                               'Approved')])
+                              ('Frame', 'RefDate', 'Unlink', 'ParentFlag', 'HardLinkFlag', 'Approved')])
         self._event_elements = ['Element', 'Frame', 'Approved', 'Unlink']
 
         # Element-specific bindings
@@ -4090,7 +4056,6 @@ class ReferenceBox(RecordElement):
         # Element layout
         ref_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
-        height_key = self.key_lookup('Height')
         discard_key = self.key_lookup('Unlink')
         link_key = self.key_lookup('HardLinkFlag')
         parent_key = self.key_lookup('ParentFlag')
@@ -4100,44 +4065,45 @@ class ReferenceBox(RecordElement):
         ref_date = settings.format_display_date(self.date) if not pd.isna(self.date) else None
         ref_id = self.reference_id if self.reference_id else None
         approved_title = 'Reference approved' if 'IsApproved' not in aliases else aliases['IsApproved']
-        elem_layout = [sg.Canvas(key=height_key, size=(0, height)),
-                       sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
-                                        text_color=text_col, font=bold_font, background_color=bg_col,
-                                        tooltip=tooltip),
-                                sg.Image(data=mod_const.LINKED_ICON, key=link_key, visible=hl_vis,
-                                         pad=(0, (0, pad_v)), background_color=bg_col,
-                                         tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
-                                                  not in aliases else aliases['IsHardLink'])),
-                                sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
-                                         pad=(0, (0, pad_v)), background_color=bg_col,
-                                         tooltip=('Reference record is a parent of this record' if 'IsParentChild'
-                                                  not in aliases else aliases['IsParentChild']))],
-                               [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
-                                        enable_events=can_open, text_color=select_text_col, font=font,
-                                        background_color=bg_col,
-                                        tooltip=('Reference record' if 'ReferenceID' not in aliases else
-                                                 aliases['ReferenceID'])),
-                                sg.Text(ref_date, key=date_key, auto_size_text=True, enable_events=True,
-                                        text_color=text_col, font=font, background_color=bg_col,
-                                        tooltip=('Date of reference creation' if 'ReferenceDate' not in aliases else
-                                                 aliases['ReferenceDate']))]],
-                              pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
-                       sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col,
-                                        visible=approved_vis),
-                                sg.Checkbox('', default=is_approved, key=approved_key, enable_events=True,
-                                            disabled=(not can_approve), visible=approved_vis, background_color=bg_col)],
-                               [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, pad=((0, pad_el * 2), 0),
-                                          disabled=(not can_delete), button_color=(text_col, bg_col), border_width=0,
-                                          tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
-                                                   aliases['RemoveLink']))]],
-                              pad=((0, pad_h), pad_v), justification='r', element_justification='r',
-                              vertical_alignment='c', background_color=bg_col)
-                       ]
+        elem_layout = [[sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
+                                         text_color=text_col, font=bold_font, background_color=bg_col,
+                                         tooltip=tooltip),
+                                 sg.Image(data=mod_const.LINKED_ICON, key=link_key, visible=hl_vis,
+                                          pad=(0, (0, pad_v)), background_color=bg_col,
+                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
+                                                                                                       not in aliases else
+                                                   aliases['IsHardLink'])),
+                                 sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
+                                          pad=(0, (0, pad_v)), background_color=bg_col,
+                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
+                                                                                                    not in aliases else
+                                                   aliases['IsParentChild']))],
+                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
+                                         enable_events=can_open, text_color=select_text_col, font=font,
+                                         background_color=bg_col,
+                                         tooltip=('Reference record' if 'ReferenceID' not in aliases else
+                                                  aliases['ReferenceID'])),
+                                 sg.Text(ref_date, key=date_key, auto_size_text=True, enable_events=True,
+                                         text_color=text_col, font=font, background_color=bg_col,
+                                         tooltip=('Date of reference creation' if 'ReferenceDate' not in aliases else
+                                                  aliases['ReferenceDate']))]],
+                               pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
+                        sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col,
+                                         visible=approved_vis),
+                                 sg.Checkbox('', default=is_approved, key=approved_key, enable_events=True,
+                                             disabled=(not can_approve), visible=approved_vis,
+                                             background_color=bg_col)],
+                                [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, pad=((0, pad_el * 2), 0),
+                                           disabled=(not can_delete), button_color=(text_col, bg_col), border_width=0,
+                                           tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
+                                                    aliases['RemoveLink']))]],
+                               pad=((0, pad_h), pad_v), justification='r', element_justification='r',
+                               vertical_alignment='c', background_color=bg_col)
+                        ]]
 
-        width_key = self.key_lookup('Width')
-        layout = sg.Frame('', [[sg.Canvas(key=width_key, size=(width, 0))], elem_layout],
-                          key=frame_key, pad=padding, background_color=bg_col, relief='raised', visible=self.referenced,
-                          metadata={'deleted': False, 'name': self.name}, tooltip=warnings, vertical_alignment='c')
+        layout = sg.Frame('', elem_layout, key=frame_key, size=(width, height), pad=padding, background_color=bg_col,
+                          relief='raised', visible=self.referenced, vertical_alignment='c', element_justification='l',
+                          metadata={'deleted': False, 'name': self.name}, tooltip=warnings)
 
         return layout
 
@@ -4146,22 +4112,22 @@ class ReferenceBox(RecordElement):
         Resize the reference box element.
         """
         current_w, current_h = self.dimensions()
+        border_w = 1
+
         if size:
             width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
+            new_h = current_h if height is None else height - border_w * 2
+            new_w = current_w if width is None else width - border_w * 2
         else:
             new_w, new_h = (current_w, current_h)
 
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(new_w, None))
+        frame_key = self.key_lookup('Frame')
+        new_size = (new_w, new_h)
+        mod_lo.set_size(window, frame_key, new_size)
 
-        height_key = self.key_lookup('Height')
-        window[height_key].set_size(size=(None, new_h))
+        self._dimensions = new_size
 
-        self._dimensions = (new_w, new_h)
-
-        return window[self.key_lookup('Frame')].get_size()
+        return window[frame_key].get_size()
 
     def dimensions(self):
         """
@@ -4724,7 +4690,7 @@ class DataElement(RecordElement):
 
         size = self._dimensions if not size else size
         width, height = size
-        self._dimensions = size
+        self._dimensions = (width * 10, mod_const.DE_HEIGHT)
 
         background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
