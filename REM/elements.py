@@ -3697,7 +3697,7 @@ class ComponentTable(RecordTable):
             # Import the entries from the reference table with record references unset
             try:
                 ref_ids = record_entry.search_unreferenced_ids(rule_name)
-                df = record_entry.load_record_data(ref_ids)
+                df = record_entry.load_records(ref_ids)
             except Exception as e:
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
                 logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -4346,7 +4346,7 @@ class ReferenceBox(RecordElement):
         logger.info('ReferenceBox {NAME}: loading reference record {ID} of type {TYPE} at level {LEVEL}'
                     .format(NAME=self.name, ID=self.reference_id, TYPE=self.reference_type, LEVEL=level))
 
-        imports = record_entry.load_record_data(self.reference_id)
+        imports = record_entry.load_records(self.reference_id)
         nrow = imports.shape[0]
 
         if nrow < 1:

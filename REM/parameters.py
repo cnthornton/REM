@@ -367,17 +367,11 @@ class DataParameterSingle(DataParameter):
         except KeyError:
             aliases = settings.fetch_alias_definition(self.name)
 
-        print('initializing with aliases:')
-        print(aliases)
-
         self.aliases = {}  # only str and int types can have aliases - aliases dict reversed during value formatting
         if self.dtype in (settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes):
             for alias in aliases:  # alias should have same datatype as the element
                 alias_value = aliases[alias]
                 self.aliases[settings.format_value(alias, self.dtype)] = alias_value
-
-        print('aliases after formatting:')
-        print(self.aliases)
 
         try:
             default = entry['DefaultValue']
@@ -620,8 +614,6 @@ class DataParameterSingle(DataParameter):
             return None
 
         aliases_rev = {j: i for i, j in aliases.items()}
-        print('aliases are: {}'.format(aliases_rev))
-        print('input value is: {}'.format(input_value))
         try:
             value_fmt = aliases_rev[input_value]
         except KeyError:

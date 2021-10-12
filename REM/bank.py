@@ -246,7 +246,6 @@ class BankRule:
         warn_key = self.key_lookup('Warnings')
 
         can_save = not window[save_key].metadata['disabled']
-        print('reconciliation can be saved: {}'.format(can_save))
 
         # Run an account entry event
         acct_keys = [i for j in self.accts for i in j.bindings]
@@ -261,26 +260,28 @@ class BankRule:
             # reference.
             ref_indices = results.get('ReferenceIndex')
             if ref_indices:
+                logger.debug('BankRule {NAME}: references at indices {INDS} were modified from account table {ACCT}'
+                             .format(NAME=self.name, INDS=ref_indices, ACCT=acct.name))
                 ref_df = acct.ref_df.copy()
                 # Update account reference dataframes for currently active panels
                 for panel in self.panels:
-                    if panel == current_panel:  # do not attempt to update the main account's reference dataframe
-                        continue
-
                     ref_acct = self.fetch_account(panel, by_key=True)
+
+                    logger.debug('BankRule {NAME}: updating transaction account {ACCT} references matching those '
+                                 'that were modified'.format(NAME=self.name, ACCT=ref_acct.name))
                     ref_acct.ref_df = ref_acct.update_references(ref_df.loc[ref_indices])
 
                 self.update_display(window)
 
             # Update warning element with the reference notes of the selected record, if any.
             record_indices = results.get('RecordIndex')
-            print('record indices {} were selected from account table {}'.format(record_indices, acct.name))
             if record_indices:
+                logger.debug('BankRule {NAME}: record indices {INDS} were selected from account table {ACCT}'
+                             .format(NAME=self.name, INDS=record_indices, ACCT=acct.name))
                 if len(record_indices) > 1:
                     record_warning = None
                 else:
                     record_warning = acct.fetch_reference_parameter('ReferenceNotes', record_indices).squeeze()
-                print('record reference has warning "{}"'.format(record_warning))
                 window[warn_key].update(value=settings.format_display(record_warning, 'varchar'))
 
             return current_rule
@@ -418,56 +419,61 @@ class BankRule:
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
+                # Load the main transaction account data using the defined parameters
+                main_acct = self.current_account
+                acct_params = params[main_acct]
+                if not acct_params:
+                    msg = 'no parameters supplied for main account {ACCT}'.format(ACCT=main_acct)
+                    mod_win2.popup_error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    return self.reset_rule(window, current=True)
+
+                acct = self.fetch_account(main_acct)
+                try:
+                    acct.load_data(acct_params)
+                except Exception as e:
+                    msg = 'failed to load data for current account {ACCT} - {ERR}'.format(ACCT=main_acct, ERR=e)
+                    logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    return self.reset_rule(window, current=True)
+
+                # Get a list of records referenced by the main account records
+                ref_df = acct.ref_df.copy()
+                ref_df = ref_df[~ref_df['ReferenceID'].isna()]
+
+                # Enable table action buttons for the main account
+                acct.table.enable(window)
+
+                self.panels.append(self.panel_keys[main_acct])
+
+                # Load the association account data using the defined parameters
                 for acct_name in params:
-                    acct_params = params[acct_name]
-                    if not acct_params:
+                    if acct_name == main_acct:  # data already loaded
                         continue
 
-                    logger.debug('BankRule {NAME}: loading database records for account {ACCT}'
+                    acct_params = params[acct_name]
+                    if not acct_params:
+                        msg = 'no parameters supplied for association account {ACCT}'.format(ACCT=main_acct)
+                        logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        continue
+
+                    logger.debug('BankRule {NAME}: loading database records for association account {ACCT}'
                                  .format(NAME=self.name, ACCT=acct_name))
-                    acct = self.fetch_account(acct_name)
+                    assoc_acct = self.fetch_account(acct_name)
+                    assoc_type = assoc_acct.record_type
+
+                    refs = ref_df.copy()
+                    reference_records = refs.loc[refs['ReferenceType'] == assoc_type, 'ReferenceID'].tolist()
+
                     try:
-                        df = acct.load_data(acct_params)
+                        assoc_acct.load_data(acct_params, records=reference_records)
                     except Exception as e:
                         mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
 
                         return self.reset_rule(window, current=True)
-
-                    # Load the record references from the reference table connected with the association rule
-                    record_ids = df[acct.table.id_column].tolist()
-                    try:
-                        acct.ref_df = acct.load_references(record_ids)
-                    except Exception as e:
-                        mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
-
-                        return self.reset_rule(window, current=True)
-
-                    # Merge the configured reference columns with the records table
-                    ref_map = acct.ref_map
-                    ref_df = acct.ref_df.copy()
-
-                    # Set index to record ID for updating
-                    df.set_index('RecordID', inplace=True)
-                    ref_df.set_index('RecordID', inplace=True)
-
-                    # Rename reference columns to record columns using the reference map
-                    mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
-
-                    # Update record reference columns
-                    drop_cols = [i for i in mapped_df.columns if i in df.columns]
-                    print('dropping shared columns {} from the records table'.format(drop_cols))
-                    #df = df.drop(columns=mapped_df.columns).join(mapped_df)
-                    df = df.drop(columns=drop_cols).join(mapped_df)
-                    df.reset_index(inplace=True)
-
-                    # Update the record table dataframe with the data imported from the database
-                    acct.table.df = acct.table.append(df)
 
                     self.panels.append(self.panel_keys[acct_name])
-
-                    # Enable table action buttons, but only for the primary table
-                    if self.current_account == acct_name:
-                        acct.table.enable(window)
 
                 # Update the display
                 self.update_display(window)
@@ -1053,9 +1059,6 @@ class BankRule:
 
             # Find exact matches between account record and the associated account records using relevant cols
             row_vals = [getattr(row, i) for i in cols]
-            print('searching for matches on columns {} at level {}'.format(cols, expand_level))
-            print(row_vals)
-            print(assoc_df[cols])
             acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
             matches = matches.append(acct_matches)
 
@@ -1111,7 +1114,6 @@ class BankRule:
             if not closest_match:
                 results = self.find_expanded_match(row, matches, ref_map, expand_level=expand_level+1)
             else:
-                print('finding closest match for row {ROW} using expand columns {COL}'.format(ROW=row.name, COL=closest_match))
                 results = nearest_match(row, matches, closest_match)
                 if results.empty:
                     msg = 'multiple matches found for account {ACCT}, row {ROW} but enough specificity in the data ' \
@@ -1141,8 +1143,6 @@ class BankRule:
             logger.debug('BankRule {NAME}: preparing account {ACCT} record statements'
                          .format(NAME=self.name, ACCT=acct.name))
             record_data = acct.table.data(edited_rows=True)
-            print('saving modified record data:')
-            print(record_data)
             try:
                 statements = record_entry.save_database_records(record_data, statements=statements)
             except Exception as e:
@@ -1618,6 +1618,7 @@ class BankAccount:
         # Return values
         reference_indices = None
         record_indices = None
+        reset = False
 
         # Run a record table event.
         if event in table_keys:
@@ -1669,12 +1670,9 @@ class BankAccount:
                                 logger.exception(
                                     'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                             else:
-                                print('updating table row {} with values:'.format(index))
-                                print(record_values)
                                 table.update_row(index, record_values)
 
                                 self.update_display(window)
-                                print(table.df)
 
                             # Update the references dataframe
                             try:
@@ -1754,14 +1752,13 @@ class BankAccount:
 
             # Delete references and approval for the selected records
             try:
-                reference_indices = self.unapprove(record_ids)
+                reference_indices = self.reset_references(record_ids, index=False)
             except Exception as e:
                 msg = 'failed to reset record references at table indices {INDS}'.format(INDS=indices)
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             # Reset void transaction status
-            if 'Void' in colmap:
-                table.update_column(colmap['Void'], False, indices=indices)
+            self.reset_records(indices, index=True)
 
         return {'ReferenceIndex': reference_indices, 'RecordIndex': record_indices}
 
@@ -1867,8 +1864,6 @@ class BankAccount:
             new_values = ref_df[column].tolist()
             self.table.update_column(mapped_col, new_values, indices=indices)
 
-        print(self.table.df)
-
     def update_references(self, ref_df):
         """
         Update the reference dataframe using a corresponding reference dataframe.
@@ -1877,50 +1872,38 @@ class BankAccount:
 
         df = self.ref_df.copy()
 
-        print('BankAccount {}:selected references:'.format(self.name))
-        print(ref_df)
-
         # Drop references records that are not found as corresponding references in the reference dataframe
         ref_ids = df['ReferenceID'].dropna()
         ref_df = ref_df[ref_df['RecordID'].isin(ref_ids)]
-        print('BankAccount {}: references entries that are found both in the reference dataframe and the corresponding dataframe:'.format(self.name))
-        print(ref_df)
 
         if ref_df.empty:
-            print('BankAccount {}: no references remaining after filtering references that are not shared'.format(self.name))
+            logger.debug('BankAccount {NAME}: no references remaining after filtering references that are not shared'
+                         .format(NAME=self.name))
             return df
 
         # Delete reference entries that were deleted in the corresponding reference dataframe
         deleted_references = ref_df.loc[ref_df['ReferenceID'].isna(), 'RecordID']
         if not deleted_references.empty:
-            refs_to_delete = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID']
-            print('BankAccount {}: removing references for:'.format(self.name))
-            print(refs_to_delete)
-            self.unapprove(refs_to_delete.tolist())
+            ids_to_delete = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID'].tolist()
+
+            logger.debug('BankAccount {NAME}: removing references {REFS}'.format(NAME=self.name, REFS=ids_to_delete))
+            self.reset_references(ids_to_delete, index=False)
+            self.reset_records(ids_to_delete, index=False)
 
             ref_df.drop(deleted_references.index, inplace=True)
             df = self.ref_df.copy()
 
         # Subset reference table on matching reference records
         if ref_df.empty:
-            print('BankAccount {}: no references remaining after removing the deleted references'.format(self.name))
+            logger.debug('BankAccount {NAME}: no references remaining to modify after removing the deleted references'
+                         .format(NAME=self.name))
             return df
-
-        print('BankAccount {}: remaining reference to update after removing the deleted references:'.format(self.name))
-        print(ref_df)
 
         df.set_index('RecordID', inplace=True)
         ref_df.set_index('ReferenceID', inplace=True)
-        #print('BankAccount {}: indexing corresponding reference entries on the current reference entries'.format(self.name))
-        #ref_df = ref_df.loc[df.index]
-        #print(ref_df)
 
         mod_cols = ['ReferenceDate', 'ReferenceNotes', 'IsApproved']
-        print('BankAccount {}: reference entries to be updated:'.format(self.name))
-        print(df.loc[ref_df.index, mod_cols])
         df.loc[ref_df.index, mod_cols] = ref_df[mod_cols]
-        print('BankAccount {}: reference entries after updating:'.format(self.name))
-        print(df.loc[ref_df.index, mod_cols])
 
         df.reset_index(inplace=True)
 
@@ -1946,26 +1929,61 @@ class BankAccount:
 
         return ref_indices.tolist()
 
-    def unapprove(self, record_ids):
+    def reset_records(self, identifiers, index: bool = True):
         """
-        Delete references for the selected records.
+        Reset reconciliation parameters for the selected records.
 
         Arguments:
-            record_ids (list): list of record IDs corresponding to the records to remove references from.
+            identifiers (list): list of record identifiers corresponding to the records to modify.
+
+            index (bool): record identifiers are table indices [Default: True].
 
         Returns:
-            ref_indices (list): list of affected references indices.
+            indices (list): list of affected record indices.
+        """
+        table = self.table
+        colmap = self._col_map
+
+        if index:
+            indices = identifiers
+        else:
+            df = table.df
+            indices = df.index[df[table.id_column].isin(identifiers)].tolist()
+
+        if 'Void' in colmap:
+            table.update_column(colmap['Void'], False, indices=indices)
+
+        if 'Approved' in colmap:
+            table.update_column(colmap['Approved'], False, indices=indices)
+
+        return indices
+
+    def reset_references(self, identifiers, index: bool = False):
+        """
+        Reset record references for the selected records.
+
+        Arguments:
+            identifiers (list): list of record identifiers corresponding to the records to modify.
+
+            index (bool): record identifiers are table indices [Default: False - identifiers are record IDs].
+
+        Returns:
+            indices (list): list of affected references indices.
         """
         ref_df = self.ref_df
 
-        # Clear the reference entries corresponding to the selected record IDs.
-        logger.info('DataTable {TBL}: removing references for records {IDS}'
-                    .format(TBL=self.name, IDS=record_ids))
-        ref_indices = ref_df.index[ref_df['RecordID'].isin(record_ids)]
-        ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved']
-        ref_df.loc[ref_indices, ref_columns] = [None, None, None, None, False]
+        if index:
+            indices = identifiers
+        else:
+            indices = ref_df.index[ref_df['RecordID'].isin(identifiers)].tolist()
 
-        return ref_indices.tolist()
+        # Clear the reference entries corresponding to the selected record
+        logger.info('DataTable {TBL}: removing references for records {IDS}'
+                    .format(TBL=self.name, IDS=identifiers))
+        ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved']
+        ref_df.loc[indices, ref_columns] = [None, None, None, None, False]
+
+        return indices
 
     def search_void(self, df):
         """
@@ -2101,6 +2119,45 @@ class BankAccount:
         # Update the display table
         self.table.update_display(window)
 
+    def load_data(self, params, records: list = None):
+        """
+        Load record and reference data from the database.
+        """
+        logger.debug('BankAccount {NAME}: loading record data'.format(NAME=self.name))
+        try:
+            df = self.load_records(params, records=records)
+        except Exception as e:
+            msg = '{MSG} -  see log for details'.format(MSG=e)
+            raise ImportError(msg)
+
+        # Load the record references from the reference table connected with the association rule
+        record_ids = df[self.table.id_column].tolist()
+        logger.debug('BankAccount {NAME}: loading reference data'.format(NAME=self.name))
+        try:
+            self.ref_df = self.load_references(record_ids)
+        except Exception as e:
+            msg = '{MSG} -  see log for details'.format(MSG=e)
+            raise ImportError(msg)
+
+        # Merge the configured reference columns with the records table
+        ref_map = self.ref_map
+        ref_df = self.ref_df.copy()
+
+        # Set index to record ID for updating
+        df.set_index('RecordID', inplace=True)
+        ref_df.set_index('RecordID', inplace=True)
+
+        # Rename reference columns to record columns using the reference map
+        mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
+
+        # Update record reference columns
+        drop_cols = [i for i in mapped_df.columns if i in df.columns]
+        df = df.drop(columns=drop_cols).join(mapped_df)
+        df.reset_index(inplace=True)
+
+        # Update the record table dataframe with the data imported from the database
+        self.table.df = self.table.append(df)
+
     def load_references(self, record_ids):
         """
         Load record references from the database.
@@ -2129,17 +2186,19 @@ class BankAccount:
 
         return ref_df
 
-    def load_data(self, parameters):
+    def load_records(self, parameters, records: list = None):
         """
         Load record and reference data from the database based on the supplied parameter set.
 
         Arguments:
             parameters (list): list of data parameters to filter the records database table on.
 
+            records (list): also load records in the list of record IDs.
+
         Returns:
             success (bool): records and references were loaded successfully.
         """
-        #pd.set_option('display.max_columns', None)
+        pd.set_option('display.max_columns', None)
 
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
@@ -2153,60 +2212,26 @@ class BankAccount:
 
             raise ImportError(msg)
 
+        # Load remaining records not yet loaded using the parameters
+        imported_ids = df[self.table.id_column].tolist()
+        if records:
+            remaining_records = list(set(records).difference(imported_ids))
+            print('remaining records to load: {}'.format(remaining_records))
+            loaded_df = record_entry.load_records(remaining_records)
+
+            # Filter loaded records by static parameters, if any
+            for parameter in parameters:
+                if parameter.editable:
+                    continue
+
+                loaded_df = parameter.filter_table(loaded_df)
+
+            print('appending manually loaded records:')
+            print(loaded_df)
+
+            df = df.append(loaded_df, ignore_index=True)
+
         return df
-
-    def load_data_old(self, parameters):
-        """
-        Load record and reference data from the database based on the supplied parameter set.
-
-        Arguments:
-            parameters (list): list of data parameters to filter the records database table on.
-
-        Returns:
-            success (bool): records and references were loaded successfully.
-        """
-        #pd.set_option('display.max_columns', None)
-
-        record_type = self.record_type
-        record_entry = settings.records.fetch_rule(record_type)
-
-        # Prepare the database query statement
-        try:
-            df = record_entry.import_records(params=parameters, import_rules=self.import_rules)
-        except Exception as e:
-            msg = 'failed to import data from the database'
-            logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=msg))
-
-            return False
-
-        # Update the record table dataframe with the data imported from the database
-        self.table.df = self.table.append(df)
-
-        # Load the record references from the reference table connected with the association rule
-        record_ids = df[self.table.id_column].tolist()
-        self.ref_df = self.load_references(record_ids)
-
-        # Merge the configured reference columns with the records table
-        ref_map = self.ref_map
-        ref_df = self.ref_df.copy()
-
-        df = self.table.data()
-
-        # Set index to record ID for updating
-        df.set_index('RecordID', inplace=True)
-        ref_df.set_index('RecordID', inplace=True)
-
-        # Rename reference columns to record columns using the reference map
-        mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
-
-        # Update record reference columns
-        df = df.drop(columns=mapped_df.columns).join(mapped_df)
-        df.reset_index(inplace=True)
-
-        self.table.df = df
-
-        return True
 
 
 def nearest_match(row, ref_df, columns):

@@ -190,6 +190,53 @@ class RecordEntry:
                                  .format(NAME=name))
             sys.exit(1)
 
+    def load_records(self, id_list, id_field: str = 'RecordID'):
+        """
+        Load a record from the database using the record ID.
+
+        Arguments:
+            id_list (list): load records with these record IDs from the database.
+
+            id_field (str): table field containing the record IDs [Default: RecordID].
+
+        Returns:
+            import_df (DataFrame): dataframe of imported records.
+        """
+        if isinstance(id_list, str):
+            record_ids = [id_list]
+        else:
+            record_ids = id_list
+
+        record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
+        logger.debug('loading records {IDS} of type "{TYPE}" from the database'.format(IDS=record_ids, TYPE=self.name))
+
+        # Add configured import filters
+        table_statement = mod_db.format_tables(self.import_rules)
+        columns = mod_db.format_import_columns(self.import_rules)
+        id_col = mod_db.get_import_column(self.import_rules, id_field)
+
+        # Query existing database entries
+        import_df = pd.DataFrame()
+        for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+            sub_ids = record_ids[i: i + 1000]
+            filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
+            filters = mod_db.format_import_filters(self.import_rules)
+            filters.append((filter_clause, tuple(sub_ids)))
+
+            if import_df.empty:
+                import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
+                                                                       filter_rules=filters), prog_db=True)
+            else:
+                import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
+                                                                                        columns=columns,
+                                                                                        filter_rules=filters),
+                                                          prog_db=True), ignore_index=True)
+
+        logger.debug('{NLOADED} records passed the query filters out of {NTOTAL} requested records'
+                     .format(NLOADED=import_df.shape[0], NTOTAL=len(record_ids)))
+
+        return import_df
+
     def import_records(self, params: list = None, import_rules: dict = None):
         """
         Import entry records from the database.
@@ -396,53 +443,6 @@ class RecordEntry:
             return records_saved[0]
         else:
             return records_saved
-
-    def load_record_data(self, id_list, id_field: str = 'RecordID'):
-        """
-        Load a record from the database using the record ID.
-
-        Arguments:
-            id_list (list): load records with these record IDs from the database.
-
-            id_field (str): table field containing the record IDs [Default: RecordID].
-
-        Returns:
-            import_df (DataFrame): dataframe of imported records.
-        """
-        if isinstance(id_list, str):
-            record_ids = [id_list]
-        else:
-            record_ids = id_list
-
-        record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
-        logger.debug('loading records {IDS} of type "{TYPE}" from the database'.format(IDS=record_ids, TYPE=self.name))
-
-        # Add configured import filters
-        table_statement = mod_db.format_tables(self.import_rules)
-        columns = mod_db.format_import_columns(self.import_rules)
-        id_col = mod_db.get_import_column(self.import_rules, id_field)
-
-        # Query existing database entries
-        import_df = pd.DataFrame()
-        for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
-            sub_ids = record_ids[i: i + 1000]
-            filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
-            filters = mod_db.format_import_filters(self.import_rules)
-            filters.append((filter_clause, tuple(sub_ids)))
-
-            if import_df.empty:
-                import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
-                                                                       filter_rules=filters), prog_db=True)
-            else:
-                import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
-                                                                                        columns=columns,
-                                                                                        filter_rules=filters),
-                                                          prog_db=True), ignore_index=True)
-
-        logger.debug('{NLOADED} records passed the query filters out of {NTOTAL} requested records'
-                     .format(NLOADED=import_df.shape[0], NTOTAL=len(record_ids)))
-
-        return import_df
 
     def save_database_references(self, ref_data, rule_name, statements: dict = None):
         """
@@ -1534,7 +1534,7 @@ class DatabaseRecord:
                 import_ids = ref_data['ReferenceID']
 
                 # Load the component records
-                import_df = comp_entry.load_record_data(import_ids)
+                import_df = comp_entry.load_records(import_ids)
                 import_df = import_df[[i for i in import_df.columns if i in record_element.columns]]
                 record_element.df = record_element.append(import_df)
 
