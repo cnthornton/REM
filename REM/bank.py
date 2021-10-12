@@ -11,6 +11,7 @@ import PySimpleGUI as sg
 
 import REM.constants as mod_const
 import REM.elements as mod_elem
+import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.client import logger, settings, user
@@ -52,8 +53,9 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Cancel', 'Save', 'FrameHeight',
-                          'FrameWidth', 'PanelHeight', 'PanelWidth', 'Back', 'Next', 'Warnings')]
+                         ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Cancel', 'Save', 'PanelGroup', 'Panels',
+                          'Back', 'Next', 'Warnings', 'Frame', 'Header', 'Buttons', 'Title', 'Horizontal',
+                          'WarningsCol')]
 
         self.bindings = [self.key_lookup(i) for i in
                          ('Cancel', 'Save', 'Back', 'Next', 'Entry', 'Parameters', 'Reconcile')]
@@ -605,15 +607,22 @@ class BankRule:
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
-        pad_h = mod_const.HORZ_PAD
         pad_frame = mod_const.FRAME_PAD
 
-        # Element sizes
-        frame_height = height
-        panel_height = frame_height - 220  # minus panel title, padding, and button row
+        param_size = mod_const.PARAM_SIZE_CHAR
 
-        frame_width = width
-        panel_width = frame_width - 38  # padding + scrollbar width
+        # Element sizes
+        title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
+        pad_h = 22  # horizontal bar with padding
+        bttn_h = mod_const.BTTN_HEIGHT
+        header_h = 52
+        warn_h = 50
+
+        frame_w = width - pad_frame * 2
+        frame_h = height - title_h - warn_h - bttn_h  # height minus title bar, warning multiline, and buttons height
+
+        panel_w = frame_w
+        panel_h = frame_h - header_h - pad_h  # minus panel title, padding, and button row
 
         # Keyboard shortcuts
         hotkeys = settings.hotkeys
@@ -626,13 +635,13 @@ class BankRule:
 
         # Title
         panel_title = 'Bank Reconciliation: {}'.format(self.menu_title)
-        title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
-        #title_key = self.key_lookup('Title')
-        #title_layout = sg.Col([[sg.Canvas(size=(0, title_h), background_color=header_col),
-        #                        sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h,
-        #                                background_color=header_col)]],
-        #                      key=title_key, size=(title_w, title_h), background_color=header_col,
-        #                      vertical_alignment='c', element_justification='l', justification='l', expand_x=True)
+        #title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
+        title_key = self.key_lookup('Title')
+        title_layout = sg.Col([[sg.Canvas(size=(0, title_h), background_color=header_col),
+                                sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h,
+                                        background_color=header_col)]],
+                              key=title_key, size=(title_w, title_h), background_color=header_col,
+                              vertical_alignment='c', element_justification='l', justification='l', expand_x=True)
 
         # Header
         param_key = self.key_lookup('Parameters')
@@ -654,35 +663,42 @@ class BankRule:
             param_elements.extend(element_layout)
 
         entries = [i.title for i in self.accts]
-        header = [sg.Col([[sg.Combo(entries, default_value='', key=entry_key, size=(30, 1), pad=(pad_h, 0), font=font,
-                                    text_color=text_col, background_color=bg_col, disabled=False, enable_events=True,
-                                    tooltip='Select reconciliation account'),
+        header = [sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
+                           sg.Combo(entries, default_value='', key=entry_key, size=param_size, pad=(pad_h, 0),
+                                    font=font, text_color=text_col, background_color=bg_col, disabled=False,
+                                    enable_events=True, tooltip='Select reconciliation account'),
                            sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
                                      button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
                          expand_x=True, justification='l', background_color=bg_col),
                   sg.Col([param_elements], pad=(0, 0), justification='r', background_color=bg_col)]
+        header_key = self.key_lookup('Header')
+        header_layout = sg.Col([header], key=header_key, background_color=bg_col, expand_x=True, vertical_alignment='c',
+                               element_justification='l')
 
         # Reference warnings
         warn_key = self.key_lookup('Warnings')
-        warn_w = width - 40  # width of the display panel minus padding on both sides
+        warn_w = width  # width of the display panel minus padding on both sides
         warn_h = 2
-        warn_layout = sg.Multiline('', key=warn_key, pad=(0, (pad_v, 0)), size=(warn_w, warn_h), font=font,
-                                   disabled=True, background_color=bg_col, text_color=disabled_text_col, border_width=1)
+        #warn_layout = sg.Multiline('', key=warn_key, pad=(0, pad_v), size=(warn_w, warn_h), font=font,
+        #                           disabled=True, background_color=bg_col, text_color=disabled_text_col, border_width=1)
+        warn_layout = sg.Col([[sg.Canvas(size=(0, 70), background_color=bg_col),
+                               sg.Multiline('', key=warn_key, size=(warn_w, warn_h), font=font, disabled=True,
+                                            background_color=bg_col, text_color=disabled_text_col, border_width=1)]],
+                             key=self.key_lookup('WarningsCol'), background_color=bg_col, expand_x=True, vertical_alignment='c', element_justification='l')
 
         # Panels
         panels = []
         for acct in self.accts:
-            layout = acct.layout(size=(panel_width, panel_height))
+            layout = acct.layout(size=(panel_w, panel_h))
             panels.append(layout)
 
-        pw_key = self.key_lookup('PanelWidth')
-        ph_key = self.key_lookup('PanelHeight')
-        panel_group = [[sg.Canvas(key=pw_key, size=(panel_width, 0), background_color=bg_col)],
-                       [sg.Canvas(key=ph_key, size=(0, panel_height), background_color=bg_col),
-                        sg.Pane(panels, orientation='horizontal', show_handle=False, border_width=0, relief='flat')]]
+        pg_key = self.key_lookup('PanelGroup')
+        panel_group = [[sg.Pane(panels, key=pg_key, orientation='horizontal', background_color=bg_col,
+                                show_handle=False, border_width=0, relief='flat')]]
 
         # Panel layout
-        panel_layout = sg.Col(panel_group, pad=(0, 0), background_color=bg_col, expand_x=True,
+        panel_key = self.key_lookup('Panels')
+        panel_layout = sg.Col(panel_group, key=panel_key, background_color=bg_col, expand_x=True,
                               vertical_alignment='t', visible=True, expand_y=True, scrollable=True,
                               vertical_scroll_only=True)
 
@@ -691,8 +707,11 @@ class BankRule:
         back_key = self.key_lookup('Back')
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
+        buttons_key = self.key_lookup('Buttons')
+        bttn_h = mod_const.BTTN_HEIGHT
         bttn_layout = sg.Col([
-            [sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
+            [sg.Canvas(size=(0, bttn_h)),
+             sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
                        image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
                        tooltip='Return to home screen ({})'.format(cancel_shortcut)),
              sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
@@ -704,22 +723,19 @@ class BankRule:
              sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
                        pad=(0, 0), disabled=True, tooltip='Save results ({})'.format(save_shortcut),
                        metadata={'disabled': True})
-             ]], background_color=bg_col, element_justification='c', expand_x=True)
+             ]], key=buttons_key, vertical_alignment='c', element_justification='c', expand_x=True)
 
-        fw_key = self.key_lookup('FrameWidth')
-        fh_key = self.key_lookup('FrameHeight')
-        layout = [[sg.Canvas(key=fw_key, size=(frame_width, 0), background_color=bg_col)],
-                  [sg.Col([[title_layout]], background_color=header_col, expand_x=True)],
-                  [sg.Canvas(key=fh_key, size=(0, frame_height), background_color=bg_col),
-                   sg.Col([header,
-                          [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-                          [panel_layout],
-                          [warn_layout],
-                          [sg.HorizontalSeparator(pad=(0, pad_v), color=mod_const.HEADER_COL)],
-                          [bttn_layout]],
-                          pad=(pad_frame, pad_frame), background_color=bg_col, expand_x=True, expand_y=True)]]
+        frame_key = self.key_lookup('Frame')
+        frame_layout = sg.Col([[header_layout],
+                               [sg.HorizontalSeparator(key=self.key_lookup('Horizontal'), pad=(0, (0, pad_v)), color=mod_const.HEADER_COL)],
+                               [panel_layout],
+                               [warn_layout]],
+                              pad=(pad_frame, 0), key=frame_key, background_color=bg_col, expand_x=True, expand_y=True)
 
-        return sg.Col(layout, key=self.element_key, visible=False, background_color=bg_col, vertical_alignment='t')
+        layout = sg.Col([[title_layout], [frame_layout], [bttn_layout]], key=self.element_key,
+                        visible=False, background_color=bg_col, vertical_alignment='t')
+
+        return layout
 
     def resize_elements(self, window, size):
         """
@@ -731,28 +747,46 @@ class BankRule:
             size (tuple): new panel size (width, height).
         """
         width, height = size
+        pad_frame = mod_const.FRAME_PAD
+        pad_v = mod_const.VERT_PAD
+        scroll_w = mod_const.SCROLL_WIDTH
 
-        frame_width = width
-        width_key = self.key_lookup('FrameWidth')
-        window[width_key].set_size((frame_width, None))
+        title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
+        pad_h = pad_v + 2  # horizontal bar height with padding
+        pad_w = pad_frame * 2
+        bttn_h = mod_const.BTTN_HEIGHT
+        header_h = 52
+        warn_h = 70
 
-        panel_width = frame_width - 40  # minus frame padding
-        pw_key = self.key_lookup('PanelWidth')
-        window[pw_key].set_size((panel_width, None))
+        frame_w = width - pad_w
+        frame_h = height - title_h - bttn_h - 4  # height minus title bar and buttons height
+        frame_key = self.key_lookup('Frame')
+        mod_lo.set_size(window, frame_key, (frame_w, frame_h))
 
-        height_key = self.key_lookup('FrameHeight')
-        window[height_key].set_size((None, height))
-
-        warn_h = 50
-        #print('the height of the warnings frame is: {}'.format(window[self.key_lookup('Warnings')].get_size()[1]))
-        panel_height = height - 240 - warn_h  # minus panel title, padding, button row, and
-        ph_key = self.key_lookup('PanelHeight')
-        window[ph_key].set_size((None, panel_height))
+        panel_w = frame_w
+        panel_h = frame_h - header_h - warn_h - pad_h  # frame minus panel header row, warning, and vertical padding
+        panel_key = self.key_lookup('Panels')
+        mod_lo.set_size(window, panel_key, (panel_w, panel_h))
 
         # Resize account panels
         accts = self.accts
         for acct in accts:
-            acct.resize(window, size=(panel_width, panel_height))
+            acct.resize(window, size=(panel_w - scroll_w, panel_h))
+
+        window.refresh()
+        print('desired button height: {}'.format(bttn_h))
+        print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
+        print('desired title height: {}'.format(title_h))
+        print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
+        print('desired warning height: {}'.format(warn_h))
+        print('actual warning height: {}'.format(window[self.key_lookup('WarningsCol')].get_size()[1]))
+        print('desired header height: {}'.format(header_h))
+        print('actual header height: {}'.format(window[self.key_lookup('Header')].get_size()[1]))
+        print('desired frame height: {}'.format(frame_h))
+        print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
+        print('desired panel height: {}'.format(panel_h))
+        print('actual panel height: {}'.format(window[panel_key].get_size()[1]))
+        print('size of the multiline element: {}'.format(window[self.key_lookup('Horizontal')].get_size()[1]))
 
     def update_display(self, window):
         """
@@ -1768,7 +1802,7 @@ class BankAccount:
         width, height = size
 
         # Reset table size
-        tbl_width = width - 26  # minus the width of the panel scrollbar
+        tbl_width = width
         tbl_height = height
         self.table.resize(window, size=(tbl_width, tbl_height))
 
