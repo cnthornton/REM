@@ -244,7 +244,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     title = record.title
     title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
-    title_layout = [[sg.Canvas(size=(title_w, title_h), background_color=bg_col),
+    title_layout = [[sg.Canvas(size=(0, title_h), background_color=bg_col),
                      sg.Col([[sg.Text(title, pad=(pad_frame, 0), font=font_h, background_color=header_col)]],
                             expand_x=True, justification='l', vertical_alignment='c', background_color=header_col),
                      sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.REPORT_ICON, border_width=0,

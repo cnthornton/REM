@@ -673,12 +673,6 @@ class AuditRule:
         panel_key = self.key_lookup('Panels')
         panel_layout = sg.Pane(panels, key=panel_key, orientation='horizontal', background_color=bg_col,
                                show_handle=False, border_width=0, relief='flat')
-        #pg_key = self.key_lookup('PanelGroup')
-        #pg_layout = [[sg.Pane(panels, key=pg_key, orientation='horizontal', background_color=bg_col, show_handle=False,
-        #                      border_width=0, relief='flat')]]
-        #panels_key = self.key_lookup('Panels')
-        #panel_layout = sg.Col(pg_layout, key=panels_key, background_color=bg_col, vertical_alignment='t',
-        #                      scrollable=True, vertical_scroll_only=True, expand_y=True, expand_x=True)
 
         # Standard elements
         next_key = self.key_lookup('Next')
@@ -721,14 +715,15 @@ class AuditRule:
         width, height = size
         pad_frame = mod_const.FRAME_PAD
 
-        pad_h = 12
+        pad_h = mod_const.VERT_PAD + 2  # padding plus height of the horizontal bar
+        pad_w = pad_frame * 2
         bttn_h = mod_const.BTTN_HEIGHT
         title_h = mod_const.TITLE_HEIGHT
         header_h = 52
 
         # Resize the panel
-        frame_w = width - pad_frame * 2  # width minus padding
-        frame_h = height - title_h - bttn_h  # height minus the title bar and buttons
+        frame_w = width - pad_w  # width minus padding
+        frame_h = height - title_h - bttn_h - 4  # height minus the title bar and buttons
         frame_key = self.key_lookup('Frame')
         mod_lo.set_size(window, frame_key, (frame_w, frame_h))
 
@@ -737,10 +732,6 @@ class AuditRule:
 
         panels_key = self.key_lookup('Panels')
         mod_lo.set_size(window, panels_key, (tab_w, tab_h))
-
-        print('resizing to: {}'.format(size))
-        print('setting frame height to {} after accounting for the title bar ({}) and buttons ({})'.format(frame_h, title_h, bttn_h))
-        print('setting tab height to {} after accounting for the parameters ({}) and padding ({})'.format(frame_h, header_h, pad_h))
 
         # Resize panel tab groups
 
@@ -756,6 +747,18 @@ class AuditRule:
         records = self.records
         for audit_record in records:
             audit_record.record.resize(window, (record_w, record_h))
+
+        window.refresh()
+        print('desired button height: {}'.format(bttn_h))
+        print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
+        print('desired title height: {}'.format(title_h))
+        print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
+        print('desired header height: {}'.format(header_h))
+        print('actual header height: {}'.format(window[self.key_lookup('Header')].get_size()[1]))
+        print('desired frame height: {}'.format(frame_h))
+        print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
+        print('desired tab height: {}'.format(tab_h))
+        print('actual tab height: {}'.format(window[panels_key].get_size()[1]))
 
     def reset_rule(self, window, current: bool = False):
         """
@@ -1002,7 +1005,7 @@ class AuditTransaction:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Tab', 'Audit', 'Sizer')]
+                         ('Tab', 'Audit', 'Sizer', 'Panel')]
 
         self.bindings = [self.key_lookup(i) for i in ('Audit',)]
 
@@ -1158,8 +1161,10 @@ class AuditTransaction:
                                pad=(0, 0), background_color=bg_col, element_justification='c',
                                expand_x=True, expand_y=True, vertical_alignment='c')]]
 
-        layout = [[sg.Col(main_layout, pad=(pad_frame, pad_frame), justification='c', vertical_alignment='c',
-                          background_color=bg_col, expand_x=True, expand_y=True)]]
+        panel_key = self.key_lookup('Panel')
+        layout = [[sg.Col(main_layout, key=panel_key, pad=((pad_frame, 0), pad_frame), justification='c',
+                          vertical_alignment='c', background_color=bg_col, expand_x=True, expand_y=True,
+                          scrollable=True, vertical_scroll_only=True)]]
 
         return sg.Tab(self.title, layout, key=self.key_lookup('Tab'), background_color=bg_col, visible=visible,
                       disabled=False, font=font, metadata={'visible': visible, 'disabled': False})
@@ -1169,25 +1174,24 @@ class AuditTransaction:
         Resize the transaction tab.
         """
         width, height = size
-        frame_pad = mod_const.FRAME_PAD
-        font = mod_const.MAIN_FONT
-
-        print('setting tab size to: {}'.format(size))
+        pad_frame = mod_const.FRAME_PAD
+        pad_v = pad_h = pad_frame * 2
+        scroll_w = mod_const.SCROLL_WIDTH
+        tbl_pad = pad_frame - scroll_w
 
         # Reset tab element size
         tab_key = self.key_lookup('Tab')
-        #window[tab_key].set_size((width, height))
         mod_lo.set_size(window, tab_key, (width, height))
 
-        print('new tab size is: {}'.format(window[tab_key].get_size()))
+        panel_w = width - pad_h
+        panel_h = height - pad_v
+        panel_key = self.key_lookup('Panel')
+        mod_lo.set_size(window, panel_key, (panel_w, panel_h))
 
         # Reset the tab table element size
-        audit_key = self.key_lookup('Audit')
-        print('the size of the button is: {}'.format(window[audit_key].get_size()))
-
-        bffr_h = (18 + 4) + frame_pad * 3 + 30  # height of the tabs, padding, and button
-        tbl_width = width - frame_pad * 2  # minus padding
-        tbl_height = height - bffr_h
+        bffr_h = (18 + 4) + pad_frame + 30  # height of the tabs, padding, and button
+        tbl_width = panel_w - tbl_pad  # minus padding
+        tbl_height = panel_h - bffr_h
         self.table.resize(window, size=(tbl_width, tbl_height))
 
     def run_event(self, window, event, values):

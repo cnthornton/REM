@@ -1908,13 +1908,13 @@ class TableElement(RecordElement):
         Resize the table element.
         """
         current_w, current_h = self.dimensions()
-        border_w = 1
+        border_w = 1 * 4
         scroll_w = mod_const.SCROLL_WIDTH
 
         if size:
             width, height = size
-            new_h = current_h if height is None else height - border_w * 4
-            new_w = current_w if width is None else width - border_w * 4
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
         else:
             new_w, new_h = (current_w, current_h)
 
@@ -1926,7 +1926,7 @@ class TableElement(RecordElement):
                      .format(TBL=self.name, W=new_w, H=new_h))
 
         # Resize the column widths
-        tbl_width = new_w - scroll_w  # approximate size of the table scrollbar
+        tbl_width = new_w - scroll_w - border_w  # approximate size of the table scrollbar
 
         # Calculate the number of table rows to display based on the desired height of the table.  The desired
         # height allocated to the data table minus the offset height composed of the heights of all the accessory
@@ -1941,6 +1941,7 @@ class TableElement(RecordElement):
 
         # Expand the table frames
         filter_params = self.parameters
+        frame_w = new_w - border_w
         if len(filter_params) > 0 and self.modifiers['filter'] is True:
             # Resize the filter parameters
             col1width_key = self.key_lookup('WidthCol1')
@@ -1948,13 +1949,13 @@ class TableElement(RecordElement):
             col3width_key = self.key_lookup('WidthCol3')
 
             if len(filter_params) <= 2 or len(filter_params) == 4:
-                param_w = int(new_w * 0.35)
-                col_widths = [int(new_w * 0.45), int(new_w * 0.1), int(new_w * 0.45)]
+                param_w = int(frame_w * 0.35)
+                col_widths = [int(frame_w * 0.45), int(frame_w * 0.1), int(frame_w * 0.45)]
             else:
-                param_w = int(new_w * 0.30)
-                col_widths = [int(new_w * 0.33) for _ in range(3)]
+                param_w = int(frame_w * 0.30)
+                col_widths = [int(frame_w * 0.33) for _ in range(3)]
 
-            remainder = new_w - sum(col_widths)
+            remainder = frame_w - sum(col_widths)
             index = 0
             for one in [1 for _ in range(int(remainder))]:
                 if index > 2:  # restart at first column
@@ -1972,7 +1973,7 @@ class TableElement(RecordElement):
 
         # Fit the summary table to the frame
         if self.summary_rules:
-            self._update_column_widths(window, new_w, summary=True)
+            self._update_column_widths(window, frame_w - 2, summary=True)
 
         return window[self.key_lookup('Table')].get_size()
 
