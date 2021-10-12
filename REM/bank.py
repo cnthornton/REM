@@ -54,8 +54,7 @@ class BankRule:
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Cancel', 'Save', 'PanelGroup', 'Panels',
-                          'Back', 'Next', 'Warnings', 'Frame', 'Header', 'Buttons', 'Title', 'Horizontal',
-                          'WarningsCol')]
+                          'Back', 'Next', 'Warnings', 'Frame', 'Header', 'Buttons', 'Title')]
 
         self.bindings = [self.key_lookup(i) for i in
                          ('Cancel', 'Save', 'Back', 'Next', 'Entry', 'Parameters', 'Reconcile')]
@@ -635,7 +634,6 @@ class BankRule:
 
         # Title
         panel_title = 'Bank Reconciliation: {}'.format(self.menu_title)
-        #title_layout = sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)
         title_key = self.key_lookup('Title')
         title_layout = sg.Col([[sg.Canvas(size=(0, title_h), background_color=header_col),
                                 sg.Text(panel_title, pad=(pad_frame, pad_frame), font=font_h,
@@ -679,12 +677,10 @@ class BankRule:
         warn_key = self.key_lookup('Warnings')
         warn_w = width  # width of the display panel minus padding on both sides
         warn_h = 2
-        #warn_layout = sg.Multiline('', key=warn_key, pad=(0, pad_v), size=(warn_w, warn_h), font=font,
-        #                           disabled=True, background_color=bg_col, text_color=disabled_text_col, border_width=1)
         warn_layout = sg.Col([[sg.Canvas(size=(0, 70), background_color=bg_col),
                                sg.Multiline('', key=warn_key, size=(warn_w, warn_h), font=font, disabled=True,
                                             background_color=bg_col, text_color=disabled_text_col, border_width=1)]],
-                             key=self.key_lookup('WarningsCol'), background_color=bg_col, expand_x=True, vertical_alignment='c', element_justification='l')
+                             background_color=bg_col, expand_x=True, vertical_alignment='c', element_justification='l')
 
         # Panels
         panels = []
@@ -727,7 +723,7 @@ class BankRule:
 
         frame_key = self.key_lookup('Frame')
         frame_layout = sg.Col([[header_layout],
-                               [sg.HorizontalSeparator(key=self.key_lookup('Horizontal'), pad=(0, (0, pad_v)), color=mod_const.HEADER_COL)],
+                               [sg.HorizontalSeparator(pad=(0, (0, pad_v)), color=mod_const.HEADER_COL)],
                                [panel_layout],
                                [warn_layout]],
                               pad=(pad_frame, 0), key=frame_key, background_color=bg_col, expand_x=True, expand_y=True)
@@ -778,15 +774,12 @@ class BankRule:
         print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
         print('desired title height: {}'.format(title_h))
         print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
-        print('desired warning height: {}'.format(warn_h))
-        print('actual warning height: {}'.format(window[self.key_lookup('WarningsCol')].get_size()[1]))
         print('desired header height: {}'.format(header_h))
         print('actual header height: {}'.format(window[self.key_lookup('Header')].get_size()[1]))
         print('desired frame height: {}'.format(frame_h))
         print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
         print('desired panel height: {}'.format(panel_h))
         print('actual panel height: {}'.format(window[panel_key].get_size()[1]))
-        print('size of the multiline element: {}'.format(window[self.key_lookup('Horizontal')].get_size()[1]))
 
     def update_display(self, window):
         """

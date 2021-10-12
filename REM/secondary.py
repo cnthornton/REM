@@ -215,7 +215,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     Display the record window.
     """
     # Initial window size
-    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.8), mod_const.WIN_HEIGHT)
+    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.5), int(mod_const.WIN_HEIGHT * 0.5))
 
     record_id = record.record_id()
 
@@ -281,7 +281,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     bffr_h += bttn_h
 
-    print('buffer size is set to: {}'.format(bffr_h))
     # Record layout
     record_w = min_w
     record_h = min_h - bffr_h
@@ -341,9 +340,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
         if win_w != current_w or win_h != current_h:
             logger.debug('current window size is {W} x {H}'.format(W=current_w, H=current_h))
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
-
-            print('title bar has size: {}'.format(window['-TITLE-'].get_size()))
-            print('buttons have size: {}'.format(window['-BUTTONS-'].get_size()))
 
             # Update sizable elements
             record_w = win_w if win_w >= min_w else min_w
@@ -772,7 +768,6 @@ def parameter_window(account, win_size: tuple = None):
             # Propagate parameter value to other pgroup parameters that are related by name and element type and that do
             # not currently have values
             if event_param.has_value():
-                print('checking for parameters related to pgroup {} parameter {} currently without values'.format(event_pgroup, event_param.name))
                 for pgroup in params:
                     if pgroup == event_pgroup:
                         continue
@@ -781,18 +776,13 @@ def parameter_window(account, win_size: tuple = None):
                     if related_params:
                         if not isinstance(related_params, list):
                             related_params = [related_params]
-                        print('other parameter group {} has related params {}'.format(pgroup, related_params))
                         for related_param in related_params:
                             if not related_param.has_value() and related_param.etype == event_param.etype:
                                 related_key = related_param.key_lookup('Element')
-                                print('setting value {} for related parameter {} from pgroup {}'.format(event_param.value, related_param.name, pgroup))
                                 related_param.format_value({related_key: event_param.value})
-                                print('parameter {} from pgroup {} has new value {}'.format(related_param.name, pgroup, related_param.value))
 
                                 display_value = related_param.format_display()
                                 window[related_key].update(value=display_value)
-                            else:
-                                print('related parameter {} from pgroup {} already has parameter values or has different etype'.format(related_param.name, pgroup))
 
             continue
 
@@ -1745,7 +1735,7 @@ def record_import_window(table, enable_new: bool = False):
     """
     Display the import from database window.
     """
-    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.8), int(mod_const.WIN_HEIGHT * 0.8))
+    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.5), int(mod_const.WIN_HEIGHT * 0.5))
 
     # Prepare the associated record entry for the record table
     record_entry = settings.records.fetch_rule(table.record_type)
@@ -1945,7 +1935,7 @@ def import_window(table, import_rules, program_database: bool = False, params: l
     """
     Display the importer window.
     """
-    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.8), int(mod_const.WIN_HEIGHT * 0.8))
+    min_w, min_h = (int(mod_const.WIN_WIDTH * 0.5), int(mod_const.WIN_HEIGHT * 0.5))
 
     params = params if params is not None else []
 

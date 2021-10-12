@@ -64,8 +64,8 @@ HEADING_FONT = BOLD_HEADING_FONT = ('Arial', 14, 'bold')
 UNDERLINE_FONT = ('Arial', 12, 'underline')
 
 # Window initial dimensions / minimum resolution (in pixels)
-WIN_HEIGHT = 740  # support for 1024 x 768 screen resolution
-WIN_WIDTH = 996  # support for 1024 x 768 screen resolution
+WIN_HEIGHT = 600  # support for 1024 x 768 screen resolution
+WIN_WIDTH = 800  # support for 1024 x 768 screen resolution
 
 # Record Elements
 

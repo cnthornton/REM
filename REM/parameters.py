@@ -367,11 +367,17 @@ class DataParameterSingle(DataParameter):
         except KeyError:
             aliases = settings.fetch_alias_definition(self.name)
 
+        print('initializing with aliases:')
+        print(aliases)
+
         self.aliases = {}  # only str and int types can have aliases - aliases dict reversed during value formatting
-        if self.dtype in settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes:
+        if self.dtype in (settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes):
             for alias in aliases:  # alias should have same datatype as the element
                 alias_value = aliases[alias]
                 self.aliases[settings.format_value(alias, self.dtype)] = alias_value
+
+        print('aliases after formatting:')
+        print(self.aliases)
 
         try:
             default = entry['DefaultValue']
@@ -598,23 +604,34 @@ class DataParameterSingle(DataParameter):
 
             values (dict): GUI element values.
         """
+        dtype = self.dtype
+        aliases = self.aliases
+        elem_key = self.key_lookup('Element')
+
         try:
-            input_value = values[self.key_lookup('Element')]
+            input_value = values[elem_key]
         except KeyError:
             logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
                            .format(NAME=self.name))
+
             return self.value
 
         if input_value == '' or pd.isna(input_value):
             return None
 
+        aliases_rev = {j: i for i, j in aliases.items()}
+        print('aliases are: {}'.format(aliases_rev))
+        print('input value is: {}'.format(input_value))
         try:
-            input_value_fmt = settings.format_value(input_value, self.dtype)
-        except ValueError:
-            return self.value
+            value_fmt = aliases_rev[input_value]
+        except KeyError:
+            try:
+                value_fmt = settings.format_value(input_value, dtype)
+            except ValueError:
+                logger.warning('DataParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
+                               .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
-        aliases = {j: i for i, j in self.aliases.items()}
-        value_fmt = aliases.get(input_value_fmt, input_value_fmt)
+                return self.value
 
         return value_fmt
 
@@ -628,11 +645,15 @@ class DataParameterSingle(DataParameter):
         if not self.has_value():
             return ''
 
-        logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
-                     .format(NAME=self.name, VAL=value))
-        display_value = self.format_display_value(value)
+        try:
+            display_value = aliases[value]
+        except KeyError:
+            display_value = self.format_display_value(value)
 
-        return aliases.get(display_value, display_value)
+        logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+                     .format(NAME=self.name, VAL=value, DISPLAY=display_value))
+
+        return display_value
 
     def has_value(self):
         """
