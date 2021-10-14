@@ -1684,18 +1684,14 @@ class TableElement(RecordElement):
                            expand_y=True)]]
 
         if len(filter_params) > 0 and modifiers['filter'] is True:
-            #visible_filter = True
             filter_disabled = False
             height_offset += cbar_h  # height of the collapsible bar
-            n_filter_rows = ceiling(i / 3) if use_center else ceiling(i / 2)
             frame_h = frame_h + bttn_h  # height of the filter parameters and apply button
-            #height_offset += n_filter_rows * param_h + 2 * n_filter_rows + bttn_h + 8  # height of the filter parameters plus apply button
         else:
-            #visible_filter = False
             filter_disabled = True
             frame_h = 0
             height_offset += 2  # invisible elements have a footprint
-            #height_offset += 2  # invisible elements have a footprint
+
         self._frame_heights[0] = frame_h
 
         row1 = [
@@ -1837,7 +1833,6 @@ class TableElement(RecordElement):
         # Table summary panel
         summary_rules = self.summary_rules
         if len(summary_rules) > 0:  # display summary is set and table contains summary rules
-            #summary_visible = modifiers['summary']
             summary_disabled = not modifiers['summary']
 
             summary_headings = []
@@ -1862,10 +1857,8 @@ class TableElement(RecordElement):
 
             frame_h = row_h * 2  # height of the summary table
             height_offset += cbar_h  # height of the collapsible bar
-            #height_offset += cbar_h + row_h * 2  # height of the collapsible bar plus the summary table size
         else:
             summary_layout = [[]]
-            #summary_visible = False
             summary_disabled = True
 
             frame_h = 0
@@ -1931,7 +1924,6 @@ class TableElement(RecordElement):
         table_key = self.key_lookup('Table')
         current_w, current_h = self.dimensions()
         border_w = 1 * 4
-        #scroll_w = mod_const.SCROLL_WIDTH
 
         if size:
             width, height = size
@@ -1940,36 +1932,11 @@ class TableElement(RecordElement):
         else:
             new_w, new_h = (current_w, current_h)
 
-        #height_offset = self._height_offset
-        #row_h = mod_const.TBL_ROW_HEIGHT
-        #default_nrow = self.nrow
-
-        logger.debug('DataTable {TBL}: resizing element display to {W}, {H}'
-                     .format(TBL=self.name, W=new_w, H=new_h))
+        logger.debug('DataTable {TBL}: resizing display to {W}, {H}'.format(TBL=self.name, W=new_w, H=new_h))
         mod_lo.set_size(window, table_key, (new_w, new_h))
         self._dimensions = (new_w, new_h)
 
-        # Resize the column widths
-        #tbl_width = new_w - scroll_w - border_w  # approximate size of the table scrollbar
-
-        # Calculate the number of table rows to display based on the desired height of the table.  The desired
-        # height allocated to the data table minus the offset height composed of the heights of all the accessory
-        # elements, such as the title bar, actions, bar, summary panel, etc., minus the height of the header.
-        #for frame_index in self._frame_heights:
-        #    frame_key = self.key_lookup('Frame{}'.format(frame_index))
-        #    if window[frame_key].metadata['visible']:
-        #        height_offset += self._frame_heights[frame_index]
-
-        #tbl_height = new_h - height_offset - row_h
-        #projected_nrows = int((tbl_height - row_h) / row_h)
-        #nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
-
-        # Resize the display table dimensions
-        #self._dimensions = (tbl_width, nrows)
-        print('table frame size before setting new table dimensions: {}'.format(window[self.key_lookup('Table')].get_size()))
         self.set_table_dimensions(window)
-        window.refresh()
-        print('table frame size after setting new table dimensions: {}'.format(window[self.key_lookup('Table')].get_size()))
 
         # Expand the table frames
         filter_params = self.parameters
@@ -2013,14 +1980,8 @@ class TableElement(RecordElement):
         """
         Reset column widths to calculated widths.
         """
-        # display_columns = self.display_columns
-        #dimensions = self._dimensions
-
-        #width, nrows = dimensions
-        width, nrows = self.get_table_dimensions(window)
-
-        # tbl_key = self.key_lookup('Element')
         frame_key = self.key_lookup('OptionsFrame')
+        width, nrows = self.get_table_dimensions(window)
 
         logger.debug('DataTable {NAME}: resetting display table dimensions'.format(NAME=self.name))
 
@@ -2076,19 +2037,6 @@ class TableElement(RecordElement):
         """
         return self._dimensions
 
-    def dimensions_old(self):
-        """
-        Return the current dimensions of the element.
-        """
-        tbl_width, nrow = self._dimensions
-        width = tbl_width + 16
-
-        height_offset = self._height_offset
-        row_h = mod_const.TBL_ROW_HEIGHT
-        height = (nrow * row_h) + height_offset + row_h  # add height offset and header col
-
-        return (width, height)
-
     def enable(self, window, custom: bool = True):
         """
         Enable data table element actions.
@@ -2134,21 +2082,26 @@ class TableElement(RecordElement):
         """
         Collapse record frames.
         """
-        hide_key = self.key_lookup('FrameBttn{}'.format(index))
+        bttn_key = self.key_lookup('FrameBttn{}'.format(index))
+        bttn = window[bttn_key]
+
         frame_key = self.key_lookup('Frame{}'.format(index))
+        frame = window[frame_key]
+        frame_meta = frame.metadata
 
-        if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
+        if frame_meta['visible']:  # already visible, so want to collapse the frame
             logger.debug('DataTable {NAME}: collapsing table frame {FRAME}'.format(NAME=self.name, FRAME=index))
-            window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
-            window[frame_key].update(visible=False)
+            bttn.update(image_data=mod_const.UNHIDE_ICON)
+            frame.update(visible=False)
 
-            window[frame_key].metadata['visible'] = False
+            frame.metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
-            logger.debug('DataTable {NAME}: expanding table frame {FRAME}'.format(NAME=self.name, FRAME=index))
-            window[hide_key].update(image_data=mod_const.HIDE_ICON)
-            window[frame_key].update(visible=True)
+            if not frame_meta['disabled']:
+                logger.debug('DataTable {NAME}: expanding table frame {FRAME}'.format(NAME=self.name, FRAME=index))
+                bttn.update(image_data=mod_const.HIDE_ICON)
+                frame.update(visible=True)
 
-            window[frame_key].metadata['visible'] = True
+                frame.metadata['visible'] = True
 
         self.resize(window)
 

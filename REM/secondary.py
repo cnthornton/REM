@@ -1806,6 +1806,13 @@ def record_import_window(table, enable_new: bool = False):
     # Update the table display
     table.update_display(window)
 
+    # Expand the table frames
+    frames = [table.key_lookup('Frame{}'.format(i)) for i in range(2)]
+    for i, frame_key in enumerate(frames):
+        frame = window[frame_key]
+        if not frame.metadata['visible']:  # frame is collapsed
+            table.collapse_expand(window, index=i)
+
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
     win_w = int(screen_w * 0.8)
@@ -1880,7 +1887,7 @@ def record_import_window(table, enable_new: bool = False):
                 if record:
                     import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-                    table.reset(window, reset_filters=False)
+                    table.reset(window, reset_filters=False, collapse=False)
                     table.df = table.append(import_df)
                     table.update_display(window)
 
@@ -1900,7 +1907,7 @@ def record_import_window(table, enable_new: bool = False):
                 if record:
                     import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-                    table.reset(window, reset_filters=False)
+                    table.reset(window, reset_filters=False, collapse=False)
                     table.df = table.append(import_df)
                     table.update_display(window)
 
@@ -1915,7 +1922,7 @@ def record_import_window(table, enable_new: bool = False):
             # Load the display records
             import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
-            table.reset(window, reset_filters=False)
+            table.reset(window, reset_filters=False, collapse=False)
             table.df = table.append(import_df)
             table.update_display(window)
 
