@@ -15,7 +15,8 @@ CANCEL_BUTTON_COL = '#FF6C5C'  # red
 TEXT_COL = '#000000'  # black
 SELECT_TEXT_COL = '#2A9DF4'  # blue
 SELECT_BG_COL = '#2A9DF4'  # blue
-HELP_TEXT_COL = HIGHLIGHT_COL = '#616161'  # light grey
+HELP_TEXT_COL = '#616161'  # light grey
+HIGHLIGHT_COL = '#E5E5E5'
 HEADER_COL = INPUT_COL = '#F8FAFC'  # light blue-grey
 HEADER_COL2 = '#F2F7F2'  # light green
 HEADER_COL3 = '#FEE3E2'  # light red
@@ -60,6 +61,7 @@ MID_FONT = ('Arial', 11)
 BOLD_MID_FONT = ('Arial', 11, 'bold')
 LARGE_FONT = ('Arial', 13)
 BOLD_LARGE_FONT = ('Arial', 13, 'bold')
+XX_FONT = ('Arial', 14)
 HEADING_FONT = BOLD_HEADING_FONT = ('Arial', 14, 'bold')
 UNDERLINE_FONT = ('Arial', 12, 'underline')
 

@@ -2478,7 +2478,6 @@ class DatabaseRecord:
         sections = self.sections
 
         sections_layout = []
-        frame_h = 0
         for index, section_name in enumerate(sections):
             section_entry = sections[section_name]
 
@@ -2493,8 +2492,6 @@ class DatabaseRecord:
                                                  metadata={'visible': True, 'disabled': False})
                                        ]], background_color=frame_col, expand_x=True)]
             sections_layout.append(section_header)
-
-            frame_h += bar_h
 
             section_elements = section_entry['Elements']
             section_layout = []
@@ -2513,7 +2510,6 @@ class DatabaseRecord:
                 element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=self.new,
                                                  level=self.level)]
                 section_layout.append(element_layout)
-                frame_h += element.dimensions()[1]
 
             section_panel_key = self.key_lookup('SectionFrame{}'.format(index))
             sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key, background_color=bg_col,

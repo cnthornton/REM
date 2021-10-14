@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.9.12'
+__version__ = '3.9.13'
 
 import sys
 import tkinter as tk
@@ -12,7 +12,7 @@ from multiprocessing import freeze_support
 import PySimpleGUI as sg
 
 import REM.audit as mod_audit
-import REM.bank as mod_bank
+import REM.bank_new as mod_bank
 import REM.cash as mod_cash
 import REM.constants as mod_const
 import REM.elements as mod_elem
@@ -588,7 +588,8 @@ def main():
                    input_text_color=text_col, text_color=text_col,
                    text_element_background_color=default_col,
                    input_elements_background_color=action_col,
-                   button_color=(text_col, default_col), tooltip_font=(mod_const.TOOLTIP_FONT))
+                   button_color=(text_col, default_col),
+                   tooltip_font=(mod_const.TOOLTIP_FONT))
 
     # Original window size
     logger.debug('determining screen size')
@@ -597,6 +598,9 @@ def main():
     screen_h = root.winfo_screenheight()
     root.destroy()
     del root
+
+    min_w = int(screen_w * 0.8)
+    min_h = int(screen_h * 0.8)
 
     if screen_w >= mod_const.WIN_WIDTH:
         current_w = mod_const.WIN_WIDTH
@@ -652,6 +656,8 @@ def main():
                        return_keyboard_events=True)
     window.finalize()
     window.maximize()
+
+    window.set_min_size((min_w, min_h))
 
     screen_w, screen_h = window.get_screen_dimensions()
     logger.debug('screen size is {W} x {H}'.format(W=screen_w, H=screen_h))
@@ -948,7 +954,7 @@ def main():
 
                 # Fetch the primary account
                 #current_acct = current_rule.fetch_account(acct_name)
-                #current_rule.current_account = current_acct.name
+                #current_rule._current_account = current_acct.name
                 #current_rule.current_panel = current_acct.key_lookup('Panel')
 
                 # Clear the panel

@@ -298,6 +298,8 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     window.finalize()
     window.hide()
 
+    window.set_min_size((min_w, min_h))
+
     # Bind keys to events
     window = settings.set_shortcuts(window, hk_groups=['Record', 'Navigation'])
 
@@ -1799,6 +1801,8 @@ def record_import_window(table, enable_new: bool = False):
     window = sg.Window('', layout, modal=True, resizable=True)
     window.finalize()
     window.hide()
+
+    window.set_min_size((min_w, min_h))
 
     # Bind event keys
     table.bind_keys(window)

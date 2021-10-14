@@ -554,7 +554,8 @@ class TableElement(RecordElement):
         # Dynamic attributes
         self._height_offset = 0
         self._frame_heights = {0: 0, 1: 0}
-        self._dimensions = (mod_const.TBL_WIDTH, self.nrow)
+        self._dimensions = (0, 0)
+        self._min_size = (0, 0)
 
         self.df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self.index_map = {}
@@ -1607,15 +1608,15 @@ class TableElement(RecordElement):
         width, height = size
         row_h = mod_const.TBL_ROW_HEIGHT
         nrow = self.nrow
+        scroll_w = mod_const.SCROLL_WIDTH
+        border_w = 1 * 4
 
         width = width if width is not None else mod_const.TBL_WIDTH
-        tbl_width = width - 16
-
-        self._dimensions = (tbl_width, nrow)
 
         isize = mod_const.IN1_SIZE
 
         header_col_size = 200
+        min_col_size = 10
 
         bar_h = 26  # height of the title and totals bars in pixels
         cbar_h = 22  # height of the collapsible panel bars in pixels
@@ -1768,6 +1769,9 @@ class TableElement(RecordElement):
                 vis_map.append(True)
 
         display_header = self._display_header()
+        min_w = scroll_w + border_w + len(display_header) * min_col_size
+
+        tbl_width = width - scroll_w - border_w if width >= min_w else min_w - scroll_w - border_w
         col_widths = self._calc_column_widths(display_header, width=tbl_width, size=font_size, pixels=False,
                                               widths=self.widths)
         row4.append(sg.Table(data, key=keyname, headings=header, visible_column_map=vis_map, pad=(0, 0), num_rows=nrow,
@@ -1833,8 +1837,6 @@ class TableElement(RecordElement):
         # Table summary panel
         summary_rules = self.summary_rules
         if len(summary_rules) > 0:  # display summary is set and table contains summary rules
-            summary_disabled = not modifiers['summary']
-
             summary_headings = []
             summary_values = []
             tbl_summary = self.summarize_table()
@@ -1854,13 +1856,15 @@ class TableElement(RecordElement):
                                         selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
                                         header_font=header_font, display_row_numbers=False, auto_size_columns=True,
                                         hide_vertical_scroll=True)]]
-
-            frame_h = row_h * 2  # height of the summary table
-            height_offset += cbar_h  # height of the collapsible bar
         else:
             summary_layout = [[]]
-            summary_disabled = True
 
+        if len(summary_rules) > 0 and modifiers['summary']:
+            summary_disabled = False
+            height_offset += cbar_h  # height of the collapsible bar
+            frame_h = row_h * 2  # height of the summary table
+        else:
+            summary_disabled = True
             frame_h = 0
             height_offset += 2  # invisible elements have a footprint
 
@@ -1885,7 +1889,13 @@ class TableElement(RecordElement):
                           pad=pad, element_justification='c', vertical_alignment='c', background_color=header_col,
                           relief=relief, border_width=2)
 
+        height_offset = height_offset + scroll_w + row_h  # add scrollbar and table header to the offset
         self._height_offset = height_offset
+
+        min_h = nrow * row_h + height_offset
+
+        self._dimensions = (min_w, min_h)
+        self._min_size = (min_w, min_h)
 
         return layout
 
@@ -1923,12 +1933,13 @@ class TableElement(RecordElement):
         """
         table_key = self.key_lookup('Table')
         current_w, current_h = self.dimensions()
+        min_w, min_h = self._min_size
         border_w = 1 * 4
 
         if size:
             width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
+            new_h = current_h if height is None or height < min_h else height
+            new_w = current_w if width is None or width < min_w else width
         else:
             new_w, new_h = (current_w, current_h)
 
@@ -2021,12 +2032,10 @@ class TableElement(RecordElement):
                     frame_h = self._frame_heights[frame_index] + 1
                 else:
                     frame_h = 1
-                print('current height of the frame {}: {}'.format(frame_index, frame.get_size()))
-                print('calculated offset of the frame {}: {}'.format(frame_index, frame_h))
                 height_offset += frame_h
 
-        tbl_height = height - height_offset - row_h
-        projected_nrows = int((tbl_height - row_h) / row_h)
+        tbl_height = height - height_offset  # minus offset
+        projected_nrows = int(tbl_height / row_h)
         nrows = projected_nrows if projected_nrows > default_nrow else default_nrow
 
         return (tbl_width, nrows)
