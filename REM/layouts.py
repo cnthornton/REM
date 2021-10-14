@@ -37,6 +37,7 @@ def B1(*args, **kwargs):
     Action button element defaults.
     """
     size = mod_const.B1_SIZE
+
     return sg.Button(*args, **kwargs, size=(size, 1))
 
 
@@ -45,7 +46,19 @@ def B2(*args, **kwargs):
     Panel button element defaults.
     """
     size = mod_const.B2_SIZE
+
     return sg.Button(*args, **kwargs, size=(size, 1))
+
+
+def nav_bttn(*args, **kwargs):
+    """
+    Navigation button.
+    """
+    size = mod_const.BTTN_SIZE
+    text_col = mod_const.TEXT_COL
+    highlight_col = mod_const.HIGHLIGHT_COL
+
+    return sg.Button(*args, **kwargs, image_size=size, mouseover_colors=(text_col, highlight_col))
 
 
 def create_table_layout(data, header, keyname, events: bool = False, bind: bool = False, tooltip: str = None,

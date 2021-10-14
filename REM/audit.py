@@ -587,11 +587,6 @@ class AuditRule:
         record_h = tab_h - pad_frame * 3  # top and bottom padding
         record_w = tab_w
 
-        # Keyboard shortcuts
-        hotkeys = settings.hotkeys
-        next_shortcut = hotkeys['-HK_RIGHT-'][2]
-        back_shortcut = hotkeys['-HK_LEFT-'][2]
-
         # Layout elements
 
         # Title
@@ -683,19 +678,15 @@ class AuditRule:
         bttn_h = mod_const.BTTN_HEIGHT
         bttn_layout = sg.Col([
             [sg.Canvas(size=(0, bttn_h)),
-             sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
-                       image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
-                       tooltip='Return to home screen'),
-             sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                       pad=((0, pad_el), 0), disabled=True, tooltip='Next panel ({})'.format(back_shortcut),
-                       metadata={'disabled': True}),
-             sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                       pad=((0, pad_el), 0), disabled=True, tooltip='Previous panel ({})'.format(next_shortcut),
-                       metadata={'disabled': True}),
-             sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                       pad=(0, 0), disabled=True, tooltip='Save to database and generate summary report',
-                       metadata={'disabled': True})]],
-            key=buttons_key, vertical_alignment='c', element_justification='c', expand_x=True)
+             mod_lo.nav_bttn('', key=cancel_key, image_data=mod_const.CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
+                             tooltip='Return to home screen'),
+             mod_lo.nav_bttn('', key=back_key, image_data=mod_const.LEFT_ICON, pad=((0, pad_el), 0), disabled=True,
+                             tooltip='Next panel', metadata={'disabled': True}),
+             mod_lo.nav_bttn('', key=next_key, image_data=mod_const.RIGHT_ICON, pad=((0, pad_el), 0), disabled=True,
+                             tooltip='Previous panel', metadata={'disabled': True}),
+             mod_lo.nav_bttn('', key=save_key, image_data=mod_const.SAVE_ICON, pad=(0, 0), disabled=True,
+                             tooltip='Save results', metadata={'disabled': True})
+             ]], key=buttons_key, vertical_alignment='c', element_justification='c', expand_x=True)
 
         frame_key = self.key_lookup('Frame')
         frame_layout = sg.Col([[header_layout],
@@ -748,17 +739,17 @@ class AuditRule:
         for audit_record in records:
             audit_record.record.resize(window, (record_w, record_h))
 
-        window.refresh()
-        print('desired button height: {}'.format(bttn_h))
-        print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
-        print('desired title height: {}'.format(title_h))
-        print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
-        print('desired header height: {}'.format(header_h))
-        print('actual header height: {}'.format(window[self.key_lookup('Header')].get_size()[1]))
-        print('desired frame height: {}'.format(frame_h))
-        print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
-        print('desired tab height: {}'.format(tab_h))
-        print('actual tab height: {}'.format(window[panels_key].get_size()[1]))
+        #window.refresh()
+        #print('desired button height: {}'.format(bttn_h))
+        #print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
+        #print('desired title height: {}'.format(title_h))
+        #print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
+        #print('desired header height: {}'.format(header_h))
+        #print('actual header height: {}'.format(window[self.key_lookup('Header')].get_size()[1]))
+        #print('desired frame height: {}'.format(frame_h))
+        #print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
+        #print('desired tab height: {}'.format(tab_h))
+        #print('actual tab height: {}'.format(window[panels_key].get_size()[1]))
 
     def reset_rule(self, window, current: bool = False):
         """
@@ -1154,8 +1145,8 @@ class AuditTransaction:
         # Layout
         audit_key = self.key_lookup('Audit')
         main_layout = [[self.table.layout(size=(tbl_width, tbl_height), padding=(0, 0))],
-                       [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, pad=(0, pad_frame), disabled=True, font=font,
-                                           button_color=(bttn_text_col, bttn_bg_col),
+                       [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, pad=(0, (pad_frame, 0 )), disabled=True,
+                                           font=font, button_color=(bttn_text_col, bttn_bg_col),
                                            disabled_button_color=(disabled_text_col, disabled_bg_col),
                                            tooltip='Run audit on the transaction records', use_ttk_buttons=True)]],
                                pad=(0, 0), background_color=bg_col, element_justification='c',
@@ -1189,7 +1180,7 @@ class AuditTransaction:
         mod_lo.set_size(window, panel_key, (panel_w, panel_h))
 
         # Reset the tab table element size
-        bffr_h = (18 + 4) + pad_frame + 30  # height of the tabs, padding, and button
+        bffr_h = (18 + 8) + pad_frame + 30  # height of the tabs, padding, and button
         tbl_width = panel_w - tbl_pad  # minus padding
         tbl_height = panel_h - bffr_h
         self.table.resize(window, size=(tbl_width, tbl_height))

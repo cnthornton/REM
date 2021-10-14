@@ -1597,6 +1597,7 @@ class TableElement(RecordElement):
         bold_font = mod_const.BOLD_FONT
         tbl_font = mod_const.TBL_FONT
         header_font = mod_const.TBL_HEADER_FONT
+        title_font = mod_const.BOLD_LARGE_FONT
         font_size = tbl_font[1]
 
         # Hotkey text
@@ -1700,7 +1701,7 @@ class TableElement(RecordElement):
                      sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=border_col),
                      sg.Text('Table filters', pad=((0, pad_h), 0), text_color=select_text_col,
                              background_color=border_col),
-                     sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn0'),
+                     sg.Button('', image_data=mod_const.UNHIDE_ICON, key=self.key_lookup('FrameBttn0'),
                                button_color=(text_col, border_col), border_width=0,
                                tooltip='Collapse filter panel')]],
                    key=self.key_lookup('FilterBar'), element_justification='c', background_color=border_col,
@@ -1729,7 +1730,7 @@ class TableElement(RecordElement):
 
         if table_name is not None:
             tb_layout = [[sg.Canvas(size=(0, bar_h), background_color=header_col),
-                          sg.Text(table_name, font=bold_font, background_color=header_col)]]
+                          sg.Text(table_name, font=title_font, background_color=header_col)]]
         else:
             tb_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                          [sg.Canvas(size=(0, bar_h), background_color=header_col)]]
@@ -1872,7 +1873,7 @@ class TableElement(RecordElement):
 
         row6 = [sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=border_col),
                          sg.Text('Summary', pad=((0, pad_h), 0), text_color='white', background_color=border_col),
-                         sg.Button('', image_data=mod_const.HIDE_ICON, key=self.key_lookup('FrameBttn1'),
+                         sg.Button('', image_data=mod_const.UNHIDE_ICON, key=self.key_lookup('FrameBttn1'),
                                    button_color=(text_col, border_col), border_width=0,
                                    tooltip='Collapse summary panel')]],
                        key=self.key_lookup('SummaryBar'), element_justification='c', background_color=border_col,
