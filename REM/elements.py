@@ -558,6 +558,7 @@ class TableElement(RecordElement):
         self._min_size = (0, 0)
 
         self.df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
+        self._selected_rows = []
         self.index_map = {}
 
     def _apply_filter(self):
@@ -901,6 +902,57 @@ class TableElement(RecordElement):
         # Update the table display
         self.update_display(window)
 
+    def deselect(self, window, indices: list = None):
+        """
+        Deselect selected table rows.
+        """
+        elem_key = self.key_lookup('Element')
+        current_rows = self._selected_rows
+
+        if indices and not isinstance(indices, list):
+            raise TypeError('the indices argument must be a list')
+
+        if indices:
+            selected_rows = [i for i in current_rows if i not in indices]
+        else:
+            selected_rows = []
+
+        self._selected_rows = selected_rows
+        window[elem_key].update(select_rows=selected_rows)
+
+    def select(self, window, indices):
+        """
+        Select rows at the given indices.
+        """
+        elem_key = self.key_lookup('Element')
+
+        if not isinstance(indices, list):
+            raise TypeError('the indices argument must be a list')
+
+        self._selected_rows = indices
+        window[elem_key].update(select_rows=indices)
+
+    def selected(self, real: bool = False):
+        """
+        Return currently selected table rows.
+        """
+        current_rows = self._selected_rows
+
+        if real:
+            index_map = self.index_map
+
+            try:
+                selected_rows = [index_map[i] for i in current_rows]
+            except KeyError:
+                msg = 'missing index information for one or more selected rows'.format(NAME=self.name)
+                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                selected_rows = current_rows
+        else:
+            selected_rows = current_rows
+
+        return selected_rows
+
     def fetch_parameter(self, element, by_key: bool = False):
         """
         Fetch a filter parameter by name or event key.
@@ -1154,7 +1206,10 @@ class TableElement(RecordElement):
         can_open = self.modifiers['edit']
 
         # Row click event
-        if event in (open_key, return_key) and can_open:
+        if event == elem_key:
+            self._selected_rows = values[elem_key]
+
+        elif event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -1165,6 +1220,8 @@ class TableElement(RecordElement):
                 msg = 'table row could not be selected'
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
+                self._selected_rows = [select_row_index]
+
                 # Get the real index of the selected row
                 index = self.get_real_index(select_row_index)
 
@@ -2865,7 +2922,10 @@ class RecordTable(TableElement):
         can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
 
         # Row click event
-        if event in (open_key, return_key) and can_open:
+        if event == elem_key:
+            self._selected_rows = values[elem_key]
+
+        elif event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -2876,6 +2936,8 @@ class RecordTable(TableElement):
                 msg = 'table row could not be selected'
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
+                self._selected_rows = [select_row_index]
+
                 # Get the real index of the selected row
                 index = self.get_real_index(select_row_index)
 
@@ -2963,21 +3025,31 @@ class RecordTable(TableElement):
 
         return layout
 
-    def row_ids(self, imports: bool = False):
+    def row_ids(self, imports: bool = False, indices: list = None, deleted: bool = False):
         """
         Return a list of all current row IDs in the dataframe.
 
         Arguments:
             imports (bool): get row IDs from the imports dataframe instead of the records dataframe [Default: False].
+
+            indices (list): optional list of table indices to get record IDs for [Default: get all record IDs in the
+                table].
+
+            deleted (bool): include deleted record IDs [Default: False].
         """
         id_field = self.id_column
         if imports:
             df = self.import_df
+        elif deleted:  # include deleted rows
+            df = self.data(all_rows=True)
         else:
-            df = self.data()  # don't include deleted IDs
+            df = self.data()  # don't include deleted rows
+
+        if not indices:
+            indices = df.index
 
         try:
-            row_ids = df[id_field].tolist()
+            row_ids = df.loc[indices, id_field].tolist()
         except KeyError:  # database probably PostGreSQL
             logger.warning('DataTable {NAME}: unable to return a list of row IDs from the table - ID column "{COL}" '
                            'not found in the data table'.format(NAME=self.name, COL=id_field))
@@ -3371,7 +3443,10 @@ class ComponentTable(RecordTable):
 
         # Row click event
         update_event = False
-        if event in (open_key, return_key) and can_open:
+        if event == elem_key:
+            self._selected_rows = values[elem_key]
+
+        elif event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -3382,6 +3457,8 @@ class ComponentTable(RecordTable):
                 msg = 'table row could not be selected'
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
+                self._selected_rows = [select_row_index]
+
                 # Get the real index of the selected row
                 index = self.get_real_index(select_row_index)
 
