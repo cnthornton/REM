@@ -813,6 +813,99 @@ def parameter_window(account, win_size: tuple = None):
     return param_values
 
 
+def add_note_window():
+    """
+    Display a window with a multiline window for capturing a custom note.
+    """
+    note = None
+
+    # Layout options
+    pad_frame = mod_const.FRAME_PAD
+    font = mod_const.LARGE_FONT
+
+    text_col = mod_const.TEXT_COL
+    bttn_text_col = mod_const.BUTTON_TEXT_COL
+    bg_col = mod_const.ACTION_COL
+    frame_col = mod_const.INACTIVE_COL
+    bttn_col = (mod_const.WHITE_TEXT_COL, mod_const.BUTTON_COL)
+    highlight_cols = (mod_const.DISABLED_TEXT_COL, mod_const.DISABLED_BUTTON_COL)
+
+    # Window layout
+    nrow = 4
+    width = 80
+
+    save_key = '-SAVE-'
+    cancel_key = '-CANCEL-'
+    bttn_layout = [[sg.Button('Save', key=save_key, image_size=mod_const.BTTN_SIZE, button_color=bttn_col,
+                              mouseover_colors=highlight_cols, use_ttk_buttons=True),
+                    sg.Button('Cancel', key=cancel_key, image_size=mod_const.BTTN_SIZE, border_width=0,
+                              button_color=(bttn_text_col, bg_col))]]
+
+    #width_key = '-WIDTH-'
+    elem_key = '-NOTE-'
+    #elem_layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
+    #               [sg.Multiline('', key=elem_key, size=(width, nrow), font=font,
+    #                             background_color=bg_col, text_color=text_col, border_width=1)]]
+    elem_layout = [[sg.Multiline('', key=elem_key, size=(width, nrow), font=font, background_color=bg_col,
+                                 text_color=text_col, border_width=1)]]
+
+    layout = [[sg.Col(elem_layout, pad=(pad_frame, pad_frame), expand_x=True, element_justification='l',
+                      background_color=bg_col)],
+              [sg.HorizontalSeparator(color=frame_col)],
+              [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), expand_x=True, element_justification='l',
+                      background_color=bg_col)]]
+
+    window = sg.Window('Add note', layout, background_color=bg_col, modal=True, keep_on_top=True,
+                       return_keyboard_events=True, resizable=True)
+    window.finalize()
+
+    # Resize window to initial size
+    screen_w, screen_h = window.get_screen_dimensions()
+    win_w = int(screen_w * 0.5)
+
+    #window[width_key].set_size((win_w, None))
+    window[elem_key].expand(expand_x=True, expand_y=True)
+
+    window = center_window(window)
+    current_w, current_h = [int(i) for i in window.size]
+
+    # Event window
+    while True:
+        event, values = window.read(timeout=100)
+
+        # Cancel parameter selection
+        if event in (sg.WIN_CLOSED, cancel_key, '-HK_ESCAPE-'):  # selected to close window without setting param values
+            break
+
+        # Window resized
+        win_w, win_h = [int(i) for i in window.size]
+        if win_w != current_w or win_h != current_h:
+            logger.debug('current window size is {W} x {H}'.format(W=current_w, H=current_h))
+            logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
+
+            # Update sizable elements
+            #window[width_key].set_size((win_w, None))
+            window[elem_key].expand(expand_x=True, expand_y=True)
+
+            current_w, current_h = (win_w, win_h)
+
+            continue
+
+        # Save parameter settings
+        if event in (save_key, '-HK_ENTER-'):
+            note_text = values[elem_key]
+            note = note_text if note_text != '' else None
+
+            break
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return note
+
+
 def database_importer_window(win_size: tuple = None):
     """
     Display the database importer window.

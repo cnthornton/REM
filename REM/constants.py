@@ -16,11 +16,11 @@ TEXT_COL = '#000000'  # black
 SELECT_TEXT_COL = '#2A9DF4'  # blue
 SELECT_BG_COL = '#2A9DF4'  # blue
 HELP_TEXT_COL = '#616161'  # light grey
-HIGHLIGHT_COL = '#E5E5E5'
+HIGHLIGHT_COL = '#E5E5E5'  # light grey
 HEADER_COL = INPUT_COL = '#F8FAFC'  # light blue-grey
 HEADER_COL2 = '#F2F7F2'  # light green
 HEADER_COL3 = '#FEE3E2'  # light red
-BORDER_COL = '#767676'  # dark grey
+BUTTON_TEXT_COL = BORDER_COL = '#767676'  # dark grey
 PASS_COL = '#ACFBAF'  # light-medium green
 APPROVE_COL = '#CCE7CD'  # medium-dark green
 WARNING_COL = '#FFD740'  # medium orange-yellow
