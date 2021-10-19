@@ -191,6 +191,8 @@ class TableElement(RecordElement):
 
         row_color (str): hex code for the color of alternate rows.
 
+        select_mode (str): table selection mode. Options are "browse" and "extended" [Default: extended].
+
         tooltip (str): table tooltip.
 
         edited (bool): table was edited [Default: False].
@@ -545,6 +547,16 @@ class TableElement(RecordElement):
                 self.row_color = row_color
 
         try:
+            select_mode = entry['SelectMode']
+        except KeyError:
+            self.select_mode = None
+        else:
+            if select_mode not in ('extended', 'browse'):
+                self.select_mode = None
+            else:
+                self.select_mode = select_mode
+
+        try:
             self.required_columns = entry['RequiredColumns']
         except KeyError:
             self.required_columns = []
@@ -560,6 +572,7 @@ class TableElement(RecordElement):
         self.df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
         self._selected_rows = []
         self.index_map = {}
+        self._colors = []
 
     def _apply_filter(self):
         """
@@ -613,7 +626,6 @@ class TableElement(RecordElement):
             #nrow = self._dimensions[1]
             nrow = self.get_table_dimensions(window)[1]
 
-        print('calculating widths for columns: {}'.format(header))
         column_widths = self._calc_column_widths(header, width=width, pixels=True, widths=widths)
         for index, column in enumerate(header):
             column_width = column_widths[index]
@@ -745,14 +757,28 @@ class TableElement(RecordElement):
             column_values = pd.Series(column_values)
 
         column_name = column_values.name if not name else name
-        dtype = dtype_map[column_name] if not dtype else dtype
-        if dtype in ('date', 'datetime', 'timestamp', 'time'):
-            try:
-                values = pd.to_datetime(column_values, errors='coerce', format=settings.date_format, utc=False)
-            except ValueError:  # need to remove Time Zone information from column values
-                values = column_values.apply(lambda x: x.replace(tzinfo=None))
+        try:
+            dtype = dtype_map[column_name] if not dtype else dtype
+        except KeyError:
+            logger.warning('DataTable {NAME}: no datatype configured for column {COL} - setting to varchar'
+                           .format(NAME=self.name, COL=column_name))
+            dtype = 'varchar'
 
-            values = values.dt.tz_localize(None)
+        if dtype in ('date', 'datetime', 'timestamp', 'time'):
+            strptime = datetime.datetime.strptime
+            is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+            if not is_datetime_dtype(column_values.dtype):
+                try:
+                    values = pd.to_datetime(column_values, errors='raise', format=settings.date_format, utc=False)
+                except Exception as e:
+                    logger.warning('DataTable {NAME}: first attempt to set column {COL} to datetime failed - {ERR}'
+                                   .format(NAME=self.name, COL=column_name, ERR=e))
+                    values = column_values.apply(lambda x: strptime(x, settings.date_format))
+            else:  # is datetime dtype
+                values = column_values.dt.tz_localize(None)
+                #values = column_values.apply(lambda x: x.replace(tzinfo=None))
+
         elif dtype in ('int', 'integer', 'bigint'):
             try:
                 values = column_values.astype('Int64')
@@ -792,6 +818,10 @@ class TableElement(RecordElement):
         """
         df = self.df.copy() if df is None else df
         dtype_map = self.columns
+
+        if isinstance(df, pd.Series):  # need to convert series to dataframe first
+            df = df.to_frame().T
+
         header = df.columns.tolist()
 
         if not isinstance(dtype_map, dict):
@@ -843,12 +873,18 @@ class TableElement(RecordElement):
 
         values.name = index
 
-        row_values = self.set_conditional_values(values)
-        shared_cols = [i for i in row_values.columns if i in header]
+        shared_cols = [i for i in values.index if i in header]
+        row_values = self._set_datatypes(df=values[shared_cols])
 
         new_values = row_values[shared_cols]
-        orig_values = df.loc[[index], shared_cols]
-        diffs = orig_values.compare(new_values, align_axis=0).columns
+        orig_values = df.loc[[index]]
+        orig_values = self._set_datatypes(df=orig_values)[shared_cols]
+        try:
+            diffs = orig_values.compare(new_values, align_axis=0).columns
+        except Exception as e:
+            logger.error('DataTable {NAME}: failed to compare new and original values - {ERR}'
+                         .format(NAME=self.name, ERR=e))
+            diffs = shared_cols
 
         edited = False
         if len(diffs) > 0:
@@ -918,7 +954,7 @@ class TableElement(RecordElement):
             selected_rows = []
 
         self._selected_rows = selected_rows
-        window[elem_key].update(select_rows=selected_rows)
+        window[elem_key].update(select_rows=selected_rows, row_colors=self._colors)
 
     def select(self, window, indices):
         """
@@ -929,8 +965,13 @@ class TableElement(RecordElement):
         if not isinstance(indices, list):
             raise TypeError('the indices argument must be a list')
 
+        first_ind = indices[0]
+        total_rows = self.data(display_rows=True).shape[0]
+        position = first_ind / total_rows
+
         self._selected_rows = indices
-        window[elem_key].update(select_rows=indices)
+        window[elem_key].update(select_rows=indices, row_colors=self._colors)
+        window[elem_key].set_vscroll_position(position)
 
     def selected(self, real: bool = False):
         """
@@ -972,26 +1013,31 @@ class TableElement(RecordElement):
 
         return parameter
 
-    def get_real_index(self, selected):
+    def get_index(self, selected, real: bool = True):
         """
         Return the real indices of selected table rows.
 
         Arguments:
             selected (list): indices of the selected rows.
+
+            real (bool): get the real index of the selected table row [Default: True]
         """
-        index_map = self.index_map
+        if real:
+            index_map = self.index_map
+        else:
+            index_map = {j: i for i, j in self.index_map.items()}
 
         try:
             if isinstance(selected, int):
-                real_ind = index_map[selected]
+                indices = index_map[selected]
             else:
-                real_ind = [index_map[i] for i in selected]
+                indices = [index_map[i] for i in selected]
         except KeyError:
             msg = 'missing index information for one or more selected rows'.format(NAME=self.name)
             logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            real_ind = selected
+            indices = selected
 
-        return real_ind
+        return indices
 
     def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False):
         """
@@ -1054,7 +1100,12 @@ class TableElement(RecordElement):
 
         # Table events
         update_event = False
-        if event == search_key:
+        if event == elem_key:
+            selected_rows = values[elem_key]
+            current_rows = self._selected_rows
+            self._selected_rows = selected_rows
+
+        elif event == search_key:
             # Update the search field value
             search_col = self.search_field[0]
             search_value = values[search_key]
@@ -1137,7 +1188,7 @@ class TableElement(RecordElement):
             select_row_indices = values[elem_key]
 
             # Get the real indices of the selected rows
-            indices = self.get_real_index(select_row_indices)
+            indices = self.get_index(select_row_indices)
             if len(indices) < 2:
                 msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -1206,10 +1257,7 @@ class TableElement(RecordElement):
         can_open = self.modifiers['edit']
 
         # Row click event
-        if event == elem_key:
-            self._selected_rows = values[elem_key]
-
-        elif event in (open_key, return_key) and can_open:
+        if event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -1223,7 +1271,7 @@ class TableElement(RecordElement):
                 self._selected_rows = [select_row_index]
 
                 # Get the real index of the selected row
-                index = self.get_real_index(select_row_index)
+                index = self.get_index(select_row_index)
 
                 logger.debug('DataTable {NAME}: opening row at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
@@ -1310,6 +1358,8 @@ class TableElement(RecordElement):
             row_colors = [(i, self.annotation_rules[j]['BackgroundColor']) for i, j in annotations.items()]
         else:  # use custom annotations to highlight table rows
             row_colors = [(i, j) for i, j in annotations.items()]
+
+        self._colors = row_colors
 
         # Format the table
         display_df = self.format_display_values(df)
@@ -1618,6 +1668,7 @@ class TableElement(RecordElement):
 
         tooltip = tooltip if tooltip is not None else self.tooltip
         search_field = self.search_field
+        select_mode = self.select_mode
 
         is_disabled = False if (editable is True and level < 1) or overwrite is True else True
 
@@ -1837,6 +1888,7 @@ class TableElement(RecordElement):
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
                              header_font=header_font, display_row_numbers=False, auto_size_columns=False,
                              col_widths=col_widths, enable_events=events, tooltip=tooltip, vertical_scroll_only=False,
+                             select_mode=select_mode,
                              metadata={'disabled': False, 'visible': True}))
 
         # Table options
@@ -2063,7 +2115,8 @@ class TableElement(RecordElement):
         self._update_column_widths(window, width)
 
         # Re-annotate the table rows. Row colors often get reset when the number of display rows is changed.
-        self.update_display(window)
+        window[self.key_lookup('Element')].update(row_colors=self._colors)
+        #self.update_display(window)
 
     def get_table_dimensions(self, window):
         """
@@ -2613,14 +2666,29 @@ class TableElement(RecordElement):
 
                 for default_value in default_rules:
                     default_rule = default_rules[default_value]
-                    results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
+                    try:
+                        results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
+                    except Exception as e:
+                        msg = 'failed to evaluate condition for rule {RULE} - {ERR}'.format(RULE=default_rule, ERR=e)
+                        logger.exception(msg)
+
+                        continue
+
                     for index, result in results.iteritems():
                         if result:
                             df.at[index, column] = dtype_map[dtype](default_value)
+
             elif 'DefaultRule' in entry:
-                default_values = mod_dm.evaluate_rule(df, entry['DefaultRule'], as_list=False)
-                default_values = self._set_column_dtype(default_values, name=column)
-                df.loc[:, column] = default_values
+                default_rule = entry['DefaultRule']
+                try:
+                    default_values = mod_dm.evaluate_rule(df, default_rule, as_list=False)
+                except Exception as e:
+                    msg = 'failed to evaluate condition for rule {RULE} - {ERR}'.format(RULE=default_rule, ERR=e)
+                    logger.exception(msg)
+                else:
+                    default_values = self._set_column_dtype(default_values, name=column)
+                    df.loc[:, column] = default_values
+
             else:
                 logger.warning('DataTable {NAME}: neither the "DefaultCondition" nor "DefaultRule" parameter was '
                                'provided to column defaults entry "{COL}"'.format(NAME=self.name, COL=column))
@@ -2922,10 +2990,7 @@ class RecordTable(TableElement):
         can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
 
         # Row click event
-        if event == elem_key:
-            self._selected_rows = values[elem_key]
-
-        elif event in (open_key, return_key) and can_open:
+        if event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -2939,7 +3004,7 @@ class RecordTable(TableElement):
                 self._selected_rows = [select_row_index]
 
                 # Get the real index of the selected row
-                index = self.get_real_index(select_row_index)
+                index = self.get_index(select_row_index)
 
                 logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
                              .format(NAME=self.name, IND=index))
@@ -2961,7 +3026,7 @@ class RecordTable(TableElement):
             select_row_indices = values[elem_key]
 
             # Get the real indices of the selected rows
-            indices = self.get_real_index(select_row_indices)
+            indices = self.get_index(select_row_indices)
             if len(indices) > 0:
                 self.delete_rows(indices)
                 update_event = True
@@ -3025,7 +3090,7 @@ class RecordTable(TableElement):
 
         return layout
 
-    def row_ids(self, imports: bool = False, indices: list = None, deleted: bool = False):
+    def row_ids(self, imports: bool = False, indices: list = None, display: bool = False):
         """
         Return a list of all current row IDs in the dataframe.
 
@@ -3035,24 +3100,27 @@ class RecordTable(TableElement):
             indices (list): optional list of table indices to get record IDs for [Default: get all record IDs in the
                 table].
 
-            deleted (bool): include deleted record IDs [Default: False].
+            display (bool): get record IDs from the set of currently displayed records [Default: False].
         """
         id_field = self.id_column
         if imports:
             df = self.import_df
-        elif deleted:  # include deleted rows
-            df = self.data(all_rows=True)
+        elif display:  # include deleted rows
+            df = self.data(display_rows=True)
         else:
             df = self.data()  # don't include deleted rows
 
-        if not indices:
+        if indices is None:
             indices = df.index
+        else:
+            if isinstance(indices, int):
+                indices = [indices]
 
         try:
             row_ids = df.loc[indices, id_field].tolist()
         except KeyError:  # database probably PostGreSQL
-            logger.warning('DataTable {NAME}: unable to return a list of row IDs from the table - ID column "{COL}" '
-                           'not found in the data table'.format(NAME=self.name, COL=id_field))
+            logger.exception('DataTable {NAME}: unable to return a list of row IDs from the table - ID column "{COL}" '
+                             'not found in the data table'.format(NAME=self.name, COL=id_field))
             row_ids = []
 
         return row_ids
@@ -3181,8 +3249,6 @@ class RecordTable(TableElement):
         modifiers = self.modifiers
 
         level = level if level is not None else self.level + 1
-        print('loading record table record at level {}'.format(level))
-
         view_only = False if modifiers['edit'] is True else True
 
         try:
@@ -3443,10 +3509,7 @@ class ComponentTable(RecordTable):
 
         # Row click event
         update_event = False
-        if event == elem_key:
-            self._selected_rows = values[elem_key]
-
-        elif event in (open_key, return_key) and can_open:
+        if event in (open_key, return_key) and can_open:
             # Close options panel, if open
             self.set_table_dimensions(window)
 
@@ -3460,7 +3523,7 @@ class ComponentTable(RecordTable):
                 self._selected_rows = [select_row_index]
 
                 # Get the real index of the selected row
-                index = self.get_real_index(select_row_index)
+                index = self.get_index(select_row_index)
 
                 logger.debug('DataTable {NAME}: loading record at index {IND}'
                              .format(NAME=self.name, IND=index))
@@ -3495,7 +3558,7 @@ class ComponentTable(RecordTable):
             select_row_indices = values[elem_key]
 
             # Get the real indices of the selected rows
-            indices = self.get_real_index(select_row_indices)
+            indices = self.get_index(select_row_indices)
             if len(indices) > 0:
                 self.delete_rows(indices)
                 update_event = True
@@ -3664,8 +3727,6 @@ class ComponentTable(RecordTable):
         modifiers = self.modifiers
 
         level = level if level is not None else self.level + 1
-        print('loading component table record at level {}'.format(level))
-
         view_only = False if modifiers['edit'] is True else True
 
         try:
@@ -4706,7 +4767,6 @@ class DataElement(RecordElement):
             if self.disabled:
                 return False
 
-            print('enabling edit mode')
             # Update element to show any current unformatted data
             value_fmt = self.format_display(editing=True)
 
@@ -4726,7 +4786,6 @@ class DataElement(RecordElement):
 
         # Set element to inactive mode and update the element value
         elif event in (save_key, save_hkey) and currently_editing:
-            print('saving value changes and setting to inactive mode')
             # Update value of the data element
             try:
                 value = values[elem_key]

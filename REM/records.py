@@ -502,8 +502,6 @@ class RecordEntry:
 
         # Check if references exists in the table already
         exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
-        print('records already exist in the database:')
-        print(exists)
 
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
         export_df = df[[i for i in column_map if i in df.columns]].rename(columns=column_map)
@@ -594,7 +592,6 @@ class RecordEntry:
             return statements
 
         exists = self.confirm_saved(df[id_field].values.tolist(), id_field=id_field)
-        print(exists)
 
         # Prepare a separate database transaction statement for each database table containing the record's data
         columns = df.columns.tolist()
@@ -668,11 +665,9 @@ class RecordEntry:
                 record_type = self.name
 
                 for ref_type in link_rules:
-                    print('record type {NAME} has hard-linked rule to record of type {REF}'.format(NAME=record_type,
-                                                                                                   REF=ref_type))
-
                     ref_entry = settings.records.fetch_rule(ref_type)
                     link_rule = link_rules[ref_type]
+
                     try:
                         condition = link_rule['Condition']
                     except KeyError:
@@ -694,8 +689,6 @@ class RecordEntry:
                     exist_ref_df = self.import_references(current_ids, association)
 
                     exist_ref_df = exist_ref_df[(exist_ref_df['IsHardLink']) & (~exist_ref_df['ReferenceID'].isin(ref_ids))]
-                    print('existing references:')
-                    print(exist_ref_df)
                     if not exist_ref_df.empty:
                         # Merge the relevant columns of the records dataframe with the reference dataframe
                         merged_df = pd.merge(exist_df[['RecordID'] + sub_cols], exist_ref_df, on='RecordID')
@@ -715,8 +708,7 @@ class RecordEntry:
                         df_sub = new_df.copy()
                     else:
                         df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
-                    print('new records:')
-                    print(df_sub)
+
                     if df_sub.empty:
                         continue
 
@@ -1782,7 +1774,6 @@ class DatabaseRecord:
             try:
                 edit_mode = record_element.edit_mode
             except AttributeError:
-                print('parameter {PARAM} does not have an edit mode'.format(PARAM=record_element.name))
                 continue
             else:
                 if not edit_mode:  # element is not currently being edited

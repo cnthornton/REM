@@ -53,11 +53,11 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel', 'Entry', 'Reconcile', 'Parameters', 'Cancel', 'Save', 'Panels',
-                          'Back', 'Next', 'Warnings', 'Frame', 'Header', 'Buttons', 'Title')]
+                         ('Panel', 'Account', 'Association', 'Reconcile', 'Parameters', 'Cancel', 'Save',
+                          'Panel1', 'Panel2', 'Warning1', 'Warning2', 'Frame', 'Buttons', 'Title')]
 
         self.bindings = [self.key_lookup(i) for i in
-                         ('Cancel', 'Save', 'Back', 'Next', 'Entry', 'Parameters', 'Reconcile')]
+                         ('Cancel', 'Save', 'Account', 'Association', 'Parameters', 'Reconcile')]
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -127,9 +127,11 @@ class BankRule:
 
         # Dynamic Attributes
         self.in_progress = False
-        self._current_account = None
+        self.current_account = None
         self.current_panel = None
-        self._panels = []
+        self.current_association = None
+        self.current_assoc_panel = None
+        self.panels = []
 
     def key_lookup(self, component):
         """
@@ -233,25 +235,51 @@ class BankRule:
         pd.set_option('display.max_columns', None)
 
         # Get elements of current account
-        current_acct = self._current_account
         current_rule = self.name
 
-        reconcile_key = self.key_lookup('Reconcile')
-        entry_key = self.key_lookup('Entry')
+        current_acct = self.current_account
+        current_assoc = self.current_association
+
+        entry_key = self.key_lookup('Account')
+        assoc_key = self.key_lookup('Association')
         param_key = self.key_lookup('Parameters')
+        reconcile_key = self.key_lookup('Reconcile')
+        warn1_key = self.key_lookup('Warning1')
+        warn2_key = self.key_lookup('Warning2')
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        next_key = self.key_lookup('Next')
-        back_key = self.key_lookup('Back')
-        warn_key = self.key_lookup('Warnings')
+
+        if current_acct:
+            acct = self.fetch_account(current_acct)
+            acct_keys = acct.bindings
+            link_key = acct.key_lookup('Link')
+            link_hkey = '{}+LINK+'.format(acct.get_table().key_lookup('Element'))
+        else:
+            acct_keys = []
+            link_key = None
+            link_hkey = None
+
+        if current_assoc:
+            assoc_acct = self.fetch_account(current_assoc)
+            assoc_keys = assoc_acct.bindings
+        else:
+            assoc_keys = []
 
         can_save = not window[save_key].metadata['disabled']
 
         # Run an account entry event
-        acct_keys = [i for j in self.accts for i in j.bindings]
-        if event in acct_keys:
-            current_panel = self.current_panel
-            acct = self.fetch_account(current_panel, by_key=True)
+        if event in (link_key, link_hkey):
+            try:
+                self.link_records(current_acct, current_assoc)
+            except Exception as e:
+                msg = 'failed to link records - {ERR}'.format(ERR=e)
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                mod_win2.popup_error(msg)
+            else:
+                self.update_display(window)
+
+        elif event in acct_keys:
+            acct = self.fetch_account(self.current_account)
 
             results = acct.run_event(window, event, values)
 
@@ -264,7 +292,7 @@ class BankRule:
                              .format(NAME=self.name, INDS=ref_indices, ACCT=acct.name))
                 ref_df = acct.ref_df.copy()
                 # Update account reference dataframes for currently active panels
-                for panel in self._panels:
+                for panel in self.panels:
                     ref_acct = self.fetch_account(panel, by_key=True)
 
                     logger.debug('BankRule {NAME}: updating transaction account {ACCT} references matching those '
@@ -278,11 +306,45 @@ class BankRule:
             if record_indices:
                 logger.debug('BankRule {NAME}: record indices {INDS} were selected from account table {ACCT}'
                              .format(NAME=self.name, INDS=record_indices, ACCT=acct.name))
+
+                if len(record_indices) > 1:
+                    record_warning = None
+                else:  # single primary account record selected
+                    # Set the reference warning, if any
+                    record_warning = acct.fetch_reference_parameter('ReferenceNotes', record_indices).squeeze()
+
+                    # Select the reference in the associated table, if any
+                    if current_assoc:
+                        assoc_acct = self.fetch_account(current_assoc)
+                        assoc_table = assoc_acct.get_table()
+
+                        reference_id = acct.fetch_reference_parameter('ReferenceID', record_indices).squeeze()
+                        assoc_display = assoc_table.data(display_rows=True)
+                        ref_ind = assoc_display[assoc_display['RecordID'] == reference_id].index
+                        if not ref_ind.empty:
+                            select_ind = assoc_table.get_index(ref_ind.tolist(), real=False)
+                            assoc_table.select(window, select_ind)
+
+                window[warn1_key].update(value=settings.format_display(record_warning, 'varchar'))
+
+            return current_rule
+
+        # Run an association account event
+        if event in assoc_keys:
+            assoc_acct = self.fetch_account(self.current_association)
+            results = assoc_acct.run_event(window, event, values)
+
+            # Store indices of the selected row(s)
+            record_indices = results.get('RecordIndex')
+            if record_indices:
+                logger.debug('BankRule {NAME}: record indices {INDS} were selected from account table {ACCT}'
+                             .format(NAME=self.name, INDS=record_indices, ACCT=assoc_acct.name))
+
                 if len(record_indices) > 1:
                     record_warning = None
                 else:
-                    record_warning = acct.fetch_reference_parameter('ReferenceNotes', record_indices).squeeze()
-                window[warn_key].update(value=settings.format_display(record_warning, 'varchar'))
+                    record_warning = assoc_acct.fetch_reference_parameter('ReferenceNotes', record_indices).squeeze()
+                window[warn2_key].update(value=settings.format_display(record_warning, 'varchar'))
 
             return current_rule
 
@@ -347,48 +409,12 @@ class BankRule:
                         # Reset rule elements
                         current_rule = self.reset_rule(window, current=True)
 
-        # Next button pressed - display next panel in transaction workflow. Wrap-around to first panel if next panel
-        # goes beyond the number of items in the panel list
-        elif event == next_key and not window[next_key].metadata['disabled']:
-            current_index = self._panels.index(self.current_panel)
-            next_index = (current_index + 1) % len(self._panels)
-            next_panel = self._panels[next_index]
-
-            # Reset panel sizes
-            next_acct = self.fetch_account(next_panel, by_key=True)
-            next_acct.table.set_table_dimensions(window)
-
-            # Hide current panel and un-hide the following panel
-            window[self.current_panel].update(visible=False)
-            window[next_panel].update(visible=True)
-
-            # Reset current panel attribute
-            self.current_panel = next_panel
-
-        # Back button pressed - display previous panel. Wrap-around to last panel if previous panel is less than the
-        # number of items in the panel list
-        elif event == back_key and not window[back_key].metadata['disabled']:
-            current_index = self._panels.index(self.current_panel)
-            back_index = current_index - 1
-            prev_panel = self._panels[back_index]
-
-            # Reset panel sizes
-            prev_acct = self.fetch_account(prev_panel, by_key=True)
-            prev_acct.table.set_table_dimensions(window)
-
-            # Hide current panel and un-hide the previous panel
-            window[self.current_panel].update(visible=False)
-            window[prev_panel].update(visible=True)
-
-            # Reset current panel attribute
-            self.current_panel = prev_panel
-
         # An account was selected from the account entry dropdown. Selecting an account will display the associated
         # sub-panel.
         elif event == entry_key:
             acct_title = values[event]
             if not acct_title:
-                self._current_account = None
+                self.current_account = None
                 self.current_panel = None
 
                 # Disable the parameter selection button
@@ -398,18 +424,48 @@ class BankRule:
 
             # Hide the current panel
             if self.current_panel:
+                prev_acct = self.fetch_account(self.current_panel, by_key=True)
                 window[self.current_panel].update(visible=False)
+                prev_acct.reset(window)
 
             # Set the current account attributes to the selected account
             current_acct = self.fetch_account(acct_title, by_title=True)
-            self._current_account = current_acct.name
+            self.current_account = current_acct.name
             self.current_panel = current_acct.key_lookup('Panel')
+            current_acct.primary = True
 
             # Display the selected account table
             window[self.current_panel].update(visible=True)
 
             # Enable the parameter selection button
             window[param_key].update(disabled=False)
+
+        # An associated account was selected from the associated accounts dropdown. Selecting an associated account will
+        # display the relevant sub-panel.
+        elif event == assoc_key:
+            acct_title = values[event]
+            if not acct_title:
+                self.current_account = None
+                self.current_panel = None
+
+                return current_rule
+
+            # Hide the current association panel
+            if self.current_assoc_panel:
+                window[self.current_assoc_panel].update(visible=False)
+
+                # Clear current table selections
+                current_assoc_acct = self.fetch_account(current_assoc)
+                current_assoc_acct.get_table().deselect(window)
+                window[warn2_key].update(value='')
+
+            # Set the current association account attributes to the selected association account
+            assoc_acct = self.fetch_account(acct_title, by_title=True)
+            self.current_association = assoc_acct.name
+            self.current_assoc_panel = assoc_acct.key_lookup('AssocPanel')
+
+            # Display the selected association account table
+            window[self.current_assoc_panel].update(visible=True)
 
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
@@ -420,7 +476,7 @@ class BankRule:
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
                 # Load the main transaction account data using the defined parameters
-                main_acct = self._current_account
+                main_acct = self.current_account
                 acct_params = params[main_acct]
                 if not acct_params:
                     msg = 'no parameters supplied for main account {ACCT}'.format(ACCT=main_acct)
@@ -429,6 +485,7 @@ class BankRule:
                     return self.reset_rule(window, current=True)
 
                 acct = self.fetch_account(main_acct)
+
                 try:
                     acct.load_data(acct_params)
                 except Exception as e:
@@ -443,11 +500,11 @@ class BankRule:
 
                 # Enable table action buttons for the main account
                 acct.table.enable(window)
-                acct.primary = True
 
-                self._panels.append(self.panel_keys[main_acct])
+                self.panels.append(self.panel_keys[main_acct])
 
                 # Load the association account data using the defined parameters
+                assoc_accounts = []
                 for acct_name in params:
                     if acct_name == main_acct:  # data already loaded
                         continue
@@ -463,6 +520,7 @@ class BankRule:
                                  .format(NAME=self.name, ACCT=acct_name))
                     assoc_acct = self.fetch_account(acct_name)
                     assoc_type = assoc_acct.record_type
+                    assoc_accounts.append(assoc_acct.title)
 
                     refs = ref_df.copy()
                     reference_records = refs.loc[refs['ReferenceType'] == assoc_type, 'ReferenceID'].tolist()
@@ -475,26 +533,23 @@ class BankRule:
                         return self.reset_rule(window, current=True)
 
                     assoc_acct.primary = False
-                    self._panels.append(self.panel_keys[acct_name])
+                    self.panels.append(self.panel_keys[acct_name])
 
                 # Update the display
+                window[assoc_key].update(values=assoc_accounts, size=(mod_const.PARAM_SIZE_CHAR[0], len(assoc_accounts)))
+
                 self.update_display(window)
 
                 # Disable the account entry selection dropdown
                 window[entry_key].update(disabled=True)
+                window[assoc_key].update(disabled=False)
                 window[param_key].update(disabled=True)
 
                 # Enable elements
                 window[save_key].update(disabled=False)
                 window[save_key].metadata['disabled'] = False
-                if len(self._panels) > 1:
+                if len(self.panels) > 1:
                     window[reconcile_key].update(disabled=False)
-
-                    # Enable the navigation buttons
-                    window[next_key].update(disabled=False)
-                    window[next_key].metadata['disabled'] = False
-                    window[back_key].update(disabled=False)
-                    window[back_key].metadata['disabled'] = False
 
                 self.toggle_parameters(window, 'enable')
 
@@ -526,9 +581,11 @@ class BankRule:
         Reset rule to default.
         """
         panel_key = self.element_key
-        entry_key = self.key_lookup('Entry')
+        entry_key = self.key_lookup('Account')
+        assoc_key = self.key_lookup('Association')
         param_key = self.key_lookup('Parameters')
-        warn_key = self.key_lookup('Warnings')
+        warn1_key = self.key_lookup('Warning1')
+        warn2_key = self.key_lookup('Warning2')
 
         # Disable current panel
         if self.current_panel:
@@ -546,32 +603,34 @@ class BankRule:
 
         # Enable the account entry selection dropdown
         window[entry_key].update(disabled=False)
-
-        # Disable the navigation buttons and reconciliation modifier parameters
-        next_key = self.key_lookup('Next')
-        back_key = self.key_lookup('Back')
-        window[next_key].update(disabled=True)
-        window[next_key].metadata['disabled'] = True
-        window[back_key].update(disabled=True)
-        window[back_key].metadata['disabled'] = True
+        window[assoc_key].update(disabled=True)
+        window[assoc_key].update(value='')
 
         self.reset_parameters(window)
         self.toggle_parameters(window, 'disable')
 
         # Clear the warning element
-        window[warn_key].update(value='')
+        window[warn1_key].update(value='')
+        window[warn2_key].update(value='')
 
         # Reset all account entries
         for acct in self.accts:
             acct.reset(window)
 
         self.in_progress = False
-        self._panels = []
+        self.panels = []
+
+        if self.current_assoc_panel:
+            window[self.current_assoc_panel].update(visible=False)
+        self.current_association = None
+        self.current_assoc_panel = None
 
         if current:
             window['-HOME-'].update(visible=False)
             if self.current_panel:
                 window[self.current_panel].update(visible=True)
+                current_acct = self.fetch_account(self.current_account)
+                current_acct.primary = True
 
                 # Enable the parameter selection button
                 window[param_key].update(disabled=False)
@@ -582,7 +641,7 @@ class BankRule:
         else:
             # Reset the current account display
             self.current_panel = None
-            self._current_account = None
+            self.current_account = None
 
             # Reset the account entry dropdown
             window[entry_key].update(value='')
@@ -610,6 +669,7 @@ class BankRule:
         text_col = mod_const.TEXT_COL
 
         font = mod_const.MAIN_FONT
+        param_font = mod_const.XX_FONT
         font_h = mod_const.HEADING_FONT
 
         pad_el = mod_const.ELEM_PAD
@@ -631,13 +691,6 @@ class BankRule:
         panel_w = frame_w
         panel_h = frame_h - header_h - pad_h  # minus panel title, padding, and button row
 
-        # Keyboard shortcuts
-        hotkeys = settings.hotkeys
-        cancel_shortcut = hotkeys['-HK_ESCAPE-'][2]
-        save_shortcut = hotkeys['-HK_ENTER-'][2]
-        next_shortcut = hotkeys['-HK_RIGHT-'][2]
-        back_shortcut = hotkeys['-HK_LEFT-'][2]
-
         # Layout elements
 
         # Title
@@ -649,18 +702,62 @@ class BankRule:
                               key=title_key, size=(title_w, title_h), background_color=header_col,
                               vertical_alignment='c', element_justification='l', justification='l', expand_x=True)
 
-        # Header
+        # Column 1
+
+        # Column 1 header
+        entry_key = self.key_lookup('Account')
         param_key = self.key_lookup('Parameters')
-        entry_key = self.key_lookup('Entry')
+
+        entries = [i.title for i in self.accts]
+        header1 = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
+                           sg.Combo(entries, default_value='', key=entry_key, size=param_size, pad=((0, pad_el * 2), 0),
+                                    font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
+                                    enable_events=True, tooltip='Select reconciliation account'),
+                           sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
+                                     button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
+                         expand_x=True, justification='l', element_justification='l', vertical_alignment='b',
+                         background_color=bg_col)
+
+        # Column 1 Panels
+        panels = []
+        for acct in self.accts:
+            layout = acct.layout(size=(panel_w, panel_h))
+            panels.append(layout)
+
+        pg1 = [[sg.Pane(panels, orientation='horizontal', background_color=bg_col, show_handle=False, border_width=0,
+                        relief='flat')]]
+
+        panel_key = self.key_lookup('Panel1')
+        panel1 = sg.Frame('', pg1, key=panel_key, background_color=bg_col, visible=True, vertical_alignment='c',
+                          element_justification='c')
+
+        warn1_key = self.key_lookup('Warning1')
+        warn_w = 10  # width of the display panel minus padding on both sides
+        warn_h = 2
+        warn_layout = sg.Col([[sg.Canvas(size=(0, 70), background_color=bg_col),
+                               sg.Multiline('', key=warn1_key, size=(warn_w, warn_h), font=font, disabled=True,
+                                            background_color=bg_col, text_color=disabled_text_col, border_width=1)]],
+                             background_color=bg_col, expand_x=True, vertical_alignment='c', element_justification='l')
+
+        col1_layout = sg.Col([[header1], [panel1], [warn_layout]], pad=((0, pad_v), 0), background_color=bg_col)
+
+        # Column 2
+
+        # Column 2 header
         reconcile_key = self.key_lookup('Reconcile')
 
         # Rule parameter elements
         if len(params) > 1:
-            param_pad = ((0, pad_h), 0)
+            param_pad = ((0, pad_el * 2), 0)
         else:
             param_pad = (0, 0)
 
-        param_elements = [sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
+        assoc_key = self.key_lookup('Association')
+        param_elements = [sg.Canvas(size=(0, header_h), background_color=bg_col),
+                          sg.Combo(entries, default_value='', key=assoc_key, size=param_size, pad=((0, pad_el * 2), 0),
+                                   font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
+                                   enable_events=True, tooltip='Select association account'),
+                          sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
                                     button_color=(bttn_text_col, bttn_bg_col),
                                     disabled_button_color=(disabled_text_col, disabled_bg_col),
                                     tooltip='Run reconciliation')]
@@ -668,72 +765,50 @@ class BankRule:
             element_layout = param.layout(padding=param_pad, auto_size_desc=True)
             param_elements.extend(element_layout)
 
-        entries = [i.title for i in self.accts]
-        header = [sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
-                           sg.Combo(entries, default_value='', key=entry_key, size=param_size, pad=(pad_h, 0),
-                                    font=font, text_color=text_col, background_color=bg_col, disabled=False,
-                                    enable_events=True, tooltip='Select reconciliation account'),
-                           sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
-                                     button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
-                         expand_x=True, justification='l', background_color=bg_col),
-                  sg.Col([param_elements], pad=(0, 0), justification='r', background_color=bg_col)]
-        header_key = self.key_lookup('Header')
-        header_layout = sg.Col([header], key=header_key, background_color=bg_col, expand_x=True, vertical_alignment='c',
-                               element_justification='l')
+        header2 = sg.Col([param_elements], expand_x=True,
+                         justification='l', element_justification='l', vertical_alignment='b', background_color=bg_col)
 
-        # Reference warnings
-        warn_key = self.key_lookup('Warnings')
-        warn_w = width  # width of the display panel minus padding on both sides
+        # Column 2 Panels
+        panels = []
+        for acct in self.accts:
+            layout = acct.layout(size=(panel_w, panel_h), primary=False)
+            panels.append(layout)
+
+        pg2 = [[sg.Pane(panels, orientation='horizontal', background_color=bg_col, show_handle=False, border_width=0,
+                        relief='flat')]]
+
+        panel_key = self.key_lookup('Panel2')
+        panel2 = sg.Frame('', pg2, key=panel_key, background_color=bg_col, visible=True,
+                          vertical_alignment='c', element_justification='c')
+
+        warn2_key = self.key_lookup('Warning2')
+        warn_w = 10  # width of the display panel minus padding on both sides
         warn_h = 2
         warn_layout = sg.Col([[sg.Canvas(size=(0, 70), background_color=bg_col),
-                               sg.Multiline('', key=warn_key, size=(warn_w, warn_h), font=font, disabled=True,
+                               sg.Multiline('', key=warn2_key, size=(warn_w, warn_h), font=font, disabled=True,
                                             background_color=bg_col, text_color=disabled_text_col, border_width=1)]],
                              background_color=bg_col, expand_x=True, vertical_alignment='c', element_justification='l')
 
-        # Panels
-        panels = []
-        for acct in self.accts:
-            layout = acct.layout(size=(panel_w, panel_h))
-            panels.append(layout)
-
-        panel_group = [[sg.Pane(panels, orientation='horizontal', background_color=bg_col, show_handle=False,
-                                border_width=0, relief='flat')]]
-
-        # Panel layout
-        panel_key = self.key_lookup('Panels')
-        panel_layout = sg.Col(panel_group, key=panel_key, background_color=bg_col, expand_x=True,
-                              vertical_alignment='t', visible=True, expand_y=True, scrollable=True,
-                              vertical_scroll_only=True)
+        col2_layout = sg.Col([[header2], [panel2], [warn_layout]], pad=((pad_v, 0), 0), background_color=bg_col)
 
         # Control elements
-        next_key = self.key_lookup('Next')
-        back_key = self.key_lookup('Back')
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
         buttons_key = self.key_lookup('Buttons')
         bttn_h = mod_const.BTTN_HEIGHT
         bttn_layout = sg.Col([
             [sg.Canvas(size=(0, bttn_h)),
-             sg.Button('', key=cancel_key, image_data=mod_const.CANCEL_ICON,
-                       image_size=mod_const.BTTN_SIZE, pad=((0, pad_el), 0), disabled=False,
-                       tooltip='Return to home screen ({})'.format(cancel_shortcut)),
-             sg.Button('', key=back_key, image_data=mod_const.LEFT_ICON, image_size=mod_const.BTTN_SIZE,
-                       pad=((0, pad_el), 0), disabled=True, tooltip='Next panel ({})'.format(back_shortcut),
-                       metadata={'disabled': True}),
-             sg.Button('', key=next_key, image_data=mod_const.RIGHT_ICON, image_size=mod_const.BTTN_SIZE,
-                       pad=((0, pad_el), 0), disabled=True, tooltip='Previous panel ({})'.format(next_shortcut),
-                       metadata={'disabled': True}),
-             sg.Button('', key=save_key, image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                       pad=(0, 0), disabled=True, tooltip='Save results ({})'.format(save_shortcut),
-                       metadata={'disabled': True})
+             mod_lo.nav_bttn('', key=cancel_key, image_data=mod_const.CANCEL_ICON, pad=((0, pad_el), 0), disabled=False,
+                             tooltip='Return to home screen'),
+             mod_lo.nav_bttn('', key=save_key, image_data=mod_const.SAVE_ICON, pad=(0, 0), disabled=True,
+                             tooltip='Save results', metadata={'disabled': True})
              ]], key=buttons_key, vertical_alignment='c', element_justification='c', expand_x=True)
 
         frame_key = self.key_lookup('Frame')
-        frame_layout = sg.Col([[header_layout],
-                               [sg.HorizontalSeparator(pad=(0, (0, pad_v)), color=mod_const.HEADER_COL)],
-                               [panel_layout],
-                               [warn_layout]],
+        frame_layout = sg.Col([[col1_layout, col2_layout]],
                               pad=(pad_frame, 0), key=frame_key, background_color=bg_col, expand_x=True, expand_y=True)
+        #frame_layout = sg.Col([[col1_layout, col2_layout], [warn_layout]],
+        #                      pad=(pad_frame, 0), key=frame_key, background_color=bg_col, expand_x=True, expand_y=True)
 
         layout = sg.Col([[title_layout], [frame_layout], [bttn_layout]], key=self.element_key,
                         visible=False, background_color=bg_col, vertical_alignment='t')
@@ -752,7 +827,7 @@ class BankRule:
         width, height = size
         pad_frame = mod_const.FRAME_PAD
         pad_v = mod_const.VERT_PAD
-        scroll_w = mod_const.SCROLL_WIDTH
+        #scroll_w = mod_const.SCROLL_WIDTH
 
         title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
         pad_h = pad_v + 2  # horizontal bar height with padding
@@ -766,36 +841,134 @@ class BankRule:
         frame_key = self.key_lookup('Frame')
         mod_lo.set_size(window, frame_key, (frame_w, frame_h))
 
-        panel_w = frame_w
+        panel_w = int(frame_w / 2) - pad_v
         panel_h = frame_h - header_h - warn_h - pad_h  # frame minus panel header row, warning, and vertical padding
-        panel_key = self.key_lookup('Panels')
-        mod_lo.set_size(window, panel_key, (panel_w, panel_h))
+        mod_lo.set_size(window, self.key_lookup('Panel1'), (panel_w, panel_h))
+        mod_lo.set_size(window, self.key_lookup('Panel2'), (panel_w, panel_h))
+
+        window[self.key_lookup('Warning1')].expand(expand_x=True)
+        window[self.key_lookup('Warning2')].expand(expand_x=True)
 
         # Resize account panels
         accts = self.accts
         for acct in accts:
-            acct.resize(window, size=(panel_w - scroll_w, panel_h))
+            acct.resize(window, size=(panel_w, panel_h))
 
-        #window.refresh()
-        #print('desired button height: {}'.format(bttn_h))
-        #print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
-        #print('desired title height: {}'.format(title_h))
-        #print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
-        #print('desired header height: {}'.format(header_h))
-        #print('actual header height: {}'.format(window[self.key_lookup('Header')].get_size()[1]))
-        #print('desired frame height: {}'.format(frame_h))
-        #print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
-        #print('desired panel height: {}'.format(panel_h))
-        #print('actual panel height: {}'.format(window[panel_key].get_size()[1]))
+        window.refresh()
+        print('desired button height: {}'.format(bttn_h))
+        print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
+        print('desired title height: {}'.format(title_h))
+        print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
+        print('desired header height: {}'.format(header_h))
+        print('actual combo height: {}'.format(window[self.key_lookup('Account')].get_size()[1]))
+        print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
+        print('desired panel height: {}'.format(panel_h))
+        print('actual panel height: {}'.format(window[self.key_lookup('Panel1')].get_size()[1]))
 
     def update_display(self, window):
         """
         Update the audit record summary tab's record display.
         """
         # Update the relevant account panels
-        for acct_panel in self._panels:
+        for acct_panel in self.panels:
             acct = self.fetch_account(acct_panel, by_key=True)
+            acct.get_table().deselect(window)
             acct.update_display(window)
+
+    def link_records(self, acct_name, assoc_name: str = None):
+        """
+        Link two or more selected records.
+        """
+        # Get selected row(s) of the transaction accounts
+        acct = self.fetch_account(acct_name)
+        acct_table = acct.get_table()
+        rows = acct_table.selected(real=True)
+
+        if assoc_name:
+            assoc_acct = self.fetch_account(assoc_name)
+            assoc_table = assoc_acct.get_table()
+            acct_rows = rows[0]
+            assoc_rows = assoc_table.selected(real=True)[0]
+        else:
+            assoc_acct = acct
+            assoc_name = acct_name
+            assoc_table = acct_table
+            acct_rows = rows[0]
+            assoc_rows = rows[1]
+
+        print('selected account {} rows are: {}'.format(acct_name, acct_rows))
+        print('selected association {} rows are: {}'.format(assoc_name, assoc_rows))
+
+        record_id = acct_table.row_ids(indices=acct_rows)[0]
+        reference_id = assoc_table.row_ids(indices=assoc_rows)[0]
+
+        # Verify that the selected records do not already have references
+        if acct.has_reference(record_id) or assoc_acct.has_reference(reference_id):
+            msg = 'one or more of the selected records already have references'
+            raise AssertionError(msg)
+
+        # Link records
+        msg = 'manually link record {ID} from {ACCT} to record {REFID} from {ASSOC}?'\
+            .format(ID=record_id, REFID=reference_id, ACCT=acct_name, ASSOC=assoc_name)
+        confirm = mod_win2.popup_confirm(msg)
+        if confirm:
+            # Allow user to set a note
+            user_note = mod_win2.add_note_window()
+
+            # Manually set a mutual references for the selected records
+            acct.add_reference(record_id, reference_id, assoc_acct.record_type, approved=True, warning=user_note)
+            assoc_acct.add_reference(reference_id, record_id, acct.record_type, approved=True, warning=user_note)
+
+    def link_records_new(self, acct_name, assoc_name: str = None):
+        """
+        Link two or more selected records.
+        """
+        # Get selected row(s) of the transaction accounts
+        acct = self.fetch_account(acct_name)
+        acct_table = acct.get_table()
+        rows = acct_table.selected()
+
+        if assoc_name:
+            assoc_acct = self.fetch_account(assoc_name)
+            assoc_table = assoc_acct.get_table()
+            acct_rows = rows
+            assoc_rows = assoc_table.selected()
+        else:
+            assoc_acct = acct
+            assoc_table = acct_table
+            acct_rows = [rows[0]]
+            assoc_rows = rows[1:]
+
+        n_select_acct = len(acct_rows)
+        n_select_assoc = len(assoc_rows)
+
+        if n_select_acct == 0:
+            msg = 'at least one record must be selected from account {}'.format(acct_name)
+            raise AssertionError(msg)
+
+        success = True
+        if (n_select_assoc >= 1 and n_select_acct == 1) or (n_select_acct >= 1 and n_select_assoc == 1):
+            record_ids = acct_table.row_ids(indices=acct_rows, deleted=True)
+            reference_ids = assoc_table.row_ids(indices=assoc_rows, deleted=True)
+
+        else:
+            msg = ''.format(ACCT=acct_name, ASSOC=assoc_name)
+            raise AssertionError(msg)
+
+        if acct.has_reference(record_ids) or assoc_acct.has_reference(reference_ids):
+            msg = 'one or more of the selected records already have references'
+            raise AssertionError(msg)
+
+        # Allow user to set a note
+        user_note = mod_win2.add_note_window()
+
+        # Manually set a mutual references for the selected records
+        for record_id in record_ids:
+            for reference_id in reference_ids:
+                acct.add_reference(record_id, reference_id, assoc_acct.record_type, approved=True, warning=user_note)
+                assoc_acct.add_reference(reference_id, record_id, acct.record_type, approved=True, warning=user_note)
+
+        return success
 
     def reconcile_statement(self, expand_search: bool = False, search_failed: bool = False):
         """
@@ -814,12 +987,12 @@ class BankRule:
         pd.set_option('display.max_columns', None)
 
         # Fetch primary account and prepare data
-        acct = self.fetch_account(self._current_account)
+        acct = self.fetch_account(self.current_account)
         logger.info('BankRule {NAME}: reconciling account {ACCT}'.format(NAME=self.name, ACCT=acct.name))
         logger.debug('BankRule {NAME}: expanded search is set to {VAL}'
                      .format(NAME=self.name, VAL=('on' if expand_search else 'off')))
 
-        table = acct.table
+        table = acct.get_table()
         id_column = table.id_column
 
         # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
@@ -859,7 +1032,8 @@ class BankRule:
             logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
                          .format(NAME=self.name, ACCT=assoc_acct.name))
 
-            assoc_df = assoc_acct.table.data()
+            assoc_table = assoc_acct.get_table()
+            assoc_df = assoc_table.data()
             if assoc_df.empty:  # no records loaded to match to, so skip
                 continue
 
@@ -977,7 +1151,7 @@ class BankRule:
                 matched_indices.append(index)
 
                 warning = 'Found more than one match for account {ACCT} record "{RECORD}"' \
-                    .format(ACCT=self._current_account, RECORD=record_id)
+                    .format(ACCT=self.current_account, RECORD=record_id)
                 logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
 
                 # Match the first of the exact matches
@@ -1080,13 +1254,13 @@ class BankRule:
 
                 msg = 'no matches found for account {ACCT}, row {ROW} at expanded search level {L} - returning to ' \
                       'previous search level matches to find for the closest match on columns {COLS}' \
-                    .format(ACCT=self._current_account, ROW=row.name, L=expand_level, COLS=expanded_cols)
+                    .format(ACCT=self.current_account, ROW=row.name, L=expand_level, COLS=expanded_cols)
                 logger.info('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 results = self.find_expanded_match(row, ref_df, ref_map, expand_level=prev_level,
                                                    closest_match=expanded_cols)
             else:
                 msg = 'no matches found for account {ACCT}, row {ROW} from an expanded search'\
-                    .format(ACCT=self._current_account, ROW=row.name)
+                    .format(ACCT=self.current_account, ROW=row.name)
                 logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         elif nmatch == 1:  # potential match, add with a warning
@@ -1108,7 +1282,7 @@ class BankRule:
 
         elif nmatch > 1:  # need to increase specificity to get the best match by adding higher level expand columns
             msg = 'found more than one expanded match for account {ACCT}, row {ROW} at search level {L} - ' \
-                  'searching for the best match'.format(ACCT=self._current_account, ROW=row.name, L=expand_level)
+                  'searching for the best match'.format(ACCT=self.current_account, ROW=row.name, L=expand_level)
             logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             # Find the closest match by iterative expanded column inclusion
@@ -1118,7 +1292,7 @@ class BankRule:
                 results = nearest_match(row, matches, closest_match)
                 if results.empty:
                     msg = 'multiple matches found for account {ACCT}, row {ROW} but enough specificity in the data ' \
-                          'to narrow it down to one match'.format(ACCT=self._current_account, ROW=row.name)
+                          'to narrow it down to one match'.format(ACCT=self.current_account, ROW=row.name)
                     logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 else:
                     warning = 'association is the result of searching for the closest match on {}'\
@@ -1134,7 +1308,7 @@ class BankRule:
         statements = {}
 
         # Prepare to save the account references and records
-        for panel_key in self._panels:
+        for panel_key in self.panels:
             acct = self.fetch_account(panel_key, by_key=True)
 
             record_type = acct.record_type
@@ -1154,7 +1328,7 @@ class BankRule:
                 return False
 
         # Save record references to the references table
-        acct = self.fetch_account(self._current_account)
+        acct = self.fetch_account(self.current_account)
 
         record_type = acct.record_type
         record_entry = settings.records.fetch_rule(record_type)
@@ -1251,7 +1425,7 @@ class BankRule:
                     return False
 
         logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
-                    .format(NAME=self.name, ACCT=self._current_account))
+                    .format(NAME=self.name, ACCT=self.current_account))
 
         sstrings = []
         psets = []
@@ -1272,7 +1446,7 @@ class BankRule:
         statements = {}
 
         # Prepare to save the account references
-        for panel in self._panels:
+        for panel in self.panels:
             acct = self.fetch_account(panel, by_key=True)
 
             record_type = acct.record_type
@@ -1314,7 +1488,7 @@ class BankRule:
                 return False
 
         logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
-                    .format(NAME=self.name, ACCT=self._current_account))
+                    .format(NAME=self.name, ACCT=self.current_account))
 
         sstrings = []
         psets = []
@@ -1337,7 +1511,7 @@ class BankRule:
         """
         status = []
         with pd.ExcelWriter(filename) as writer:
-            for acct_panel in self._panels:
+            for acct_panel in self.panels:
                 acct = self.fetch_account(acct_panel, by_key=True)
 
                 sheet_name = acct.title
@@ -1466,6 +1640,16 @@ class BankAccount:
         link_hkey = '{}+LINK+'.format(elem_key)
         self.bindings.extend([approve_hkey, reset_hkey, link_hkey])
 
+        modifiers = table_entry['Modifiers']
+        modifiers['edit'] = 0
+        modifiers['import'] = 0
+        modifiers['delete'] = 0
+        modifiers['fill'] = 0
+        table_entry['Modifiers'] = modifiers
+        table_entry['CustomActions'] = {}
+        self.assoc_table = mod_elem.RecordTable(name, table_entry)
+        self.bindings.extend(self.assoc_table.bindings)
+
         try:
             self.parameters = entry['ImportParameters']
         except KeyError:
@@ -1593,7 +1777,10 @@ class BankAccount:
         """
         Return the relevant account table for the current reconciliation.
         """
-        return self.table
+        if self.primary:
+            return self.table
+        else:
+            return self.assoc_table
 
     def events(self):
         """
@@ -1609,6 +1796,7 @@ class BankAccount:
 
         # Reset the record table and the reference dataframe
         self.table.reset(window)
+        self.assoc_table.reset(window)
         self.ref_df = None
         self.primary = False
 
@@ -1622,15 +1810,13 @@ class BankAccount:
         pd.set_option('display.max_columns', None)
 
         colmap = self._col_map
-        table = self.table
+        table = self.get_table()
         table_keys = table.bindings
         tbl_key = table.key_lookup('Element')
         approve_key = self.key_lookup('Approve')
         approve_hkey = '{}+APPROVE+'.format(tbl_key)
         reset_key = self.key_lookup('Reset')
         reset_hkey = '{}+RESET+'.format(tbl_key)
-        link_key = self.key_lookup('Link')
-        link_hkey = '{}+LINK+'.format(tbl_key)
 
         # Return values
         reference_indices = None
@@ -1659,7 +1845,7 @@ class BankAccount:
                     logger.debug('DataTable {NAME}: {MSG}'.format(NAME=table.name, MSG=msg))
                 else:
                     # Get the real index of the selected row
-                    index = table.get_real_index(select_row_index)
+                    index = table.get_index(select_row_index)
                     record_indices = [index]
 
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
@@ -1718,18 +1904,21 @@ class BankAccount:
                                 else:
                                     reference_indices = reference_indices.tolist()
 
+            # Single-clicked table row(s)
             elif event == tbl_key:
                 table.run_event(window, event, values)
 
                 # Get index of the selected rows
-                try:
-                    select_indices = values[tbl_key]
-                except IndexError:  # user double-clicked too quickly
-                    msg = 'table row could not be selected'
-                    logger.debug('DataTable {NAME}: {MSG}'.format(NAME=table.name, MSG=msg))
-                else:
-                    # Get the real index of the selected row
-                    record_indices = table.get_real_index(select_indices)
+                record_indices = table.selected(real=True)
+                print('selected real indices are: {}'.format(record_indices))
+                #try:
+                #    select_indices = values[tbl_key]
+                #except IndexError:  # user double-clicked too quickly
+                #    msg = 'table row could not be selected'
+                #    logger.debug('DataTable {NAME}: {MSG}'.format(NAME=table.name, MSG=msg))
+                #else:
+                #    # Get the real index of the selected row
+                #    record_indices = table.get_real_index(select_indices)
 
             else:
                 table.run_event(window, event, values)
@@ -1739,7 +1928,7 @@ class BankAccount:
             select_row_indices = values[tbl_key]
 
             # Get the real indices of the selected rows
-            indices = table.get_real_index(select_row_indices)
+            indices = table.get_index(select_row_indices)
 
             # Get record IDs for the selected rows
             record_ids = table.df.loc[indices, table.id_column].tolist()
@@ -1756,12 +1945,15 @@ class BankAccount:
             if 'Approved' in colmap:
                 table.update_column(colmap['Approved'], True, indices=indices)
 
+            # Deselect selected rows
+            table.deselect(window)
+
         elif event in (reset_key, reset_hkey):
             # Find rows selected by user for deletion
             select_row_indices = values[tbl_key]
 
             # Get the real indices of the selected rows
-            indices = table.get_real_index(select_row_indices)
+            indices = table.get_index(select_row_indices)
 
             # Get record IDs for the selected rows
             record_ids = table.df.loc[indices, table.id_column].tolist()
@@ -1773,6 +1965,9 @@ class BankAccount:
                 msg = 'failed to reset record references at table indices {INDS}'.format(INDS=indices)
                 logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
+            # Deselect selected rows
+            table.deselect(window)
+
             # Reset void transaction status
             self.reset_records(indices, index=True)
 
@@ -1783,8 +1978,12 @@ class BankAccount:
         GUI layout for the account sub-panel.
         """
         width, height = size
-        table = self.table
-        panel_key = self.key_lookup('Panel')
+        if primary:
+            table = self.table
+            panel_key = self.key_lookup('Panel')
+        else:
+            table = self.assoc_table
+            panel_key = self.key_lookup('AssocPanel')
 
         # Element parameters
         bg_col = mod_const.ACTION_COL
@@ -1797,6 +1996,7 @@ class BankAccount:
         # Layout
         tbl_layout = [[table.layout(tooltip=self.title, size=(tbl_width, tbl_height), padding=(0, 0))]]
 
+        #panel_key = self.key_lookup('Panel')
         layout = sg.Col(tbl_layout, key=panel_key, pad=(pad_frame, pad_frame), justification='c',
                         vertical_alignment='t', background_color=bg_col, expand_x=True, visible=False)
 
@@ -1812,6 +2012,7 @@ class BankAccount:
         tbl_width = width
         tbl_height = height
         self.table.resize(window, size=(tbl_width, tbl_height))
+        self.assoc_table.resize(window, size=(tbl_width, tbl_height))
 
     def fetch_reference_parameter(self, param, indices):
         """
@@ -2010,6 +2211,7 @@ class BankAccount:
         """
         pd.set_option('display.max_columns', None)
 
+        table = self.get_table()
         record_type = self.record_type
         column_map = self._col_map
         void_transactions = self.void_transactions
@@ -2092,11 +2294,11 @@ class BankAccount:
                 df.drop(df[df['RecordID'].isin(match_pair)].index, inplace=True)
 
         # Update the record tables
-        void_inds = self.table.df.loc[self.table.df['RecordID'].isin(void_records)].index.tolist()
+        void_inds = table.df.loc[table.df['RecordID'].isin(void_records)].index.tolist()
         if len(void_inds) > 0:
             print('BankAccount {}: setting void column {} to true for indices:'.format(self.name, failed_col))
             print(void_inds)
-            self.table.update_column(failed_col, True, indices=void_inds)
+            table.update_column(failed_col, True, indices=void_inds)
 
         return df
 
@@ -2105,7 +2307,9 @@ class BankAccount:
         Remove void transactions from a dataframe.
         """
         column_map = self._col_map
-        df = df if df is not None else self.table.data()
+        table = self.get_table()
+
+        df = df if df is not None else table.data()
 
         try:
             failed_col = column_map['Void']
@@ -2127,22 +2331,42 @@ class BankAccount:
 
         self.ref_df.loc[self.ref_df['RecordID'] == record_id, ref_cols] = ref_values
 
+    def has_reference(self, record_id):
+        """
+        Confirm whether an account record is referenced.
+        """
+        ref_df = self.ref_df
+        reference = ref_df.loc[ref_df['RecordID'] == record_id, 'ReferenceID']
+        print(reference)
+
+        if reference.empty:
+            return False
+        elif pd.isna(reference.squeeze()):
+            return False
+        else:
+            return True
+
     def update_display(self, window):
         """
         Update the panel's record table display.
         """
+        table = self.get_table()
+
         # Merge records and references dataframes
         self.merge_references()
-        self.table.df = self.table.set_conditional_values()
+        table.df = table.set_conditional_values()
 
         # Update the display table
-        self.table.update_display(window)
+        table.update_display(window)
 
     def load_data(self, params, records: list = None):
         """
         Load record and reference data from the database.
         """
+        table = self.get_table()
+
         logger.debug('BankAccount {NAME}: loading record data'.format(NAME=self.name))
+
         try:
             df = self.load_records(params, records=records)
         except Exception as e:
@@ -2175,7 +2399,7 @@ class BankAccount:
         df.reset_index(inplace=True)
 
         # Update the record table dataframe with the data imported from the database
-        self.table.df = self.table.append(df)
+        table.df = table.append(df)
 
     def load_references(self, record_ids):
         """
@@ -2234,7 +2458,12 @@ class BankAccount:
         # Load remaining records not yet loaded using the parameters
         imported_ids = df[self.table.id_column].tolist()
         if records:
+            print('records to load: {}'.format(records))
             remaining_records = list(set(records).difference(imported_ids))
+
+            if not len(remaining_records) > 0:
+                return df
+
             print('remaining records to load: {}'.format(remaining_records))
             loaded_df = record_entry.load_records(remaining_records)
 
@@ -2243,7 +2472,13 @@ class BankAccount:
                 if parameter.editable:
                     continue
 
-                loaded_df = parameter.filter_table(loaded_df)
+                try:
+                    loaded_df = parameter.filter_table(loaded_df)
+                except Exception as e:
+                    msg = 'failed to filter loaded records on parameter {PARAM}'.format(PARAM=parameter.name)
+                    logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                    print(loaded_df)
+                    raise
 
             print('appending manually loaded records:')
             print(loaded_df)

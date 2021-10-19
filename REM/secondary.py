@@ -2101,10 +2101,6 @@ def import_window(table, import_rules, program_database: bool = False, params: l
     window.finalize()
     window.hide()
 
-    # Bind keys to events
-    window = settings.set_shortcuts(window)
-    table_shortcuts = settings.get_shortcuts('Table')
-
     # Resize and center the screen
     screen_w, screen_h = window.get_screen_dimensions()
     win_w = int(screen_w * 0.8)
@@ -2128,7 +2124,7 @@ def import_window(table, import_rules, program_database: bool = False, params: l
     while True:
         event, values = window.read(timeout=500)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-', '-HK_ESCAPE-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             break
 
         win_w, win_h = window.size
@@ -2165,7 +2161,7 @@ def import_window(table, import_rules, program_database: bool = False, params: l
 
             continue
 
-        if event in ('-IMPORT-', '-HK_ENTER-'):  # click 'Import' button or hit enter on the keyboard
+        if event == '-IMPORT-':  # click 'Import' button
             # Get index of selected rows
             selected_rows = values[table.key_lookup('Element')]
 
@@ -2174,7 +2170,7 @@ def import_window(table, import_rules, program_database: bool = False, params: l
 
             break
 
-        if event in table.elements or event in table_shortcuts:
+        if event in table.bindings:
             table.run_event(window, event, values)
 
             continue

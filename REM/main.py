@@ -12,7 +12,7 @@ from multiprocessing import freeze_support
 import PySimpleGUI as sg
 
 import REM.audit as mod_audit
-import REM.bank_new as mod_bank
+import REM.bank as mod_bank
 import REM.cash as mod_cash
 import REM.constants as mod_const
 import REM.elements as mod_elem

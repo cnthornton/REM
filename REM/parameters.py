@@ -785,6 +785,9 @@ class DataParameterInput(DataParameterSingle):
         if pd.isna(param_value) or param_value == '':  # don't filter on NA values
             return df
 
+        if df.empty:
+            return df
+
         try:
             if dtype in settings.supported_date_dtypes:
                 col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
@@ -797,9 +800,10 @@ class DataParameterInput(DataParameterSingle):
             else:
                 col_values = df[column].astype(np.object, errors='raise')
         except Exception as e:
-            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                          .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
+            print(df[column])
 
         logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
@@ -924,6 +928,9 @@ class DataParameterCombo(DataParameterSingle):
         if pd.isna(param_value):  # don't filter on NA values
             return df
 
+        if df.empty:
+            return df
+
         try:
             if dtype in settings.supported_date_dtypes:
                 col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
@@ -936,7 +943,7 @@ class DataParameterCombo(DataParameterSingle):
             else:
                 col_values = df[column].astype(np.object, errors='raise')
         except Exception as e:
-            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                          .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
@@ -1064,6 +1071,9 @@ class DataParameterCheckbox(DataParameterSingle):
         if not param_value:  # don't filter on NA values or False values
             return df
 
+        if df.empty:
+            return df
+
         try:
             if dtype in settings.supported_date_dtypes:
                 col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
@@ -1076,7 +1086,7 @@ class DataParameterCheckbox(DataParameterSingle):
             else:
                 col_values = df[column].astype(np.object, errors='raise')
         except Exception as e:
-            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                          .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
@@ -1300,7 +1310,10 @@ class DataParameterRange(DataParameterMulti):
         dtype = self.dtype
         column = self.name
 
-        if all([pd.isna(i) for i in param_values]):  # don't filter on NA values
+        if not self.has_value():  # don't filter on NA values
+            return df
+
+        if df.empty:
             return df
 
         try:
@@ -1322,7 +1335,7 @@ class DataParameterRange(DataParameterMulti):
             else:
                 col_values = df[column].astype(np.object, errors='raise')
         except Exception as e:
-            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                          .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
@@ -1492,7 +1505,10 @@ class DataParameterCondition(DataParameterMulti):
         dtype = self.dtype
         column = self.name
 
-        if self.has_value():  # don't filter on NA values
+        if not self.has_value():  # don't filter on NA values
+            return df
+
+        if df.empty:
             return df
 
         try:
@@ -1503,7 +1519,7 @@ class DataParameterCondition(DataParameterMulti):
             else:
                 col_values = df[column].astype(np.object, errors='raise')
         except Exception as e:
-            logger.error('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                          .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
