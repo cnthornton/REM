@@ -1337,10 +1337,14 @@ class TableElement(RecordElement):
         """
         Add hotkey bindings to the data element.
         """
+        level = self.level
+
         elem_key = self.key_lookup('Element')
-        window[elem_key].bind('<Return>', '+RETURN+')
-        window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
         window[elem_key].bind('<Control-f>', '+FILTER+')
+
+        if level < 2:
+            window[elem_key].bind('<Return>', '+RETURN+')
+            window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
 
     def update_display(self, window, annotations: dict = None):
         """
@@ -1919,6 +1923,7 @@ class TableElement(RecordElement):
         header = display_df.columns.tolist()
         data = display_df.values.tolist()
         events = True if level < 2 else False
+        logger.debug('DataTable {NAME}: events are enabled: {EVENT}'.format(NAME=self.name, EVENT=events))
         vis_map = []
         for display_column in header:
             if display_column in hidden_columns:
@@ -1936,9 +1941,9 @@ class TableElement(RecordElement):
                              row_height=row_h, alternating_row_color=alt_col, background_color=bg_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
                              header_font=header_font, display_row_numbers=False, auto_size_columns=False,
-                             col_widths=col_widths, enable_events=events, tooltip=tooltip, vertical_scroll_only=False,
-                             select_mode=select_mode,
-                             metadata={'disabled': False, 'visible': True}))
+                             col_widths=col_widths, enable_events=events, bind_return_key=False, tooltip=tooltip,
+                             vertical_scroll_only=False, select_mode=select_mode,
+                             metadata={'disabled': not events, 'visible': True}))
 
         # Table options
         options = [[sg.Col([[sg.Text('Options', text_color=select_text_col, background_color=border_col)]],
@@ -2967,13 +2972,16 @@ class RecordTable(TableElement):
         """
         Add hotkey bindings to the data element.
         """
+        level = self.level
+
         elem_key = self.key_lookup('Element')
-        window[elem_key].bind('<Return>', '+RETURN+')
-        window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
         window[elem_key].bind('<Control-f>', '+FILTER+')
-        window[elem_key].bind('<Key-BackSpace>', '+DELETE+')
-        window[elem_key].bind('<Control-d>', '+DELETE+')
-        window[elem_key].bind('<Control-i>', '+IMPORT+')
+        if level < 2:
+            window[elem_key].bind('<Return>', '+RETURN+')
+            window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+            window[elem_key].bind('<Key-BackSpace>', '+DELETE+')
+            window[elem_key].bind('<Control-d>', '+DELETE+')
+            window[elem_key].bind('<Control-i>', '+IMPORT+')
 
     def reset(self, window, reset_filters: bool = True, collapse: bool = True):
         """
@@ -3529,14 +3537,17 @@ class ComponentTable(RecordTable):
         """
         Add hotkey bindings to the data element.
         """
+        level = self.level
+
         elem_key = self.key_lookup('Element')
-        window[elem_key].bind('<Return>', '+RETURN+')
-        window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
         window[elem_key].bind('<Control-f>', '+FILTER+')
-        window[elem_key].bind('<Key-BackSpace>', '+DELETE+')
-        window[elem_key].bind('<Control-d>', '+DELETE+')
-        window[elem_key].bind('<Control-i>', '+IMPORT+')
-        window[elem_key].bind('<Control-a>', '+ADD+')
+        if level < 2:
+            window[elem_key].bind('<Return>', '+RETURN+')
+            window[elem_key].bind('<Double-Button-1>', '+LCLICK+')
+            window[elem_key].bind('<Key-BackSpace>', '+DELETE+')
+            window[elem_key].bind('<Control-d>', '+DELETE+')
+            window[elem_key].bind('<Control-i>', '+IMPORT+')
+            window[elem_key].bind('<Control-a>', '+ADD+')
 
     def run_action_event(self, window, event, values):
         """
@@ -4162,12 +4173,16 @@ class ReferenceBox(RecordElement):
 
     def bind_keys(self, window):
         """
-        Add hotkey bindings to the data element.
+        Add hotkey bindings to the reference box.
         """
+        level = self.level
+
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
-        window[elem_key].bind('<Return>', '+RETURN+')
-        window[frame_key].bind('<Enter>', '+FOCUS+')
+
+        if level < 2:
+            window[elem_key].bind('<Return>', '+RETURN+')
+            window[frame_key].bind('<Enter>', '+FOCUS+')
 
     def run_event(self, window, event, values):
         """
@@ -4896,9 +4911,10 @@ class DataElement(RecordElement):
         """
         elem_key = self.key_lookup('Element')
 
-        window[elem_key].bind('<Button-1>', '+LCLICK+')
-        window[elem_key].bind('<Return>', '+RETURN+')
-        window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
+        if not self.disabled:
+            window[elem_key].bind('<Button-1>', '+LCLICK+')
+            window[elem_key].bind('<Return>', '+RETURN+')
+            window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):

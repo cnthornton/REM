@@ -218,6 +218,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     min_w, min_h = (int(mod_const.WIN_WIDTH * 0.5), int(mod_const.WIN_HEIGHT * 0.5))
 
     record_id = record.record_id()
+    record_level = record.level
 
     # GUI layout
 
@@ -233,9 +234,9 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     # User permissions
     user_priv = user.access_permissions()
-    savable = (True if record.permissions['edit'] in user_priv and record.level < 1 and view_only is False and
-                modify_database is True else False)
-    deletable = (True if record.permissions['delete'] in user_priv and record.level < 1 and view_only is False and
+    savable = (True if record.permissions['edit'] in user_priv and record_level < 1 and view_only is False and
+               modify_database is True else False)
+    deletable = (True if record.permissions['delete'] in user_priv and record_level < 1 and view_only is False and
                  modify_database is True and record.new is False else False)
     printable = True if record.report is not None and record.permissions['report'] in user_priv else False
 
@@ -294,7 +295,8 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
               [sg.Col(bttn_layout, key='-BUTTONS-', justification='l', element_justification='c',
                       vertical_alignment='c', expand_x=True)]]
 
-    window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
+    window_title = '{TITLE} ({LEVEL})'.format(TITLE=title, LEVEL=record_level)
+    window = sg.Window(window_title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
     window.hide()
 
