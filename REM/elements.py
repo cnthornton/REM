@@ -765,16 +765,18 @@ class TableElement(RecordElement):
             dtype = 'varchar'
 
         if dtype in ('date', 'datetime', 'timestamp', 'time'):
-            strptime = datetime.datetime.strptime
             is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
             if not is_datetime_dtype(column_values.dtype):
                 try:
-                    values = pd.to_datetime(column_values, errors='raise', format=settings.date_format, utc=False)
+                    values = pd.to_datetime(column_values.fillna(pd.NaT), errors='coerce', format=settings.date_format, utc=False)
                 except Exception as e:
-                    logger.warning('DataTable {NAME}: first attempt to set column {COL} to datetime failed - {ERR}'
-                                   .format(NAME=self.name, COL=column_name, ERR=e))
-                    values = column_values.apply(lambda x: strptime(x, settings.date_format))
+                    msg = 'failed to set datatype {DTYPE} for column {COL} - {ERR}'\
+                        .format(DTYPE=dtype, COL=column_name, ERR=e)
+                    print(column_values)
+                    logger.exception('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    raise ValueError(msg)
             else:  # is datetime dtype
                 values = column_values.dt.tz_localize(None)
                 #values = column_values.apply(lambda x: x.replace(tzinfo=None))
@@ -840,22 +842,69 @@ class TableElement(RecordElement):
             try:
                 column_values = self._set_column_dtype(column)
             except Exception as e:
-                logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
-                               .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
+                logger.exception('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
+                                 .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
                 logger.debug('DataTable {NAME}: column "{COL}" values are {VALS}'
                              .format(NAME=self.name, COL=column_name, VALS=column.values))
             else:
                 try:
                     df.loc[:, column_name] = column_values
                 except ValueError as e:
-                    logger.warning('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
-                                   .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                    logger.exception('DataTable {NAME}: unable to set column "{COL}" to data type "{DTYPE}" - {ERR}'
+                                     .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
                     logger.debug('DataTable {NAME}: column values are {VALS}'
                                  .format(NAME=self.name, VALS=column_values))
 
         return df
 
     def _update_row_values(self, index, values):
+        """
+        Update row values at the given dataframe index.
+
+        Arguments:
+            index (int): real index of the row to update.
+
+            values (DataFrame): single row dataframe containing row values to use to update the dataframe at the
+               given index.
+        """
+        df = self.df
+        header = df.columns.tolist()
+
+        if isinstance(values, dict):
+            if isinstance(index, int):
+                index = [index]
+            values = pd.DataFrame(values, index=index)
+        elif isinstance(values, pd.Series):  # single set of row values
+            values.name = index
+            values = values.to_frame().T
+        else:  # dataframe of row values
+            values = values.set_index(pd.Index(index))
+
+        shared_cols = [i for i in values.columns if i in header]
+        new_values = self._set_datatypes(df=values)[shared_cols]
+
+        edited_rows = set()
+        for row_ind, row in new_values.iterrows():
+            for column, row_value in row.iteritems():
+                orig_value = df.loc[row_ind, column]
+                if row_value != orig_value:
+                    df.at[index, column] = row_value
+                    edited_rows.add(row_ind)
+
+        edited = False
+        if len(edited_rows) > 0:
+            edited_col = self.edited_column
+            self.edited = edited = True
+            for edited_ind in edited_rows:
+                df.loc[edited_ind, edited_col] = True
+
+            # Reset the datatype of the edited columns
+            #for column in shared_cols:
+            #    df.loc[:, column] = self._set_column_dtype(df[column])
+
+        return edited
+
+    def _update_row_values_old(self, index, values):
         """
         Update row values at the given dataframe index.
 
@@ -1869,7 +1918,7 @@ class TableElement(RecordElement):
         hidden_columns = self.hidden_columns
         header = display_df.columns.tolist()
         data = display_df.values.tolist()
-        events = True
+        events = True if level < 2 else False
         vis_map = []
         for display_column in header:
             if display_column in hidden_columns:
@@ -2846,6 +2895,8 @@ class RecordTable(TableElement):
 
                 self.modifiers[modifier] = flag
 
+        print('table {} has modifiers: {}'.format(self.name, self.modifiers))
+
         try:
             self.record_type = entry['RecordType']
         except KeyError:
@@ -3710,7 +3761,7 @@ class ComponentTable(RecordTable):
             window[bttn_key].update(disabled=True)
             window[bttn_key].metadata['disabled'] = True
 
-    def load_record(self, index, level: int = 1, references: dict = None, savable: bool = False):
+    def load_record(self, index, level: int = None, references: dict = None, savable: bool = False):
         """
         Open selected record in new record window.
 
@@ -4221,7 +4272,7 @@ class ReferenceBox(RecordElement):
         is_disabled = False if (editable is True and level < 1) else True
         can_approve = True if (modifiers['approve'] is True and not is_disabled) or (overwrite is True) else False
         can_delete = True if (modifiers['delete'] is True and not is_disabled) or (overwrite is True) else False
-        can_open = True if (modifiers['open'] is True and not is_disabled) or (overwrite is True) else False
+        can_open = True if (modifiers['open'] is True and editable and level < 2) or (overwrite is True) else False
 
         select_text_col = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
 

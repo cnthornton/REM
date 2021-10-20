@@ -2416,9 +2416,15 @@ class DatabaseRecord:
         width, height = size
 
         # Permissions
-        editable = False if (view_only is True and self.new is False) else True
-        user_priv = ugroup if ugroup else user.access_permissions()
         permissions = self.permissions
+        level = self.level
+        is_new = self.new
+
+        logger.debug('RecordType {NAME}: creating {NEW}record layout at level {LEVEL}'
+                     .format(NAME=self.name, NEW=('new ' if is_new else ''), LEVEL=level))
+
+        editable = False if (view_only is True and is_new is False) or (level > 1) else True
+        user_priv = ugroup if ugroup else user.access_permissions()
 
         # Element parameters
         bg_col = mod_const.ACTION_COL
@@ -2498,8 +2504,8 @@ class DatabaseRecord:
 
                     can_edit = False
 
-                element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=self.new,
-                                                 level=self.level)]
+                element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
+                                                 level=level)]
                 section_layout.append(element_layout)
 
             section_panel_key = self.key_lookup('SectionFrame{}'.format(index))
@@ -2515,15 +2521,16 @@ class DatabaseRecord:
                              key=tab_key, background_color=bg_col)
 
         # Create layout for record metadata
-        markable = True if (self.permissions['mark'] in user_priv and self.new is False and view_only is False) \
+        markable = True if (permissions['mark'] in user_priv and is_new is False and view_only is False) \
             else False
-        approvable = True if (self.permissions['approve'] in user_priv and self.new is False and view_only is False) \
+        approvable = True if (permissions['approve'] in user_priv and is_new is False and view_only is False) \
             else False
         meta_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
-        if len(self.metadata) > 0 and not self.new:
+        metadata = self.metadata
+        if len(metadata) > 0 and not is_new:
             metadata_visible = True
             annotation_layout = []
-            for param in self.metadata:
+            for param in metadata:
                 param_name = param.name
                 if param_name in meta_perms:
                     param.editable = meta_perms[param_name]
