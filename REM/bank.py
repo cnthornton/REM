@@ -158,6 +158,7 @@ class BankRule:
         # Bind account table hotkeys
         for acct in self.accts:
             acct.table.bind_keys(window)
+            acct.assoc_table.bind_keys(window)
 
     def events(self):
         """
@@ -331,7 +332,8 @@ class BankRule:
 
         # Run an association account event
         if event in assoc_keys:
-            assoc_acct = self.fetch_account(self.current_association)
+            assoc_acct = self.fetch_account(current_assoc)
+            print('running event {} from association account {}'.format(event, current_assoc))
             results = assoc_acct.run_event(window, event, values)
 
             # Store indices of the selected row(s)
@@ -854,16 +856,16 @@ class BankRule:
         for acct in accts:
             acct.resize(window, size=(panel_w, panel_h))
 
-        window.refresh()
-        print('desired button height: {}'.format(bttn_h))
-        print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
-        print('desired title height: {}'.format(title_h))
-        print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
-        print('desired header height: {}'.format(header_h))
-        print('actual combo height: {}'.format(window[self.key_lookup('Account')].get_size()[1]))
-        print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
-        print('desired panel height: {}'.format(panel_h))
-        print('actual panel height: {}'.format(window[self.key_lookup('Panel1')].get_size()[1]))
+        #window.refresh()
+        #print('desired button height: {}'.format(bttn_h))
+        #print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
+        #print('desired title height: {}'.format(title_h))
+        #print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
+        #print('desired header height: {}'.format(header_h))
+        #print('actual combo height: {}'.format(window[self.key_lookup('Account')].get_size()[1]))
+        #print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
+        #print('desired panel height: {}'.format(panel_h))
+        #print('actual panel height: {}'.format(window[self.key_lookup('Panel1')].get_size()[1]))
 
     def update_display(self, window):
         """
@@ -872,7 +874,6 @@ class BankRule:
         # Update the relevant account panels
         for acct_panel in self.panels:
             acct = self.fetch_account(acct_panel, by_key=True)
-            acct.get_table().deselect(window)
             acct.update_display(window)
 
     def link_records(self, acct_name, assoc_name: str = None):
@@ -895,9 +896,6 @@ class BankRule:
             assoc_table = acct_table
             acct_rows = rows[0]
             assoc_rows = rows[1]
-
-        print('selected account {} rows are: {}'.format(acct_name, acct_rows))
-        print('selected association {} rows are: {}'.format(assoc_name, assoc_rows))
 
         record_id = acct_table.row_ids(indices=acct_rows)[0]
         reference_id = assoc_table.row_ids(indices=assoc_rows)[0]
@@ -1317,7 +1315,7 @@ class BankRule:
             # Save any changes to the records to the records database table
             logger.debug('BankRule {NAME}: preparing account {ACCT} record statements'
                          .format(NAME=self.name, ACCT=acct.name))
-            record_data = acct.table.data(edited_rows=True)
+            record_data = acct.get_table().data(edited_rows=True)
             try:
                 statements = record_entry.save_database_records(record_data, statements=statements)
             except Exception as e:
@@ -1641,7 +1639,8 @@ class BankAccount:
         self.bindings.extend([approve_hkey, reset_hkey, link_hkey])
 
         modifiers = table_entry['Modifiers']
-        modifiers['edit'] = 0
+        modifiers['open'] = 1
+        modifiers['edit'] = 1
         modifiers['import'] = 0
         modifiers['delete'] = 0
         modifiers['fill'] = 0
@@ -1852,7 +1851,11 @@ class BankAccount:
                                  .format(NAME=table.name, IND=index))
                     if can_open:
                         ref_df = self.ref_df
-                        record = table.load_record(index, level=0, savable=False, references={association_rule: ref_df})
+                        #level = 0 if self.primary else 1
+                        level = 1
+
+                        record = table.load_record(index, level=level, savable=False,
+                                                   references={association_rule: ref_df})
                         if record is None:
                             msg = 'unable to update references for record at index {IND} - no record was returned' \
                                 .format(IND=index)
@@ -1873,6 +1876,8 @@ class BankAccount:
                                     'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                             else:
                                 table.update_row(index, record_values)
+                                print('new values for table row {}'.format(index))
+                                print(table.df.loc[index])
 
                                 self.update_display(window)
 
@@ -1911,14 +1916,6 @@ class BankAccount:
                 # Get index of the selected rows
                 record_indices = table.selected(real=True)
                 print('selected real indices are: {}'.format(record_indices))
-                #try:
-                #    select_indices = values[tbl_key]
-                #except IndexError:  # user double-clicked too quickly
-                #    msg = 'table row could not be selected'
-                #    logger.debug('DataTable {NAME}: {MSG}'.format(NAME=table.name, MSG=msg))
-                #else:
-                #    # Get the real index of the selected row
-                #    record_indices = table.get_real_index(select_indices)
 
             else:
                 table.run_event(window, event, values)
@@ -2337,7 +2334,6 @@ class BankAccount:
         """
         ref_df = self.ref_df
         reference = ref_df.loc[ref_df['RecordID'] == record_id, 'ReferenceID']
-        print(reference)
 
         if reference.empty:
             return False
@@ -2348,9 +2344,12 @@ class BankAccount:
 
     def update_display(self, window):
         """
-        Update the panel's record table display.
+        Update the account's record table display.
         """
         table = self.get_table()
+
+        # Deselect selected rows
+        table.deselect(window)
 
         # Merge records and references dataframes
         self.merge_references()
@@ -2441,7 +2440,7 @@ class BankAccount:
         Returns:
             success (bool): records and references were loaded successfully.
         """
-        pd.set_option('display.max_columns', None)
+        #pd.set_option('display.max_columns', None)
 
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
@@ -2458,13 +2457,11 @@ class BankAccount:
         # Load remaining records not yet loaded using the parameters
         imported_ids = df[self.table.id_column].tolist()
         if records:
-            print('records to load: {}'.format(records))
             remaining_records = list(set(records).difference(imported_ids))
 
             if not len(remaining_records) > 0:
                 return df
 
-            print('remaining records to load: {}'.format(remaining_records))
             loaded_df = record_entry.load_records(remaining_records)
 
             # Filter loaded records by static parameters, if any
@@ -2477,11 +2474,7 @@ class BankAccount:
                 except Exception as e:
                     msg = 'failed to filter loaded records on parameter {PARAM}'.format(PARAM=parameter.name)
                     logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                    print(loaded_df)
                     raise
-
-            print('appending manually loaded records:')
-            print(loaded_df)
 
             df = df.append(loaded_df, ignore_index=True)
 
