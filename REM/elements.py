@@ -4977,13 +4977,21 @@ class DataElement(RecordElement):
         aux_layout = [sg.pin(sg.Col([accessory_layout], key=aux_key, background_color=bg_col, visible=False))]
 
         # Element description and actions
+        annotation = self.annotate_display()
+        if annotation:
+            rule = self.annotation_rules[annotation]
+            desc_bg_col = rule['BackgroundColor']
+            tooltip = rule['Description']
+        else:
+            desc_bg_col = bg_col
+
         desc_key = self.key_lookup('Description')
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
         save_key = self.key_lookup('Save')
         cancel_key = self.key_lookup('Cancel')
         bttn_vis = False if is_disabled is True else True
-        description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=bg_col,
+        description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
                                       font=bold_font, auto_size_text=True, tooltip=tooltip),
                               sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
                                         button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
@@ -5712,13 +5720,21 @@ class ElementReference(RecordElement):
 
         # Element description and actions
         desc_key = self.key_lookup('Description')
-        description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=bg_col,
+        display_value = self.format_display()
+        annotation = self.annotate_display(display_value)
+        if annotation:
+            rule = self.annotation_rules[annotation]
+            desc_bg_col = rule['BackgroundColor']
+            tooltip = rule['Description']
+        else:
+            desc_bg_col = bg_col
+
+        description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
                                       font=bold_font, auto_size_text=True, tooltip=tooltip)]
 
         # Element layout
         width_key = self.key_lookup('Width')
         elem_key = self.key_lookup('Element')
-        display_value = self.format_display()
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   [sg.Text(display_value, key=elem_key, size=(width, 1), pad=(0, 0),
                                            background_color=bg_col, text_color=text_col, font=font, enable_events=True,
