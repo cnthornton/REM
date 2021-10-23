@@ -431,15 +431,14 @@ class AuditRule:
                 if audit_exists is True:
                     msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
                           'audit records through the records menu'
-                    mod_win2.popup_error(msg)
                     logger.warning('audit initialization failed - an audit has already been performed with the '
                                    'provided parameters')
+                    mod_win2.popup_error(msg)
                     current_rule = self.reset_rule(window, current=True)
 
                     return current_rule
 
                 # Initialize audit
-                initialized = []
                 for transaction_tab in self.transactions:
                     tab_key = transaction_tab.key_lookup('Tab')
                     tab_keys.append(tab_key)
@@ -448,36 +447,35 @@ class AuditRule:
                     transaction_tab.parameters = self.parameters
 
                     # Import tab data from the database
-                    initialized.append(transaction_tab.load_data())
+                    try:
+                        transaction_tab.load_data()
+                    except ImportError as e:
+                        msg = 'audit initialization failed - {ERR}'.format(ERR=e)
+                        logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        mod_win2.popup_error(msg)
+                        current_rule = self.reset_rule(window, current=True)
 
-                if all(initialized):  # data successfully imported from all configured audit rule transaction tabs
-                    self.in_progress = True
-                    logger.info('AuditRule {NAME}: transaction audit in progress with parameters {PARAMS}'
-                                .format(NAME=self.name,
-                                        PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
+                        return current_rule
 
-                    # Enable/Disable control buttons and parameter elements
-                    self.toggle_parameters(window, 'disable')
+                logger.info('AuditRule {NAME}: transaction audit in progress with parameters {PARAMS}'
+                            .format(NAME=self.name,PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
+                self.in_progress = True
 
-                    for transaction_tab in self.transactions:
-                        # Enable table element events
-                        transaction_tab.table.enable(window)
+                # Enable/Disable control buttons and parameter elements
+                self.toggle_parameters(window, 'disable')
 
-                        # Update the tab table display
-                        transaction_tab.table.update_display(window)
+                for transaction_tab in self.transactions:
+                    # Enable table element events
+                    transaction_tab.table.enable(window)
 
-                        # Update tab ID components
-                        transaction_tab.update_id_components()
+                    # Update the tab table display
+                    transaction_tab.table.update_display(window)
 
-                        # Enable the tab audit button
-                        window[transaction_tab.key_lookup('Audit')].update(disabled=False)
+                    # Update tab ID components
+                    transaction_tab.update_id_components()
 
-                else:  # reset tabs that may have already loaded
-                    msg = 'failed to load all transaction audit data from the database'
-                    mod_win2.popup_error(msg)
-                    logger.error('AuditRule {NAME}: audit initialization failed - {ERR}'
-                                 .format(NAME=self.name, ERR=msg))
-                    current_rule = self.reset_rule(window, current=True)
+                    # Enable the tab audit button
+                    window[transaction_tab.key_lookup('Audit')].update(disabled=False)
 
         # Run parameter events
         elif event in param_keys:
@@ -996,7 +994,7 @@ class AuditTransaction:
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Tab', 'Audit', 'Sizer', 'Panel')]
+                         ('Tab', 'Audit', 'Panel')]
 
         self.bindings = [self.key_lookup(i) for i in ('Audit',)]
 
@@ -1031,6 +1029,21 @@ class AuditTransaction:
         else:
             self.bindings.extend(self.table.bindings)
 
+        #try:
+        #    filter_rules = entry['FilterRules']
+        #except KeyError:
+        #    filter_rules = {}
+        filter_rules = self.table.filter_rules
+
+        self.filter_rules = {}
+        table_columns = self.table.columns
+        for filter_key in filter_rules:
+            if filter_key in table_columns:
+                self.filter_rules[filter_key] = filter_rules[filter_key]
+            else:
+                logger.warning('DataTable {NAME}: filter rule key {KEY} not found in table columns'
+                               .format(NAME=self.name, KEY=filter_key))
+
 #        try:
 #            import_rules = entry['ImportRules']
 #        except KeyError:
@@ -1050,7 +1063,7 @@ class AuditTransaction:
         try:
             self.id_format = re.findall(r'\{(.*?)\}', entry['IDFormat'])
         except KeyError:
-            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required field "IDFormat".' \
+            msg = 'Configuration Error: AuditTransaction {NAME}: missing required field "IDFormat".' \
                 .format(NAME=name)
             mod_win2.popup_error(msg)
             sys.exit(1)
@@ -1068,7 +1081,7 @@ class AuditTransaction:
             key_index = element_names.index(component)
             key = self.elements[key_index]
         else:
-            logger.warning('AuditTransactionTab {NAME}: component {COMP} not found in list of audit rule elements'
+            logger.warning('AuditTransaction {NAME}: component {COMP} not found in list of audit rule elements'
                            .format(NAME=self.name, COMP=component))
             key = None
 
@@ -1078,17 +1091,19 @@ class AuditTransaction:
         """
         Fetch a GUI parameter element by name or event key.
         """
+        parameters = self.parameters
+
         if by_key is True:
             element_type = element[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.parameters]
+            element_names = [i.key_lookup(element_type) for i in parameters]
         elif by_type is True:
-            element_names = [i.dtype for i in self.parameters]
+            element_names = [i.dtype for i in parameters]
         else:
-            element_names = [i.name for i in self.parameters]
+            element_names = [i.name for i in parameters]
 
         if element in element_names:
             index = element_names.index(element)
-            parameter = self.parameters[index]
+            parameter = parameters[index]
         else:
             raise KeyError('element {ELEM} not found in list of {NAME} data elements'
                            .format(ELEM=element, NAME=self.name))
@@ -1207,47 +1222,76 @@ class AuditTransaction:
             except Exception as e:
                 msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
                 mod_win2.popup_error(msg)
-                logger.exception('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.exception('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 success = False
             else:
-                self.table.df = self.table.filter_table()
-                self.table.sort()
+                self.table.df = self.filter_table()
                 self.table.update_display(window)
 
         return success
+
+    def filter_table(self):
+        """
+        Filter the data table by applying the filter rules specified in the configuration.
+        """
+        # Tab attributes
+        filter_rules = self.filter_rules
+        df = self.table.data()
+
+        if df.empty or not filter_rules:
+            return df
+
+        logger.debug('AuditTransaction {NAME}: filtering display table on configured filter rules'
+                     .format(NAME=self.name))
+
+        for column in filter_rules:
+            filter_rule = filter_rules[column]
+            logger.debug('AuditTransaction {NAME}: filtering table on column {COL} based on rule "{RULE}"'
+                         .format(NAME=self.name, COL=column, RULE=filter_rule))
+
+            try:
+                filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
+            except Exception as e:
+                logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
+                               .format(NAME=self.name, COL=column, ERR=e))
+                continue
+
+            try:
+                failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_cond)].index
+            except Exception as e:
+                logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
+                               .format(NAME=self.name, COL=column, ERR=e))
+                continue
+
+            if len(failed) > 0:
+                logger.info('AuditTransaction {NAME}: rows {ROWS} were removed after applying filter rule on column '
+                            '{COL}'.format(NAME=self.name, ROWS=failed.tolist(), COL=column))
+
+                df.drop(failed, axis=0, inplace=True)
+                df.reset_index(drop=True, inplace=True)
+
+        return df
 
     def load_data(self):
         """
         Load data from the database.
         """
-        # Prepare the database query statement
+        parameters = self.parameters
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
-        import_rules = record_entry.import_rules
-#        import_rules = self.import_rules
 
-        param_filters = [i.query_statement(mod_db.get_import_column(import_rules, i.name)) for i in self.parameters]
-        filters = param_filters + mod_db.format_import_filters(import_rules)
-        table_statement = mod_db.format_tables(import_rules)
-        columns = mod_db.format_import_columns(import_rules)
-
-        # Import primary mod_bank data from database
+        # Prepare the database query statement
         try:
-            df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters))
+            df = record_entry.import_records(params=parameters)
         except Exception as e:
-            msg = 'failed to import data from the database - {ERR}'.format(ERR=e)
-            mod_win2.popup_error(msg)
-            logger.error('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            data_loaded = False
-        else:
-            logger.info('AuditTransactionTab {NAME}: loaded data for audit rule {RULE}'
-                        .format(NAME=self.name, RULE=self.parent))
-            self.table.df = self.table.append(df)
-            self.table.initialize_defaults()
-            data_loaded = True
+            msg = 'failed to import data from the database'
+            logger.exception('AuditTransaction {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
-        return data_loaded
+            raise ImportError(msg)
+
+        logger.info('AuditTransaction {NAME}: successfully loaded record data from the database'.format(NAME=self.name))
+        self.table.df = self.table.append(df)
 
     def audit_transactions(self):
         """

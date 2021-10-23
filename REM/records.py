@@ -225,12 +225,12 @@ class RecordEntry:
 
             if import_df.empty:
                 import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
-                                                                       filter_rules=filters), prog_db=True)
+                                                                       filter_rules=filters), prog_db=self.program_record)
             else:
                 import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
                                                                                         columns=columns,
                                                                                         filter_rules=filters),
-                                                          prog_db=True), ignore_index=True)
+                                                          prog_db=self.program_record), ignore_index=True)
 
         logger.debug('{NLOADED} records passed the query filters out of {NTOTAL} requested records'
                      .format(NLOADED=import_df.shape[0], NTOTAL=len(record_ids)))
@@ -265,7 +265,7 @@ class RecordEntry:
 
         # Query existing database entries
         import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
-                                 prog_db=True)
+                                 prog_db=self.program_record)
 
         return import_df
 
@@ -329,7 +329,7 @@ class RecordEntry:
 
     def search_unreferenced_ids(self, rule_name):
         """
-        Extract all record IDs from the reference database that do not have a record reference for the given
+        Extract all record IDs from the reference database table that do not have a record reference for the given
         association rule.
         """
         association_rules = self.association_rules
@@ -400,11 +400,13 @@ class RecordEntry:
 
         # Add configured import filters
         if table is None:
+            prog_db = self.program_record
             table_statement = mod_db.format_tables(self.import_rules)
             id_col = mod_db.get_import_column(self.import_rules, id_field)
             if not id_col:
                 id_col = id_field
         else:
+            prog_db = True
             table_statement = table
             id_col = id_field
 
@@ -417,12 +419,12 @@ class RecordEntry:
 
             if import_df.empty:
                 import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col,
-                                                                       filter_rules=filters), prog_db=True)
+                                                                       filter_rules=filters), prog_db=prog_db)
             else:
                 import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
                                                                                         columns=id_col,
                                                                                         filter_rules=filters),
-                                                          prog_db=True), ignore_index=True)
+                                                          prog_db=prog_db), ignore_index=True)
 
         try:
             import_ids = import_df.iloc[:, 0].values.tolist()
@@ -891,7 +893,7 @@ class RecordEntry:
         params = (first_day, last_day)
         filters = ('{DATE} BETWEEN ? AND ?'.format(DATE=settings.date_field), params)
         import_rows = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col, filter_rules=filters,
-                                                                 order=id_col), prog_db=True)
+                                                                 order=id_col), prog_db=self.program_record)
 
         try:
             id_list = import_rows.iloc[:, 0]

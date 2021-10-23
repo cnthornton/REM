@@ -2445,7 +2445,6 @@ class BankAccount:
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
-        # Prepare the database query statement
         try:
             df = record_entry.import_records(params=parameters, import_rules=self.import_rules)
         except Exception as e:
