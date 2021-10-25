@@ -94,24 +94,13 @@ class AuditRule:
 
         for param_name in params:
             param_entry = params[param_name]
+            try:
+                param = mod_param.initialize_parameter(param_name, param_entry)
+            except Exception as e:
+                logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
 
-            param_layout = param_entry['ElementType']
-            if param_layout in ('dropdown', 'combo'):
-                param_class = mod_param.DataParameterCombo
-            elif param_layout in ('input', 'date'):
-                param_class = mod_param.DataParameterInput
-            elif param_layout in ('range', 'date_range'):
-                param_class = mod_param.DataParameterRange
-            elif param_layout == 'checkbox':
-                param_class = mod_param.DataParameterCheckbox
-            else:
-                msg = 'unknown type {TYPE} provided to RuleParameter {PARAM}' \
-                    .format(TYPE=param_layout, PARAM=param_name)
-                logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                raise AttributeError(e)
 
-                raise AttributeError(msg)
-
-            param = param_class(param_name, param_entry)
             self.parameters.append(param)
             self.bindings.extend(param.bindings)
 

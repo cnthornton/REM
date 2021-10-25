@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.9.15'
+__version__ = '3.9.16'
 
 import sys
 import tkinter as tk
@@ -114,6 +114,8 @@ class ConfigurationManager:
         Fetch a given rule from the rule set by its name (default) or title.
 
         Arguments:
+            rule (str): named of the configured rule.
+
             by_title (bool): fetch a rule managed by the configuration manager by title instead of name [Default: False]
         """
         if by_title is True:
@@ -210,7 +212,8 @@ class ToolBar:
 
         record_rules = records.rules
         for record_entry in record_rules:
-            if not record_entry.program_record or not record_entry.show_menu:  # only display program records
+            #if not record_entry.program_record or not record_entry.show_menu:  # only display program records
+            if not record_entry.show_menu:  # only display record entries with configured menus
                 continue
 
             menu_title = record_entry.menu_title

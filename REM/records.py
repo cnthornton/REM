@@ -68,11 +68,6 @@ class RecordEntry:
         self.menu_group = menu['MenuGroup']
 
         try:
-            self.group = entry['RecordGroup']
-        except KeyError:
-            self.group = 'custom'
-
-        try:
             self.id_code = entry['IDCode']
         except KeyError:
             mod_win2.popup_error('RecordEntry {NAME}: configuration missing required parameter "IDCode"'
@@ -139,39 +134,39 @@ class RecordEntry:
         except KeyError:
             logger.info('RecordsEntry {NAME}: no association rules specified for the record entry'
                         .format(NAME=self.name))
-            self.association_rules = {}
-        else:
-            self.association_rules = {}
-            for rule_name in association_rules:
-                rule = association_rules[rule_name]
+            association_rules = {}
 
-                if 'Primary' not in rule:
-                    msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "Primary"'\
-                        .format(NAME=self.name, RULE=rule_name)
+        self.association_rules = {}
+        for rule_name in association_rules:
+            rule = association_rules[rule_name]
+
+            if 'Primary' not in rule:
+                msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "Primary"'\
+                    .format(NAME=self.name, RULE=rule_name)
+
+                raise AttributeError(msg)
+
+            if 'ReferenceTable' not in rule:
+                msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "ReferenceTable"' \
+                    .format(NAME=self.name, RULE=rule_name)
+
+                raise AttributeError(msg)
+
+            if 'Title' not in rule:
+                rule['Title'] = rule_name
+
+            if 'AssociationType' in rule:
+                assoc_type = rule['AssociationType']
+                if assoc_type not in ('parent', 'child', 'reference'):
+                    msg = 'RecordEntry {NAME}: unknown association type {TYPE} provided to association rule {RULE}' \
+                        .format(NAME=self.name, TYPE=assoc_type, RULE=rule_name)
 
                     raise AttributeError(msg)
 
-                if 'ReferenceTable' not in rule:
-                    msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "ReferenceTable"' \
-                        .format(NAME=self.name, RULE=rule_name)
-
-                    raise AttributeError(msg)
-
-                if 'Title' not in rule:
-                    rule['Title'] = rule_name
-
-                if 'AssociationType' in rule:
-                    assoc_type = rule['AssociationType']
-                    if assoc_type not in ('parent', 'child', 'reference'):
-                        msg = 'RecordEntry {NAME}: unknown association type {TYPE} provided to association rule {RULE}' \
-                            .format(NAME=self.name, TYPE=assoc_type, RULE=rule_name)
-
-                        raise AttributeError(msg)
-
-                self.association_rules[rule_name] = {'AssociationType': rule.get('AssociationType', 'reference'),
-                                                     'Primary': rule.get('Primary'),
-                                                     'ReferenceTable': rule.get('ReferenceTable'),
-                                                     'HardLink': rule.get('HardLink', None)}
+            self.association_rules[rule_name] = {'AssociationType': rule.get('AssociationType', 'reference'),
+                                                 'Primary': rule.get('Primary'),
+                                                 'ReferenceTable': rule.get('ReferenceTable'),
+                                                 'HardLink': rule.get('HardLink', None)}
 
         # Import table layout configuration
         try:
@@ -1255,20 +1250,12 @@ class DatabaseRecord:
             for param_name in headers:
                 param_entry = headers[param_name]
                 param_entry['IsEditable'] = False
-                param_layout = param_entry['ElementType']
-                if param_layout in ('dropdown', 'combo'):
-                    param_class = mod_param.DataParameterCombo
-                elif param_layout in ('text', 'input', 'date'):
-                    param_class = mod_param.DataParameterInput
-                elif param_layout in ('range', 'date_range'):
-                    param_class = mod_param.DataParameterRange
-                elif param_layout == 'checkbox':
-                    param_class = mod_param.DataParameterCheckbox
-                else:
-                    raise AttributeError('unknown type {TYPE} provided to record header {PARAM}'
-                                         .format(TYPE=param_layout, PARAM=param_name))
+                try:
+                    param = mod_param.initialize_parameter(param_name, param_entry)
+                except Exception as e:
+                    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
 
-                param = param_class(param_name, param_entry)
+                    raise AttributeError(e)
 
                 self.headers.append(param)
                 self.elements += param.elements
@@ -1288,20 +1275,12 @@ class DatabaseRecord:
         else:
             for param_name in metadata:
                 param_entry = metadata[param_name]
-                param_layout = param_entry['ElementType']
-                if param_layout in ('dropdown', 'combo'):
-                    param_class = mod_param.DataParameterCombo
-                elif param_layout in ('text', 'input', 'date'):
-                    param_class = mod_param.DataParameterInput
-                elif param_layout in ('range', 'date_range'):
-                    param_class = mod_param.DataParameterRange
-                elif param_layout == 'checkbox':
-                    param_class = mod_param.DataParameterCheckbox
-                else:
-                    raise AttributeError('unknown type {TYPE} provided to record header {PARAM}'
-                                         .format(TYPE=param_layout, PARAM=param_name))
+                try:
+                    param = mod_param.initialize_parameter(param_name, param_entry)
+                except Exception as e:
+                    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
 
-                param = param_class(param_name, param_entry)
+                    raise AttributeError(e)
 
                 self.metadata.append(param)
                 self.elements += param.elements
@@ -1309,7 +1288,6 @@ class DatabaseRecord:
         # Record data elements
         self.sections = {}
         self.modules = []
-        used_associations = []
         try:
             sections = entry['Sections']
         except KeyError:

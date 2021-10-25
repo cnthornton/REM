@@ -317,46 +317,23 @@ class TableElement(RecordElement):
             self.filter_entry = entry['FilterParameters']
         except KeyError:
             self.filter_entry = {}
-            self.parameters = []
-        else:
-            self.parameters = []
-            for param in self.filter_entry:
-                param_entry = self.filter_entry[param]
 
-                try:
-                    param_layout = param_entry['ElementType']
-                except KeyError:
-                    msg = 'filter parameter {PARAM} is missing the required field "{FIELD}"' \
-                        .format(PARAM=param, FIELD='ElementType')
-                    raise KeyError(msg)
+        self.parameters = []
+        for param_name in self.filter_entry:
+            if param_name not in self.columns:
+                logger.warning('DataTable {NAME}: filter parameters "{PARAM}" must be listed in '
+                               'the table columns'.format(NAME=name, PARAM=param_name))
+                continue
 
-                if param_layout == 'dropdown':
-                    param_class = mod_param.DataParameterCombo
-                elif param_layout in ('input', 'date'):
-                    param_class = mod_param.DataParameterInput
-                elif param_layout in ('range', 'date_range'):
-                    param_class = mod_param.DataParameterRange
-                elif param_layout == 'checkbox':
-                    param_class = mod_param.DataParameterCheckbox
-                else:
-                    msg = 'unknown element type {TYPE} for filter parameter {PARAM}'.format(PARAM=param,
-                                                                                            TYPE=param_layout)
-                    raise TypeError(msg)
+            param_entry = self.filter_entry[param_name]
+            try:
+                param = mod_param.initialize_parameter(param_name, param_entry)
+            except Exception as e:
+                logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+                continue
 
-                try:
-                    param_obj = param_class(param, param_entry)
-                except Exception as e:
-                    logger.warning('DataTable {NAME}: unable to add parameter to table - {ERR}'
-                                   .format(NAME=name, ERR=e))
-                    continue
-                else:
-                    if param_obj.name in self.columns:
-                        self.parameters.append(param_obj)
-                        # self.elements += param_obj.elements
-                        self.bindings.extend(param_obj.bindings)
-                    else:
-                        logger.warning('DataTable {NAME}: filter parameters "{PARAM}" must be listed in '
-                                       'the table columns'.format(NAME=name, PARAM=param))
+            self.parameters.append(param)
+            self.bindings.extend(param.bindings)
 
         try:
             edit_columns = entry['EditColumns']
@@ -366,6 +343,9 @@ class TableElement(RecordElement):
             self.edit_columns = {}
             for edit_column in edit_columns:
                 if edit_column not in columns:
+                    logger.warning('DataTable {NAME}: editable column "{COL}" must be listed in the table columns'
+                                   .format(NAME=name, COL=edit_column))
+
                     continue
                 else:
                     self.edit_columns[edit_column] = edit_columns[edit_column]
@@ -623,7 +603,6 @@ class TableElement(RecordElement):
             header = self._display_header()
             elem_key = self.key_lookup('Element')
             widths = self.widths
-            #nrow = self._dimensions[1]
             nrow = self.get_table_dimensions(window)[1]
 
         column_widths = self._calc_column_widths(header, width=width, pixels=True, widths=widths)
@@ -2341,7 +2320,7 @@ class TableElement(RecordElement):
 
     def sort(self, sort_on=None, ascending: bool = True):
         """
-        Sort the table on provided column name.
+        Sort the table on the provided column name.
         """
         col_header = self.df.columns.tolist()
         df = self.df.copy()
@@ -2846,8 +2825,6 @@ class RecordTable(TableElement):
 
         date_column (str): name of the column containing the record date values.
 
-        reference_column (str): column used for importing unreferenced records.
-
         df (DataFrame): pandas dataframe containing table data.
     """
 
@@ -2940,18 +2917,6 @@ class RecordTable(TableElement):
             self.date_column = entry['DateColumn']
         except KeyError:
             self.date_column = 'RecordDate'
-
-        try:
-            reference_column = entry['ReferenceColumn']
-        except KeyError:
-            self.reference_column = None
-        else:
-            if reference_column in self.columns:
-                self.reference_column = reference_column
-            else:
-                logger.warning('DataTable {NAME}: reference column "{COL}" is missing from table columns'
-                               .format(NAME=name, COL=reference_column))
-                self.reference_column = None
 
         # Dynamic attributes
         self.import_df = self._set_datatypes(pd.DataFrame(columns=list(self.columns)))
@@ -3707,12 +3672,6 @@ class ComponentTable(RecordTable):
 
         logger.debug('DataTable {NAME}: enabling table action elements'.format(NAME=self.name))
 
-        # Enable filter parameters
-        # if len(params) > 0 and self.modifiers['filter'] is True:
-        #    # Enable the apply filters button
-        #    filter_key = self.key_lookup('Filter')
-        #    window[filter_key].update(disabled=False)
-
         # Enable table modification buttons
         window[add_key].update(disabled=False)
         window[add_key].metadata['disabled'] = False
@@ -3745,12 +3704,6 @@ class ComponentTable(RecordTable):
         custom_bttns = self.custom_actions
 
         logger.debug('DataTable {NAME}: disabling table action elements'.format(NAME=self.name))
-
-        # Disable filter parameters
-        # if len(params) > 0 and self.modifiers['filter'] is True:
-        #    # Disable the apply filters button
-        #    filter_key = self.key_lookup('Filter')
-        #    window[filter_key].update(disabled=True)
 
         # Disable table modification buttons
         window[add_key].update(disabled=True)
