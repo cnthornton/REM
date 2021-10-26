@@ -1839,7 +1839,7 @@ class TableElement(RecordElement):
         row1 = [
             sg.Col([[sg.Canvas(size=(0, cbar_h), background_color=border_col),
                      sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=border_col),
-                     sg.Text('Table filters', pad=((0, pad_h), 0), text_color=select_text_col,
+                     sg.Text('Filter', pad=((0, pad_h), 0), text_color=select_text_col,
                              background_color=border_col),
                      sg.Button('', image_data=mod_const.UNHIDE_ICON, key=self.key_lookup('FrameBttn0'),
                                button_color=(text_col, border_col), border_width=0,

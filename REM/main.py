@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.9.16'
+__version__ = '3.9.17'
 
 import sys
 import tkinter as tk
@@ -326,13 +326,15 @@ class ToolBar:
         header_col = mod_const.HEADER_COL
         text_col = mod_const.TEXT_COL
 
+        font = mod_const.MAIN_FONT
+
         toolbar = [[sg.Canvas(key='-CANVAS_WIDTH-', size=(width, 0), visible=True)],
                    [sg.Canvas(size=(0, toolbar_h), visible=True),
-                    sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico,
-                                           tooltip='Transaction Audits and Finance Reconciliations',
+                    sg.Col([[sg.ButtonMenu('', menu_audit, key='-AMENU-', image_data=audit_ico, item_font=font,
+                                           font=font, tooltip='Transaction Audits and Finance Reconciliations',
                                            button_color=(text_col, header_col), pad=(padding, padding), border_width=0),
-                             sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico,
-                                           button_color=(text_col, header_col), border_width=0,
+                             sg.ButtonMenu('', menu_reports, key='-RMENU-', image_data=report_ico, item_font=font,
+                                           font=font, button_color=(text_col, header_col), border_width=0,
                                            tooltip=self.records_title, pad=(padding, padding)),
                              sg.Button('', image_data=db_ico, key='-DBMENU-', tooltip='Record Importing',
                                        button_color=(text_col, header_col), pad=(padding, padding), border_width=0,
@@ -341,11 +343,11 @@ class ToolBar:
                     sg.Col([[sg.Canvas(size=(0, 0), visible=True)]],
                            justification='c', background_color=header_col, expand_x=True, vertical_alignment='c'),
                     sg.Col([[sg.ButtonMenu('', menu_user, key='-UMENU-', pad=(padding, padding), image_data=user_ico,
-                                           button_color=(text_col, header_col), border_width=0,
-                                           tooltip='User Settings'),
+                                           button_color=(text_col, header_col), border_width=0, item_font=font,
+                                           font=font, tooltip='User Settings'),
                              sg.ButtonMenu('', menu_menu, key='-MMENU-', pad=(padding, padding), image_data=menu_ico,
-                                           button_color=(text_col, header_col), border_width=0,
-                                           tooltip='Help and program settings')]],
+                                           button_color=(text_col, header_col), border_width=0, item_font=font,
+                                           font=font, tooltip='Help and program settings')]],
                            justification='r', background_color=header_col, vertical_alignment='c')]]
 
         layout = [sg.Frame('', toolbar, key='-TOOLBAR-', pad=(0, 0), relief='groove', background_color=header_col)]

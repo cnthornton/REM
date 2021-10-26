@@ -279,6 +279,9 @@ class DataParameter:
 
         dtype = self.dtype
 
+        if pd.isna(value):
+            return ''
+
         if dtype in settings.supported_float_dtypes and dtype == 'money':
             value = str(value)
             if value[0] in ('-', '+'):  # sign of the number
@@ -365,6 +368,8 @@ class DataParameterSingle(DataParameter):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
+        format_value = settings.format_value
+
         # Display value aliases
         try:
             aliases = entry['Aliases']
@@ -375,20 +380,19 @@ class DataParameterSingle(DataParameter):
         if self.dtype in (settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes):
             for alias in aliases:  # alias should have same datatype as the element
                 alias_value = aliases[alias]
-                self.aliases[settings.format_value(alias, self.dtype)] = alias_value
+                self.aliases[format_value(alias, self.dtype)] = alias_value
 
         try:
-            default = entry['DefaultValue']
+            default_value = entry['DefaultValue']
         except KeyError:
-            self.default = None
-        else:
-            try:
-                self.default = settings.format_value(default, self.dtype)
-            except ValueError:
-                self.default = None
+            default_value = None
+
+        try:
+            self.default = self.value = format_value(default_value, self.dtype)
+        except ValueError:
+            self.default = self.value = None
 
         # Dynamic attributes
-        self.value = self.format_value({self.key_lookup('Element'): self.default})
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
@@ -397,18 +401,21 @@ class DataParameterSingle(DataParameter):
         """
         Reset the parameter's values.
         """
-        if not pd.isna(self.value) and not pd.isna(self.default):
-            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
-                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
-
         # Update the parameter window element
         if self.hidden is False:
-            default_value = self.aliases.get(self.default, self.default)
+            self.value = self.default
+            self.update_display(window)
 
-            self.value = self.format_value({self.key_lookup('Element'): default_value})
-            display_value = self.format_display()
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        elem_key = self.key_lookup('Element')
 
-            window[self.key_lookup('Element')].update(value=display_value)
+        # Update element text
+        display_value = self.format_display()
+        window[elem_key].set_tooltip(display_value)
+        window[elem_key].update(value=display_value)
 
     def run_event(self, window, event, values):
         """
@@ -656,10 +663,10 @@ class DataParameterSingle(DataParameter):
         Return True if element has a valid value else False
         """
         value = self.value
-        if not pd.isna(value) and not value == '':
-            return True
-        else:
+        if pd.isna(value) or value == '':
             return False
+        else:
+            return True
 
 
 class DataParameterInput(DataParameterSingle):
@@ -726,6 +733,7 @@ class DataParameterInput(DataParameterSingle):
 
         elem_key = self.key_lookup('Element')
         display_value = self.format_display()
+        print('initial display value for element {} is {}'.format(self.name, display_value))
 
         if not disabled:
             layout = [sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True, font=font,
@@ -884,6 +892,7 @@ class DataParameterCombo(DataParameterSingle):
         aliases = self.aliases
         combo_values = self.combo_values
         display_value = self.format_display()
+        print('initial display value for element {} is {}'.format(self.name, display_value))
 
         values = [aliases[i] for i in combo_values if i in aliases]
         if '' not in values:  # the no selection option
@@ -948,7 +957,7 @@ class DataParameterCombo(DataParameterSingle):
                 col_values = df[column].astype(np.object, errors='raise')
         except Exception as e:
             logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
-                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                             .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
         logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
@@ -1138,21 +1147,21 @@ class DataParameterMulti(DataParameter):
         """
         Reset the parameter's values.
         """
-        try:
-            def_val1, def_val2 = self.default
-        except (ValueError, TypeError):
-            def_val1 = def_val2 = self.default
-
-        if def_val1 is not None or def_val2 is not None:
-            logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
-                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
-
         # Update the parameter window element
         if self.hidden is False:
-            self.format_value({self.key_lookup('Element'): [def_val1, def_val2]})
+            self.value = self.default
+            self.update_display(window)
 
-            display_value = self.format_display()
-            window[self.key_lookup('Element')].update(value=display_value)
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        elem_key = self.key_lookup('Element')
+
+        # Update element text
+        display_value = self.format_display()
+        window[elem_key].set_tooltip(display_value)
+        window[elem_key].update(value=display_value)
 
     def element_layout(self, size: tuple = None, bg_col: str = None):
         """
@@ -1164,7 +1173,6 @@ class DataParameterMulti(DataParameter):
         # Element settings
         font = mod_const.LARGE_FONT
         bg_col = self.bg_col if bg_col is None else bg_col
-        self.bg_col = bg_col
         in_col = mod_const.INPUT_COL
         text_col = mod_const.TEXT_COL
 
@@ -1207,11 +1215,19 @@ class DataParameterRange(DataParameterMulti):
         super().__init__(name, entry)
         format_value = settings.format_value
 
+        try:
+            default1, default2 = entry['DefaultValue']
+        except KeyError:
+            default1 = default2 = None
+        except ValueError:
+            default1 = default2 = entry['DefaultValue']
+
         # Dynamic attributes
         try:
-            self.value = [format_value(self.default[0], self.dtype), format_value(self.default[1], self.dtype)]
-        except (IndexError, TypeError):
-            self.value = [format_value(self.default, self.dtype), format_value(self.default, self.dtype)]
+            self.default = self.value = [format_value(default1, self.dtype), format_value(default2, self.dtype)]
+        except ValueError:
+            self.default = self.value = (None, None)
+
         logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
@@ -1409,12 +1425,22 @@ class DataParameterCondition(DataParameterMulti):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
+        self._operators = ['>', '<', '>=', '<=', '=']
+
+        try:
+            oper, default = entry['DefaultValue']
+        except (KeyError, ValueError):
+            oper = default = None
+
+        if oper not in self._operators:
+            oper = None
 
         # Dynamic attributes
         try:
-            self.value = [self.default[0], settings.format_value(self.default[1], self.dtype)]
-        except (IndexError, TypeError):
-            self.value = [None, None]
+            self.default = self.value = [oper, settings.format_value(default, self.dtype)]
+        except ValueError:
+            self.default = self.value = (oper, None)
+
         logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
@@ -1434,7 +1460,7 @@ class DataParameterCondition(DataParameterMulti):
         """
         Set the value of the data element from user input.
         """
-        operators = ['>', '<', '>=', '<=', '=']
+        operators = self._operators
 
         try:
             oper, value = values[self.key_lookup('Element')]
@@ -1525,7 +1551,7 @@ class DataParameterCondition(DataParameterMulti):
                 col_values = df[column].astype(np.object, errors='raise')
         except Exception as e:
             logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
-                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+                             .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
         logger.debug('DataParameter {NAME}: filtering table on values {OPER} {VAL}'
@@ -1637,9 +1663,26 @@ class DataParameterSelection(DataParameter):
         Run a window event associated with the parameter.
         """
         element_key = self.key_lookup('Element')
+
         if event == element_key:
-            self.value = self.format_value(values)
-            self.update_menu(window)
+            self.format_value(values)
+            self.update_display(window)
+
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        elem_key = self.key_lookup('Element')
+
+        # Update background of selected menu items
+        self.update_menu(window)
+
+        # Update element text
+        display_value = self.format_display()
+        nselect = len(self.value)
+        bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
+        window[elem_key].set_tooltip(display_value)
+        window[elem_key].Widget.configure(text=bttn_text)
 
     def reset(self, window):
         """
@@ -1651,7 +1694,7 @@ class DataParameterSelection(DataParameter):
 
         # Update the parameter window element
         if self.hidden is False:
-            self.update_menu(window)
+            self.update_display(window)
 
     def element_layout(self, size: tuple = None, bg_col: str = None):
         """
@@ -1663,27 +1706,35 @@ class DataParameterSelection(DataParameter):
         # Element settings
         font = mod_const.LARGE_FONT
         bg_col = self.bg_col if bg_col is None else bg_col
-        self.bg_col = bg_col
+        in_col = mod_const.INPUT_COL
         text_col = mod_const.TEXT_COL
+        bttn_text_col = mod_const.DISABLED_TEXT_COL
 
         # Parameter size
         width, height = size
-        elem_w = int(width * 0.7)
+        elem_w = width
         elem_h = height
 
         # Parameter settings
         menu_values = self.menu_values
         aliases = self.aliases
-        values = [aliases[i] for i in menu_values if i in aliases]
+        menu = ['Menu', [aliases[i] for i in menu_values if i in aliases]]
+        display_value = self.format_display()
+        print('creating selection menu layout with menu {}'.format(menu))
+        print('and initial display value: {}'.format(display_value))
 
         elem_key = self.key_lookup('Element')
         if not disabled:
-            layout = [sg.ButtonMenu('', values, key=elem_key, size=(elem_w, elem_h), border_width=1,
-                                    button_color=(text_col, bg_col), tooltip=self.description)]
+            nselect = len(self.value)
+            text_font = mod_const.SMALL_FONT
+            bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
+            layout = [sg.ButtonMenu(bttn_text, menu, key=elem_key, border_width=1, font=text_font, item_font=font,
+                                    button_color=(bttn_text_col, in_col), background_color=in_col,
+                                    tooltip=display_value)]
+
         else:
-            display_value = '; '.join(self.format_display())
             layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                              background_color=bg_col, text_color=text_col, border_width=1, justification='c',
+                              background_color=bg_col, text_color=text_col, border_width=0, justification='c',
                               metadata={'value': [], 'disabled': disabled})]
 
         return layout
@@ -1695,34 +1746,36 @@ class DataParameterSelection(DataParameter):
         format_value = settings.format_value
         aliases = self.aliases
         dtype = self.dtype
+        current_values = formatted_values = self.value
 
         try:
-            input_values = values[self.key_lookup('Element')]
+            selected_value = values[self.key_lookup('Element')]
         except KeyError:
             msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
             logger.warning(msg)
 
             return self.value
 
-        if input_values == '' or pd.isna(input_values):
-            return []
+        if selected_value == '' or pd.isna(selected_value):
+            return current_values
 
         aliases_rev = {j: i for i, j in aliases.items()}
-        formatted_values = []
-        for input_value in input_values:
+        try:
+            value_fmt = aliases_rev[selected_value]
+        except KeyError:
             try:
-                value_fmt = aliases_rev[input_value]
-            except KeyError:
-                try:
-                    value_fmt = format_value(input_value, dtype)
-                except ValueError:
-                    logger.warning('DataParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
-                                   .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
+                value_fmt = format_value(selected_value, dtype)
+            except ValueError:
+                logger.warning('DataParameter {NAME}: failed to format selected value {VAL} as {DTYPE}'
+                               .format(NAME=self.name, VAL=selected_value, DTYPE=dtype))
+                return current_values
 
-                    return self.value
-
+        if value_fmt in current_values:
+            formatted_values.remove(value_fmt)
+        else:
             formatted_values.append(value_fmt)
 
+        print('selected values are: {}'.format(formatted_values))
         self.value = formatted_values
 
         return formatted_values
@@ -1735,7 +1788,7 @@ class DataParameterSelection(DataParameter):
         aliases = self.aliases
 
         if all([pd.isna(i) for i in values]):  # no parameter values set for either range element
-            return []
+            return ''
 
         formatted_values = []
         for value in values:
@@ -1749,28 +1802,29 @@ class DataParameterSelection(DataParameter):
 
             formatted_values.append(display_value)
 
-        return formatted_values
+        return '; '.join(formatted_values)
 
     def update_menu(self, window):
         """
         Update selected menu items.
         """
-        bg_col = self.bg_col
+        bg_col = mod_const.ACTION_COL
         text_col = mod_const.TEXT_COL
         menu_values = self.menu_values
 
-        element_key = self.key_lookup('Element')
+        bttn_key = self.key_lookup('Element')
 
-        display_values = self.format_display()
+        selected_values = self.value
+        print('updating selection menu with highlighted values {}'.format(selected_values))
         for menu_index, menu_value in enumerate(menu_values):
-            if menu_value in display_values:
+            if menu_value in selected_values:
                 # Add highlight to menu item
-                window[element_key].TKMenu.entryconfig(menu_index, foreground=bg_col, background=text_col)
-                window[element_key].TKButtonMenu.configure(menu=window[element_key].TKMenu)
+                window[bttn_key].TKMenu.entryconfig(menu_index, foreground=bg_col, background=text_col)
+                window[bttn_key].TKButtonMenu.configure(menu=window[bttn_key].TKMenu)
             else:
                 # Remove highlight from menu item
-                window[element_key].TKMenu.entryconfig(menu_index, foreground=text_col, background=bg_col)
-                window[element_key].TKButtonMenu.configure(menu=window[element_key].TKMenu)
+                window[bttn_key].TKMenu.entryconfig(menu_index, foreground=text_col, background=bg_col)
+                window[bttn_key].TKButtonMenu.configure(menu=window[bttn_key].TKMenu)
 
     def query_statement(self, column):
         """
@@ -1778,7 +1832,8 @@ class DataParameterSelection(DataParameter):
         """
         values = self.value
         if len(values) > 0:
-            statement = ('{COL} IN ({VALS})'.format(COL=column, VALS=','.join(values)), values)
+            param_list = ','.join(['?' for _ in values])
+            statement = ('{COL} IN ({VALS})'.format(COL=column, VALS=param_list), values)
         else:
             statement = None
 

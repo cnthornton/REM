@@ -1060,6 +1060,9 @@ class SettingsManager:
         """
         Set the data type of the provided value.
         """
+        if pd.isna(value):
+            return None
+
         cnvrt_failure_msg = 'failed to format value "{VAL}" as "{DTYPE}" - {ERR}'
         if dtype in self.supported_float_dtypes:
             try:
@@ -1141,7 +1144,7 @@ class SettingsManager:
             try:
                 value_fmt = int(value.replace(group_sep, '').replace(dec_sep, '.'))
             except (ValueError, TypeError, AttributeError):
-                msg = 'unable to convert value {VAL} of type "{TYPE}" to an integer value' \
+                msg = 'unable to convert value {VAL} of type "{TYPE}" to an integer value'\
                     .format(VAL=value, TYPE=type(value))
 
                 raise ValueError(msg)
