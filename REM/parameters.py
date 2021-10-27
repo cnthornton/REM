@@ -414,7 +414,7 @@ class DataParameterSingle(DataParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].set_tooltip(display_value)
+        window[elem_key].format_tooltip()
         window[elem_key].update(value=display_value)
 
     def run_event(self, window, event, values):
@@ -1164,7 +1164,7 @@ class DataParameterMulti(DataParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].set_tooltip(display_value)
+        window[elem_key].format_tooltip()
         window[elem_key].update(value=display_value)
 
     def element_layout(self, size: tuple = None, bg_col: str = None):
@@ -1700,7 +1700,7 @@ class DataParameterSelection(DataParameter):
         display_value = self.format_display()
         nselect = len(self.value)
         bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
-        window[elem_key].set_tooltip(display_value)
+        window[elem_key].format_tooltip()
         window[elem_key].Widget.configure(text=bttn_text)
 
     def reset(self, window):

@@ -114,7 +114,7 @@ class RecordElement:
         try:
             self.tooltip = entry['Tooltip']
         except KeyError:
-            self.tooltip = self.description
+            self.tooltip = None
 
         # Dynamic variables
         self.edited = False
@@ -1698,7 +1698,7 @@ class TableElement(RecordElement):
 
         display_df = self.format_display_values()
 
-        tooltip = tooltip if tooltip is not None else self.tooltip
+        tooltip = tooltip if tooltip is not None else ''
         search_field = self.search_field
         select_mode = self.select_mode
 
@@ -4220,7 +4220,7 @@ class ReferenceBox(RecordElement):
         is_approved = self.approved
         aliases = self.aliases
         modifiers = self.modifiers
-        warnings = self.notes if self.notes is not None else ''
+        reference_note = self.notes if self.notes is not None else ''
 
         self.level = level
 
@@ -4233,8 +4233,8 @@ class ReferenceBox(RecordElement):
         bold_font = mod_const.BOLD_FONT
 
         text_col = mod_const.TEXT_COL
-        bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
-        tooltip = tooltip if tooltip else self.tooltip
+        bg_col = self.bg_col
+        tooltip = tooltip if tooltip else ''
 
         # Allowed actions and visibility of component elements
         is_disabled = False if (editable is True and level < 1) else True
@@ -4255,33 +4255,22 @@ class ReferenceBox(RecordElement):
         link_key = self.key_lookup('HardLinkFlag')
         parent_key = self.key_lookup('ParentFlag')
         approved_key = self.key_lookup('Approved')
-        date_key = self.key_lookup('RefDate')
-
-        ref_date = settings.format_display_date(self.date) if not pd.isna(self.date) else None
         ref_id = self.reference_id if self.reference_id else None
         approved_title = 'Reference approved' if 'IsApproved' not in aliases else aliases['IsApproved']
         elem_layout = [[sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
                                          text_color=text_col, font=bold_font, background_color=bg_col,
-                                         tooltip=tooltip),
+                                         tooltip=tooltip)],
+                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_el * 2), 0),
+                                         enable_events=can_open, text_color=select_text_col, font=font,
+                                         background_color=bg_col, tooltip='open reference record'),
                                  sg.Image(data=mod_const.LINKED_ICON, key=link_key, visible=hl_vis,
-                                          pad=(0, (0, pad_v)), background_color=bg_col,
-                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
-                                                                                                       not in aliases else
+                                          pad=(0, 0), background_color=bg_col,
+                                          tooltip=('Reference record is hard-linked' if 'IsHardLink' not in aliases else
                                                    aliases['IsHardLink'])),
                                  sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
-                                          pad=(0, (0, pad_v)), background_color=bg_col,
-                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
-                                                                                                    not in aliases else
-                                                   aliases['IsParentChild']))],
-                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
-                                         enable_events=can_open, text_color=select_text_col, font=font,
-                                         background_color=bg_col,
-                                         tooltip=('Reference record' if 'ReferenceID' not in aliases else
-                                                  aliases['ReferenceID'])),
-                                 sg.Text(ref_date, key=date_key, auto_size_text=True, enable_events=True,
-                                         text_color=text_col, font=font, background_color=bg_col,
-                                         tooltip=('Date of reference creation' if 'ReferenceDate' not in aliases else
-                                                  aliases['ReferenceDate']))]],
+                                          pad=(0, 0), background_color=bg_col,
+                                          tooltip=('Reference record is a parent' if 'IsParentChild' not in aliases else
+                                                   aliases['IsParentChild']))]],
                                pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
                         sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col,
                                          visible=approved_vis),
@@ -4298,7 +4287,7 @@ class ReferenceBox(RecordElement):
 
         layout = sg.Frame('', elem_layout, key=frame_key, size=(width, height), pad=padding, background_color=bg_col,
                           relief='raised', visible=self.referenced, vertical_alignment='c', element_justification='l',
-                          metadata={'deleted': False, 'name': self.name}, tooltip=warnings)
+                          metadata={'deleted': False, 'name': self.name}, tooltip=reference_note)
 
         return layout
 
@@ -4347,7 +4336,7 @@ class ReferenceBox(RecordElement):
         is_hl = self.is_hardlink
         is_pc = self.is_pc
         referenced = self.referenced
-        warnings = self.notes if self.notes is not None else ''
+        reference_note = self.notes
 
         # Update value of approved checkbox
         window[approved_key].update(value=self.approved)
@@ -4379,12 +4368,41 @@ class ReferenceBox(RecordElement):
             window[parent_key].update(visible=False)
 
         # Set notes
-        bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
+        bg_col = self.bg_col if not reference_note else mod_const.BOX_COL
         window[frame_key].Widget.config(background=bg_col)
-        window[frame_key].Widget.config(highlightbackground=bg_col)
+        #window[frame_key].Widget.config(highlightbackground=bg_col)
         window[frame_key].Widget.config(highlightcolor=bg_col)
 
-        window.Element(frame_key).SetTooltip(warnings)
+        tooltip = self.format_tooltip()
+        #window.Element(frame_key).SetTooltip(reference_note)
+        window[frame_key].set_tooltip(tooltip)
+
+    def format_tooltip(self):
+        """
+        Set the element tooltip.
+        """
+        aliases = self.aliases
+        custom_tooltip = self.tooltip
+        reference_note = self.notes
+
+        tooltip = []
+        if custom_tooltip:
+            tooltip.append(custom_tooltip)
+            tooltip.append('')
+
+        info = [[aliases.get('ReferenceType', 'Reference Type'), self.description],
+                [aliases.get('ReferenceID', 'Reference ID'), self.reference_id],
+                [aliases.get('ReferenceDate', 'Reference Date'), settings.format_display_date(self.date)]]
+        for row in info:
+            header, data = row
+            if data:
+                tooltip.append('{}: {}'.format(header, data))
+
+        if reference_note:
+            tooltip.append('')
+            tooltip.append(reference_note)
+
+        return '\n'.join(tooltip)
 
     def import_reference(self, entry, new: bool = False):
         """
@@ -4887,7 +4905,7 @@ class DataElement(RecordElement):
         self._dimensions = (width * 10, mod_const.DE_HEIGHT)
 
         background = self.bg_col
-        tooltip = tooltip if tooltip else self.tooltip
+        tooltip = tooltip if tooltip else ''
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -5641,7 +5659,7 @@ class ElementReference(RecordElement):
         self._dimensions = size
 
         background = self.bg_col
-        tooltip = tooltip if tooltip else self.tooltip
+        tooltip = tooltip if tooltip else ''
 
         # Layout options
         pad_el = mod_const.ELEM_PAD

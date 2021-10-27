@@ -25,7 +25,7 @@ PASS_COL = '#ACFBAF'  # light-medium green
 APPROVE_COL = '#CCE7CD'  # medium-dark green
 WARNING_COL = '#FFD740'  # medium orange-yellow
 FAIL_COL = NOTE_COL = '#F4B3B3'  # light-medium red
-BOX_COL = '#FFFAFA'  # light green
+BOX_COL = '#39FF14'  # neon green
 
 # Element padding
 FRAME_PAD = 20

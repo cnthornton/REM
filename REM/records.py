@@ -1230,7 +1230,8 @@ class DatabaseRecord:
             self.permissions = {'edit': permissions.get('Edit', None),
                                 'delete': permissions.get('Delete', None),
                                 'mark': permissions.get('MarkForDeletion', None),
-                                'references': permissions.get('ModifyReferences', permissions.get('ModifyComponents', None)),
+                                'references': permissions.get('ModifyReferences',
+                                                              permissions.get('ModifyComponents', None)),
                                 'approve': permissions.get('Approve', None),
                                 'report': permissions.get('Report', None),
                                 'data': 'user'}
@@ -1241,11 +1242,12 @@ class DatabaseRecord:
             self.title = self.name
 
         # Record header
-        self.headers = []
+        #self.headers = []
         try:
             headers = entry['Header']
         except KeyError:
-            raise AttributeError('missing required configuration parameter "Header"')
+            headers = {}
+            #raise AttributeError('missing required configuration parameter "Header"')
 
         try:
             id_entry = headers[self.id_field]
@@ -1262,7 +1264,7 @@ class DatabaseRecord:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
         else:
-            self.headers.append(param)
+            #self.headers.append(param)
             self._record_id = param
             self.elements += param.elements
 
@@ -1280,8 +1282,8 @@ class DatabaseRecord:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
         else:
+            #self.headers.append(param)
             self._record_date = param
-            self.headers.append(param)
             self.elements += param.elements
 
         # Record metadata
@@ -2469,21 +2471,27 @@ class DatabaseRecord:
         # Layout elements
 
         # Record header
-        left_layout = []
-        right_layout = []
-        for param in self.headers:
-            if param.justification == 'right':
-                right_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
-            else:
-                left_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
+        #left_layout = []
+        #right_layout = []
+        #for param in self.headers:
+        #    if param.justification == 'right':
+        #        right_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
+        #    else:
+        #        left_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
 
+        #header_key = self.key_lookup('Header')
+        #header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
+        #                         sg.Col([left_layout], background_color=bg_col, justification='l',
+        #                                element_justification='l', expand_x=True, vertical_alignment='c'),
+        #                         sg.Col([right_layout], background_color=bg_col, justification='r',
+        #                                element_justification='r', vertical_alignment='c')]],
+        #                       key=header_key, background_color=bg_col)
+        headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
+        headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
+        headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
         header_key = self.key_lookup('Header')
-        header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
-                                 sg.Col([left_layout], background_color=bg_col, justification='l',
-                                        element_justification='l', expand_x=True, vertical_alignment='c'),
-                                 sg.Col([right_layout], background_color=bg_col, justification='r',
-                                        element_justification='r', vertical_alignment='c')]],
-                               key=header_key, background_color=bg_col)
+        header_layout = sg.Col([headers], key=header_key, expand_x=True, background_color=bg_col, justification='l',
+                               vertical_alignment='c')
 
         # Create the layout for the record information panel
         sections = self.sections
