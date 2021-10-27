@@ -466,7 +466,7 @@ class RecordEntry:
         elif isinstance(ref_data, dict):
             df = pd.DataFrame(ref_data)
         else:
-            raise ValueError(' must be one of DataFrame, Series, or dictionary')
+            raise ValueError('ref_data must be one of DataFrame, Series, or dictionary')
 
         association_rules = self.association_rules
         try:
@@ -1246,25 +1246,43 @@ class DatabaseRecord:
             headers = entry['Header']
         except KeyError:
             raise AttributeError('missing required configuration parameter "Header"')
+
+        try:
+            id_entry = headers[self.id_field]
+        except KeyError:
+            id_entry = {'ElementType': 'input', 'DataType': 'varchar', 'Description': 'Record ID', 'IsEditable': False}
         else:
-            for param_name in headers:
-                param_entry = headers[param_name]
-                param_entry['IsEditable'] = False
-                try:
-                    param = mod_param.initialize_parameter(param_name, param_entry)
-                except Exception as e:
-                    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+            id_entry['IsEditable'] = False
+            id_entry['IsHidden'] = False
+            id_entry['ElementType'] = 'input'
+            id_entry['DataType'] = 'varchar'
+        try:
+            param = mod_param.initialize_parameter(self.id_field, id_entry)
+        except Exception as e:
+            logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+            raise AttributeError(e)
+        else:
+            self.headers.append(param)
+            self._record_id = param
+            self.elements += param.elements
 
-                    raise AttributeError(e)
-
-                self.headers.append(param)
-                self.elements += param.elements
-
-        header_names = [i.name for i in self.headers]
-        if self.id_field not in header_names:
-            raise AttributeError('missing required header "{}"'.format(self.id_field))
-        if self.date_field not in header_names:
-            raise AttributeError('missing required header "{}"'.format(self.date_field))
+        try:
+            date_entry = headers[self.date_field]
+        except KeyError:
+            date_entry = {'ElementType': 'date', 'DataType': 'date', 'Description': 'Record Date', 'IsEditable': False}
+        else:
+            date_entry['IsEditable'] = False
+            date_entry['ElementType'] = 'date'
+            date_entry['DataType'] = 'date'
+        try:
+            param = mod_param.initialize_parameter(self.date_field, date_entry)
+        except Exception as e:
+            logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+            raise AttributeError(e)
+        else:
+            self._record_date = param
+            self.headers.append(param)
+            self.elements += param.elements
 
         # Record metadata
         self.metadata = []
@@ -1380,15 +1398,15 @@ class DatabaseRecord:
         """
         Convenience method for returning the record ID of the record object.
         """
-        param = self.fetch_header(self.id_field)
-        return param.value
+        #param = self.fetch_header(self.id_field)
+        return self._record_id.value
 
     def record_date(self):
         """
         Convenience method for returning the record date of the record object.
         """
-        param = self.fetch_header(self.date_field)
-        return param.value
+        #param = self.fetch_header(self.date_field)
+        return self._record_date.value
 
     def initialize(self, data, new: bool = False, references: dict = None):
         """
@@ -1404,7 +1422,7 @@ class DatabaseRecord:
                 references for the given association rule but will use the reference entries provided instead.
         """
         # pd.set_option('display.max_columns', None)
-        headers = self.headers
+        #headers = self.headers
         meta_params = self.metadata
         record_elements = self.modules
 
@@ -1428,27 +1446,40 @@ class DatabaseRecord:
         else:
             raise AttributeError('unknown object type provided to record class "{TYPE}"'.format(TYPE=self.name))
 
-        if self.id_field not in record_data:
-            raise ImportError('input data is missing required column "{}"'.format(self.id_field))
-        if self.date_field not in record_data:
-            raise ImportError('input data is missing required column "{}"'.format(self.date_field))
+        #if self.id_field not in record_data:
+        #    raise ImportError('input data is missing required column "{}"'.format(self.id_field))
+        #if self.date_field not in record_data:
+        #    raise ImportError('input data is missing required column "{}"'.format(self.date_field))
 
         logger.info('RecordType {NAME}: initializing record'.format(NAME=self.name))
         logger.debug('RecordType {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
 
         # Set header values from required columns
-        for header in headers:
-            header_name = header.name
+        try:
+            record_id_value = record_data[self.id_field]
+        except KeyError:
+            raise ImportError('input record data is missing required column "{}"'.format(self.id_field))
+        else:
+            self._record_id.format_value(record_id_value)
+        try:
+            record_date_value = record_data[self.date_field]
+        except KeyError:
+            raise ImportError('input record data is missing required column "{}"'.format(self.date_field))
+        else:
+            self._record_date.format_value(record_date_value)
 
-            try:
-                value = record_data[header_name]
-            except KeyError:
-                logger.warning('RecordType {NAME}: input data is missing a value for header "{COL}"'
-                               .format(NAME=self.name, COL=header_name))
-            else:
-                logger.debug('RecordType {NAME}: initializing header "{PARAM}" with value "{VAL}"'
-                             .format(NAME=self.name, PARAM=header_name, VAL=value))
-                header.value = header.format_value({header.key_lookup('Element'): value})
+        #for header in headers:
+        #    header_name = header.name
+
+        #    try:
+        #        value = record_data[header_name]
+        #    except KeyError:
+        #        logger.warning('RecordType {NAME}: input data is missing a value for header "{COL}"'
+        #                       .format(NAME=self.name, COL=header_name))
+        #    else:
+        #        logger.debug('RecordType {NAME}: initializing header "{PARAM}" with value "{VAL}"'
+        #                     .format(NAME=self.name, PARAM=header_name, VAL=value))
+        #        header.value = header.format_value({header.key_lookup('Element'): value})
 
         # Set metadata parameter values
         for meta_param in meta_params:
@@ -1463,7 +1494,7 @@ class DatabaseRecord:
                 if not pd.isna(value):
                     logger.debug('RecordType {NAME}: initializing metadata field "{PARAM}" with value "{VAL}"'
                                  .format(NAME=self.name, PARAM=param_name, VAL=value))
-                    meta_param.value = meta_param.format_value({meta_param.key_lookup('Element'): value})
+                    meta_param.format_value(value)
 
         # Initialize the record elements
         record_id = self.record_id()
@@ -1560,8 +1591,10 @@ class DatabaseRecord:
         self.new = False
 
         # Reset header values
-        for header in self.headers:
-            header.reset(window)
+        self._record_id.reset(window)
+        self._record_date.reset(window)
+        #for header in self.headers:
+        #    header.reset(window)
 
         # Reset modifier values
         for modifier in self.metadata:
@@ -1836,10 +1869,10 @@ class DatabaseRecord:
 
         # Update the records header
         logger.debug('Record {ID}: updating display header'.format(ID=record_id))
-        for header in self.headers:
-            elem_key = header.key_lookup('Element')
-            display_value = header.format_display()
-            window[elem_key].update(value=display_value)
+        self._record_id.update_display(window)
+        self._record_date.update_display(window)
+        #for header in self.headers:
+        #    header.update_display(window)
 
         # Update the record elements
         record_values = self.export_values(header=False)
@@ -1907,14 +1940,18 @@ class DatabaseRecord:
         values = {}
 
         if header:
-            headers = self.headers
-            modifiers = self.metadata
+            record_id = self._record_id
+            record_date = self._record_date
+            #headers = self.headers
 
             # Add header values
-            for header_elem in headers:
-                values[header_elem.name] = header_elem.value
+            values[record_id.name] = record_id.value
+            values[record_date.name] = record_date.value
+            #for header_elem in headers:
+            #    values[header_elem.name] = header_elem.value
 
             # Add modifier values
+            modifiers = self.metadata
             for modifier_elem in modifiers:
                 values[modifier_elem.name] = modifier_elem.value
 
@@ -2213,10 +2250,11 @@ class DatabaseRecord:
         """
         Generate a summary report for the record.
         """
-        record_id = self.record_id()
+        record_id = self._record_id.format_display()
+        record_date = self._record_date.format_display()
         report_title = self.title
 
-        report_dict = {'title': '{TITLE}: {ID}'.format(TITLE=report_title, ID=record_id),
+        report_dict = {'title': '{TITLE}: {ID} ({DATE})'.format(TITLE=report_title, ID=record_id, DATE=record_date),
                        'info': [],
                        'sections': []}
 
@@ -2233,12 +2271,9 @@ class DatabaseRecord:
             try:
                 element = self.fetch_element(element_name)
             except KeyError:
-                try:
-                    element = self.fetch_header(element_name)
-                except KeyError:
-                    logger.warning('{NAME}: report element {ELEM} is not a valid record details or header element'
-                                   .format(NAME=report_title, ELEM=element_name))
-                    continue
+                logger.warning('{NAME}: report item {ELEM} is not a valid record element'
+                               .format(NAME=report_title, ELEM=element_name))
+                continue
 
             elem_title = element.description
             elem_value = element.format_display()
@@ -2267,7 +2302,6 @@ class DatabaseRecord:
                 continue
             else:
                 try:
-                    #comp_table = self.fetch_component(component)
                     comp_table = self.fetch_element(component)
                 except KeyError:
                     logger.warning('{NAME}, Heading {SEC}: unknown Component "{COMP}" defined in report configuration'

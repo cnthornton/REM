@@ -398,9 +398,9 @@ class AuditRule:
             params = self.parameters
             inputs = []
             for param in params:
-                param.value = param.format_value(values)
+                param.format_value(values)
 
-                if not param.value:
+                if not param.has_value():
                     param_desc = param.description
                     msg = 'Parameter {} requires correctly formatted input'.format(param_desc)
                     mod_win2.popup_notice(msg)
@@ -1012,7 +1012,7 @@ class AuditTransaction:
         except AttributeError as e:
             msg = 'Configuration Error: AuditTransactionTab {NAME}: unable to initialize DisplayTable - {ERR}' \
                 .format(NAME=name, ERR=e)
-            logger.error(msg)
+            logger.exception(msg)
 
             raise AttributeError(msg)
         else:

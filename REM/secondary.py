@@ -384,7 +384,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
             # Update modifier values
             for modifier in record.metadata:
-                modifier.value = modifier.format_value(values)
+                modifier.format_value(values)
 
             # Verify that required parameters have values
             can_continue = record.check_required_parameters()
@@ -416,7 +416,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
             # Update modifier values
             for modifier in record.metadata:
-                modifier.value = modifier.format_value(values)
+                modifier.format_value(values)
 
             # Save the record to the database table
             saved = record.save()
@@ -782,11 +782,8 @@ def parameter_window(account, win_size: tuple = None):
                             related_params = [related_params]
                         for related_param in related_params:
                             if not related_param.has_value() and related_param.etype == event_param.etype:
-                                related_key = related_param.key_lookup('Element')
-                                related_param.format_value({related_key: event_param.value})
-
-                                display_value = related_param.format_display()
-                                window[related_key].update(value=display_value)
+                                related_param.format_value(event_param.value)
+                                related_param.update_display(window)
 
             continue
 
@@ -2016,7 +2013,7 @@ def record_import_window(table, enable_new: bool = False):
         elif event in (filter_key, filter_hkey):
             for param in table.parameters:
                 # Set parameter values from window elements
-                param.value = param.format_value(values)
+                param.format_value(values)
 
             # Load the display records
             import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
@@ -2144,7 +2141,7 @@ def import_window(table, import_rules, program_database: bool = False, params: l
             # Set search parameter values
             query_filters = []
             for param in params:
-                param.value = param.format_value(values)
+                param.format_value(values)
                 query_statement = param.query_statement(mod_db.get_import_column(import_rules, param.name))
                 if query_statement is not None:
                     query_filters.append(query_statement)

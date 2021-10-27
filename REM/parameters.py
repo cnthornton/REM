@@ -606,20 +606,22 @@ class DataParameterSingle(DataParameter):
         Set the value of the data element from user input.
 
         Arguments:
-
-            values (dict): GUI element values.
+            values: GUI element values or a single input value.
         """
         dtype = self.dtype
         aliases = self.aliases
-        elem_key = self.key_lookup('Element')
 
-        try:
-            input_value = values[elem_key]
-        except KeyError:
-            logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
-                           .format(NAME=self.name))
+        if isinstance(values, dict):
+            elem_key = self.key_lookup('Element')
+            try:
+                input_value = values[elem_key]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                               .format(NAME=self.name))
 
-            return self.value
+                return self.value
+        else:
+            input_value = values
 
         if input_value == '' or pd.isna(input_value):
             return None
@@ -635,6 +637,8 @@ class DataParameterSingle(DataParameter):
                                .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
                 return self.value
+
+        self.value = value_fmt
 
         return value_fmt
 
@@ -1247,16 +1251,22 @@ class DataParameterRange(DataParameterMulti):
     def format_value(self, values):
         """
         Set the value of the data element from user input.
+
+        Arguments:
+            values: GUI element values or a single input value.
         """
         format_value = settings.format_value
 
-        try:
-            input_values = values[self.key_lookup('Element')]
-        except KeyError:
-            msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
-            logger.warning(msg)
+        if isinstance(values, dict):
+            try:
+                input_values = values[self.key_lookup('Element')]
+            except KeyError:
+                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
+                logger.warning(msg)
 
-            return self.value
+                return self.value
+        else:
+            input_values = values
 
         try:
             in1, in2 = input_values
@@ -1459,18 +1469,27 @@ class DataParameterCondition(DataParameterMulti):
     def format_value(self, values):
         """
         Set the value of the data element from user input.
+
+        Arguments:
+            values: GUI element values or a single input value.
         """
         operators = self._operators
 
-        try:
-            oper, value = values[self.key_lookup('Element')]
-        except KeyError:
-            msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
-            logger.warning(msg)
+        if isinstance(values, dict):
+            try:
+                input_values = values[self.key_lookup('Element')]
+            except KeyError:
+                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
+                logger.warning(msg)
 
-            return self.value
+                return self.value
+        else:
+            input_values = values
+
+        try:
+            oper, value = input_values
         except ValueError:
-            msg = 'DataParameter {NAME}: input value should be a list or tuple of exactly two components'\
+            msg = 'DataParameter {NAME}: input value should be a list or tuple of exactly two components' \
                 .format(NAME=self.name)
             logger.warning(msg)
 
@@ -1742,19 +1761,25 @@ class DataParameterSelection(DataParameter):
     def format_value(self, values):
         """
         Set the value of the data element from user input.
+
+        Arguments:
+            values: GUI element values or a single input value.
         """
         format_value = settings.format_value
         aliases = self.aliases
         dtype = self.dtype
         current_values = formatted_values = self.value
 
-        try:
-            selected_value = values[self.key_lookup('Element')]
-        except KeyError:
-            msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
-            logger.warning(msg)
+        if isinstance(values, dict):
+            try:
+                selected_value = values[self.key_lookup('Element')]
+            except KeyError:
+                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
+                logger.warning(msg)
 
-            return self.value
+                return self.value
+        else:
+            selected_value = values
 
         if selected_value == '' or pd.isna(selected_value):
             return current_values
