@@ -337,17 +337,12 @@ class DataParameter:
 
         return display_value
 
-    def toggle_elements(self, window, value: str = 'enable'):
+    def toggle(self, window, off: bool = False):
         """
-        Toggle parameter elements on and off.
+        Toggle the parameter element on or off.
         """
-        status = False if value == 'enable' else True
-
-        for element_key in self.elements:
-            if window[element_key].metadata and 'disabled' in window[element_key].metadata:
-                logger.debug('DataParameter {NAME}: updating element {KEY} to "disabled={VAL}"'
-                             .format(NAME=self.name, KEY=element_key, VAL=status))
-                window[element_key].update(disabled=status)
+        for element_key in self.bindings:
+            window[element_key].update(disabled=off)
 
 
 # Single value data parameters
@@ -414,7 +409,7 @@ class DataParameterSingle(DataParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].format_tooltip()
+        window[elem_key].set_tooltip(display_value)
         window[elem_key].update(value=display_value)
 
     def run_event(self, window, event, values):
@@ -1164,7 +1159,7 @@ class DataParameterMulti(DataParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].format_tooltip()
+        window[elem_key].set_tooltip(display_value)
         window[elem_key].update(value=display_value)
 
     def element_layout(self, size: tuple = None, bg_col: str = None):
@@ -1700,7 +1695,7 @@ class DataParameterSelection(DataParameter):
         display_value = self.format_display()
         nselect = len(self.value)
         bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
-        window[elem_key].format_tooltip()
+        window[elem_key].set_tooltip(display_value)
         window[elem_key].Widget.configure(text=bttn_text)
 
     def reset(self, window):

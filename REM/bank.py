@@ -215,8 +215,9 @@ class BankRule:
         """
         Enable / Disable audit rule parameter elements.
         """
+        disabled = False if value == 'enable' else True
         for param in self.parameters:
-            param.toggle_elements(window, value)
+            param.toggle(window, off=disabled)
 
     def run_event(self, window, event, values):
         """
