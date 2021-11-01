@@ -1445,25 +1445,6 @@ class TableElement(RecordElement):
 
         return display_df
 
-    def format_display_table(self):
-        """
-        Format the table for display.
-        """
-        # Get the display dataframe
-        df = self.data(display_rows=True)
-        display_df = self.format_display_values(df)
-
-        # Prepare row colors based on record annotations
-        annotations = self.annotate_rows(df)
-        annotation_map = {i: self.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-
-        # Add annotations to the dataframe styling
-        style = 'background-color: {}'
-        display_df = display_df.style.apply(lambda x: [style.format(annotation_map.get(x.name, 'white')) for _ in x],
-                                            axis=1)
-
-        return display_df
-
     def format_display_values(self, df: pd.DataFrame = None):
         """
         Format the table values for display.
@@ -3350,17 +3331,12 @@ class RecordTable(TableElement):
         # pd.set_option('display.max_columns', None)
         import_df = self.import_df.copy()
         logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
-        record_type = self.record_type
         id_col = self.id_column
-
-        record_entry = settings.records.fetch_rule(record_type)
-        import_rules = self.import_rules if self.import_rules else record_entry.import_rules
-        program_database = record_entry.program_record
 
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
                         'RecordType': self.record_type, 'Description': self.description,
-                        'ImportRules': import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
+                        'ImportRules': self.import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
                         'HiddenColumns': self.hidden_columns
                         }
@@ -3387,8 +3363,7 @@ class RecordTable(TableElement):
         import_table.sort()
 
         # Get table of user selected import records
-        select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
-                                           params=search_params)
+        select_df = mod_win2.import_window(import_table, params=search_params)
         if not select_df.empty:
             self.edited = True
 
@@ -3865,14 +3840,11 @@ class ComponentTable(RecordTable):
         id_col = self.id_column
 
         logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
-        record_entry = settings.records.fetch_rule(record_type)
-        import_rules = self.import_rules if self.import_rules else record_entry.import_rules
-        program_database = record_entry.program_record
 
         table_layout = {'Columns': self.columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': self.id_column,
-                        'RecordType': self.record_type, 'Description': self.description,
-                        'ImportRules': import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
+                        'RecordType': record_type, 'Description': self.description,
+                        'ImportRules': self.import_rules, 'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'options': 1, 'sort': 1},
                         'HiddenColumns': self.hidden_columns,
                         }
@@ -3880,7 +3852,8 @@ class ComponentTable(RecordTable):
         import_table = RecordTable(self.name, table_layout)
 
         # Search for records without an existing reference to the provided reference type
-        if modifiers['unassociated'] and program_database:  # option only available for program records
+        if modifiers['unassociated']:  # option only available for program records
+            record_entry = settings.records.fetch_rule(record_type)
             logger.debug('DataTable {NAME}: importing unreferenced records on rule "{RULE}"'
                          .format(NAME=self.name, RULE=rule_name))
 
@@ -3929,8 +3902,7 @@ class ComponentTable(RecordTable):
         import_table.sort()
 
         # Get table of user selected import records
-        select_df = mod_win2.import_window(import_table, import_rules, program_database=program_database,
-                                           params=search_params)
+        select_df = mod_win2.import_window(import_table, params=search_params)
         if not select_df.empty:
             self.edited = True
 

@@ -2034,13 +2034,28 @@ def record_import_window(table, enable_new: bool = False):
     gc.collect()
 
 
-def import_window(table, import_rules, program_database: bool = False, params: list = None):
+def import_window(table, params: list = None):
     """
     Display the importer window.
     """
     min_w, min_h = (int(mod_const.WIN_WIDTH * 0.5), int(mod_const.WIN_HEIGHT * 0.5))
 
     params = params if params is not None else []
+    try:
+        record_type = table.record_type
+    except AttributeError:
+        enable_search = False
+        table_statement = None
+        import_columns = None
+    else:
+        record_entry = settings.records.fetch_rule(record_type)
+        program_database = record_entry.program_database
+        import_rules = table.import_rules if table.import_rules else record_entry.import_rules
+
+        table_statement = mod_db.format_tables(import_rules)
+        import_columns = mod_db.format_import_columns(import_rules)
+
+        enable_search = True
 
     # Window and element size parameters
     font_h = mod_const.HEADING_FONT
@@ -2071,8 +2086,8 @@ def import_window(table, import_rules, program_database: bool = False, params: l
         param_layout += element_layout
 
     if len(param_layout) > 0:
-        param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True,
-                                      button_color=(bttn_text_col, bttn_bg_col), use_ttk_buttons=True))
+        param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True, use_ttk_buttons=True,
+                                      button_color=(bttn_text_col, bttn_bg_col), disabled=(not enable_search)))
         top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col)],
                       [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)]]
     else:
@@ -2114,9 +2129,6 @@ def import_window(table, import_rules, program_database: bool = False, params: l
     current_w, current_h = window.size
 
     # Start event loop
-    table_statement = mod_db.format_tables(import_rules)
-    import_columns = mod_db.format_import_columns(import_rules)
-
     table.update_display(window)
 
     select_index = []
