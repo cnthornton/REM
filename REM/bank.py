@@ -10,7 +10,7 @@ import pandas as pd
 import PySimpleGUI as sg
 
 import REM.constants as mod_const
-import REM.elements as mod_elem
+import REM.elements_new as mod_elem
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.secondary as mod_win2
@@ -1866,8 +1866,6 @@ class BankAccount:
                                     'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                             else:
                                 table.update_row(index, record_values)
-                                print('new values for table row {}'.format(index))
-                                print(table.df.loc[index])
 
                                 self.update_display(window)
 
@@ -1918,7 +1916,8 @@ class BankAccount:
             indices = table.get_index(select_row_indices)
 
             # Get record IDs for the selected rows
-            record_ids = table.df.loc[indices, table.id_column].tolist()
+            #record_ids = table.df.loc[indices, table.id_column].tolist()
+            record_ids = table.row_ids(indices=indices)
 
             try:
                 reference_indices = self.approve(record_ids)
@@ -1943,7 +1942,8 @@ class BankAccount:
             indices = table.get_index(select_row_indices)
 
             # Get record IDs for the selected rows
-            record_ids = table.df.loc[indices, table.id_column].tolist()
+            #record_ids = table.df.loc[indices, table.id_column].tolist()
+            record_ids = table.row_ids(indices=indices)
 
             # Delete references and approval for the selected records
             try:
@@ -2007,7 +2007,7 @@ class BankAccount:
         """
         refmap = self.ref_map
         table = self.get_table()
-        header = table.df.columns.tolist()
+        df = table.data(indices=indices)
 
         try:
             column = refmap[param]
@@ -2017,16 +2017,10 @@ class BankAccount:
 
             return None
 
-        if column not in header:
-            msg = 'reference parameter "{PARAM}" is not in the configured reference map'.format(PARAM=param)
-            logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return None
-
         try:
-            param_values = table.df.loc[indices, column]
+            param_values = df[column]
         except KeyError:
-            msg = 'row indices {INDS} are not found in the records table'.format(INDS=indices)
+            msg = 'reference parameter "{PARAM}" is not in the configured reference map'.format(PARAM=param)
             logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             param_values = None
@@ -2154,8 +2148,7 @@ class BankAccount:
         if index:
             indices = identifiers
         else:
-            df = table.df
-            indices = df.index[df[table.id_column].isin(identifiers)].tolist()
+            indices = table.record_index(identifiers)
 
         if 'Void' in colmap:
             table.update_column(colmap['Void'], False, indices=indices)
@@ -2281,7 +2274,7 @@ class BankAccount:
                 df.drop(df[df['RecordID'].isin(match_pair)].index, inplace=True)
 
         # Update the record tables
-        void_inds = table.df.loc[table.df['RecordID'].isin(void_records)].index.tolist()
+        void_inds = table.record_index(void_records)
         if len(void_inds) > 0:
             print('BankAccount {}: setting void column {} to true for indices:'.format(self.name, failed_col))
             print(void_inds)
@@ -2343,7 +2336,7 @@ class BankAccount:
 
         # Merge records and references dataframes
         self.merge_references()
-        table.df = table.set_conditional_values()
+        #table.df = table.set_conditional_values()
 
         # Update the display table
         table.update_display(window)
@@ -2362,33 +2355,32 @@ class BankAccount:
             msg = '{MSG} -  see log for details'.format(MSG=e)
             raise ImportError(msg)
 
+        # Update the record table dataframe with the data imported from the database
+        table.append(df)
+
         # Load the record references from the reference table connected with the association rule
-        record_ids = df[self.table.id_column].tolist()
+        record_ids = table.row_ids()
         logger.debug('BankAccount {NAME}: loading reference data'.format(NAME=self.name))
         try:
-            self.ref_df = self.load_references(record_ids)
+            ref_df = self.load_references(record_ids)
         except Exception as e:
             msg = '{MSG} -  see log for details'.format(MSG=e)
             raise ImportError(msg)
 
+        self.ref_df = ref_df
+
         # Merge the configured reference columns with the records table
         ref_map = self.ref_map
-        ref_df = self.ref_df.copy()
-
-        # Set index to record ID for updating
-        df.set_index('RecordID', inplace=True)
-        ref_df.set_index('RecordID', inplace=True)
-
-        # Rename reference columns to record columns using the reference map
-        mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
+        mapped_df = ref_df.copy()
+        mapped_df = mapped_df[list(ref_map)].rename(columns=ref_map)
 
         # Update record reference columns
-        drop_cols = [i for i in mapped_df.columns if i in df.columns]
-        df = df.drop(columns=drop_cols).join(mapped_df)
-        df.reset_index(inplace=True)
+        map_cols = [i for i in mapped_df.columns if i in df.columns]
 
-        # Update the record table dataframe with the data imported from the database
-        table.df = table.append(df)
+        # Update record reference column values
+        for column in map_cols:
+            column_values = mapped_df[column]
+            table.update_column(column, column_values)
 
     def load_references(self, record_ids):
         """
@@ -2465,7 +2457,7 @@ class BankAccount:
                     logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     raise
 
-            df = df.append(loaded_df, ignore_index=True)
+            df = df.append(loaded_df)
 
         return df
 

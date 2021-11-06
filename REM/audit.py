@@ -15,7 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
 import REM.database as mod_db
-import REM.elements as mod_elem
+import REM.elements_new as mod_elem
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
@@ -325,7 +325,7 @@ class AuditRule:
                     record_tab.map_summary(self.transactions)
 
                     # Map transactions to transaction records
-                    record_tab.map_transactions(self.transactions, self.parameters)
+                    record_tab.map_transactions(self.transactions)
 
                     # Update the audit record's display
                     record_tab.update_display(window)
@@ -1216,12 +1216,52 @@ class AuditTransaction:
 
                 success = False
             else:
-                self.table.df = self.filter_table()
-                self.table.update_display(window)
+                delete_rows = self.filter_table()
+                if len(delete_rows) > 0:
+                    self.table.delete_rows(delete_rows)
+                    self.table.update_display(window)
 
         return success
 
     def filter_table(self):
+        """
+        Filter the data table by applying the filter rules specified in the configuration.
+        """
+        # Tab attributes
+        filter_rules = self.filter_rules
+        df = self.table.data()
+
+        if df.empty or not filter_rules:
+            return []
+
+        logger.debug('AuditTransaction {NAME}: filtering display table on configured filter rules'
+                     .format(NAME=self.name))
+
+        failed_rows = set()
+        for column in filter_rules:
+            filter_rule = filter_rules[column]
+            logger.debug('AuditTransaction {NAME}: filtering table on column {COL} based on rule "{RULE}"'
+                         .format(NAME=self.name, COL=column, RULE=filter_rule))
+
+            try:
+                filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
+            except Exception as e:
+                logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
+                               .format(NAME=self.name, COL=column, ERR=e))
+                continue
+
+            try:
+                failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_cond)].index.tolist()
+            except Exception as e:
+                logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
+                               .format(NAME=self.name, COL=column, ERR=e))
+                continue
+            else:
+                failed_rows.update(failed)
+
+        return list(failed_rows)
+
+    def filter_table_old(self):
         """
         Filter the data table by applying the filter rules specified in the configuration.
         """
@@ -1281,7 +1321,7 @@ class AuditTransaction:
             raise ImportError(msg)
 
         logger.info('AuditTransaction {NAME}: successfully loaded record data from the database'.format(NAME=self.name))
-        self.table.df = self.table.append(df)
+        self.table.append(df)
 
     def audit_transactions(self):
         """
@@ -1794,7 +1834,7 @@ class AuditRecord:
 
         name = self.name
         totals = self.record.fetch_element('Totals')
-        df = totals.df.copy()
+        df = totals.data(all_rows=True)
 
         logger.debug('AuditRecord {NAME}: mapping transaction summaries to audit totals'
                      .format(NAME=self.name))
@@ -1804,14 +1844,15 @@ class AuditRecord:
         for tab in rule_tabs:
             tab_name = tab.name
             summary = tab.table.summarize_table()
-            for summary_rule in summary:
-                summary_value = summary[summary_rule]
-                summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=summary_rule)] = summary_value
+            for summary_column in summary:
+                summary_value = summary[summary_column]
+                summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=summary_column)] = summary_value
 
         # Map audit totals columns to transaction table summaries
-        db_columns = totals.df.columns.tolist()
+        header = df.columns.tolist()
         mapping_columns = self.summary_mapping
-        for column in db_columns:
+        row_values = pd.Series(index=header)
+        for column in header:
             try:
                 mapper = mapping_columns[column]
             except KeyError:
@@ -1849,12 +1890,104 @@ class AuditRecord:
             logger.debug('AuditRecord {NAME}: adding {SUMM} to column {COL}'
                          .format(NAME=name, SUMM=summary_total, COL=column))
 
-            df.at[0, column] = summary_total
-            df[column] = pd.to_numeric(df[column], downcast='float')
+            row_values[column] = summary_total
 
-        totals.df = df
+        totals.append(row_values)
 
-    def map_transactions(self, rule_tabs, params):
+    def map_transactions(self, rule_tabs):
+        """
+        Map transaction records from the audit to the audit accounting records.
+        """
+        tab_names = [i.name for i in rule_tabs]
+
+        logger.debug('AuditRecord {NAME}: creating component records from the transaction records'
+                     .format(NAME=self.name))
+
+        record = self.record
+        component_table = record.fetch_element('account')
+        header = component_table.columns
+
+        # Map transaction data to transaction records
+        comp_df = pd.DataFrame(columns=header)
+        record_mapping = self.record_mapping
+        for payment_type in record_mapping:
+            table_rules = record_mapping[payment_type]
+            for table in table_rules:
+                table_rule = table_rules[table]
+                try:
+                    subset_rule = table_rule['Subset']
+                except KeyError:
+                    logger.warning('AuditRecord {NAME}: record mapping transaction type {TYPE}, table {TBL} is missing '
+                                   'required parameter "Subset"'.format(NAME=self.name, TYPE=payment_type, TBL=table))
+                    continue
+
+                try:
+                    column_map = table_rule['ColumnMapping']
+                except KeyError:
+                    logger.warning('AuditRecord {NAME}: record mapping payment type {TYPE}, table {TBL} is missing '
+                                   'required parameter "ColumnMapping"'
+                                   .format(NAME=self.name, TYPE=payment_type, TBL=table))
+                    continue
+
+                if table not in tab_names:
+                    logger.warning('AuditRecord {NAME}: unknown transaction table {TBL} provided to record_mapping '
+                                   '{TYPE}'.format(NAME=self.name, TBL=table, TYPE=payment_type))
+                    continue
+                else:
+                    tab = rule_tabs[tab_names.index(table)]
+
+                # Subset transaction records using defined subset rules
+                logger.debug('AuditRecord {NAME}: sub-setting reference table {REF} based on defined payment "{TYPE}" '
+                             'rule {RULE}'.format(NAME=self.name, REF=table, TYPE=payment_type, RULE=subset_rule))
+                try:
+                    subset_df = tab.table.subset(subset_rule)
+                except Exception as e:
+                    logger.warning('AuditRecord {NAME}: unable to subset reference table {REF} - {ERR}'
+                                   .format(NAME=self.name, REF=table, ERR=e))
+                    continue
+
+                if subset_df.empty:
+                    logger.debug('AuditRecord {NAME}: no data from reference table {REF} to add to the audit record'
+                                 .format(NAME=self.name, REF=table))
+                    continue
+
+                # Add transaction records to the set of transaction records that will get mapped to the audit component
+                # records
+                for index, row in subset_df.iterrows():
+                    record_data = pd.Series(index=header)
+                    record_data['PaymentType'] = payment_type
+
+                    # Map row values to the account record elements
+                    for column in column_map:
+                        if column not in header:
+                            logger.warning('AuditRecord {NAME}: mapped column {COL} not found in record elements'
+                                           .format(COL=column, NAME=self.name))
+                            continue
+
+                        reference = column_map[column]
+                        try:
+                            ref_val = mod_dm.evaluate_rule(row, reference, as_list=True)[0]
+                        except Exception as e:
+                            msg = 'failed to add mapped column {COL} - {ERR}'.format(COL=column, ERR=e)
+                            logger.warning('AuditRecord {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        else:
+                            record_data[column] = ref_val
+
+                    # Add record to the components table
+                    comp_df = comp_df.append(record_data, ignore_index=True)
+
+        # Remove NA columns
+        comp_df = comp_df[comp_df.columns[~comp_df.isna().all()]]
+
+        if self.merge is True:  # transaction records should be merged into one (typical for cash transactions)
+            merge_on = [i for i in comp_df.columns.tolist() if i not in self.merge_columns]
+            logger.debug('AuditRecord {NAME}: merging rows on columns {COLS}'.format(NAME=self.name, COLS=merge_on))
+            comp_df = comp_df.groupby(merge_on).sum().reset_index()
+
+        final_df = record.create_components(component_table, record_data=comp_df)
+        component_table.append(final_df)
+
+    def map_transactions_old(self, rule_tabs, params):
         """
         Map transaction records from the audit to the audit accounting records.
         """
@@ -1971,7 +2104,7 @@ class AuditRecord:
         else:
             final_df[component_table.id_column] = record_ids
 
-        component_table.df = component_table.append(final_df)
+        component_table.df = component_table.append(final_df, )
 
         # Add defaults to the account records
         component_table.df = component_table.initialize_defaults()

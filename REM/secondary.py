@@ -1224,7 +1224,7 @@ def database_importer_window(win_size: tuple = None):
 
                         import_df[column_name] = column_value
 
-                    all_cols = req_df['Table Column Name'].append(map_df['Table Column Name'], ignore_index=True)
+                    all_cols = req_df['Table Column Name'].append(map_df['Table Column Name'])
                     try:
                         final_df = import_df[all_cols]
                     except KeyError:
@@ -1984,7 +1984,7 @@ def record_import_window(table, enable_new: bool = False):
                     import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
                     table.reset(window, reset_filters=False, collapse=False)
-                    table.df = table.append(import_df)
+                    table.append(import_df)
                     table.update_display(window)
 
             continue
@@ -2004,7 +2004,7 @@ def record_import_window(table, enable_new: bool = False):
                     import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
                     table.reset(window, reset_filters=False, collapse=False)
-                    table.df = table.append(import_df)
+                    table.append(import_df)
                     table.update_display(window)
 
                 continue
@@ -2019,7 +2019,7 @@ def record_import_window(table, enable_new: bool = False):
             import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
             table.reset(window, reset_filters=False, collapse=False)
-            table.df = table.append(import_df)
+            table.append(import_df)
             table.update_display(window)
 
         # Run table events
@@ -2167,7 +2167,7 @@ def import_window(table, params: list = None):
                             .format(ERR=e))
                 continue
 
-            table.df = table.append(record_df)
+            table.append(record_df)
             table.update_display(window)
 
             continue
@@ -2192,7 +2192,7 @@ def import_window(table, params: list = None):
     gc.collect()
 
     try:
-        return table.df.loc[select_index]
+        return table.data(indices=select_index)
     except KeyError:
         raise KeyError('one or more selected index {} is missing from the import table dataframe'.format(select_index))
 
