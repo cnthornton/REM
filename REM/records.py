@@ -1723,7 +1723,6 @@ class DatabaseRecord:
         record_elements = self.modules
 
         update_event = False
-        hotkeys = settings.get_shortcuts()
 
         # Get record element that is currently in focus
         try:
@@ -1755,17 +1754,9 @@ class DatabaseRecord:
         if event in elem_events:
             try:
                 record_element = self.fetch_element(event, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to find the record element associated with event key {KEY}'
-                             .format(ID=self.record_id(), KEY=event))
-
-                return False
-        elif event in hotkeys:
-            try:
-                record_element = self.fetch_element(focus_element, by_key=True)
-            except KeyError:
-                logger.error('Record {ID}: unable to fetch the record element in focus'
-                             .format(ID=self.record_id(), KEY=event))
+            except KeyError as e:
+                logger.error('Record {ID}: unable to find the record element associated with event key {KEY} - {ERR}'
+                             .format(ID=self.record_id(), KEY=event, ERR=e))
 
                 return False
         else:

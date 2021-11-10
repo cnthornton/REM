@@ -228,15 +228,13 @@ class DataTable(RecordElement):
         try:
             modifiers = entry['Modifiers']
         except KeyError:
-            self.modifiers = {'open': True, 'edit': False, 'delete': False, 'import': False, 'search': False,
-                              'summary': False, 'filter': False, 'export': False, 'fill': False, 'sort': False}
+            self.modifiers = {'open': True, 'edit': False, 'search': False, 'summary': False, 'filter': False,
+                              'export': False, 'fill': False, 'sort': False}
         else:
-            self.modifiers = {'open': modifiers.get('open', 1),
-                              'edit': modifiers.get('search', 0), 'delete': modifiers.get('delete', 0),
-                              'import': modifiers.get('import', 0), 'search': modifiers.get('search', 0),
-                              'summary': modifiers.get('summary', 0), 'filter': modifiers.get('filter', 0),
-                              'export': modifiers.get('export', 0), 'fill': modifiers.get('fill', 0),
-                              'sort': modifiers.get('sort', 0)}
+            self.modifiers = {'open': modifiers.get('open', 1), 'edit': modifiers.get('search', 0),
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
+                              'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0)}
             for modifier in self.modifiers:
                 try:
                     flag = bool(int(self.modifiers[modifier]))
@@ -249,7 +247,7 @@ class DataTable(RecordElement):
 
         # Buttons that allow modification of the table, such as deleting and importing rows
         try:
-            actions = entry['ActionsButtons']
+            actions = entry['ActionButtons']
         except KeyError:
             actions = {}
 
@@ -265,6 +263,7 @@ class DataTable(RecordElement):
                 continue
             else:
                 self.actions.append(action)
+                self.elements.append(action.element_key)
                 self.bindings.extend(action.bindings)
 
         # Attributes that affect how the table data is displayed
@@ -1326,6 +1325,8 @@ class DataTable(RecordElement):
         select_mode = self.select_mode
 
         is_disabled = False if (editable is True and level < 1) or overwrite is True else True
+        print('creating table {} layout at level {}'.format(self.name, level))
+        print('table actions are disabled: {}'.format(is_disabled))
 
         # Element keys
         keyname = self.key_lookup('Element')
@@ -1577,6 +1578,7 @@ class DataTable(RecordElement):
         actions_bar = [sg.Canvas(size=(0, bar_h), background_color=header_col)]
         action_layout = []
         for action in self.actions:
+            print('adding action button {} to the layout'.format(action.name))
             action_bttn = action.layout(disabled=is_disabled, bg_col=header_col)
             action_layout.append(action_bttn)
 
@@ -1963,7 +1965,7 @@ class DataTable(RecordElement):
         import_table = DataTable(self.name, table_layout)
 
         import_df = collection.data(current=False, deleted_only=True)
-        import_table.df = import_df
+        import_table.append(import_df)
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table)
@@ -2079,6 +2081,27 @@ class RecordTable(DataTable):
         except Exception as e:
             msg = self.format_log('failed to initialize the collection - {ERR}'.format(ERR=e))
             raise AttributeError(msg)
+
+        # Control flags that modify the table's behaviour
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
+                              'export': False, 'fill': False, 'sort': False}
+        else:
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('search', 0),
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
+                              'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, MOD=modifier))
+                    flag = False
+
+                self.modifiers[modifier] = flag
 
         try:
             self.record_type = entry['RecordType']
@@ -2275,11 +2298,27 @@ class ComponentTable(RecordTable):
         super().__init__(name, entry, parent)
         self.etype = 'component_table'
 
+        # Control flags that modify the table's behaviour
         try:
-            self.collection = mod_col.RecordCollection(name, entry)
-        except Exception as e:
-            msg = self.format_log('failed to initialize the collection - {ERR}'.format(ERR=e))
-            raise AttributeError(msg)
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
+                              'export': False, 'fill': False, 'sort': False, 'unassociated': False}
+        else:
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('search', 0),
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
+                              'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0),
+                              'unassociated': modifiers.get('unassociated', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, MOD=modifier))
+                    flag = False
+
+                self.modifiers[modifier] = flag
 
         try:
             self.association_rule = entry['AssociationRule']
@@ -2301,7 +2340,11 @@ class ComponentTable(RecordTable):
         id_col = collection.id_column
         columns = collection.dtypes
         import_df = collection.data(current=False, deleted_only=True)
-        current_ids = collection.row_ids(indices=import_df.index)
+        print('import data is:')
+        print(import_df)
+        current_ids = collection.row_ids(indices=import_df.index, deleted=True)
+        print('records previously deleted are:')
+        print(current_ids)
 
         logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
 
@@ -2314,7 +2357,7 @@ class ComponentTable(RecordTable):
                         }
 
         import_table = RecordTable(self.name, table_layout)
-        import_table.df = import_df
+        import_table.append(import_df)
 
         # Search for records without an existing reference to the provided reference type
         if modifiers['unassociated']:
@@ -2344,7 +2387,7 @@ class ComponentTable(RecordTable):
                     df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
 
                     # Add import dataframe to data table object
-                    import_table.collection.append(df)
+                    import_table.append(df)
 
         # Add relevant search parameters
         search_field = self.search_field
@@ -2364,13 +2407,12 @@ class ComponentTable(RecordTable):
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, params=search_params)
+        print('selected records are:')
+        print(select_df)
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
-        existing_indices = []
-        for index, record_id in select_ids.items():
-            if record_id in current_ids:
-                existing_indices.append(index)
+        existing_indices = collection.record_index(select_ids)
         logger.debug('DataTable {NAME}: removing selected records already stored in the table at rows {ROWS}'
                      .format(NAME=self.name, ROWS=existing_indices))
         select_df.drop(existing_indices, inplace=True, axis=0, errors='ignore')
@@ -4860,10 +4902,13 @@ class ActionButton:
         width, height = size
         bwidth = 1
 
+        # Element icon, if provided
+        icon_path = settings.get_icon_path(self.icon) if self.icon else None
+
         # Element layout
         elem_key = self.element_key
-        layout = sg.Button('', key=elem_key, image_data=self.icon, size=(width, height), disabled=disabled, pad=padding,
-                           border_width=bwidth, button_color=(text_col, bg_col),
+        layout = sg.Button('', key=elem_key, image_filename=icon_path, size=(width, height), pad=padding,
+                           disabled=disabled, border_width=bwidth, button_color=(text_col, bg_col),
                            mouseover_colors=(text_col, highlight_col),
                            tooltip=self.description, metadata={'visible': True, 'disabled': disabled})
 

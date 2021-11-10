@@ -455,6 +455,9 @@ class DataCollection:
         elif deleted_only:
             df = df.loc[deleted_indices]
 
+        # Remove the state fields from the data
+        df.drop(columns=[self._added_column, self._edited_column, self._deleted_column], inplace=True)
+
         return df
 
     def append(self, add_df, inplace: bool = True, new: bool = False):
@@ -812,6 +815,8 @@ class RecordCollection(DataCollection):
 
         if isinstance(record_ids, str):
             record_ids = [record_ids]
+        elif isinstance(record_ids, pd.Series):
+            record_ids = record_ids.tolist()
 
         indices = df.loc[df[self.id_column].isin(record_ids)].index.tolist()
 
@@ -839,11 +844,15 @@ class RecordCollection(DataCollection):
             if isinstance(indices, int):
                 indices = [indices]
 
+        print('searching for row IDs with indices: {}'.format(indices))
+        print('collection has indices:')
+        print(df.index)
+
         try:
             row_ids = df.loc[indices, id_field].tolist()
-        except KeyError:
-            logger.exception('DataCollection {NAME}: unable to return a list of row IDs - ID column "{COL}" '
-                             'not found in the collection'.format(NAME=self.name, COL=id_field))
+        except KeyError as e:
+            logger.exception('DataCollection {NAME}: unable to return a list of row IDs - {ERR}'
+                             .format(NAME=self.name, COL=id_field, ERR=e))
             row_ids = []
 
         return row_ids

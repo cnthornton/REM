@@ -2016,9 +2016,12 @@ def record_import_window(table, enable_new: bool = False):
 
         # Run table filter event
         elif event in (filter_key, filter_hkey):
+            print(values)
             for param in table.parameters:
                 # Set parameter values from window elements
                 param.format_value(values)
+                if param.has_value:
+                    print('parameter {} has value {}'.format(param.name, param.value))
 
             # Load the display records
             import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
@@ -2056,7 +2059,7 @@ def import_window(table, params: list = None):
         import_columns = None
     else:
         record_entry = settings.records.fetch_rule(record_type)
-        program_database = record_entry.program_database
+        program_database = record_entry.program_record
         import_rules = table.import_rules if table.import_rules else record_entry.import_rules
 
         table_statement = mod_db.format_tables(import_rules)
