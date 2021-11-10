@@ -330,7 +330,12 @@ class DataParameter:
                 display_value = ''
 
         elif dtype in settings.supported_bool_dtypes:
-            display_value = value
+            try:
+                display_value = int(value)
+            except ValueError:
+                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                display_value = ''
 
         else:
             display_value = str(value)
@@ -840,7 +845,8 @@ class DataParameterCombo(DataParameterSingle):
         super().__init__(name, entry)
 
         # Enforce supported data types for the dropdown parameter
-        supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + settings.supported_cat_dtypes
+        supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + \
+                           settings.supported_cat_dtypes + settings.supported_bool_dtypes
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))

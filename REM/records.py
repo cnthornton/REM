@@ -1950,7 +1950,9 @@ class DatabaseRecord:
             # Add modifier values
             modifiers = self.metadata
             for modifier_elem in modifiers:
-                values[modifier_elem.name] = modifier_elem.value
+                mod_value = modifier_elem.value
+                if not pd.isna(mod_value):
+                    values[modifier_elem.name] = mod_value
 
         # Add parameter values
         record_elements = self.modules
