@@ -154,6 +154,9 @@ class DataCollection:
         self._added_column = '_RowAdded_'
         self._edited_column = '_RowEdited_'
 
+        self._state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column,
+                              'added': self._added_column}
+
         self.name = name
 
         self.dtypes = {self._deleted_column: 'bool', self._edited_column: 'bool', self._added_column: 'bool'}
@@ -212,7 +215,7 @@ class DataCollection:
         df = self.df.copy()
 
         if df.empty:
-            return df
+            return []
 
         if del_column not in df.columns:
             df[del_column] = False
@@ -226,12 +229,12 @@ class DataCollection:
             except ValueError:
                 logger.warning('DataCollection {NAME}: unable to set the datatype of the deletion field "{COL}" to '
                                'boolean'.format(NAME=self.name, COL=del_column))
-                return df
+                return []
 
         logger.debug('DataCollection {NAME}: filtering deleted entries on deletion field "{COL}"'
                      .format(NAME=self.name, COL=del_column))
 
-        deleted_inds = df[df[del_column]].indices
+        deleted_inds = df[df[del_column]].index
 
         return deleted_inds
 
@@ -465,10 +468,7 @@ class DataCollection:
 
             new (bool): set the added state of the new data to True [Default: False].
         """
-        if inplace:
-            df = self.df
-        else:
-            df = self.df.copy()
+        df = self.df.copy()
 
         if add_df.empty:  # no data to add
             return df
@@ -489,6 +489,9 @@ class DataCollection:
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
                      .format(NAME=self.name, NROW=add_df.shape[0]))
         df = df.append(add_df, ignore_index=True)
+
+        if inplace:
+            self.df = df
 
         return df
 
@@ -521,7 +524,7 @@ class DataCollection:
         """
         Set the value for the state field at the given indices.
         """
-        state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column, 'added': self._added_column}
+        state_fields = self._state_fields
         try:
             column = state_fields[field]
         except KeyError:
@@ -742,7 +745,7 @@ class DataCollection:
                 df.loc[edited_indices, self._edited_column] = True
                 edited = True
 
-        # Replace existing column values with new values
+        # Replace existing column values with new values and set dependant values
         df.loc[indices, column] = values
         self._set_dependants(df=df)
 
@@ -826,7 +829,7 @@ class RecordCollection(DataCollection):
         """
         id_field = self.id_column
         if deleted:
-            df = self.data(all_rows=True)  # don't include deleted rows
+            df = self.data(current=False)  # don't include deleted rows
         else:
             df = self.data()
 
@@ -846,7 +849,7 @@ class RecordCollection(DataCollection):
         return row_ids
 
 
-class ReferenceCollection(RecordCollection):
+class ReferenceCollection(DataCollection):
     """
     Collections of record reference data.
     """
@@ -861,225 +864,56 @@ class ReferenceCollection(RecordCollection):
             entry (dict): attribute default values.
         """
         super(ReferenceCollection, self).__init__(name, entry)
-        self._reference_dtypes = {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
-                                  'RecordType': 'varchar', 'ReferenceType': 'varchar',
-                                  'IsApproved': 'bool', 'IsHardLink': 'bool', 'IsParent': 'bool', 'IsDeleted': 'bool'}
+        self._state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column,
+                              'added': self._added_column, 'approved': 'IsApproved', 'parent': 'IsParent',
+                              'link': 'IsHardLink'}
 
-        fields = self.dtypes
+        self.dtypes = {self._deleted_column: 'bool', self._edited_column: 'bool', self._added_column: 'bool',
+                       'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
+                       'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool', 'IsHardLink': 'bool',
+                       'IsParent': 'bool', 'IsDeleted': 'bool'}
 
-        try:
-            ref_map = entry['ReferenceColumns']
-        except KeyError:
-            ref_map = {}
+        self.df = pd.DataFrame(columns=list(self.dtypes))
 
-        self.reference_columns = {}
-        for column in ref_map:
-            if column not in fields:
-                msg = 'DataCollection {NAME}: no dtype specified for reference field "{COL}"'\
-                    .format(NAME=self.name, COL=column)
-                logger.error(msg)
-
-                continue
-
-            ref_col = ref_map[column]
-            if ref_col not in self._reference_dtypes:
-                msg = 'DataCollection {NAME}: reference field {COL} not in list of possible reference fields'\
-                    .format(NAME=self.name, COL=column)
-                logger.error(msg)
-
-                continue
-
-            self.reference_columns[column] = ref_map[column]
-
-        try:
-            self.association_rule = entry['AssociationRule']
-        except KeyError:
-            msg = 'missing required parameter "AssociationRule"'
-            logger.error(msg)
-
-            raise AttributeError(msg)
-
-        self.ref_df = pd.DataFrame(columns=list(self._reference_dtypes))
-
-    def append(self, add_data, add_ref: pd.DataFrame = None, inplace: bool = True, set_new: bool = False):
-        """
-        Add data to the collection.
-
-        Arguments:
-            add_data: new data to append to the collection.
-
-            add_ref: optional reference data to append to the collection along with the data.
-
-            inplace (bool): append to the dataframe in-place [Default: True].
-
-            set_new (bool): append the data as added rows [Default: False - initial added "state" will be set as False].
-        """
-        if inplace:
-            df = self.df
-            ref_df = self.ref_df
-        else:
-            df = self.df.copy()
-            ref_df = self.ref_df.copy()
-
-        if add_data.empty:  # no data to add
-            return df
-
-        # Convert add_data to dataframe, if necessary
-        if isinstance(add_data, pd.Series):
-            add_df = add_data.to_frame().T
-        elif isinstance(add_data, dict):
-            add_df = pd.DataFrame(add_data)
-        else:
-            add_df = add_data
-
-        # Add the "state" columns to the new data
-        add_df.loc[:, [self._added_column, self._edited_column, self._deleted_column]] = [set_new, False, False]
-
-        # Enforce conformity of the new data
-        add_df = self.enforce_conformity(add_df)
-
-        # Merge the configured reference columns with the records table
-        ref_map = self.ref_map
-        ref_df = self.ref_df.copy()
-
-        # Set index to record ID for updating
-        df.set_index('RecordID', inplace=True)
-        ref_df.set_index('RecordID', inplace=True)
-
-        # Rename reference columns to record columns using the reference map
-        mapped_df = ref_df[list(ref_map)].rename(columns=ref_map)
-
-        # Update record reference columns
-        drop_cols = [i for i in mapped_df.columns if i in df.columns]
-        df = df.drop(columns=drop_cols).join(mapped_df)
-        df.reset_index(inplace=True)
-
-        # Add new data to the table
-        logger.debug('DataCollection {NAME}: adding {NROW} rows to the collection'
-                     .format(NAME=self.name, NROW=add_df.shape[0]))
-        df = df.append(add_df, ignore_index=True)
-
-        return df
-
-    def record_index(self, record_ids, reference: bool = False):
-        """
-        Return a list of collection indices corresponding to the supplied record IDs.
-
-        Arguments:
-            record_ids: list of record IDs contained in the collection.
-
-            reference (bool): get indices from the reference data [Default: False - get indices from the record data].
-        """
-        if reference:
-            df = self.ref_df.copy()
-        else:
-            df = self.df.copy()
-
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
-
-        indices = df.loc[df[self.id_column].isin(record_ids)].index.tolist()
-
-        return indices
-
-    def set_state(self, field, flag, indices: list = None, inplace: bool = True, reference: bool = False):
-        """
-        Set the value for the state field at the given indices.
-        """
-        if reference:
-            state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column, 'added': self._added_column,
-                            'approved': 'IsApproved'}
-            df = self.ref_df
-        else:
-            state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column, 'added': self._added_column}
-            df = self.df
-
-        try:
-            column = state_fields[field]
-        except KeyError:
-            raise KeyError('field must be one of {}'.format(list(state_fields)))
-
-        if not indices:
-            indices = df.index
-
-        df.loc[indices, column] = flag
-
-        return df
-
-    def reset(self):
-        """
-        Reset the collection to default.
-        """
-        ref_cols = self._reference_dtypes
-
-        # Reset dynamic attributes
-        self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
-        self.ref_df = self._set_dtypes(df=pd.DataFrame(columns=list(ref_cols)), dtypes=ref_cols)
-
-    def merge(self, df: pd.DataFrame = None, ref_df: pd.DataFrame = None):
-        """
-        Merge the records table and the reference table on configured reference map columns.
-
-        Arguments:
-            df (DataFrame): records data [Default: use full records dataframe].
-
-            ref_df (DataFrame): record reference data [Default: use full reference dataframe].
-
-        Returns:
-            df (DataFrame): dataframe of records merged with their corresponding reference entries.
-        """
-        pd.set_option('display.max_columns', None)
-
-        ref_map = self.reference_columns
-        id_col = self.id_column
-
-        df = self.data() if df is None else df
-        ref_df = self.ref_df.copy() if ref_df is None else ref_df
-
-        # Reorder the references dataframe to match the order of the records in the records table
-        ref_df.set_index(id_col, inplace=True)
-        ref_df = ref_df.reindex(index=df[id_col])
-
-        # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
-        if df.shape[0] != ref_df.shape[0]:
-            logger.warning('BankAccount {NAME}: the records dataframe and reference dataframe of of unequal sizes'
-                           .format(NAME=self.name))
-            indices = df[df[id_col].isin(ref_df.index.tolist())].index
-        else:
-            indices = df.index.tolist()
-
-        # Update the configured references columns in the records dataframe to be the same as the columns in references
-        # dataframe
-        for column in ref_map:
-            mapped_col = ref_map[column]
-
-            new_values = ref_df[column].tolist()
-            self.update_field(mapped_col, new_values, indices=indices)
-
-    def update_reference(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None):
-        """
-        Add a record reference to the references dataframe.
-        """
-        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
-                    'IsChild', 'IsDeleted']
-
-        ref_values = [reference_id, datetime.datetime.now(), reftype, warning, approved, False, False, False]
-
-        self.ref_df.loc[self.ref_df['RecordID'] == record_id, ref_cols] = ref_values
-
-    def has_reference(self, record_id):
-        """
-        Confirm whether an account record is referenced.
-        """
-        ref_df = self.ref_df
-        reference = ref_df.loc[ref_df['RecordID'] == record_id, 'ReferenceID']
-
-        if reference.empty:
-            return False
-        elif pd.isna(reference.squeeze()):
-            return False
-        else:
-            return True
+#    def merge(self, df: pd.DataFrame = None, ref_df: pd.DataFrame = None):
+#        """
+#        Merge the records table and the reference table on configured reference map columns.
+#
+#        Arguments:
+#            df (DataFrame): records data [Default: use full records dataframe].
+#
+#            ref_df (DataFrame): record reference data [Default: use full reference dataframe].
+#
+#        Returns:
+#            df (DataFrame): dataframe of records merged with their corresponding reference entries.
+#        """
+#        pd.set_option('display.max_columns', None)
+#
+#        ref_map = self.reference_columns
+#        id_col = self.id_column
+#
+#        df = self.data() if df is None else df
+#        ref_df = self.ref_df.copy() if ref_df is None else ref_df
+#
+#        # Reorder the references dataframe to match the order of the records in the records table
+#        ref_df.set_index(id_col, inplace=True)
+#        ref_df = ref_df.reindex(index=df[id_col])
+#
+#        # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
+#        if df.shape[0] != ref_df.shape[0]:
+#            logger.warning('BankAccount {NAME}: the records dataframe and reference dataframe of of unequal sizes'
+#                           .format(NAME=self.name))
+#            indices = df[df[id_col].isin(ref_df.index.tolist())].index
+#        else:
+#            indices = df.index.tolist()
+#
+#        # Update the configured references columns in the records dataframe to be the same as the columns in references
+#        # dataframe
+#        for column in ref_map:
+#            mapped_col = ref_map[column]
+#
+#            new_values = ref_df[column].tolist()
+#            self.update_field(mapped_col, new_values, indices=indices)
 
 
 def format_value(value, dtype):

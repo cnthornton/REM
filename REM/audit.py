@@ -15,7 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
 import REM.database as mod_db
-import REM.elements_new as mod_elem
+import REM.elements as mod_elem
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
@@ -1019,11 +1019,11 @@ class AuditTransaction:
         else:
             self.bindings.extend(self.table.bindings)
 
-        #try:
-        #    filter_rules = entry['FilterRules']
-        #except KeyError:
-        #    filter_rules = {}
-        filter_rules = self.table.filter_rules
+        try:
+            filter_rules = entry['FilterRules']
+        except KeyError:
+            filter_rules = {}
+        #filter_rules = self.table.filter_rules
 
         self.filter_rules = {}
         table_columns = self.table.columns

@@ -1242,10 +1242,12 @@ class DatabaseRecord:
             self.title = self.name
 
         # Record header
+        #self.headers = []
         try:
             headers = entry['Header']
         except KeyError:
             headers = {}
+            #raise AttributeError('missing required configuration parameter "Header"')
 
         try:
             id_entry = headers[self.id_field]
@@ -1262,6 +1264,7 @@ class DatabaseRecord:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
         else:
+            #self.headers.append(param)
             self._record_id = param
             self.elements += param.elements
 
@@ -1279,6 +1282,7 @@ class DatabaseRecord:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
         else:
+            #self.headers.append(param)
             self._record_date = param
             self.elements += param.elements
 
@@ -1333,7 +1337,7 @@ class DatabaseRecord:
 
                     # Set the object type of the record element.
                     if etype == 'table':
-                        element_class = mod_elem.DataTable
+                        element_class = mod_elem.TableElement
                     elif etype == 'component_table':
                         element_class = mod_elem.ComponentTable
                     elif etype == 'refbox':
@@ -1396,12 +1400,14 @@ class DatabaseRecord:
         """
         Convenience method for returning the record ID of the record object.
         """
+        #param = self.fetch_header(self.id_field)
         return self._record_id.value
 
     def record_date(self):
         """
         Convenience method for returning the record date of the record object.
         """
+        #param = self.fetch_header(self.date_field)
         return self._record_date.value
 
     def initialize(self, data, new: bool = False, references: dict = None):
@@ -1418,6 +1424,7 @@ class DatabaseRecord:
                 references for the given association rule but will use the reference entries provided instead.
         """
         # pd.set_option('display.max_columns', None)
+        #headers = self.headers
         meta_params = self.metadata
         record_elements = self.modules
 
@@ -1441,6 +1448,11 @@ class DatabaseRecord:
         else:
             raise AttributeError('unknown object type provided to record class "{TYPE}"'.format(TYPE=self.name))
 
+        #if self.id_field not in record_data:
+        #    raise ImportError('input data is missing required column "{}"'.format(self.id_field))
+        #if self.date_field not in record_data:
+        #    raise ImportError('input data is missing required column "{}"'.format(self.date_field))
+
         logger.info('RecordType {NAME}: initializing record'.format(NAME=self.name))
         logger.debug('RecordType {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
 
@@ -1458,6 +1470,19 @@ class DatabaseRecord:
         else:
             self._record_date.format_value(record_date_value)
 
+        #for header in headers:
+        #    header_name = header.name
+
+        #    try:
+        #        value = record_data[header_name]
+        #    except KeyError:
+        #        logger.warning('RecordType {NAME}: input data is missing a value for header "{COL}"'
+        #                       .format(NAME=self.name, COL=header_name))
+        #    else:
+        #        logger.debug('RecordType {NAME}: initializing header "{PARAM}" with value "{VAL}"'
+        #                     .format(NAME=self.name, PARAM=header_name, VAL=value))
+        #        header.value = header.format_value({header.key_lookup('Element'): value})
+
         # Set metadata parameter values
         for meta_param in meta_params:
             param_name = meta_param.name
@@ -1473,7 +1498,7 @@ class DatabaseRecord:
                                  .format(NAME=self.name, PARAM=param_name, VAL=value))
                     meta_param.format_value(value)
 
-        # Populate the record elements with data
+        # Initialize the record elements
         record_id = self.record_id()
         if not record_id:
             raise ImportError('failed to initialize the record - no record ID found in the data provided')
@@ -1485,7 +1510,7 @@ class DatabaseRecord:
             etype = record_element.etype
 
             if etype == 'table':  # data table
-                table_columns = record_element.columns
+                table_columns = list(record_element.columns)
                 table_data = pd.Series(index=table_columns)
                 for table_column in table_columns:
                     try:
@@ -1493,7 +1518,7 @@ class DatabaseRecord:
                     except KeyError:
                         continue
 
-                record_element.append(table_data)
+                record_element.df = record_element.append(table_data)
 
             elif etype == 'component_table':  # component table
                 assoc_rule = record_element.association_rule
@@ -1516,7 +1541,7 @@ class DatabaseRecord:
                 # Load the component records
                 import_df = comp_entry.load_records(import_ids)
                 import_df = import_df[[i for i in import_df.columns if i in record_element.columns]]
-                record_element.append(import_df)
+                record_element.df = record_element.append(import_df)
 
             elif etype == 'refbox':  # reference box
                 assoc_rule = record_element.association_rule
@@ -1539,7 +1564,6 @@ class DatabaseRecord:
                 logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
                              .format(NAME=self.name, REF=element_name))
                 record_element.referenced = record_element.import_reference(ref_data)
-                #record_element.append(ref_data)
                 if record_element.referenced:
                     logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
                                 .format(NAME=self.name, REF=element_name))
@@ -1613,14 +1637,35 @@ class DatabaseRecord:
             unsaved_ids = comp_entry.get_unsaved_ids()
 
             ids_to_remove = []
-            comp_ids = record_element.row_ids()
-            for row_id in comp_ids:
-                if row_id in unsaved_ids:  # don't attempt to remove IDs if already in the database
-                    ids_to_remove.append(row_id)
+            for index, row in record_element.df.iterrows():
+                row_id = row[record_element.id_column]
+                if row_id not in unsaved_ids:  # don't attempt to remove IDs if already in the database
+                    continue
+
+                ids_to_remove.append(row_id)
 
             logger.debug('RecordType {NAME}: removing unsaved component IDs {IDS}'
                          .format(NAME=self.name, IDS=ids_to_remove))
             comp_entry.remove_unsaved_ids(record_ids=ids_to_remove)
+
+    def fetch_header(self, element, by_key: bool = False):
+        """
+        Fetch a record header element by name or event key.
+        """
+        if by_key is True:
+            element_type = element[1:-1].split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.headers]
+        else:
+            element_names = [i.name for i in self.headers]
+
+        if element in element_names:
+            index = element_names.index(element)
+            parameter = self.headers[index]
+        else:
+            raise KeyError('element {ELEM} not found in list of record {NAME} headers'
+                           .format(ELEM=element, NAME=self.name))
+
+        return parameter
 
     def fetch_element(self, identifier, by_key: bool = False, by_type: bool = False):
         """
@@ -1665,7 +1710,14 @@ class DatabaseRecord:
                          .format(NAME=self.name, KEY=identifier))
             element_names = [i.name for i in elements]
 
+        #if identifier in element_names:
+        #    index = element_names.index(identifier)
+        #    element = elements[index]
+        #else:
+        #    raise KeyError('element {ELEM} not found in list of record {NAME} elements'
+        #                   .format(ELEM=identifier, NAME=self.name))
         element = [elements[i] for i, j in enumerate(element_names) if j == identifier]
+
         if len(element) == 0:
             raise KeyError('element {ELEM} not found in list of record {NAME} elements'
                            .format(ELEM=identifier, NAME=self.name))
@@ -1776,35 +1828,22 @@ class DatabaseRecord:
             logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
                          .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
             if record_element.etype == 'component_table':
-                #elem_key = record_element.key_lookup('Element')
-                #add_key = record_element.key_lookup('Add')
-                #add_hkey = '{}+ADD+'.format(elem_key)
-                add_bttn = record_element.fetch_parameter('Add', filters=False)
-                add_key, add_hkey = add_bttn.key_lookup()
+                elem_key = record_element.key_lookup('Element')
+                add_key = record_element.key_lookup('Add')
+                add_hkey = '{}+ADD+'.format(elem_key)
                 if event in (add_key, add_hkey):
                     # Close options panel, if open
                     record_element.set_table_dimensions(window)
 
+                    default_values = self.export_values(header=False, references=False).to_dict()
                     try:
-                        record_data = self.create_components(record_element)
+                        record_element.add_row(record_date=self.record_date(), defaults=default_values)
                     except Exception as e:
-                        msg = ''
+                        msg = 'failed to run table add event'
                         logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                        mod_win2.popup_error(msg)
                     else:
-                        record_element.add_record(record_data)
-
                         record_element.update_display(window)
                         update_event = True
-                    #default_values = self.export_values(header=False, references=False).to_dict()
-                    #try:
-                    #    record_element.add_row(record_date=self.record_date(), defaults=default_values)
-                    #except Exception as e:
-                    #    msg = 'failed to run table add event'
-                    #    logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                    #else:
-                    #    record_element.update_display(window)
-                    #    update_event = True
                 else:
                     update_event = record_element.run_event(window, event, values)
             else:
@@ -1834,6 +1873,8 @@ class DatabaseRecord:
         logger.debug('Record {ID}: updating display header'.format(ID=record_id))
         self._record_id.update_display(window)
         self._record_date.update_display(window)
+        #for header in self.headers:
+        #    header.update_display(window)
 
         # Update the record elements
         record_values = self.export_values(header=False)
@@ -1884,45 +1925,6 @@ class DatabaseRecord:
 
         return all_passed
 
-    def create_components(self, component_table, record_data=None):
-        """
-        Create new component records.
-        """
-        header = component_table.columns
-        record_type = component_table.record_type
-        record_date = self.record_date()
-
-        if record_type is None:
-            msg = 'required attribute "RecordType" missing from the configuration'
-            raise AttributeError(msg)
-
-        # Create a new record object
-        if record_data is None:
-            record_data = pd.DataFrame(columns=header)
-        elif isinstance(record_data, dict):
-            record_data = pd.DataFrame(record_data)
-        elif isinstance(record_data, pd.Series):
-            record_data = record_data.to_frame().T
-
-        record_entry = settings.records.fetch_rule(record_type)
-        creation_date = [[record_date for _ in range(record_data.shape[0])]]
-        record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
-        if not record_id:
-            msg = 'unable to create an ID for the new record'
-            raise AssertionError(msg)
-
-        record_data['RecordID'] = record_id
-        record_data['RecordDate'] = creation_date
-
-        # Use record data to populate component fields when fields are shared between the component and record
-        defaults = self.export_values(header=False, references=False).to_dict()
-        for default_col in defaults:
-            if default_col in header:
-                default_value = defaults[default_col]
-                record_data[default_col] = default_value
-
-        return record_data
-
     def export_values(self, header: bool = True, references: bool = True, edited_only: bool = False):
         """
         Export record data as a table row.
@@ -1942,10 +1944,13 @@ class DatabaseRecord:
         if header:
             record_id = self._record_id
             record_date = self._record_date
+            #headers = self.headers
 
             # Add header values
             values[record_id.name] = record_id.value
             values[record_date.name] = record_date.value
+            #for header_elem in headers:
+            #    values[header_elem.name] = header_elem.value
 
             # Add modifier values
             modifiers = self.metadata
@@ -2145,8 +2150,7 @@ class DatabaseRecord:
                 logger.debug('Record {ID}: preparing export statements for all components in component table {COMP}'
                              .format(ID=record_id, COMP=comp_table.name))
                 comp_df = comp_table.data(all_rows=True)
-                #ref_data = comp_table.export_reference(record_id)
-                ref_data = comp_table.export_references(record_id)
+                ref_data = comp_table.export_reference(record_id)
             else:
                 if not comp_table.edited:  # don't prepare statements for tables that were not edited in any way
                     logger.debug('Record {ID}: no components from component table {COMP} will be exported'
@@ -2155,8 +2159,7 @@ class DatabaseRecord:
 
                 logger.debug('Record {ID}: preparing export statements for only the edited components in component '
                              'table {COMP}'.format(ID=record_id, COMP=comp_table.name))
-                #ref_data = comp_table.export_reference(record_id, edited_only=True)
-                ref_data = comp_table.export_references(record_id, edited_only=True)
+                ref_data = comp_table.export_reference(record_id, edited_only=True)
                 comp_df = comp_table.data(all_rows=True, edited_rows=True)
 
             if comp_df.empty:
@@ -2175,10 +2178,8 @@ class DatabaseRecord:
             # Fully remove deleted component records if parent-child relationship
             if pc:
                 # Remove records that should be deleted if reference association is parent-child
-                #deleted_df = comp_df[comp_df[comp_table.deleted_column]]
-                #deleted_ids = deleted_df[comp_table.id_column].tolist()
-                deleted_df = comp_table.data(all_rows=True, deleted_rows=True)
-                deleted_ids = comp_table.row_ids(indices=deleted_df.index)
+                deleted_df = comp_df[comp_df[comp_table.deleted_column]]
+                deleted_ids = deleted_df[comp_table.id_column].tolist()
                 if not deleted_df.empty:
                     statements = comp_entry.delete_database_records(deleted_ids, statements=statements)
 
@@ -2353,9 +2354,9 @@ class DatabaseRecord:
             for column in subset_df.columns:
                 try:
                     display_df[column] = comp_table.format_display_column(subset_df, column)
-                except Exception as e:
-                    logger.exception('{NAME}, Heading {SEC}: failed to format column "{COL}" - {ERR}'
-                                     .format(NAME=report_title, SEC=heading, COL=column, ERR=e))
+                except Exception:
+                    logger.exception('{NAME}, Heading {SEC}: failed to format column "{COL}"'
+                                     .format(NAME=report_title, SEC=heading, COL=column))
 
             # Index rows using grouping list in configuration
             try:
@@ -2386,7 +2387,7 @@ class DatabaseRecord:
             else:
                 if total_col in subset_df.columns:
                     try:
-                        col_total = comp_table.summarize_column(total_col, indices=subset_df.index.tolist())
+                        col_total = comp_table.summarize_column(total_col, df=subset_df)
                     except Exception as e:
                         logger.warning('{NAME}, Heading {SEC}: failed to summarize column "{COL}" - {ERR}'
                                        .format(NAME=report_title, SEC=heading, COL=total_col, ERR=e))
@@ -2470,27 +2471,21 @@ class DatabaseRecord:
         # Layout elements
 
         # Record header
-        #left_layout = []
-        #right_layout = []
-        #for param in self.headers:
-        #    if param.justification == 'right':
-        #        right_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
-        #    else:
-        #        left_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
+        left_layout = []
+        right_layout = []
+        for param in self.headers:
+            if param.justification == 'right':
+                right_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
+            else:
+                left_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
 
-        #header_key = self.key_lookup('Header')
-        #header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
-        #                         sg.Col([left_layout], background_color=bg_col, justification='l',
-        #                                element_justification='l', expand_x=True, vertical_alignment='c'),
-        #                         sg.Col([right_layout], background_color=bg_col, justification='r',
-        #                                element_justification='r', vertical_alignment='c')]],
-        #                       key=header_key, background_color=bg_col)
-        headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
-        headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
-        headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
         header_key = self.key_lookup('Header')
-        header_layout = sg.Col([headers], key=header_key, expand_x=True, background_color=bg_col, justification='l',
-                               vertical_alignment='c')
+        header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
+                                 sg.Col([left_layout], background_color=bg_col, justification='l',
+                                        element_justification='l', expand_x=True, vertical_alignment='c'),
+                                 sg.Col([right_layout], background_color=bg_col, justification='r',
+                                        element_justification='r', vertical_alignment='c')]],
+                               key=header_key, background_color=bg_col)
 
         # Create the layout for the record information panel
         sections = self.sections
