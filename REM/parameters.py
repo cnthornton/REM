@@ -377,7 +377,8 @@ class DataParameterSingle(DataParameter):
             aliases = settings.fetch_alias_definition(self.name)
 
         self.aliases = {}  # only str and int types can have aliases - aliases dict reversed during value formatting
-        if self.dtype in (settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes):
+        if self.dtype in (settings.supported_int_dtypes + settings.supported_cat_dtypes +
+                          settings.supported_str_dtypes + settings.supported_bool_dtypes):
             for alias in aliases:  # alias should have same datatype as the element
                 alias_value = aliases[alias]
                 self.aliases[format_value(alias, self.dtype)] = alias_value
@@ -397,35 +398,7 @@ class DataParameterSingle(DataParameter):
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        # Update the parameter window element
-        if self.hidden is False:
-            self.value = self.default
-            self.update_display(window)
-
-    def update_display(self, window):
-        """
-        Update the parameter display.
-        """
-        elem_key = self.key_lookup('Element')
-
-        # Update element text
-        display_value = self.format_display()
-        window[elem_key].set_tooltip(display_value)
-        window[elem_key].update(value=display_value)
-
-    def run_event(self, window, event, values):
-        """
-        Run a window event associated with the parameter.
-        """
-        if event in self.elements:
-            display_value = self.enforce_formatting(window, values, event)
-            window[event].update(value=display_value)
-
-    def enforce_formatting(self, window, values, elem_key):
+    def _enforce_formatting(self, window, values, elem_key):
         """
         Enforce the correct formatting of user input into the parameter element.
         """
@@ -601,6 +574,34 @@ class DataParameterSingle(DataParameter):
 
         return display_value
 
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = self.default
+            self.update_display(window)
+
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        elem_key = self.key_lookup('Element')
+
+        # Update element text
+        display_value = self.format_display()
+        window[elem_key].set_tooltip(display_value)
+        window[elem_key].update(value=display_value)
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        if event in self.elements:
+            display_value = self._enforce_formatting(window, values, event)
+            window[event].update(value=display_value)
+
     def format_value(self, values):
         """
         Set the value of the data element from user input.
@@ -623,10 +624,15 @@ class DataParameterSingle(DataParameter):
         else:
             input_value = values
 
+        print('parameter {} has initial input value: {}'.format(self.name, input_value))
+
         if input_value == '' or pd.isna(input_value):
+            self.value = None
+
             return None
 
         aliases_rev = {j: i for i, j in aliases.items()}
+        print('input value is: {}'.format(input_value))
         try:
             value_fmt = aliases_rev[input_value]
         except KeyError:
@@ -812,9 +818,9 @@ class DataParameterInput(DataParameterSingle):
             elif dtype in settings.supported_float_dtypes:
                 col_values = pd.to_numeric(df[column], errors='coerce')
             elif dtype in settings.supported_bool_dtypes:
-                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+                col_values = df[column].fillna(False).astype(np.bool_, errors='raise')
             else:
-                col_values = df[column].astype(np.object, errors='raise')
+                col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
             logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                          .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
@@ -862,18 +868,18 @@ class DataParameterCombo(DataParameterSingle):
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
-            self.combo_values = []
-        else:
-            self.combo_values = []
-            for combo_value in combo_values:
-                try:
-                    value_fmt = settings.format_value(combo_value, self.dtype)
-                except ValueError:
-                    msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
-                    mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                    logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                else:
-                    self.combo_values.append(value_fmt)
+            combo_values = []
+
+        self.combo_values = []
+        for combo_value in combo_values:
+            try:
+                value_fmt = settings.format_value(combo_value, self.dtype)
+            except ValueError:
+                msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
+                mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            else:
+                self.combo_values.append(value_fmt)
 
     def element_layout(self, size: tuple = None, bg_col: str = None):
         """
@@ -899,7 +905,8 @@ class DataParameterCombo(DataParameterSingle):
         display_value = self.format_display()
         print('initial display value for element {} is {}'.format(self.name, display_value))
 
-        values = [aliases[i] for i in combo_values if i in aliases]
+        values = [aliases.get(i, i) for i in combo_values]
+        print('combobox {} has values {}'.format(self.name, values))
         if '' not in values:  # the no selection option
             values.insert(0, '')
 
@@ -924,7 +931,10 @@ class DataParameterCombo(DataParameterSingle):
         value = self.value
 
         if dtype in settings.supported_bool_dtypes:
-            query_value = int(value)
+            try:
+                query_value = int(value)
+            except TypeError:
+                query_value = None
         else:
             query_value = value
 
@@ -957,9 +967,9 @@ class DataParameterCombo(DataParameterSingle):
             elif dtype in settings.supported_float_dtypes:
                 col_values = pd.to_numeric(df[column], errors='coerce')
             elif dtype in settings.supported_bool_dtypes:
-                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+                col_values = df[column].fillna(False).astype(np.bool_, errors='raise')
             else:
-                col_values = df[column].astype(np.object, errors='raise')
+                col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
             logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
@@ -972,7 +982,7 @@ class DataParameterCombo(DataParameterSingle):
         return df
 
 
-class DataParameterCheckbox(DataParameterSingle):
+class DataParameterCheckbox(DataParameter):
     """
     Checkbox parameter element object.
 
@@ -987,9 +997,7 @@ class DataParameterCheckbox(DataParameterSingle):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
-
-        if pd.isna(self.default):  # the default for checkbox elements is always False if not set in config
-            self.default = False
+        format_value = settings.format_value
 
         self.justification = 'right'
 
@@ -1001,6 +1009,27 @@ class DataParameterCheckbox(DataParameterSingle):
             logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'bool'
+
+        try:
+            default_value = entry['DefaultValue']
+        except KeyError:
+            default_value = False
+
+        try:
+            self.default = self.value = format_value(default_value, self.dtype)
+        except ValueError:
+            self.default = self.value = False
+
+        # Dynamic attributes
+        logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+                     'value {DEF}, and formatted value {VAL}'
+                     .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        pass
 
     def resize(self, window, size: tuple = None, pixels: bool = True):
         """
@@ -1030,6 +1059,17 @@ class DataParameterCheckbox(DataParameterSingle):
 #        desc_key = self.key_lookup('Description')
 #        window[desc_key].expand(expand_x=True)
 
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        elem_key = self.key_lookup('Element')
+
+        # Update element text
+        display_value = self.format_display()
+        window[elem_key].set_tooltip(display_value)
+        window[elem_key].update(value=display_value)
+
     def element_layout(self, size: tuple = None, bg_col: str = None):
         """
         Create the type-specific layout for the value element of the parameter.
@@ -1055,6 +1095,72 @@ class DataParameterCheckbox(DataParameterSingle):
                               metadata={'value': display_value, 'disabled': disabled})]
 
         return layout
+
+    def format_value(self, values):
+        """
+        Set the value of the data element from user input.
+
+        Arguments:
+            values: GUI element values or a single input value.
+        """
+        dtype = self.dtype
+
+        if isinstance(values, dict):
+            elem_key = self.key_lookup('Element')
+            try:
+                input_value = values[elem_key]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                               .format(NAME=self.name))
+
+                return self.value
+        else:
+            input_value = values
+
+        print('parameter {} has initial input value: {}'.format(self.name, input_value))
+
+        if input_value == '' or pd.isna(input_value):
+            self.value = None
+
+            return None
+
+        try:
+            value_fmt = settings.format_value(input_value, dtype)
+        except ValueError:
+            logger.warning('DataParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
+                           .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
+
+            return self.value
+
+        self.value = value_fmt
+
+        return value_fmt
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        value = self.value
+
+        if not self.has_value():
+            return ''
+
+        display_value = self.format_display_value(value)
+
+        logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+                     .format(NAME=self.name, VAL=value, DISPLAY=display_value))
+
+        return display_value
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        value = self.value
+        if pd.isna(value) or value == '':
+            return False
+        else:
+            return True
 
     def query_statement(self, column):
         """
@@ -1083,7 +1189,6 @@ class DataParameterCheckbox(DataParameterSingle):
         Use the parameter value to filter a dataframe.
         """
         param_value = self.value
-        dtype = self.dtype
         column = self.name
 
         if not param_value:  # don't filter on NA values or False values
@@ -1093,19 +1198,10 @@ class DataParameterCheckbox(DataParameterSingle):
             return df
 
         try:
-            if dtype in settings.supported_date_dtypes:
-                col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
-            elif dtype in settings.supported_int_dtypes:
-                col_values = pd.to_numeric(df[column].fillna(0), errors='coerce', downcast='integer')
-            elif dtype in settings.supported_float_dtypes:
-                col_values = pd.to_numeric(df[column], errors='coerce')
-            elif dtype in settings.supported_bool_dtypes:
-                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
-            else:
-                col_values = df[column].astype(np.object, errors='raise')
+            col_values = df[column].fillna(False).astype(np.bool_, errors='raise')
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
-                         .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            logger.exception('DataParameter {NAME}: unable to set column {NAME} to parameter data type bool - {ERR}'
+                             .format(NAME=column, ERR=e))
             col_values = df[column]
 
         logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
