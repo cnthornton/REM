@@ -146,8 +146,7 @@ class BankRule:
 
         # Bind account table hotkeys
         for acct in self.accts:
-            acct.table.bind_keys(window)
-            acct.assoc_table.bind_keys(window)
+            acct.bind_keys(window)
 
     def events(self):
         """
@@ -243,12 +242,11 @@ class BankRule:
         if current_acct:
             acct = self.fetch_account(current_acct)
             acct_keys = acct.bindings
-            link_key = acct.key_lookup('Link')
-            link_hkey = '{}+LINK+'.format(acct.get_table().key_lookup('Element'))
+            link_bttn = acct.table.fetch_parameter('Link', filters=False)
+            link_key, link_hkey = link_bttn.key_lookup()
         else:
             acct_keys = []
-            link_key = None
-            link_hkey = None
+            link_key = link_hkey = None
 
         if current_assoc:
             assoc_acct = self.fetch_account(current_assoc)
@@ -1604,38 +1602,10 @@ class BankAccount:
         except KeyError:
             table_entry = record_entry.import_table
 
-        action_bttns = {'Approve': {'Key': self.key_lookup('Approve'),
-                                    'Icon': mod_const.TBL_APPROVE_ICON,
-                                    'Description': 'Approve record (CTRL+A)',
-                                    'Shortcut': 'Control-A'},
-                        'Link': {'Key': self.key_lookup('Link'),
-                                 'Icon': mod_const.TBL_LINK_ICON,
-                                 'Description': 'Link records (CTRL+L)',
-                                 'Shortcut': 'Control-L'},
-                        'Reset': {'Key': self.key_lookup('Reset'),
-                                  'Icon': mod_const.TBL_RESET_ICON,
-                                  'Description': 'Reset record status (CTRL+R)',
-                                  'Shortcut': 'Control-R'}}
-
-        table_entry['CustomActions'] = action_bttns
-
         self.table = mod_elem.RecordTable(name, table_entry)
         self.bindings.extend(self.table.bindings)
 
-        elem_key = self.table.key_lookup('Element')
-        approve_hkey = '{}+APPROVE+'.format(elem_key)
-        reset_hkey = '{}+RESET+'.format(elem_key)
-        link_hkey = '{}+LINK+'.format(elem_key)
-        self.bindings.extend([approve_hkey, reset_hkey, link_hkey])
-
-        modifiers = table_entry['Modifiers']
-        modifiers['open'] = 1
-        modifiers['edit'] = 1
-        modifiers['import'] = 0
-        modifiers['delete'] = 0
-        modifiers['fill'] = 0
-        table_entry['Modifiers'] = modifiers
-        table_entry['CustomActions'] = {}
+        table_entry['ActionButtons'] = {}
         self.assoc_table = mod_elem.RecordTable(name, table_entry)
         self.bindings.extend(self.assoc_table.bindings)
 
@@ -1757,10 +1727,9 @@ class BankAccount:
         """
         Add hotkey bindings to the data element.
         """
-        elem_key = self.table.key_lookup('Element')
-        window[elem_key].bind('<Control-a>', '+APPROVE+')
-        window[elem_key].bind('<Control-r>', '+RESET+')
-        window[elem_key].bind('<Control-l>', '+LINK+')
+        # Bind account and association table hotkeys
+        self.table.bind_keys(window)
+        self.assoc_table.bind_keys(window)
 
     def get_table(self):
         """
@@ -1802,10 +1771,12 @@ class BankAccount:
         table = self.get_table()
         table_keys = table.bindings
         tbl_key = table.key_lookup('Element')
-        approve_key = self.key_lookup('Approve')
-        approve_hkey = '{}+APPROVE+'.format(tbl_key)
-        reset_key = self.key_lookup('Reset')
-        reset_hkey = '{}+RESET+'.format(tbl_key)
+
+        approve_bttn = table.fetch_parameter('Approve', filters=False)
+        approve_key, approve_hkey = approve_bttn.key_lookup()
+
+        reset_bttn = table.fetch_parameter('Reset', filters=False)
+        reset_key, reset_hkey = reset_bttn.key_lookup()
 
         # Return values
         reference_indices = None
@@ -1841,7 +1812,6 @@ class BankAccount:
                                  .format(NAME=table.name, IND=index))
                     if can_open:
                         ref_df = self.ref_df
-                        #level = 0 if self.primary else 1
                         level = 1
 
                         record = table.load_record(index, level=level, savable=False,
