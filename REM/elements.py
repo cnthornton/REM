@@ -231,7 +231,7 @@ class DataTable(RecordElement):
             self.modifiers = {'open': True, 'edit': False, 'search': False, 'summary': False, 'filter': False,
                               'export': False, 'fill': False, 'sort': False}
         else:
-            self.modifiers = {'open': modifiers.get('open', 1), 'edit': modifiers.get('search', 0),
+            self.modifiers = {'open': modifiers.get('open', 1), 'edit': modifiers.get('edit', 0),
                               'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
                               'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
                               'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0)}
@@ -869,7 +869,9 @@ class DataTable(RecordElement):
                 msg = 'failed to run table import event'
                 logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             else:
-                collection.append(import_rows)
+                if not import_rows.empty:
+                    collection.append(import_rows)
+
                 update_event = True
 
         if update_event:
@@ -1056,7 +1058,8 @@ class DataTable(RecordElement):
                         .format(NAME=self.name, COL=search_col)
                     logger.warning(msg)
         else:
-            df = collection.data(current=(not all_rows), edited_only=edited_rows, deleted_only=deleted_rows,
+            current = not all_rows if indices is None else False
+            df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
                                  added_only=added_rows, indices=indices)
 
         return df
@@ -1225,11 +1228,15 @@ class DataTable(RecordElement):
             raise KeyError(msg)
 
         dtype = display_col.dtype
+        print('display column {} has data type {}'.format(column, dtype))
         if is_float_dtype(dtype) and self.collection.dtypes[column] == 'money':
+            print('display column is a money column')
             display_col = display_col.apply(settings.format_display_money)
         elif is_datetime_dtype(dtype):
+            print('display column is a datetime column')
             display_col = display_col.apply(settings.format_display_date)
         elif is_bool_dtype(dtype):
+            print('display column is a boolean column')
             display_col = display_col.apply(lambda x: '✓' if x is True else '')
         elif is_integer_dtype(dtype) or is_string_dtype(dtype):
             if column in aliases:
@@ -1965,7 +1972,7 @@ class DataTable(RecordElement):
         import_table = DataTable(self.name, table_layout)
 
         import_df = collection.data(current=False, deleted_only=True)
-        import_table.append(import_df)
+        import_table.append(import_df, reindex=False)
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table)
@@ -1980,7 +1987,7 @@ class DataTable(RecordElement):
 
         return select_df
 
-    def append(self, add_df, inplace: bool = True, new: bool = False):
+    def append(self, add_df, inplace: bool = True, new: bool = False, reindex: bool = True):
         """
         Add data to the table collection.
 
@@ -1990,8 +1997,10 @@ class DataTable(RecordElement):
             inplace (bool): append to the dataframe in-place [Default: True].
 
             new (bool): append the data as added rows [Default: False - initial added "state" will be set as False].
+
+            reindex (bool): reset the index after appending the new rows to the table [Default: True].
         """
-        df = self.collection.append(add_df, inplace=inplace, new=new)
+        df = self.collection.append(add_df, inplace=inplace, new=new, reindex=reindex)
         print('data after appending to the collection:')
         print(self.collection.df)
 
@@ -2089,7 +2098,7 @@ class RecordTable(DataTable):
             self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
                               'export': False, 'fill': False, 'sort': False}
         else:
-            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('search', 0),
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
                               'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
                               'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
                               'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0)}
@@ -2157,6 +2166,8 @@ class RecordTable(DataTable):
                 msg = 'unable to update row {IND} values'.format(IND=index)
                 logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             else:
+                print('updating table collection at entry {} with values:'.format(index))
+                print(record_values)
                 update_event = collection.update_entry(index, record_values)
 
         return update_event
@@ -2195,6 +2206,8 @@ class RecordTable(DataTable):
         """
         collection = self.collection
 
+        if isinstance(record_data, pd.Series):  # need to convert series to dataframe first
+            record_data = record_data.to_frame().T
         record_data = collection.enforce_conformity(record_data).squeeze()
 
         try:
@@ -2305,7 +2318,7 @@ class ComponentTable(RecordTable):
             self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
                               'export': False, 'fill': False, 'sort': False, 'unassociated': False}
         else:
-            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('search', 0),
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
                               'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
                               'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
                               'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0),
@@ -2413,9 +2426,11 @@ class ComponentTable(RecordTable):
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
         existing_indices = collection.record_index(select_ids)
-        logger.debug('DataTable {NAME}: removing selected records already stored in the table at rows {ROWS}'
-                     .format(NAME=self.name, ROWS=existing_indices))
-        select_df.drop(existing_indices, inplace=True, axis=0, errors='ignore')
+        existing_ids = collection.row_ids(existing_indices, deleted=True)
+
+        logger.debug('DataTable {NAME}: removing selected records {IDS} already stored in the table at rows {ROWS}'
+                     .format(NAME=self.name, IDS=existing_ids, ROWS=existing_indices))
+        select_df.drop(select_df.loc[select_df[id_col].isin(existing_ids)].index, inplace=True, axis=0, errors='ignore')
 
         # Change deleted column of existing selected records to False
         logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '

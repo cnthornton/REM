@@ -2057,6 +2057,8 @@ def import_window(table, params: list = None):
         enable_search = False
         table_statement = None
         import_columns = None
+        program_database = False
+        import_rules = None
     else:
         record_entry = settings.records.fetch_rule(record_type)
         program_database = record_entry.program_record
@@ -2200,6 +2202,8 @@ def import_window(table, params: list = None):
     layout = None
     window = None
     gc.collect()
+
+    print('indices selected from the table are: {}'.format(select_index))
 
     try:
         return table.data(indices=select_index)

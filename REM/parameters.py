@@ -1031,6 +1031,15 @@ class DataParameterCheckbox(DataParameter):
         """
         pass
 
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        # Update the parameter window element
+        if self.hidden is False:
+            self.value = self.default
+            self.update_display(window)
+
     def resize(self, window, size: tuple = None, pixels: bool = True):
         """
         Resize the checkbox parameter elements.
