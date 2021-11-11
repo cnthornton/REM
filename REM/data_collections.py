@@ -374,6 +374,7 @@ class DataCollection:
             values (DataFrame): single row dataframe containing row values to use to update the dataframe at the
                given index.
         """
+        pd.set_option('display.max_columns', None)
         df = self.df
         header = df.columns.tolist()
 
@@ -391,12 +392,14 @@ class DataCollection:
         new_values = self.enforce_conformity(values)[shared_cols]
 
         edited_rows = set()
+        edited_cols = []
         for row_ind, row in new_values.iterrows():
             for column, row_value in row.iteritems():
                 orig_value = df.loc[row_ind, column]
                 if row_value != orig_value:
                     df.at[index, column] = row_value
                     edited_rows.add(row_ind)
+                    edited_cols.append(column)
 
         edited = False
         if len(edited_rows) > 0:
@@ -405,12 +408,28 @@ class DataCollection:
             for edited_ind in edited_rows:
                 df.loc[edited_ind, edited_col] = True
 
+        for column in edited_cols:
+            dtype = self.dtypes[column]
+            current_vals = df[column]
+            try:
+                column_values = format_values(current_vals, dtype)
+            except Exception as e:
+                logger.exception('DataCollection {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
+                                 .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            else:
+                try:
+                    df.loc[:, column] = column_values
+                except ValueError as e:
+                    logger.exception('DataTable {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
+                                     .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+
         return edited
 
     def enforce_conformity(self, add_df):
         """
         Enforce conformity with the collection data for a new set of data.
         """
+
         # Set default values for the data
         add_df = self._set_defaults(df=add_df)
         add_df = self._set_dependants(df=add_df)
@@ -441,10 +460,14 @@ class DataCollection:
         """
         df = self.df.copy()
 
+        if current and indices is not None:
+            logger.warning('the current and indices arguments are mutually exclusive - running as current')
+
         deleted_indices = self._deleted_rows()
         if current:
             df.drop(deleted_indices, inplace=True)
         elif indices is not None:
+            print('selecting collection entries on indices: {}'.format(indices))
             df = df.loc[indices]
 
         # Filter on edited rows, if desired
@@ -460,7 +483,7 @@ class DataCollection:
 
         return df
 
-    def append(self, add_df, inplace: bool = True, new: bool = False):
+    def append(self, add_df, inplace: bool = True, new: bool = False, reindex: bool = True):
         """
         Add data to the collection.
 
@@ -470,6 +493,8 @@ class DataCollection:
             inplace (bool): append to the dataframe in-place [Default: True].
 
             new (bool): set the added state of the new data to True [Default: False].
+
+            reindex (bool): reset collection entry indices after append.
         """
         df = self.df.copy()
 
@@ -491,7 +516,7 @@ class DataCollection:
         # Add new data to the table
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
                      .format(NAME=self.name, NROW=add_df.shape[0]))
-        df = df.append(add_df, ignore_index=True)
+        df = df.append(add_df, ignore_index=reindex)
 
         if inplace:
             self.df = df
@@ -689,6 +714,17 @@ class DataCollection:
         Reset the collection to default.
         """
         self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
+
+    def set_index(self, indices):
+        """
+        Set the index for the collection entries.
+        """
+        df = self.df
+
+        if isinstance(indices, list):
+            indices = pd.Index(indices)
+
+        df.set_index(indices)
 
     def update_entry(self, index, values):
         """
