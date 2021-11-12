@@ -870,11 +870,13 @@ class DataTable(RecordElement):
                 logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             else:
                 if not import_rows.empty:
-                    collection.append(import_rows)
+                    collection.append(import_rows, new=True)
 
                 update_event = True
 
         if update_event:
+            self.edited = True
+
             # Update the display table to show the new table values
             self.update_display(window)
 
@@ -1956,7 +1958,7 @@ class DataTable(RecordElement):
 
         return mod_row
 
-    def import_rows(self):
+    def import_rows(self, import_df: pd.DataFrame = None):
         """
         Import one or more records through the record import window.
         """
@@ -1967,19 +1969,20 @@ class DataTable(RecordElement):
                         'RowColor': self.row_color, 'Widths': self.widths, 'Description': self.description,
                         'SortBy': self.sort_on, 'FilterParameters': self.filter_entry, 'SearchField': self.search_field,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
-                        'HiddenColumns': self.hidden_columns
+                        'HiddenColumns': self.hidden_columns,
+                        'DependantColumns': collection.dependant_columns, 'Default': collection.default
                         }
         import_table = DataTable(self.name, table_layout)
 
-        import_df = collection.data(current=False, deleted_only=True)
+        if import_df is None:
+            import_df = collection.data(current=False, deleted_only=True)
+
         import_table.append(import_df, reindex=False)
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table)
 
         if not select_df.empty:
-            self.edited = True
-
             # Change deleted column of existing selected records to False
             logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
                          'False'.format(NAME=self.name))
@@ -2169,6 +2172,7 @@ class RecordTable(DataTable):
                 print('updating table collection at entry {} with values:'.format(index))
                 print(record_values)
                 update_event = collection.update_entry(index, record_values)
+                print('event load record was an update event: {}'.format(update_event))
 
         return update_event
 
@@ -2223,12 +2227,13 @@ class RecordTable(DataTable):
         try:
             record_values = record.export_values()
         except AttributeError:  # record creation was cancelled
-            pass
+            return False
         else:
             logger.debug('DataTable {NAME}: appending values {VALS} to the table'
                          .format(NAME=self.name, VALS=record_values))
             collection.append(record_values, inplace=True, new=True)
-            self.edited = True
+
+        return True
 
     def load_record(self, index, level: int = None, references: dict = None, savable: bool = True):
         """
@@ -2341,7 +2346,7 @@ class ComponentTable(RecordTable):
 
             raise AttributeError(msg)
 
-    def import_rows(self):
+    def import_rows(self, import_df: pd.DataFrame = None):
         """
         Import one or more records through the record import window.
         """
@@ -2352,7 +2357,9 @@ class ComponentTable(RecordTable):
         collection = self.collection
         id_col = collection.id_column
         columns = collection.dtypes
-        import_df = collection.data(current=False, deleted_only=True)
+
+        if import_df is None:
+            import_df = collection.data(current=False, deleted_only=True)
         print('import data is:')
         print(import_df)
         current_ids = collection.row_ids(indices=import_df.index, deleted=True)
@@ -2366,7 +2373,8 @@ class ComponentTable(RecordTable):
                         'RecordType': record_type, 'Description': self.description,
                         'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
-                        'HiddenColumns': self.hidden_columns, 'ImportRules': self.import_rules
+                        'HiddenColumns': self.hidden_columns, 'ImportRules': self.import_rules,
+                        'DependantColumns': collection.dependant_columns, 'Default': collection.default
                         }
 
         import_table = RecordTable(self.name, table_layout)
@@ -2382,8 +2390,7 @@ class ComponentTable(RecordTable):
 
             # Import the entries from the reference table with record references unset
             try:
-                ref_ids = record_entry.search_unreferenced_ids(rule_name)
-                df = record_entry.load_records(ref_ids)
+                df = record_entry.load_unreferenced_records(rule_name)
             except Exception as e:
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
                 logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -2437,9 +2444,6 @@ class ComponentTable(RecordTable):
                      'False'.format(NAME=self.name))
         collection.set_state('deleted', False, indices=existing_indices)
 
-        if not select_df.empty:
-            self.edited = True
-
         return select_df
 
     def export_references(self, record_id, edited_only: bool = False):
@@ -2453,6 +2457,8 @@ class ComponentTable(RecordTable):
         """
         collection = self.collection
         ref_df = collection.as_reference(edited_only=edited_only)
+        if ref_df.empty:
+            return ref_df
 
         ref_df.loc[:, 'RecordID'] = record_id
         ref_df.loc[:, 'RecordType'] = self.parent
