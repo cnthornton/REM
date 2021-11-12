@@ -318,11 +318,11 @@ class RecordEntry:
 
         # Set column data types
         bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool, errors='ignore')
+        df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
 
         return df
 
-    def search_unreferenced_ids(self, rule_name):
+    def search_unreferenced_ids_old(self, rule_name):
         """
         Extract all record IDs from the reference database table that do not have a record reference for the given
         association rule.
@@ -357,13 +357,53 @@ class RecordEntry:
         try:
             import_ids = import_df.iloc[:, 0].values.tolist()  # first column
         except IndexError as e:
-            msg = 'unable to import unreferenced records for association rule {RULE} - {ERR}'\
+            msg = 'unable to import unreferenced records for association rule {RULE} - {ERR}' \
                 .format(RULE=rule_name, ERR=e)
             logger.error(msg)
 
             raise ImportError(msg)
 
         return import_ids
+
+    def load_unreferenced_records(self, rule_name):
+        """
+        Load entry records that do not have a record reference for the given association rule.
+        """
+        association_rules = self.association_rules
+        import_rules = self.import_rules
+
+        try:
+            rule = association_rules[rule_name]
+        except KeyError:
+            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                .format(RULE=rule_name)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        is_primary = rule['Primary']
+        reference_table = rule['ReferenceTable']
+
+        if not is_primary:  # records are used as references, not primary records
+            msg = 'unable to import unreferenced records - {TYPE} records must be the primary records in reference ' \
+                  'table {TBL}'.format(TYPE=self.name, TBL=reference_table)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        # Import reference entries related to record_id
+        id_col = mod_db.get_import_column(import_rules, 'RecordID')
+        columns = mod_db.format_import_columns(import_rules)
+        filters = mod_db.format_import_filters(import_rules)
+        filters_clause = '{}.RefNo IS NULL'.format(reference_table)
+        filters.append(filters_clause)
+        import_rules[reference_table] = {'Columns': {'RefNo': 'RefNo'},
+                                         'Join': ["LEFT JOIN", "{} = {}.DocNo".format(id_col, reference_table)]}
+        table_statement = mod_db.format_tables(import_rules)
+        import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+                                 prog_db=True)
+
+        return import_df
 
     def confirm_saved(self, id_list, id_field: str = 'RecordID', table: str = None):
         """
@@ -1770,8 +1810,12 @@ class DatabaseRecord:
                 #elem_key = record_element.key_lookup('Element')
                 #add_key = record_element.key_lookup('Add')
                 #add_hkey = '{}+ADD+'.format(elem_key)
-                add_bttn = record_element.fetch_parameter('Add', filters=False)
-                add_key, add_hkey = add_bttn.key_lookup()
+                try:
+                    add_bttn = record_element.fetch_parameter('Add', filters=False)
+                    add_key, add_hkey = add_bttn.key_lookup()
+                except KeyError:
+                    add_key = add_hkey = None
+
                 if event in (add_key, add_hkey):
                     # Close options panel, if open
                     record_element.set_table_dimensions(window)
@@ -1783,19 +1827,9 @@ class DatabaseRecord:
                         logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                         mod_win2.popup_error(msg)
                     else:
-                        record_element.add_record(record_data)
-
-                        record_element.update_display(window)
-                        update_event = True
-                    #default_values = self.export_values(header=False, references=False).to_dict()
-                    #try:
-                    #    record_element.add_row(record_date=self.record_date(), defaults=default_values)
-                    #except Exception as e:
-                    #    msg = 'failed to run table add event'
-                    #    logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                    #else:
-                    #    record_element.update_display(window)
-                    #    update_event = True
+                        update_event = record_element.add_record(record_data)
+                        if update_event:
+                            record_element.update_display(window)
                 else:
                     update_event = record_element.run_event(window, event, values)
             else:
@@ -1887,16 +1921,18 @@ class DatabaseRecord:
             msg = 'required attribute "RecordType" missing from the configuration'
             raise AttributeError(msg)
 
+        record_entry = settings.records.fetch_rule(record_type)
+
         # Create a new record object
         if record_data is None:
-            record_data = pd.DataFrame(columns=header)
-        elif isinstance(record_data, dict):
-            record_data = pd.DataFrame(record_data)
-        elif isinstance(record_data, pd.Series):
-            record_data = record_data.to_frame().T
+            record_data = pd.Series(index=header)
+            creation_date = record_date
+        else:
+            if isinstance(record_data, pd.DataFrame):
+                creation_date = [record_date for _ in range(record_data.shape[0])]
+            else:
+                creation_date = record_date
 
-        record_entry = settings.records.fetch_rule(record_type)
-        creation_date = [[record_date for _ in range(record_data.shape[0])]]
         record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
         if not record_id:
             msg = 'unable to create an ID for the new record'
@@ -2135,24 +2171,27 @@ class DatabaseRecord:
             comp_entry = settings.records.fetch_rule(comp_type)
 
             if self.new or save_all:
-                logger.debug('Record {ID}: preparing export statements for all components in component table {COMP}'
+                logger.debug('Record {ID}: preparing export statements for all components in component table "{COMP}"'
                              .format(ID=record_id, COMP=comp_table.name))
-                comp_df = comp_table.data(all_rows=True)
-                #ref_data = comp_table.export_reference(record_id)
+                #comp_df = comp_table.data(all_rows=True)
+                exist_df = comp_table.data()
                 ref_data = comp_table.export_references(record_id)
             else:
                 if not comp_table.edited:  # don't prepare statements for tables that were not edited in any way
-                    logger.debug('Record {ID}: no components from component table {COMP} will be exported'
+                    logger.debug('Record {ID}: no components from component table "{COMP}" will be exported'
                                  .format(ID=record_id, COMP=comp_table.name))
                     continue
 
                 logger.debug('Record {ID}: preparing export statements for only the edited components in component '
                              'table {COMP}'.format(ID=record_id, COMP=comp_table.name))
-                #ref_data = comp_table.export_reference(record_id, edited_only=True)
+                #comp_df = comp_table.data(all_rows=True, edited_rows=True)
                 ref_data = comp_table.export_references(record_id, edited_only=True)
-                comp_df = comp_table.data(all_rows=True, edited_rows=True)
+                exist_df = comp_table.data(edited_rows=True)
 
-            if comp_df.empty:
+            deleted_df = comp_table.data(all_rows=True, deleted_rows=True)
+
+            #if comp_df.empty:
+            if deleted_df.empty and exist_df.empty:
                 logger.debug('Record {ID}: no components in component table {COMP} available to export'
                              .format(ID=record_id, COMP=comp_table.name))
                 continue
@@ -2160,8 +2199,10 @@ class DatabaseRecord:
             logger.debug('Record {ID}: preparing statements for component table "{TBL}"'
                          .format(ID=record_id, TBL=comp_table.name))
 
-            if comp_table.modifiers['add']:  # component records can be created and deleted through parent record
-                pc = True  # parent-child relationship
+            assoc_rule_name = comp_table.association_rule
+            assoc_rule = record_entry.association_rules.get(assoc_rule_name)
+            if assoc_rule['AssociationType'] == 'parent':  # record is a parent to the component records
+                pc = True
             else:
                 pc = False
 
@@ -2170,7 +2211,6 @@ class DatabaseRecord:
                 # Remove records that should be deleted if reference association is parent-child
                 #deleted_df = comp_df[comp_df[comp_table.deleted_column]]
                 #deleted_ids = deleted_df[comp_table.id_column].tolist()
-                deleted_df = comp_table.data(all_rows=True, deleted_rows=True)
                 deleted_ids = comp_table.row_ids(indices=deleted_df.index)
                 if not deleted_df.empty:
                     statements = comp_entry.delete_database_records(deleted_ids, statements=statements)
@@ -2188,10 +2228,9 @@ class DatabaseRecord:
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             # Prepare transaction statements for the component records
-            exist_df = comp_df[~comp_df[comp_table.deleted_column]]  # don't update removed references
+            #exist_df = comp_df[~comp_df[comp_table.deleted_column]]  # don't update removed references
             try:
-                statements = comp_entry.save_database_records(exist_df, id_field=comp_table.id_column,
-                                                              statements=statements)
+                statements = comp_entry.save_database_records(exist_df, statements=statements)
             except Exception as e:
                 msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
                 logger.error(msg)

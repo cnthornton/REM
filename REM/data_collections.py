@@ -869,7 +869,7 @@ class RecordCollection(DataCollection):
             deleted (bool): include deleted rows [Default: False].
         """
         id_field = self.id_column
-        if deleted:
+        if deleted or len(indices) > 0:
             df = self.data(current=False)  # don't include deleted rows
         else:
             df = self.data()
@@ -910,13 +910,13 @@ class ReferenceCollection(DataCollection):
         """
         super(ReferenceCollection, self).__init__(name, entry)
         self._state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column,
-                              'added': self._added_column, 'approved': 'IsApproved', 'parent': 'IsParent',
+                              'added': self._added_column, 'approved': 'IsApproved', 'child': 'IsChild',
                               'link': 'IsHardLink'}
 
         self.dtypes = {self._deleted_column: 'bool', self._edited_column: 'bool', self._added_column: 'bool',
                        'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
                        'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool', 'IsHardLink': 'bool',
-                       'IsParent': 'bool', 'IsDeleted': 'bool'}
+                       'IsChild': 'bool', 'IsDeleted': 'bool'}
 
         self.df = pd.DataFrame(columns=list(self.dtypes))
 
