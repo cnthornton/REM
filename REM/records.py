@@ -992,8 +992,8 @@ class RecordEntry:
         try:
             saved_ids = self._search_saved_ids(record_dates)
         except Exception as e:
-            logger.error('failed to create IDs for the record entries of type {TYPE} - {ERR}'
-                         .format(TYPE=record_type, ERR=e))
+            logger.exception('failed to create IDs for the record entries of type {TYPE} - {ERR}'
+                             .format(TYPE=record_type, ERR=e))
             return None
 
         # Format the date component of the new ID
@@ -1444,7 +1444,7 @@ class DatabaseRecord:
         """
         return self._record_date.value
 
-    def initialize(self, data, new: bool = False, references: dict = None):
+    def initialize(self, data, new: bool = False, as_new: bool = False, references: dict = None):
         """
         Initialize record attributes.
 
@@ -1453,6 +1453,8 @@ class DatabaseRecord:
 
             new (bool): record is newly created [default: False]. New records allow editing of all data
                 element fields, even those normally disabled.
+
+            as_new (bool): set record metadata as if the record is newly created [Default: False].
 
             references (dict): optional reference imports by association rule. If provided, will not attempt to import
                 references for the given association rule but will use the reference entries provided instead.
@@ -1497,6 +1499,10 @@ class DatabaseRecord:
             raise ImportError('input record data is missing required column "{}"'.format(self.date_field))
         else:
             self._record_date.format_value(record_date_value)
+
+        if new or as_new:
+            record_data[settings.creator_code] = user.uid
+            record_data[settings.creation_date] = datetime.datetime.now()
 
         # Set metadata parameter values
         for meta_param in meta_params:
@@ -1860,6 +1866,9 @@ class DatabaseRecord:
         self._record_id.update_display(window)
         self._record_date.update_display(window)
 
+        for meta in self.metadata:
+            meta.update_display(window)
+
         # Update the record elements
         record_values = self.export_values(header=False)
 
@@ -1928,11 +1937,25 @@ class DatabaseRecord:
             record_data = pd.Series(index=header)
             creation_date = record_date
         else:
+            print(record_data)
             if isinstance(record_data, pd.DataFrame):
+                if record_data.empty:
+                    msg = 'Record {ID}: unable to create record IDs when no components were provided'\
+                        .format(ID=self.record_id())
+                    logger.warning(msg)
+
+                    return record_data
+                creation_date = [record_date for _ in range(record_data.shape[0])]
+            elif isinstance(record_data, pd.Series):  # single row (pandas series)
+                creation_date = record_date
+            elif isinstance(record_data, dict):
+                record_data = pd.DataFrame(record_data)
                 creation_date = [record_date for _ in range(record_data.shape[0])]
             else:
+                record_data = pd.Series(index=header)
                 creation_date = record_date
 
+        print('creating record IDs for list of dates : {}'.format(creation_date))
         record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
         if not record_id:
             msg = 'unable to create an ID for the new record'
@@ -1940,15 +1963,27 @@ class DatabaseRecord:
 
         record_data['RecordID'] = record_id
         record_data['RecordDate'] = creation_date
+        record_data[settings.creator_code] = user.uid
+        record_data[settings.creation_date] = datetime.datetime.now()
 
         # Use record data to populate component fields when fields are shared between the component and record
+        if isinstance(record_data, pd.Series):
+            record_data = record_data.to_frame().T
+
         defaults = self.export_values(header=False, references=False).to_dict()
         for default_col in defaults:
             if default_col in header:
                 default_value = defaults[default_col]
-                record_data[default_col] = default_value
+                print('filling default column {} with value {}'.format(default_col, default_value))
+                if pd.isna(default_value):
+                    continue
 
-        return record_data
+                try:
+                    record_data[default_col].fillna(default_value, inplace=True)
+                except KeyError:
+                    record_data[default_col] = default_value
+
+        return record_data.squeeze()
 
     def export_values(self, header: bool = True, references: bool = True, edited_only: bool = False):
         """
