@@ -680,7 +680,8 @@ class DataTable(RecordElement):
             delete_key = delete_hkey = None
             can_delete = False
         else:
-            delete_key, delete_hkey = delete_bttn.key_lookup()
+            delete_key = delete_bttn.key_lookup()
+            delete_hkey = '{ELEM}{KEY}'.format(ELEM=elem_key, KEY=delete_bttn.shortcut_key)
             can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
         try:
             import_bttn = self.fetch_parameter('Import', filters=False)
@@ -688,7 +689,8 @@ class DataTable(RecordElement):
             import_key = import_hkey = None
             can_import = False
         else:
-            import_key, import_hkey = import_bttn.key_lookup()
+            import_key = import_bttn.key_lookup()
+            import_hkey = '{ELEM}{KEY}'.format(ELEM=elem_key, KEY=import_bttn.shortcut_key)
             can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
 
         # Table events
@@ -4974,13 +4976,13 @@ class ActionButton:
         """
         Lookup an element's component GUI key using the name of the component element.
         """
-        return (self.element_key, self.shortcut_key)
+        return self.element_key
 
     def bind_keys(self, window, element_key):
         """
         Add hotkey bindings to the data element.
         """
-        shortcut = self.shortcut
+        shortcut = '<{}>'.format(self.shortcut)
         if shortcut:
             bind_key = self.shortcut_key
             print('binding shortcut {} to element {} with binding {}'.format(shortcut, element_key, bind_key))

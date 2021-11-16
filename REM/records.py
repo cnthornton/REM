@@ -1813,12 +1813,14 @@ class DatabaseRecord:
             logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
                          .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
             if record_element.etype == 'component_table':
-                #elem_key = record_element.key_lookup('Element')
+                print('record element is a component table')
+                elem_key = record_element.key_lookup('Element')
                 #add_key = record_element.key_lookup('Add')
                 #add_hkey = '{}+ADD+'.format(elem_key)
                 try:
                     add_bttn = record_element.fetch_parameter('Add', filters=False)
-                    add_key, add_hkey = add_bttn.key_lookup()
+                    add_key = add_bttn.key_lookup()
+                    add_hkey = '{ELEM}{KEY}'.format(ELEM=elem_key, KEY=add_bttn.shortcut_key)
                 except KeyError:
                     add_key = add_hkey = None
 
@@ -2615,7 +2617,7 @@ class DatabaseRecord:
             else False
         meta_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
         metadata = self.metadata
-        if len(metadata) > 0 and not is_new:
+        if len(metadata) > 0:
             metadata_visible = True
             annotation_layout = []
             for param in metadata:
