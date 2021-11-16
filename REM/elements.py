@@ -265,6 +265,8 @@ class DataTable(RecordElement):
                 self.actions.append(action)
                 self.elements.append(action.element_key)
                 self.bindings.extend(action.bindings)
+                if action.shortcut_key:
+                    self.bindings.append('{ELEM}{KEY}'.format(ELEM=elem_key, KEY=action.shortcut_key))
 
         # Attributes that affect how the table data is displayed
         try:
@@ -1007,7 +1009,7 @@ class DataTable(RecordElement):
 
             actions = self.actions
             for action_bttn in actions:
-                action_bttn.bind_keys(window)
+                action_bttn.bind_keys(window, elem_key)
 
     def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False,
              deleted_rows: bool = False, added_rows: bool = False, indices=None):
@@ -1060,7 +1062,7 @@ class DataTable(RecordElement):
                         .format(NAME=self.name, COL=search_col)
                     logger.warning(msg)
         else:
-            current = not all_rows if indices is None else False
+            current = (not all_rows) if indices is None or deleted_rows is False else False
             df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
                                  added_only=added_rows, indices=indices)
 
@@ -1276,10 +1278,18 @@ class DataTable(RecordElement):
 
             summary_total = collection.summarize_field(column, indices=indices, statistic=summary_stat)
             if display:
+                display_cols = self.display_columns
+                try:
+                    summary_col = display_cols[column]
+                except KeyError:
+                    summary_col = column
+
                 dtype = collection.dtypes[column]
                 summary_total = settings.format_display(summary_total, dtype)
+            else:
+                summary_col = column
 
-            summary[column] = summary_total
+            summary[summary_col] = summary_total
 
         return summary
 
@@ -1970,7 +1980,7 @@ class DataTable(RecordElement):
                         'SortBy': self.sort_on, 'FilterParameters': self.filter_entry, 'SearchField': self.search_field,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
                         'HiddenColumns': self.hidden_columns,
-                        'DependantColumns': collection.dependant_columns, 'Default': collection.default
+                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
                         }
         import_table = DataTable(self.name, table_layout)
 
@@ -2289,6 +2299,76 @@ class RecordTable(DataTable):
 
         return record
 
+    def import_rows(self, import_df: pd.DataFrame = None):
+        """
+        Import one or more records through the record import window.
+        """
+        # pd.set_option('display.max_columns', None)
+        record_type = self.record_type
+
+        collection = self.collection
+        id_col = collection.id_column
+        columns = collection.dtypes
+
+        if import_df is None:
+            import_df = collection.data(current=False, deleted_only=True)
+        print('import data is:')
+        print(import_df)
+        current_ids = collection.row_ids(indices=import_df.index, deleted=True)
+        print('records previously deleted are:')
+        print(current_ids)
+
+        logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
+
+        table_layout = {'Columns': columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
+                        'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': id_col,
+                        'RecordType': record_type, 'Description': self.description,
+                        'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
+                        'HiddenColumns': self.hidden_columns, 'ImportRules': self.import_rules,
+                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
+                        }
+
+        import_table = RecordTable(self.name, table_layout)
+        import_table.append(import_df)
+
+        # Add relevant search parameters
+        search_field = self.search_field
+        if isinstance(search_field, tuple):
+            search_col, search_val = search_field
+            try:
+                search_description = self.display_columns[search_col]
+            except KeyError:
+                search_description = search_col
+
+            search_dtype = columns[search_col]
+            search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
+                            'DataType': search_dtype, 'DefaultValue': search_val}
+            search_params = [mod_param.DataParameterInput(search_col, search_entry)]
+        else:
+            search_params = None
+
+        # Get table of user selected import records
+        select_df = mod_win2.import_window(import_table, params=search_params)
+        print('selected records are:')
+        print(select_df)
+
+        # Verify that selected records are not already in table
+        select_ids = select_df[id_col]
+        existing_indices = collection.record_index(select_ids)
+        existing_ids = collection.row_ids(existing_indices, deleted=True)
+
+        logger.debug('DataTable {NAME}: removing selected records {IDS} already stored in the table at rows {ROWS}'
+                     .format(NAME=self.name, IDS=existing_ids, ROWS=existing_indices))
+        select_df.drop(select_df.loc[select_df[id_col].isin(existing_ids)].index, inplace=True, axis=0, errors='ignore')
+
+        # Change deleted column of existing selected records to False
+        logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
+                     'False'.format(NAME=self.name))
+        collection.set_state('deleted', False, indices=existing_indices)
+
+        return select_df
+
 
 class ComponentTable(RecordTable):
     """
@@ -2374,7 +2454,7 @@ class ComponentTable(RecordTable):
                         'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
                         'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
                         'HiddenColumns': self.hidden_columns, 'ImportRules': self.import_rules,
-                        'DependantColumns': collection.dependant_columns, 'Default': collection.default
+                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
                         }
 
         import_table = RecordTable(self.name, table_layout)
@@ -4863,7 +4943,7 @@ class ActionButton:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        self.element_key = '-{PARENT}_{NAME}_{ID}-'.format(PARENT=self.parent, NAME=self.name, ID=self.id)
+        self.element_key = '-{PARENT}_{ID}_{NAME}-'.format(PARENT=self.parent, NAME=self.name, ID=self.id)
         self.bindings = [self.element_key]
 
         try:
@@ -4877,8 +4957,7 @@ class ActionButton:
             self.shortcut = None
             self.shortcut_key = None
         else:
-            self.shortcut_key = '{ELEM}+{DESC}+'.format(ELEM=self.element_key, DESC=self.name.upper())
-            self.bindings.append(self.shortcut_key)
+            self.shortcut_key = '+{DESC}+'.format(DESC=self.name.upper())
 
         # Layout attributes
         try:
@@ -4897,14 +4976,15 @@ class ActionButton:
         """
         return (self.element_key, self.shortcut_key)
 
-    def bind_keys(self, window):
+    def bind_keys(self, window, element_key):
         """
         Add hotkey bindings to the data element.
         """
         shortcut = self.shortcut
         if shortcut:
-            elem_key, bind_key = self.key_lookup()
-            window[elem_key].bind(shortcut, bind_key)
+            bind_key = self.shortcut_key
+            print('binding shortcut {} to element {} with binding {}'.format(shortcut, element_key, bind_key))
+            window[element_key].bind(shortcut, bind_key)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = None, disabled: bool = False):
         """
