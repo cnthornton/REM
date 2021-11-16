@@ -190,7 +190,7 @@ class DataCollection:
             self.dependant_columns[field] = dependant_fields[field]
 
         try:
-            default = entry['Default']
+            default = entry['Defaults']
         except KeyError:
             default = {}
 
@@ -254,7 +254,7 @@ class DataCollection:
             try:
                 dtype = dtypes[column]
             except KeyError:
-                logger.warning('DataCollection {NAME}: no data type set for default feild "{COL}"'
+                logger.warning('DataCollection {NAME}: no data type set for default field "{COL}"'
                                .format(NAME=self.name, COL=column))
                 continue
 
@@ -265,20 +265,34 @@ class DataCollection:
                          .format(NAME=self.name, COL=column))
 
             column_default = default_columns[column]
-            if isinstance(column_default, dict):  # set of conditions
+            if isinstance(column_default, dict):  # column default is a set of conditions
+                print('default column {} is a set of conditions'.format(column))
                 default_values = pd.Series(None, index=df.index, dtype='object')
-                for default_value in column_default:
+                for default_value in column_default:  # defaults are the values of another field in the collection
+                    if default_value in dtypes:
+                        values = df[default_value]
+                    else:
+                        values = pd.Series(default_value, index=df.index)
+
                     default_rule = column_default[default_value]
                     results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
-                    for index, result in results.iteritems():
-                        if result:  # passed the value condition
-                            default_values[index] = default_value
+                    print('results of evaluation {} are:'.format(default_value))
+                    print(results)
+                    for index in results[results].index:  # only "passing", or true, indices
+                        default_values[index] = values[index]
+
                 default_values = format_values(default_values, dtype)
             else:  # single value supplied
-                if column_default in header:  # default values are the values of another column
+                if column_default in header:  # defaults are the values of another field in the collection
                     default_values = format_values(df[column_default], dtype)
                 else:  # single default value supplied
                     default_values = format_value(column_default, dtype)
+
+            print('column {} has default values:'.format(column))
+            print(default_values)
+
+            print('with current values:')
+            print(df[column])
 
             df[column].fillna(default_values, inplace=True)
 
@@ -460,13 +474,15 @@ class DataCollection:
         """
         df = self.df.copy()
 
-        if current and indices is not None:
-            logger.warning('the current and indices arguments are mutually exclusive - running as current')
+        if current and (indices is not None or deleted_only is True):
+            logger.warning('the current and indices arguments are mutually exclusive - setting current to False')
+            current = False
 
-        deleted_indices = self._deleted_rows()
         if current:
+            deleted_indices = self._deleted_rows()
             df.drop(deleted_indices, inplace=True)
-        elif indices is not None:
+
+        if indices is not None:
             print('selecting collection entries on indices: {}'.format(indices))
             df = df.loc[indices]
 
@@ -476,7 +492,7 @@ class DataCollection:
         elif added_only:  # all added, current added, or added and then deleted
             df = df[df[self._added_column]]
         elif deleted_only:
-            df = df.loc[deleted_indices]
+            df = df[df[self._deleted_column]]
 
         # Remove the state fields from the data
         df.drop(columns=[self._added_column, self._edited_column, self._deleted_column], inplace=True)
@@ -563,7 +579,7 @@ class DataCollection:
         else:
             df = self.df.copy()
 
-        if not indices:
+        if indices is None:
             indices = df.index
 
         df.loc[indices, column] = flag
@@ -869,8 +885,8 @@ class RecordCollection(DataCollection):
             deleted (bool): include deleted rows [Default: False].
         """
         id_field = self.id_column
-        if deleted or len(indices) > 0:
-            df = self.data(current=False)  # don't include deleted rows
+        if deleted or (indices is not None and len(indices) > 0):
+            df = self.data(current=False)  # all rows, not just current
         else:
             df = self.data()
 
