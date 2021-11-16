@@ -244,6 +244,8 @@ class BankRule:
             acct_keys = acct.bindings
             link_bttn = acct.table.fetch_parameter('Link', filters=False)
             link_key, link_hkey = link_bttn.key_lookup()
+            print('primary account event keys')
+            print(acct_keys)
         else:
             acct_keys = []
             link_key = link_hkey = None
@@ -255,6 +257,8 @@ class BankRule:
             assoc_keys = []
 
         can_save = not window[save_key].metadata['disabled']
+
+        print('running event {}'.format(event))
 
         # Run an account entry event
         if event in (link_key, link_hkey):
@@ -269,6 +273,7 @@ class BankRule:
 
         elif event in acct_keys:
             acct = self.fetch_account(self.current_account)
+            print('event {} is an primary account event'.format(event))
 
             results = acct.run_event(window, event, values)
 
@@ -480,7 +485,8 @@ class BankRule:
                     acct.load_data(acct_params)
                 except Exception as e:
                     msg = 'failed to load data for current account {ACCT} - {ERR}'.format(ACCT=main_acct, ERR=e)
-                    logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
 
                     return self.reset_rule(window, current=True)
 
@@ -518,7 +524,8 @@ class BankRule:
                     try:
                         assoc_acct.load_data(acct_params, records=reference_records)
                     except Exception as e:
-                        mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
+                        mod_win2.popup_error('failed to load data for association {ACCT} - {MSG}'
+                                             .format(ACCT=acct_name, MSG=e))
 
                         return self.reset_rule(window, current=True)
 
@@ -1772,11 +1779,20 @@ class BankAccount:
         table_keys = table.bindings
         tbl_key = table.key_lookup('Element')
 
-        approve_bttn = table.fetch_parameter('Approve', filters=False)
-        approve_key, approve_hkey = approve_bttn.key_lookup()
+        try:
+            approve_bttn = table.fetch_parameter('Approve', filters=False)
+            approve_key, approve_hkey = approve_bttn.key_lookup()
+        except KeyError:
+            approve_key = approve_hkey = None
 
-        reset_bttn = table.fetch_parameter('Reset', filters=False)
-        reset_key, reset_hkey = reset_bttn.key_lookup()
+        try:
+            reset_bttn = table.fetch_parameter('Reset', filters=False)
+            reset_key, reset_hkey = reset_bttn.key_lookup()
+        except KeyError:
+            reset_key = reset_hkey = None
+
+        print('approve keys are: {} and {}'.format(approve_key, approve_hkey))
+        print('reset keys are: {} and {}'.format(reset_key, reset_hkey))
 
         # Return values
         reference_indices = None
@@ -1867,6 +1883,60 @@ class BankAccount:
                                 else:
                                     reference_indices = reference_indices.tolist()
 
+            elif event in (approve_key, approve_hkey):
+                # Find rows selected by user for approval
+                select_row_indices = values[tbl_key]
+
+                # Get the real indices of the selected rows
+                indices = table.get_index(select_row_indices)
+
+                # Get record IDs for the selected rows
+                # record_ids = table.df.loc[indices, table.id_column].tolist()
+                record_ids = table.row_ids(indices=indices)
+
+                print('approving records: {}'.format(record_indices))
+
+                try:
+                    reference_indices = self.approve(record_ids)
+                except Exception as e:
+                    msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
+                    logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+                # Update the status in the records table. This will also update the "is edited" column of the table to
+                # indicate that the records at the given indices were edited wherever the new values do not match the old
+                # values.
+                if 'Approved' in colmap:
+                    table.update_column(colmap['Approved'], True, indices=indices)
+
+                # Deselect selected rows
+                table.deselect(window)
+
+            elif event in (reset_key, reset_hkey):
+                # Find rows selected by user for deletion
+                select_row_indices = values[tbl_key]
+
+                # Get the real indices of the selected rows
+                indices = table.get_index(select_row_indices)
+
+                # Get record IDs for the selected rows
+                # record_ids = table.df.loc[indices, table.id_column].tolist()
+                record_ids = table.row_ids(indices=indices)
+
+                print('reseting records: {}'.format(record_indices))
+
+                # Delete references and approval for the selected records
+                try:
+                    reference_indices = self.reset_references(record_ids, index=False)
+                except Exception as e:
+                    msg = 'failed to reset record references at table indices {INDS}'.format(INDS=indices)
+                    logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+                # Deselect selected rows
+                table.deselect(window)
+
+                # Reset void transaction status
+                self.reset_records(indices, index=True)
+
             # Single-clicked table row(s)
             elif event == tbl_key:
                 table.run_event(window, event, values)
@@ -1877,56 +1947,6 @@ class BankAccount:
 
             else:
                 table.run_event(window, event, values)
-
-        elif event in (approve_key, approve_hkey):
-            # Find rows selected by user for approval
-            select_row_indices = values[tbl_key]
-
-            # Get the real indices of the selected rows
-            indices = table.get_index(select_row_indices)
-
-            # Get record IDs for the selected rows
-            #record_ids = table.df.loc[indices, table.id_column].tolist()
-            record_ids = table.row_ids(indices=indices)
-
-            try:
-                reference_indices = self.approve(record_ids)
-            except Exception as e:
-                msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
-                logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-
-            # Update the status in the records table. This will also update the "is edited" column of the table to
-            # indicate that the records at the given indices were edited wherever the new values do not match the old
-            # values.
-            if 'Approved' in colmap:
-                table.update_column(colmap['Approved'], True, indices=indices)
-
-            # Deselect selected rows
-            table.deselect(window)
-
-        elif event in (reset_key, reset_hkey):
-            # Find rows selected by user for deletion
-            select_row_indices = values[tbl_key]
-
-            # Get the real indices of the selected rows
-            indices = table.get_index(select_row_indices)
-
-            # Get record IDs for the selected rows
-            #record_ids = table.df.loc[indices, table.id_column].tolist()
-            record_ids = table.row_ids(indices=indices)
-
-            # Delete references and approval for the selected records
-            try:
-                reference_indices = self.reset_references(record_ids, index=False)
-            except Exception as e:
-                msg = 'failed to reset record references at table indices {INDS}'.format(INDS=indices)
-                logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-
-            # Deselect selected rows
-            table.deselect(window)
-
-            # Reset void transaction status
-            self.reset_records(indices, index=True)
 
         return {'ReferenceIndex': reference_indices, 'RecordIndex': record_indices}
 
@@ -2017,7 +2037,10 @@ class BankAccount:
 
         # Reorder the references dataframe to match the order of the records in the records table
         ref_df.set_index('RecordID', inplace=True)
-        ref_df = ref_df.reindex(index=df['RecordID'])
+        print(ref_df)
+        print(df['RecordID'])
+        ref_df = ref_df.reindex(index=df['RecordID'].tolist())
+
 
         # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
         if df.shape[0] != ref_df.shape[0]:
@@ -2306,7 +2329,6 @@ class BankAccount:
 
         # Merge records and references dataframes
         self.merge_references()
-        #table.df = table.set_conditional_values()
 
         # Update the display table
         table.update_display(window)
@@ -2315,42 +2337,18 @@ class BankAccount:
         """
         Load record and reference data from the database.
         """
+        pd.set_option('display.max_columns', None)
         table = self.get_table()
 
-        logger.debug('BankAccount {NAME}: loading record data'.format(NAME=self.name))
-
-        try:
-            df = self.load_records(params, records=records)
-        except Exception as e:
-            msg = '{MSG} -  see log for details'.format(MSG=e)
-            raise ImportError(msg)
-
         # Update the record table dataframe with the data imported from the database
+        df = self.load_records(params, records=records)
         table.append(df)
 
         # Load the record references from the reference table connected with the association rule
         record_ids = table.row_ids()
-        logger.debug('BankAccount {NAME}: loading reference data'.format(NAME=self.name))
-        try:
-            ref_df = self.load_references(record_ids)
-        except Exception as e:
-            msg = '{MSG} -  see log for details'.format(MSG=e)
-            raise ImportError(msg)
+        ref_df = self.load_references(record_ids)
 
         self.ref_df = ref_df
-
-        # Merge the configured reference columns with the records table
-        ref_map = self.ref_map
-        mapped_df = ref_df.copy()
-        mapped_df = mapped_df[list(ref_map)].rename(columns=ref_map)
-
-        # Update record reference columns
-        map_cols = [i for i in mapped_df.columns if i in df.columns]
-
-        # Update record reference column values
-        for column in map_cols:
-            column_values = mapped_df[column]
-            table.update_column(column, column_values)
 
     def load_references(self, record_ids):
         """
@@ -2376,7 +2374,7 @@ class BankAccount:
         # Set datatypes
         bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
         ref_df[bool_columns] = ref_df[bool_columns].fillna(False)
-        ref_df = ref_df.astype({i: np.bool for i in bool_columns})
+        ref_df = ref_df.astype({i: np.bool_ for i in bool_columns})
 
         return ref_df
 
@@ -2406,8 +2404,8 @@ class BankAccount:
             raise ImportError(msg)
 
         # Load remaining records not yet loaded using the parameters
-        imported_ids = df[self.table.id_column].tolist()
         if records:
+            imported_ids = df[self.table.id_column].tolist()
             remaining_records = list(set(records).difference(imported_ids))
 
             if not len(remaining_records) > 0:

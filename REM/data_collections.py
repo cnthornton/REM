@@ -266,7 +266,6 @@ class DataCollection:
 
             column_default = default_columns[column]
             if isinstance(column_default, dict):  # column default is a set of conditions
-                print('default column {} is a set of conditions'.format(column))
                 default_values = pd.Series(None, index=df.index, dtype='object')
                 for default_value in column_default:  # defaults are the values of another field in the collection
                     if default_value in dtypes:
@@ -276,8 +275,6 @@ class DataCollection:
 
                     default_rule = column_default[default_value]
                     results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
-                    print('results of evaluation {} are:'.format(default_value))
-                    print(results)
                     for index in results[results].index:  # only "passing", or true, indices
                         default_values[index] = values[index]
 
@@ -287,12 +284,6 @@ class DataCollection:
                     default_values = format_values(df[column_default], dtype)
                 else:  # single default value supplied
                     default_values = format_value(column_default, dtype)
-
-            print('column {} has default values:'.format(column))
-            print(default_values)
-
-            print('with current values:')
-            print(df[column])
 
             df[column].fillna(default_values, inplace=True)
 
@@ -483,7 +474,6 @@ class DataCollection:
             df.drop(deleted_indices, inplace=True)
 
         if indices is not None:
-            print('selecting collection entries on indices: {}'.format(indices))
             df = df.loc[indices]
 
         # Filter on edited rows, if desired
@@ -769,7 +759,7 @@ class DataCollection:
         df = self.df
         edited = False
 
-        if isinstance(indices, type(None)):  # update all rows
+        if indices is None:  # update all rows
             indices = df.index.tolist()
         elif isinstance(indices, int):
             indices = [indices]
@@ -885,6 +875,9 @@ class RecordCollection(DataCollection):
             deleted (bool): include deleted rows [Default: False].
         """
         id_field = self.id_column
+        if isinstance(indices, int):
+            indices = [indices]
+
         if deleted or (indices is not None and len(indices) > 0):
             df = self.data(current=False)  # all rows, not just current
         else:
@@ -892,13 +885,6 @@ class RecordCollection(DataCollection):
 
         if indices is None:
             indices = df.index
-        else:
-            if isinstance(indices, int):
-                indices = [indices]
-
-        print('searching for row IDs with indices: {}'.format(indices))
-        print('collection has indices:')
-        print(df.index)
 
         try:
             row_ids = df.loc[indices, id_field].tolist()

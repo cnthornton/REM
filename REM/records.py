@@ -1686,8 +1686,8 @@ class DatabaseRecord:
             match = re.match(r'-(.*?)-', identifier)
             if not match:
                 raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
-            identifier = match.group(0)
-            element_key = match.group(1)
+            identifier = match.group(0)  # identifier returned if match
+            element_key = match.group(1)  # element key part of the identifier after removing any binding
 
             element_type = element_key.split('_')[-1]
             element_names = []
@@ -2125,7 +2125,9 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+        #success = user.write_db(sstrings, psets)
+        success = True
+        print(statements)
 
         return success
 
@@ -2310,9 +2312,9 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
-        #success = True
-        #print(statements)
+        #success = user.write_db(sstrings, psets)
+        success = True
+        print(statements)
 
         return success
 

@@ -255,7 +255,7 @@ class DataTable(RecordElement):
         for action_name in actions:
             action_entry = actions[action_name]
             try:
-                action = ActionButton(action_name, self.name, action_entry)
+                action = ActionButton(action_name, self.name, self.id, action_entry)
             except AttributeError as e:
                 msg = self.format_log('failed to initialize action {BTTN} - {ERR}'.format(BTTN=action_name, ERR=e))
                 logger.error(msg)
@@ -265,8 +265,6 @@ class DataTable(RecordElement):
                 self.actions.append(action)
                 self.elements.append(action.element_key)
                 self.bindings.extend(action.bindings)
-                if action.shortcut_key:
-                    self.bindings.append('{ELEM}{KEY}'.format(ELEM=elem_key, KEY=action.shortcut_key))
 
         # Attributes that affect how the table data is displayed
         try:
@@ -680,8 +678,7 @@ class DataTable(RecordElement):
             delete_key = delete_hkey = None
             can_delete = False
         else:
-            delete_key = delete_bttn.key_lookup()
-            delete_hkey = '{ELEM}{KEY}'.format(ELEM=elem_key, KEY=delete_bttn.shortcut_key)
+            delete_key, delete_hkey = delete_bttn.key_lookup()
             can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
         try:
             import_bttn = self.fetch_parameter('Import', filters=False)
@@ -689,8 +686,7 @@ class DataTable(RecordElement):
             import_key = import_hkey = None
             can_import = False
         else:
-            import_key = import_bttn.key_lookup()
-            import_hkey = '{ELEM}{KEY}'.format(ELEM=elem_key, KEY=import_bttn.shortcut_key)
+            import_key, import_hkey = import_bttn.key_lookup()
             can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
 
         # Table events
@@ -1161,6 +1157,8 @@ class DataTable(RecordElement):
         tooltip = self.format_tooltip()
         window[tbl_key].set_tooltip(tooltip)
 
+        self.deselect(window)
+
         return display_df
 
     def format_tooltip(self, annotations: dict = None):
@@ -1234,15 +1232,11 @@ class DataTable(RecordElement):
             raise KeyError(msg)
 
         dtype = display_col.dtype
-        print('display column {} has data type {}'.format(column, dtype))
         if is_float_dtype(dtype) and self.collection.dtypes[column] == 'money':
-            print('display column is a money column')
             display_col = display_col.apply(settings.format_display_money)
         elif is_datetime_dtype(dtype):
-            print('display column is a datetime column')
             display_col = display_col.apply(settings.format_display_date)
         elif is_bool_dtype(dtype):
-            print('display column is a boolean column')
             display_col = display_col.apply(lambda x: '✓' if x is True else '')
         elif is_integer_dtype(dtype) or is_string_dtype(dtype):
             if column in aliases:
@@ -1346,8 +1340,6 @@ class DataTable(RecordElement):
         select_mode = self.select_mode
 
         is_disabled = False if (editable is True and level < 1) or overwrite is True else True
-        print('creating table {} layout at level {}'.format(self.name, level))
-        print('table actions are disabled: {}'.format(is_disabled))
 
         # Element keys
         keyname = self.key_lookup('Element')
@@ -1599,7 +1591,6 @@ class DataTable(RecordElement):
         actions_bar = [sg.Canvas(size=(0, bar_h), background_color=header_col)]
         action_layout = []
         for action in self.actions:
-            print('adding action button {} to the layout'.format(action.name))
             action_bttn = action.layout(disabled=is_disabled, bg_col=header_col)
             action_layout.append(action_bttn)
 
@@ -2016,8 +2007,6 @@ class DataTable(RecordElement):
             reindex (bool): reset the index after appending the new rows to the table [Default: True].
         """
         df = self.collection.append(add_df, inplace=inplace, new=new, reindex=reindex)
-        print('data after appending to the collection:')
-        print(self.collection.df)
 
         return df
 
@@ -2105,6 +2094,8 @@ class RecordTable(DataTable):
         except Exception as e:
             msg = self.format_log('failed to initialize the collection - {ERR}'.format(ERR=e))
             raise AttributeError(msg)
+
+        self.id_column = self.collection.id_column
 
         # Control flags that modify the table's behaviour
         try:
@@ -4933,7 +4924,7 @@ class ActionButton:
         icon (str): file name of the parameter's icon [Default: None].
     """
 
-    def __init__(self, name, parent, entry):
+    def __init__(self, name, parent, id, entry):
         """
         GUI data storage element.
 
@@ -4943,9 +4934,8 @@ class ActionButton:
             entry (dict): configuration entry for the data storage element.
         """
         self.name = name
-        self.parent = parent
-        self.id = randint(0, 1000000000)
-        self.element_key = '-{PARENT}_{ID}_{NAME}-'.format(PARENT=self.parent, NAME=self.name, ID=self.id)
+        self.element_key = '-{PARENT}_{ID}_{NAME}-'.format(PARENT=parent, NAME=name, ID=id)
+        self.parent_key = '-{PARENT}_{ID}_Element-'.format(PARENT=parent, ID=id)
         self.bindings = [self.element_key]
 
         try:
@@ -4960,6 +4950,7 @@ class ActionButton:
             self.shortcut_key = None
         else:
             self.shortcut_key = '+{DESC}+'.format(DESC=self.name.upper())
+            self.bindings.append('{ELEM}{KEY}'.format(ELEM=self.parent_key, KEY=self.shortcut_key))
 
         # Layout attributes
         try:
@@ -4976,7 +4967,7 @@ class ActionButton:
         """
         Lookup an element's component GUI key using the name of the component element.
         """
-        return self.element_key
+        return (self.element_key, '{PARENT}{KEY}'.format(PARENT=self.parent_key, KEY=self.shortcut_key))
 
     def bind_keys(self, window, element_key):
         """

@@ -624,15 +624,12 @@ class DataParameterSingle(DataParameter):
         else:
             input_value = values
 
-        print('parameter {} has initial input value: {}'.format(self.name, input_value))
-
         if input_value == '' or pd.isna(input_value):
             self.value = None
 
             return None
 
         aliases_rev = {j: i for i, j in aliases.items()}
-        print('input value is: {}'.format(input_value))
         try:
             value_fmt = aliases_rev[input_value]
         except KeyError:
@@ -743,7 +740,6 @@ class DataParameterInput(DataParameterSingle):
 
         elem_key = self.key_lookup('Element')
         display_value = self.format_display()
-        print('initial display value for element {} is {}'.format(self.name, display_value))
 
         if not disabled:
             layout = [sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True, font=font,
@@ -903,10 +899,8 @@ class DataParameterCombo(DataParameterSingle):
         aliases = self.aliases
         combo_values = self.combo_values
         display_value = self.format_display()
-        print('initial display value for element {} is {}'.format(self.name, display_value))
 
         values = [aliases.get(i, i) for i in combo_values]
-        print('combobox {} has values {}'.format(self.name, values))
         if '' not in values:  # the no selection option
             values.insert(0, '')
 
@@ -1468,9 +1462,9 @@ class DataParameterRange(DataParameterMulti):
             elif dtype in settings.supported_float_dtypes:
                 col_values = pd.to_numeric(df[column], errors='coerce')
             elif dtype in settings.supported_bool_dtypes:
-                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+                col_values = df[column].fillna(False).astype(np.bool_, errors='raise')
             else:
-                col_values = df[column].astype(np.object, errors='raise')
+                col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
             logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                          .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
@@ -1673,7 +1667,7 @@ class DataParameterCondition(DataParameterMulti):
             elif dtype in settings.supported_float_dtypes:
                 col_values = pd.to_numeric(df[column], errors='coerce')
             else:
-                col_values = df[column].astype(np.object, errors='raise')
+                col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
             logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
@@ -1992,9 +1986,9 @@ class DataParameterSelection(DataParameter):
             elif dtype in settings.supported_float_dtypes:
                 col_values = pd.to_numeric(df[column], errors='coerce')
             elif dtype in settings.supported_bool_dtypes:
-                col_values = df[column].fillna(False).astype(np.bool, errors='raise')
+                col_values = df[column].fillna(False).astype(np.bool_, errors='raise')
             else:
-                col_values = df[column].astype(np.object, errors='raise')
+                col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
             logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
