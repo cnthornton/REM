@@ -318,11 +318,23 @@ class AuditRule:
 
             # Prepare audit records
             if next_subpanel == self.last_panel:
+                # Store transaction table summaries for mapping
+                transaction_summ = {}
+                for tab in self.transactions:
+                    tab_name = tab.name
+                    summary = tab.table.summarize()
+                    for summary_column in summary:
+                        summary_value = summary[summary_column]
+                        transaction_summ['{TBL}.{COL}'.format(TBL=tab_name, COL=summary_column)] = summary_value
+
                 # Create audit records using data from the transaction audits
                 for record_tab in self.records:
 
                     # Update audit record totals
-                    record_tab.map_summary(self.transactions)
+                    record_tab.map_summary(transaction_summ)
+
+                    # Initialize the new record
+                    record_tab.record.initialize(record_tab.record_data, new=False, as_new=True)
 
                     # Map transactions to transaction records
                     record_tab.map_transactions(self.transactions)
@@ -1219,7 +1231,8 @@ class AuditTransaction:
                 delete_rows = self.filter_table()
                 if len(delete_rows) > 0:
                     self.table.delete_rows(delete_rows)
-                    self.table.update_display(window)
+
+                self.table.update_display(window)
 
         return success
 
@@ -1338,10 +1351,9 @@ class AuditTransaction:
         table = self.table
         collection = table.collection
         pkey = collection.id_column
-        df = table.data()
         id_list = sorted(table.row_ids(), reverse=False)
-        missing_df = collection.data(current=False, deleted_only=True)
-        existing_imports = table.row_ids(indices=missing_df.index)
+        missing_df = table.data(deleted_rows=True)
+        existing_imports = table.row_ids(indices=missing_df.index.tolist())
 
         # Data importing parameters
         filters = mod_db.format_import_filters(import_rules)
@@ -1355,7 +1367,7 @@ class AuditTransaction:
         audit_date_iso = audit_date.strftime("%Y-%m-%d")
 
         # Search for missing data
-        logger.info('AuditTransactionTab {NAME}: searching for missing transactions'.format(NAME=self.name))
+        logger.info('AuditTransaction {NAME}: searching for missing transactions'.format(NAME=self.name))
         missing_transactions = []
         first_id = None
         first_number_comp = None
@@ -1372,7 +1384,7 @@ class AuditTransaction:
                 break
 
         if audit_date and first_id:  # data table not empty
-            logger.debug('AuditTransactionTab {NAME}: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
+            logger.debug('AuditTransaction {NAME}: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
 
             # Find the date of the most recent transaction prior to current date
             query_str = 'SELECT DISTINCT {DATE} FROM {TBL}'.format(DATE=date_db_col, TBL=table_statement)
@@ -1389,17 +1401,17 @@ class AuditTransaction:
             try:
                 prev_date = strptime(unq_dates_iso[current_date_index - 1], '%Y-%m-%d')
             except IndexError:
-                logger.warning('AuditTransactionTab {NAME}: no date found prior to current audit date {DATE}'
+                logger.warning('AuditTransaction {NAME}: no date found prior to current audit date {DATE}'
                                .format(NAME=self.name, DATE=audit_date_iso))
                 prev_date = None
             except ValueError:
-                logger.warning('AuditTransactionTab {NAME}: unknown date format {DATE} provided'
+                logger.warning('AuditTransaction {NAME}: unknown date format {DATE} provided'
                                .format(NAME=self.name, DATE=unq_dates_iso[current_date_index - 1]))
                 prev_date = None
 
             # Query the last transaction from the previous date
             if prev_date:
-                logger.info('AuditTransactionTab {NAME}: searching for most recent transaction created on last '
+                logger.info('AuditTransaction {NAME}: searching for most recent transaction created on last '
                             'transaction date {DATE}'.format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 import_filters = filters + [('{} = ?'.format(date_db_col),
@@ -1418,8 +1430,8 @@ class AuditTransaction:
                     except ValueError:
                         msg = 'inconsistent format found in previous record ID {ID}'.format(ID=prev_id)
                         mod_win2.popup_notice(msg)
-                        logger.warning('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                        logger.warning('AuditTransactionTab {NAME}: record with unknown format is {ID}'
+                        logger.warning('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        logger.warning('AuditTransaction {NAME}: record with unknown format is {ID}'
                                        .format(NAME=self.name, ID=last_df[last_df[pkey] == prev_id]))
                         continue
 
@@ -1434,10 +1446,10 @@ class AuditTransaction:
                         break
 
                 if last_id:
-                    logger.debug('AuditTransactionTab {NAME}: last transaction ID is {ID} from {DATE}'
+                    logger.debug('AuditTransaction {NAME}: last transaction ID is {ID} from {DATE}'
                                  .format(NAME=self.name, ID=last_id, DATE=prev_date.strftime('%Y-%m-%d')))
 
-                    logger.debug('AuditTransactionTab {NAME}: searching for skipped transactions between last ID '
+                    logger.debug('AuditTransaction {NAME}: searching for skipped transactions between last ID '
                                  '{PREVID} from last transaction date {PREVDATE} and first ID {ID} of current '
                                  'transaction date {DATE}'
                                  .format(NAME=self.name, PREVID=last_id, PREVDATE=prev_date.strftime('%Y-%m-%d'),
@@ -1468,7 +1480,7 @@ class AuditTransaction:
                     logger.debug('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             # Search for skipped transaction numbers
-            logger.debug('AuditTransactionTab {NAME}: searching for skipped transactions within the current '
+            logger.debug('AuditTransaction {NAME}: searching for skipped transactions within the current '
                          'transaction date {DATE}'.format(NAME=self.name, DATE=audit_date_iso))
             prev_number = first_number_comp - 1
             nskipped = 0
@@ -1478,7 +1490,7 @@ class AuditTransaction:
                 except ValueError:
                     msg = 'inconsistent format found in record ID {ID}'.format(ID=record_id)
                     mod_win2.popup_notice(msg)
-                    logger.warning('AuditTransactionTab {NAME}: ID with unknown format is {ID}'
+                    logger.warning('AuditTransaction {NAME}: ID with unknown format is {ID}'
                                    .format(NAME=self.name, ID=record_id))
 
                     continue
@@ -1487,7 +1499,7 @@ class AuditTransaction:
 
                 if record_id != self.format_id(record_no, date=record_date):  # skip IDs that don't conform to format
                     msg = 'record ID {ID} does not conform to ID format specifications'.format(ID=record_id)
-                    logger.warning('AuditTransactionTab {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    logger.warning('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     continue
 
@@ -1501,11 +1513,11 @@ class AuditTransaction:
 
                 prev_number = record_no
 
-            logger.debug('AuditTransactionTab {NAME}: found {N} skipped transactions from within current '
+            logger.debug('AuditTransaction {NAME}: found {N} skipped transactions from within current '
                          'transaction date {DATE}'.format(NAME=self.name, N=nskipped, DATE=audit_date_iso))
 
             # Search for missed numbers at end of day
-            logger.info('AuditTransactionTab {NAME}: searching for transactions created at the end of the day'
+            logger.info('AuditTransaction {NAME}: searching for transactions created at the end of the day'
                         .format(NAME=self.name))
             last_id_of_df = id_list[-1]  # last transaction of the dataframe
 
@@ -1524,7 +1536,7 @@ class AuditTransaction:
                 except ValueError:
                     msg = 'inconsistent format found in record ID {ID}'.format(ID=current_id)
                     mod_win2.popup_notice(msg)
-                    logger.warning('AuditTransactionTab {NAME}: ID with unknown format is {ID}'
+                    logger.warning('AuditTransaction {NAME}: ID with unknown format is {ID}'
                                    .format(NAME=self.name, ID=current_df[current_df[pkey] == current_id]))
 
                     continue
@@ -1533,7 +1545,7 @@ class AuditTransaction:
                         (current_id not in existing_imports):
                     missing_transactions.append(current_id)
 
-        logger.debug('AuditTransactionTab {NAME}: potentially missing transactions: {MISS}'
+        logger.debug('AuditTransaction {NAME}: potentially missing transactions: {MISS}'
                      .format(NAME=self.name, MISS=missing_transactions))
 
         # Query database for the potentially missing transactions
@@ -1550,14 +1562,15 @@ class AuditTransaction:
                               filter_rules=filters, order=pkey_db)), ignore_index=True)
 
         # Display import window with potentially missing data
-        try:
-            import_rows = table.import_rows(import_df=missing_df)
-        except Exception as e:
-            msg = 'failed to run table import event'
-            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-        else:
-            if not import_rows.empty:
-                collection.append(import_rows, new=True)
+        if not missing_df.empty:
+            try:
+                import_rows = table.import_rows(import_df=missing_df)
+            except Exception as e:
+                msg = 'failed to run table import event'
+                logger.exception('AuditTransaction {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+            else:
+                if not import_rows.empty:
+                    collection.append(import_rows, new=True)
 
     def audit_transactions_old(self):
         """
@@ -1901,9 +1914,11 @@ class AuditRecord:
 
         record_entry = settings.records.fetch_rule(name)
         self.record = mod_records.DatabaseRecord(name, record_entry.record_layout, level=0)
-        self.record.metadata = []
+        #self.record.metadata = []
         self.elements.extend(self.record.elements)
         self.bindings = self.record.record_events()
+
+        self.record_data = self.record.export_values()
 
         try:
             self.merge = bool(int(entry['MergeTransactions']))
@@ -2031,18 +2046,20 @@ class AuditRecord:
 
                 # Create new record
                 record_date = params[date_index].value
+                self.record_data['RecordDate'] = record_date
                 record_id = record_entry.create_record_ids(record_date, offset=settings.get_date_offset())
                 if not record_id:
                     raise IOError('failed to create record - unable to create record ID for the {NAME} audit'
                                   .format(NAME=self.name))
+                self.record_data['RecordID'] = record_id
 
-                record_data = {'RecordID': record_id, 'RecordDate': record_date}
+                #record_data = {'RecordID': record_id, 'RecordDate': record_date}
                 for param in params:
                     param_name = param.name
-                    if param_name not in record_data:
-                        record_data[param_name] = param.value
+                    if param_name in self.record_data:
+                        self.record_data[param_name] = param.value
 
-                self.record.initialize(record_data, new=False)
+                #self.record.initialize(record_data, new=False)
 
                 return False
 
@@ -2064,9 +2081,58 @@ class AuditRecord:
 
         return statements
 
-    def map_summary(self, rule_tabs):
+    def map_summary(self, summary_map):
         """
-        Populate the audit totals table with audit tab summary totals.
+        Populate the audit record element values with transaction summaries.
+        """
+        operators = set('+-*/%')
+
+        name = self.name
+
+        logger.debug('AuditRecord {NAME}: mapping transaction summaries to audit record elements'
+                     .format(NAME=self.name))
+
+        # Map audit totals columns to transaction table summaries
+        mapping_columns = self.summary_mapping
+        for column in mapping_columns:
+            mapper = mapping_columns[column]
+            rule_values = []
+            for component in mod_dm.parse_operation_string(mapper):
+                if component in operators:
+                    rule_values.append(component)
+                    continue
+
+                try:  # component is numeric
+                    float(component)
+                except ValueError:
+                    if component in summary_map:
+                        rule_values.append(summary_map[component])
+                    else:
+                        logger.error('AuditRecord {NAME}: column {COL} not found in transaction table summaries'
+                                     .format(NAME=name, COL=component))
+                        rule_values.append(0)
+
+                else:
+                    rule_values.append(component)
+
+            print('values of the summary mapping rule')
+            print(rule_values)
+
+            try:
+                summary_total = eval(' '.join([str(i) for i in rule_values]))
+            except Exception as e:
+                logger.warning('AuditRecord {NAME}: failed to evaluate summary totals - {ERR}'
+                               .format(NAME=self.name, ERR=e))
+                summary_total = 0
+
+            logger.debug('AuditRecord {NAME}: adding {SUMM} to column {COL}'
+                         .format(NAME=name, SUMM=summary_total, COL=column))
+
+            self.record_data[column] = summary_total
+
+    def map_summary_old(self, transactions):
+        """
+        Populate the audit record totals table with transaction summary totals.
         """
         operators = set('+-*/%')
 
@@ -2079,9 +2145,9 @@ class AuditRecord:
 
         # Store transaction table summaries for mapping
         summary_map = {}
-        for tab in rule_tabs:
+        for tab in transactions:
             tab_name = tab.name
-            summary = tab.table.summarize_table()
+            summary = tab.table.summarize()
             for summary_column in summary:
                 summary_value = summary[summary_column]
                 summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=summary_column)] = summary_value
@@ -2136,6 +2202,7 @@ class AuditRecord:
         """
         Map transaction records from the audit to the audit accounting records.
         """
+        pd.set_option('display.max_columns', None)
         tab_names = [i.name for i in rule_tabs]
 
         logger.debug('AuditRecord {NAME}: creating component records from the transaction records'
@@ -2222,8 +2289,11 @@ class AuditRecord:
             logger.debug('AuditRecord {NAME}: merging rows on columns {COLS}'.format(NAME=self.name, COLS=merge_on))
             comp_df = comp_df.groupby(merge_on).sum().reset_index()
 
-        final_df = record.create_components(component_table, record_data=comp_df)
-        component_table.append(final_df)
+        if not comp_df.empty:
+            final_df = record.create_components(component_table, record_data=comp_df)
+            print('creating component records from transactions:')
+            print(final_df)
+            component_table.append(final_df)
 
     def map_transactions_old(self, rule_tabs, params):
         """
