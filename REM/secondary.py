@@ -421,6 +421,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
             # Save the record to the database table
             saved = record.save()
             if saved is False:
+                popup_error('failed to save record {ID} - see log for details'.format(ID=record_id))
                 continue
             else:
                 # Remove unsaved IDs associated with the record
@@ -431,6 +432,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
         if event == '-DELETE-':
             deleted = record.delete()
             if deleted is False:
+                popup_error('failed to delete record {ID} - see log for details'.format(ID=record_id))
                 continue
             else:
                 # Remove unsaved IDs associated with the record

@@ -469,15 +469,15 @@ class RecordEntry:
             logger.error(msg)
             raise
 
-        records_saved = []
+        records_saved = pd.Series(index=record_ids, dtype='bool')
         for record_id in record_ids:
             if record_id in import_ids:
-                records_saved.append(True)
+                records_saved[record_id] = True
             else:
-                records_saved.append(False)
+                records_saved[record_id] = False
 
         if isinstance(id_list, str):
-            return records_saved[0]
+            return records_saved[id_list]
         else:
             return records_saved
 
@@ -538,13 +538,18 @@ class RecordEntry:
         df.drop(df[df[primary_col].isna()].index, inplace=True)
 
         # Check if references exists in the table already
-        exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
+        #exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
+        exists = self.confirm_saved(df['RecordID'], id_field=column_map['RecordID'], table=reference_table)
+        existing_ids = exists[exists].index.tolist()
+        new_ids = exists[~exists].index.tolist()
+        print(exists)
 
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
         export_df = df[[i for i in column_map if i in df.columns]].rename(columns=column_map)
 
         # Prepare update statements for the existing reference entries
-        current_df = export_df[exists]
+        #current_df = export_df[exists]
+        current_df = export_df[export_df[column_map['RecordID']].isin(existing_ids)]
         if not current_df.empty:
             # Add reference edit details to the reference entries
             current_df.loc[:, settings.editor_code] = user.uid
@@ -564,14 +569,15 @@ class RecordEntry:
             statements = user.prepare_update_statement(reference_table, export_columns, export_values, filter_clause,
                                                        filter_params, statements=statements)
 
-        # Extract all new reference entries from the table
-        new_df = export_df[[not i for i in exists]]
-
         # Prepare insertion statements for the new reference entries
+        #new_df = export_df[[not i for i in exists]]
+        new_df = export_df[export_df[column_map['RecordID']].isin(new_ids)]
         if not new_df.empty:
             # Add reference creation details to the reference entries
-            new_df.loc[:, settings.creator_code] = user.uid
-            new_df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+            #new_df.loc[:, settings.creator_code] = user.uid
+            #new_df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+            new_df[settings.creator_code].fillna(user.uid, inplace=True)
+            new_df[settings.creation_date].fillna(datetime.datetime.now().strftime(settings.date_format), inplace=True)
 
             # Ignore new reference entries that were deleted, because they never made it to the database anyway
             new_df = new_df[~new_df['IsDeleted']]
@@ -629,6 +635,9 @@ class RecordEntry:
             return statements
 
         exists = self.confirm_saved(df[id_field].values.tolist(), id_field=id_field)
+        print(exists)
+        existing_ids = exists[exists].index.tolist()
+        new_ids = exists[~exists].index.tolist()
 
         # Prepare a separate database transaction statement for each database table containing the record's data
         columns = df.columns.tolist()
@@ -656,7 +665,8 @@ class RecordEntry:
             # Prepare separate update and insert statements depending on whether an individual record already exists
 
             # Extract all currently existing records from the table
-            current_df = export_df[exists]
+            #current_df = export_df[exists]
+            current_df = export_df[export_df[id_field].isin(existing_ids)]
 
             # Prepare update statements for the existing records
             if not current_df.empty:
@@ -678,21 +688,25 @@ class RecordEntry:
                                                            filter_params, statements=statements)
 
             # Extract all new records from the table
-            new_df = export_df[[not i for i in exists]]
+            #new_df = export_df[[not i for i in exists]]
+            new_df = export_df[export_df[id_field].isin(new_ids)]
 
             # Prepare insertion statements for the new records
             if not new_df.empty:
                 # Add record creation details to records table
-                new_df.loc[:, settings.creator_code] = user.uid
-                new_df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+                #new_df.loc[:, settings.creator_code] = user.uid
+                #new_df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
+                new_df[settings.creator_code].fillna(user.uid, inplace=True)
+                new_df[settings.creation_date].fillna(datetime.datetime.now().strftime(settings.date_format),
+                                                      inplace=True)
 
                 export_columns = new_df.rename(columns=references).columns.tolist()
                 export_values = [tuple(i) for i in new_df.values.tolist()]
                 statements = user.prepare_insert_statement(table, export_columns, export_values, statements=statements)
 
         # If relevant, create or edit hard-linked reference records for new database records
-        new_df = df[[not i for i in exists]].rename(columns={id_field: 'RecordID'})
-        exist_df = df[exists].rename(columns={id_field: 'RecordID'})
+        new_df = df[df[id_field].isin(new_ids)].rename(columns={id_field: 'RecordID'})
+        exist_df = df[df[id_field].isin(existing_ids)].rename(columns={id_field: 'RecordID'})
         for association in association_rules:
             rule = association_rules[association]
 
@@ -819,9 +833,10 @@ class RecordEntry:
 
         # Check existence of the records in the database
         exists = self.confirm_saved(records, id_field=id_field)
+
         record_ids = []
-        for index, record_id in enumerate(records):
-            record_exists = exists[index]
+        for record_id in records:
+            record_exists = exists[record_id]
             if record_exists:  # only attempt to delete records that already exist in the database
                 record_ids.append(record_id)
 
@@ -1813,14 +1828,9 @@ class DatabaseRecord:
             logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
                          .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
             if record_element.etype == 'component_table':
-                print('record element is a component table')
-                elem_key = record_element.key_lookup('Element')
-                #add_key = record_element.key_lookup('Add')
-                #add_hkey = '{}+ADD+'.format(elem_key)
                 try:
                     add_bttn = record_element.fetch_parameter('Add', filters=False)
-                    add_key = add_bttn.key_lookup()
-                    add_hkey = '{ELEM}{KEY}'.format(ELEM=elem_key, KEY=add_bttn.shortcut_key)
+                    add_key, add_hkey = add_bttn.key_lookup()
                 except KeyError:
                     add_key = add_hkey = None
 
