@@ -55,8 +55,8 @@ TBL_HEADER_FONT = ('Tahoma', 13)
 
 TOOLTIP_FONT = 'Arial 12'
 
-SMALL_FONT = ('Arial', 9)
-BOLD_SMALL_FONT = ('Arial', 9, 'bold')
+SMALL_FONT = ('Arial', 10)
+BOLD_SMALL_FONT = ('Arial', 10, 'bold')
 MID_FONT = ('Arial', 11)
 BOLD_MID_FONT = ('Arial', 11, 'bold')
 LARGE_FONT = ('Arial', 13)

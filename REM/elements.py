@@ -204,7 +204,7 @@ class DataTable(RecordElement):
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
                                'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
-                               'TitleBar', 'FilterBar', 'ActionsBar')])
+                               'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')])
         event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options']
 
         # Element-specific bindings
@@ -696,6 +696,7 @@ class DataTable(RecordElement):
         if event == elem_key:
             selected_rows = values[elem_key]
             self._selected_rows = selected_rows
+            self.update_annotation(window)
 
         # Double-click or return key pressed to open table row
         elif event in (open_key, return_key):
@@ -710,6 +711,7 @@ class DataTable(RecordElement):
                 logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             else:
                 self._selected_rows = [select_row_index]
+                self.update_annotation(window)
 
                 # Get the real index of the selected row
                 index = self.get_index(select_row_index)
@@ -903,13 +905,13 @@ class DataTable(RecordElement):
         Arguments:
             window: GUI window.
 
-            indices: list or series of indices corresponding to the desired rows to select.
+            indices (list): only deselect rows at these indices.
         """
         elem_key = self.key_lookup('Element')
         current_rows = self._selected_rows
 
-        if indices and not isinstance(indices, list):
-            raise TypeError('the indices argument must be a list')
+        if isinstance(indices, int):
+            indices = [indices]
 
         if indices:
             selected_rows = [i for i in current_rows if i not in indices]
@@ -921,7 +923,7 @@ class DataTable(RecordElement):
 
     def select(self, window, indices):
         """
-        Select rows at the given indices.
+        Manually select rows at the given display indices.
 
         Arguments:
             window: GUI window.
@@ -1158,8 +1160,32 @@ class DataTable(RecordElement):
         window[tbl_key].set_tooltip(tooltip)
 
         self.deselect(window)
+        self.update_annotation(window)
 
         return display_df
+
+    def update_annotation(self, window):
+        """
+        Set the row annotation, if any rows are selected.
+        """
+        annot_key = self.key_lookup('Notes')
+
+        indices = self.selected(real=True)
+        df = self.data(indices=indices)
+        annotations = self.annotate_rows(df)
+
+        if len(indices) > 0:
+            row_index = indices[0]
+            if row_index in annotations:
+                annotation_rule = annotations[row_index]
+                annotation = self.annotation_rules[annotation_rule]['Description']
+            else:
+                annotation = ''
+        else:
+            annotation = ''
+
+        window[annot_key].update(value=annotation)
+        window[annot_key].set_tooltip(annotation)
 
     def format_tooltip(self, annotations: dict = None):
         """
@@ -1371,6 +1397,7 @@ class DataTable(RecordElement):
         pad_v = mod_const.VERT_PAD
 
         font = mod_const.MAIN_FONT
+        annot_font = mod_const.MID_FONT
         bold_font = mod_const.BOLD_FONT
         tbl_font = mod_const.TBL_FONT
         header_font = mod_const.TBL_HEADER_FONT
@@ -1399,6 +1426,7 @@ class DataTable(RecordElement):
         bar_h = 26  # height of the title and totals bars in pixels
         cbar_h = 22  # height of the collapsible panel bars in pixels
         bttn_h = 30  # height of the filter apply button
+        annot_h = 30  # height of the annotation multiline
 
         height_offset = 0
 
@@ -1561,7 +1589,7 @@ class DataTable(RecordElement):
                              vertical_scroll_only=False, select_mode=select_mode,
                              metadata={'disabled': not events, 'visible': True}))
 
-        # Table options
+        # Table option
         options = [[sg.Col([[sg.Text('Options', text_color=select_text_col, background_color=border_col)]],
                            pad=(0, (0, int(pad_v / 2))), background_color=border_col, vertical_alignment='c',
                            element_justification='c', expand_x=True)]]
@@ -1586,6 +1614,22 @@ class DataTable(RecordElement):
 
         row4.append(sg.Col(options, key=self.key_lookup('OptionsFrame'), background_color=frame_col,
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
+
+        # Annotation display panel
+        if len(self.annotation_rules) > 0:
+            annot_vis = True
+            height_offset += annot_h  # height of the collapsible bar
+        else:
+            annot_vis = False
+            height_offset += 2  # invisible elements have a footprint
+
+        annot_key = self.key_lookup('Notes')
+        row5 = [sg.Col([[sg.Canvas(size=(0, annot_h), background_color=header_col),
+                         sg.Text('(select row)', key=annot_key, size=(10, 1), pad=(pad_el, 0), auto_size_text=False,
+                                 font=annot_font, background_color=bg_col, text_color=disabled_text_col,
+                                 border_width=1, relief='sunken')]],
+                       background_color=header_col, expand_x=True, vertical_alignment='c', element_justification='l',
+                       visible=annot_vis, metadata={'visible': annot_vis, 'disabled': True})]
 
         # Control buttons and totals row
         actions_bar = [sg.Canvas(size=(0, bar_h), background_color=header_col)]
@@ -1614,14 +1658,14 @@ class DataTable(RecordElement):
                                   pad=(pad_el, 0), justification='r', element_justification='r', vertical_alignment='b',
                                   background_color=header_col, expand_x=True, expand_y=False))
 
-        row5 = [sg.Col([actions_bar], key=self.key_lookup('ActionsBar'), background_color=header_col,
+        row6 = [sg.Col([actions_bar], key=self.key_lookup('ActionsBar'), background_color=header_col,
                        vertical_alignment='c', expand_x=True, expand_y=True)]
 
         height_offset += bar_h  # height of the totals bar
 
         # Layout
         relief = 'ridge'
-        layout = sg.Frame('', [row1, row2, row3, row4, row5], key=self.key_lookup('Table'),
+        layout = sg.Frame('', [row1, row2, row3, row4, row5, row6], key=self.key_lookup('Table'),
                           pad=pad, element_justification='c', vertical_alignment='c', background_color=header_col,
                           relief=relief, border_width=2)
 
@@ -1688,6 +1732,8 @@ class DataTable(RecordElement):
 
             for param in self.parameters:
                 param.resize(window, size=(param_w, None), pixels=True)
+
+        window[self.key_lookup('Notes')].expand(expand_x=True)
 
         return window[table_key].get_size()
 
