@@ -1823,11 +1823,11 @@ class DataTable(RecordElement):
 
         self.resize(window)
 
-    def export_table(self):
+    def export_table(self, display: bool = True):
         """
         Export table to spreadsheet.
         """
-        df = self.data(display_rows=True)
+        df = self.data(display_rows=display)
         logger.info('DataTable {NAME}: preparing the table for exporting'.format(NAME=self.name))
 
         # Annotate the table
@@ -2481,7 +2481,7 @@ class ComponentTable(RecordTable):
             import_df = collection.data(current=False, deleted_only=True)
         print('import data is:')
         print(import_df)
-        current_ids = collection.row_ids(indices=import_df.index, deleted=True)
+        current_ids = collection.row_ids(indices=import_df.index.tolist(), deleted=True)
         print('records previously deleted are:')
         print(current_ids)
 

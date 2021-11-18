@@ -244,8 +244,6 @@ class BankRule:
             acct_keys = acct.bindings
             link_bttn = acct.table.fetch_parameter('Link', filters=False)
             link_key, link_hkey = link_bttn.key_lookup()
-            print('primary account event keys')
-            print(acct_keys)
         else:
             acct_keys = []
             link_key = link_hkey = None
@@ -257,8 +255,6 @@ class BankRule:
             assoc_keys = []
 
         can_save = not window[save_key].metadata['disabled']
-
-        print('running event {}'.format(event))
 
         # Run an account entry event
         if event in (link_key, link_hkey):
@@ -1321,6 +1317,8 @@ class BankRule:
                 return False
 
         # Save record references to the references table
+        logger.debug('BankRule {NAME}: preparing to save account {ACCT} reference statements'
+                     .format(NAME=self.name, ACCT=self.current_account))
         acct = self.fetch_account(self.current_account)
 
         record_type = acct.record_type
@@ -1330,6 +1328,7 @@ class BankRule:
         association_rule = record_entry.association_rules[association_name]
 
         save_df = acct.ref_df.copy()
+        print('loading existing references')
         try:
             existing_df = acct.load_references(save_df['RecordID'].tolist())
         except Exception as e:
@@ -2041,7 +2040,6 @@ class BankAccount:
         print(df['RecordID'])
         ref_df = ref_df.reindex(index=df['RecordID'].tolist())
 
-
         # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
         if df.shape[0] != ref_df.shape[0]:
             logger.warning('BankAccount {NAME}: the records dataframe and reference dataframe of of unequal sizes'
@@ -2338,17 +2336,34 @@ class BankAccount:
         Load record and reference data from the database.
         """
         pd.set_option('display.max_columns', None)
+
+        ref_map = self.ref_map
         table = self.get_table()
+        id_column = table.id_column
 
         # Update the record table dataframe with the data imported from the database
         df = self.load_records(params, records=records)
-        table.append(df)
 
         # Load the record references from the reference table connected with the association rule
-        record_ids = table.row_ids()
+        record_ids = df[id_column].tolist()
         ref_df = self.load_references(record_ids)
 
-        self.ref_df = ref_df
+        #self.ref_df = ref_df.copy()
+
+        # Reorder the references dataframe to match the order of the records in the records table
+        ref_df.set_index('RecordID', inplace=True)
+        ref_df = ref_df.reindex(index=df[id_column].tolist())
+
+        # Update the configured references columns in the records dataframe to be the same as the columns in references
+        # dataframe
+        for column in ref_map:
+            mapped_col = ref_map[column]
+
+            new_values = ref_df[column].tolist()
+            df[mapped_col] = new_values
+
+        self.ref_df = ref_df.reset_index()
+        table.append(df)
 
     def load_references(self, record_ids):
         """

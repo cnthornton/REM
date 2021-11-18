@@ -499,6 +499,8 @@ class RecordEntry:
         if statements is None:
             statements = {}
 
+        save_time = datetime.datetime.now().strftime(settings.date_format)
+
         if isinstance(ref_data, pd.DataFrame):
             df = ref_data
         elif isinstance(ref_data, pd.Series):
@@ -536,24 +538,27 @@ class RecordEntry:
 
         # Remove rows where the primary column is NULL
         df.drop(df[df[primary_col].isna()].index, inplace=True)
+        if df.empty:
+            logger.warning('RecordType {NAME}: no reference entries provided for saving'.format(NAME=self.name))
+            return statements
 
         # Check if references exists in the table already
         #exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
-        exists = self.confirm_saved(df['RecordID'], id_field=column_map['RecordID'], table=reference_table)
+        exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
+        print(exists)
         existing_ids = exists[exists].index.tolist()
         new_ids = exists[~exists].index.tolist()
-        print(exists)
 
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
         export_df = df[[i for i in column_map if i in df.columns]].rename(columns=column_map)
 
         # Prepare update statements for the existing reference entries
         #current_df = export_df[exists]
-        current_df = export_df[export_df[column_map['RecordID']].isin(existing_ids)]
+        current_df = export_df[export_df[column_map[primary_col]].isin(existing_ids)]
         if not current_df.empty:
             # Add reference edit details to the reference entries
             current_df.loc[:, settings.editor_code] = user.uid
-            current_df.loc[:, settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
+            current_df.loc[:, settings.edit_date] = save_time
 
             # Prepare update statements
             export_values = [tuple(i) for i in current_df.values.tolist()]
@@ -571,13 +576,16 @@ class RecordEntry:
 
         # Prepare insertion statements for the new reference entries
         #new_df = export_df[[not i for i in exists]]
-        new_df = export_df[export_df[column_map['RecordID']].isin(new_ids)]
+        new_df = export_df[export_df[column_map[primary_col]].isin(new_ids)]
         if not new_df.empty:
             # Add reference creation details to the reference entries
-            #new_df.loc[:, settings.creator_code] = user.uid
-            #new_df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
-            new_df[settings.creator_code].fillna(user.uid, inplace=True)
-            new_df[settings.creation_date].fillna(datetime.datetime.now().strftime(settings.date_format), inplace=True)
+
+            try:
+                new_df[settings.creator_code].fillna(user.uid, inplace=True)
+                new_df[settings.creation_date].fillna(save_time, inplace=True)
+            except KeyError:
+                new_df.loc[:, settings.creator_code] = user.uid
+                new_df.loc[:, settings.creation_date] = save_time
 
             # Ignore new reference entries that were deleted, because they never made it to the database anyway
             new_df = new_df[~new_df['IsDeleted']]
@@ -620,6 +628,8 @@ class RecordEntry:
         if not statements:
             statements = {}
 
+        save_time = datetime.datetime.now().strftime(settings.date_format)
+
         if isinstance(records, pd.DataFrame):
             df = records
         elif isinstance(records, pd.Series):
@@ -631,7 +641,6 @@ class RecordEntry:
 
         if df.empty:
             logger.warning('RecordType {NAME}: no records provided for saving'.format(NAME=self.name))
-
             return statements
 
         exists = self.confirm_saved(df[id_field].values.tolist(), id_field=id_field)
@@ -672,7 +681,7 @@ class RecordEntry:
             if not current_df.empty:
                 # Add edit details to records table
                 current_df.loc[:, settings.editor_code] = user.uid
-                current_df.loc[:, settings.edit_date] = datetime.datetime.now().strftime(settings.date_format)
+                current_df.loc[:, settings.edit_date] = save_time
 
                 export_columns = current_df.rename(columns=references).columns.tolist()
                 export_values = [tuple(i) for i in current_df.values.tolist()]
@@ -694,11 +703,12 @@ class RecordEntry:
             # Prepare insertion statements for the new records
             if not new_df.empty:
                 # Add record creation details to records table
-                #new_df.loc[:, settings.creator_code] = user.uid
-                #new_df.loc[:, settings.creation_date] = datetime.datetime.now().strftime(settings.date_format)
-                new_df[settings.creator_code].fillna(user.uid, inplace=True)
-                new_df[settings.creation_date].fillna(datetime.datetime.now().strftime(settings.date_format),
-                                                      inplace=True)
+                try:
+                    new_df[settings.creator_code].fillna(user.uid, inplace=True)
+                    new_df[settings.creation_date].fillna(save_time, inplace=True)
+                except KeyError:
+                    new_df.loc[:, settings.creator_code] = user.uid
+                    new_df.loc[:, settings.creation_date] = save_time
 
                 export_columns = new_df.rename(columns=references).columns.tolist()
                 export_values = [tuple(i) for i in new_df.values.tolist()]
@@ -2135,9 +2145,9 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
-        print(statements)
+        success = user.write_db(sstrings, psets)
+        #success = True
+        #print(statements)
 
         return success
 
@@ -2249,8 +2259,8 @@ class DatabaseRecord:
                          .format(ID=record_id, TBL=comp_table.name))
 
             assoc_rule_name = comp_table.association_rule
-            assoc_rule = record_entry.association_rules.get(assoc_rule_name)
-            if assoc_rule['AssociationType'] == 'parent':  # record is a parent to the component records
+            assoc_rule = comp_entry.association_rules.get(assoc_rule_name)
+            if assoc_rule['AssociationType'] == 'child':  # component records are a child records
                 pc = True
             else:
                 pc = False
@@ -2273,8 +2283,7 @@ class DatabaseRecord:
                 # Set reference flags
                 ref_data['IsChild'] = False
 
-            association_rule = comp_table.association_rule
-            statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
+            statements = record_entry.save_database_references(ref_data, assoc_rule_name, statements=statements)
 
             # Prepare transaction statements for the component records
             #exist_df = comp_df[~comp_df[comp_table.deleted_column]]  # don't update removed references
@@ -2322,9 +2331,9 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
-        print(statements)
+        success = user.write_db(sstrings, psets)
+        #success = True
+        #print(statements)
 
         return success
 
