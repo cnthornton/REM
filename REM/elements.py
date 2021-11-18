@@ -408,15 +408,17 @@ class DataTable(RecordElement):
         try:
             sort_on = entry['SortBy']
         except KeyError:
-            self.sort_on = []
-        else:
-            self.sort_on = []
-            for sort_col in sort_on:
-                if sort_col in columns:
-                    self.sort_on.append(sort_col)
-                else:
-                    msg = self.format_log('sort column {COL} not found in table columns'.format(COL=sort_col))
-                    logger.warning(msg)
+            sort_on = []
+
+        self._default_sort = []
+        for sort_col in sort_on:
+            if sort_col in columns:
+                self._default_sort.append(sort_col)
+            else:
+                msg = self.format_log('sort column {COL} not found in table columns'.format(COL=sort_col))
+                logger.warning(msg)
+
+        self.sort_on = self._default_sort
 
         try:
             self.nrow = int(entry['Rows'])
@@ -633,6 +635,7 @@ class DataTable(RecordElement):
         self.collection.reset()
         self.index_map = {}
         self.edited = False
+        self.sort_on = self._default_sort
 
         # Reset table filter parameters
         if reset_filters:
