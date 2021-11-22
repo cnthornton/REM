@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.5'
+__version__ = '0.3.6'
 
 import logging
 import logging.handlers as handlers
@@ -87,15 +87,21 @@ class WinService:
         logger.info('starting the server')
         logger.info('running REM server version {VER}'.format(VER=__version__))
 
-        sel = selectors.DefaultSelector()
-        lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        lsock.bind((configuration.host, configuration.port))
-        lsock.listen()
+        try:
+            sel = selectors.DefaultSelector()
+            lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            lsock.bind((configuration.host, configuration.port))
+            lsock.listen()
+            lsock.setblocking(False)
+            sel.register(lsock, selectors.EVENT_READ, data=None)
+        except Exception as e:
+            logger.error('failed to bind socket on port {HOST}:{PORT} - {ERR}'
+                         .format(HOST=configuration.host, PORT=configuration.port, ERR=e))
+            raise
+
         logger.info('server {HOST} is listening for connections on port {PORT}'
                     .format(HOST=configuration.host, PORT=configuration.port))
-        lsock.setblocking(False)
-        sel.register(lsock, selectors.EVENT_READ, data=None)
 
         # Start main loop
         try:
@@ -791,11 +797,15 @@ class ConfigManager:
             logger.error('unable to load configuration from the configuration database')
             sys.exit(1)
 
-        self.audit_rules = collection.find_one({'name': 'audit_rules'})
-        self.cash_rules = collection.find_one({'name': 'cash_rules'})
-        self.bank_rules = collection.find_one({'name': 'bank_rules'})
-        self.records = collection.find_one({'name': 'records'})
-        self.aliases = collection.find_one({'name': 'parameters'})
+        try:
+            self.audit_rules = collection.find_one({'name': 'audit_rules'})
+            self.cash_rules = collection.find_one({'name': 'cash_rules'})
+            self.bank_rules = collection.find_one({'name': 'bank_rules'})
+            self.records = collection.find_one({'name': 'records'})
+            self.aliases = collection.find_one({'name': 'parameters'})
+        except Exception as e:
+            logger.error('unable to find required collection parameters - {ERR}'.format(ERR=e))
+            raise
 
         logger.info('configuration successfully loaded')
 
