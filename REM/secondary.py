@@ -921,8 +921,8 @@ def database_importer_window(win_size: tuple = None):
                  'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
                  'int': 'Int64', 'integer': 'Int64', 'bit': 'Int64',
                  'bool': bool, 'boolean': bool,
-                 'char': np.object, 'varchar': np.object, 'binary': np.object, 'varbinary': np.object,
-                 'tinytext': np.object, 'text': np.object, 'string': np.object}
+                 'char': np.object_, 'varchar': np.object_, 'binary': np.object_, 'varbinary': np.object_,
+                 'tinytext': np.object_, 'text': np.object_, 'string': np.object_}
 
     oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
 
@@ -1020,24 +1020,24 @@ def database_importer_window(win_size: tuple = None):
                 return False
 
             # Prepare references for all associations where record entry is the primary record type
-            association_rules = record_entry.association_rules
-            for rule_name in association_rules:
-                association_rule = association_rules[rule_name]
-                if not association_rule['Primary']:
-                    continue
+            #association_rules = record_entry.association_rules
+            #for rule_name in association_rules:
+            #    association_rule = association_rules[rule_name]
+            #    if not association_rule['Primary']:
+            #        continue
 
-                # Create an initial reference entry for the records
-                ref_data = pd.DataFrame({'RecordID': record_ids, 'RecordType': record_entry.name,
-                                         'IsDeleted': False})
-                try:
-                    statements = record_entry.save_database_references(ref_data, rule_name, statements=statements)
-                except Exception as e:
-                    msg = 'failed to upload {TYPE} reference entries to the database for association rule {RULE} - ' \
-                          '{ERR}'.format(TYPE=record_entry.name, RULE=rule_name, ERR=e)
-                    logger.exception(msg)
-                    popup_error(msg)
+            #    # Create an initial reference entry for the records
+            #    ref_data = pd.DataFrame({'RecordID': record_ids, 'RecordType': record_entry.name,
+            #                             'IsDeleted': False})
+            #    try:
+            #        statements = record_entry.save_database_references(ref_data, rule_name, statements=statements)
+            #    except Exception as e:
+            #        msg = 'failed to upload {TYPE} reference entries to the database for association rule {RULE} - ' \
+            #              '{ERR}'.format(TYPE=record_entry.name, RULE=rule_name, ERR=e)
+            #        logger.exception(msg)
+            #        popup_error(msg)
 
-                    return False
+            #        return False
 
             sstrings = []
             psets = []
