@@ -2006,7 +2006,14 @@ def record_import_window(table, enable_new: bool = False):
             except IndexError:
                 continue
             else:
-                record = table.load_record(row_index, level=0)
+                table._selected_rows = [row_index]
+                table.update_annotation(window)
+
+                print('selected table row index is: {}'.format(row_index))
+
+                # Get the real index of the selected row
+                index = table.get_index(row_index)
+                record = table.load_record(index, level=0)
                 if record:
                     import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
 
