@@ -1336,7 +1336,7 @@ class DataTable(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=False)
+                results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition}, as_list=False)
             except Exception as e:
                 logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
@@ -2484,8 +2484,8 @@ class ComponentTable(RecordTable):
             import_df = collection.data(current=False, deleted_only=True)
         print('import data is:')
         print(import_df)
-        current_ids = collection.row_ids(indices=import_df.index.tolist(), deleted=True)
-        print('records previously deleted are:')
+        current_ids = collection.row_ids()
+        print('records currently in dataframe:')
         print(current_ids)
 
         logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
@@ -2638,8 +2638,8 @@ class InfoBox(RecordElement):
         self.eclass = 'references'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Frame', 'RefDate', 'Unlink', 'ParentFlag', 'HardLinkFlag', 'Approved')])
-        self._event_elements = ['Element', 'Frame', 'Approved', 'Unlink']
+                              ('Element', 'Frame', 'CollapseBttn')])
+        self._event_elements = ['Element', 'Frame', 'CollapseBttn']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -2788,10 +2788,8 @@ class InfoBox(RecordElement):
         self._dimensions = size
         width, height = size
 
-        is_approved = self.approved
         aliases = self.aliases
         modifiers = self.modifiers
-        warnings = self.notes if self.notes is not None else ''
 
         self.level = level
 
@@ -2804,8 +2802,20 @@ class InfoBox(RecordElement):
         bold_font = mod_const.BOLD_FONT
 
         text_col = mod_const.TEXT_COL
-        bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
-        tooltip = tooltip if tooltip else self.tooltip
+        bg_col = self.bg_col
+        tooltip = tooltip if tooltip else ''
+
+        # Element description
+        desc_layout = []
+
+        icon = self.icon
+        if icon is not None:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                desc_layout.append(sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col))
+
+        desc_layout.append(sg.Text(self.description, auto_size_text=True, pad=(0, 0), text_color=text_col,
+                                   font=bold_font, background_color=bg_col, tooltip=tooltip))
 
         # Allowed actions and visibility of component elements
         is_disabled = False if (editable is True and level < 1) else True
@@ -2815,73 +2825,19 @@ class InfoBox(RecordElement):
 
         select_text_col = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
 
-        approved_vis = True if modifiers['approve'] is not None else False
-        hl_vis = True if self.is_hardlink is True else False
-        pc_vis = True if self.is_pc is True else False
-
-        # Element layout
-        ref_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('Frame')
-        discard_key = self.key_lookup('Unlink')
-        link_key = self.key_lookup('HardLinkFlag')
-        parent_key = self.key_lookup('ParentFlag')
-        approved_key = self.key_lookup('Approved')
-        date_key = self.key_lookup('RefDate')
-
-        ref_date = settings.format_display_date(self.date) if not pd.isna(self.date) else None
-        ref_id = self.reference_id if self.reference_id else None
-        approved_title = 'Reference approved' if 'IsApproved' not in aliases else aliases['IsApproved']
-        elem_layout = [[sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
-                                         text_color=text_col, font=bold_font, background_color=bg_col,
-                                         tooltip=tooltip),
-                                 sg.Image(data=mod_const.LINKED_ICON, key=link_key, visible=hl_vis,
-                                          pad=(0, (0, pad_v)), background_color=bg_col,
-                                          tooltip=('Reference record is hard-linked to this record' if 'IsHardLink'
-                                                                                                       not in aliases else
-                                                   aliases['IsHardLink'])),
-                                 sg.Image(data=mod_const.PARENT_ICON, key=parent_key, visible=pc_vis,
-                                          pad=(0, (0, pad_v)), background_color=bg_col,
-                                          tooltip=('Reference record is a parent of this record' if 'IsParentChild'
-                                                                                                    not in aliases else
-                                                   aliases['IsParentChild']))],
-                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_h), 0),
-                                         enable_events=can_open, text_color=select_text_col, font=font,
-                                         background_color=bg_col,
-                                         tooltip=('Reference record' if 'ReferenceID' not in aliases else
-                                                  aliases['ReferenceID'])),
-                                 sg.Text(ref_date, key=date_key, auto_size_text=True, enable_events=True,
-                                         text_color=text_col, font=font, background_color=bg_col,
-                                         tooltip=('Date of reference creation' if 'ReferenceDate' not in aliases else
-                                                  aliases['ReferenceDate']))]],
-                               pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
-                        sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col,
-                                         visible=approved_vis),
-                                 sg.Checkbox('', default=is_approved, key=approved_key, enable_events=True,
-                                             disabled=(not can_approve), visible=approved_vis,
-                                             background_color=bg_col)],
-                                [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, pad=((0, pad_el * 2), 0),
-                                           disabled=(not can_delete), button_color=(text_col, bg_col), border_width=0,
-                                           tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
-                                                    aliases['RemoveLink']))]],
-                               pad=((0, pad_h), pad_v), justification='r', element_justification='r',
-                               vertical_alignment='c', background_color=bg_col)
-                        ]]
-
-        layout = sg.Frame('', elem_layout, key=frame_key, size=(width, height), pad=padding, background_color=bg_col,
-                          relief='raised', visible=self.referenced, vertical_alignment='c', element_justification='l',
-                          metadata={'deleted': False, 'name': self.name}, tooltip=warnings)
+        layout = sg.Frame('', [[]])
 
         return layout
-
-    def add_reference(self, ref_data):
-        """
-        Add a reference to the info box collection.
-        """
-        pass
 
     def box_layout(self, window, ref_data):
         """
         Add a new info-box to the layout.
+        """
+        pass
+
+    def add_reference(self, ref_data):
+        """
+        Add a reference to the info box collection.
         """
         pass
 
@@ -2917,57 +2873,7 @@ class InfoBox(RecordElement):
         """
         Update the display element.
         """
-        link_key = self.key_lookup('HardLinkFlag')
-        parent_key = self.key_lookup('ParentFlag')
-        frame_key = self.key_lookup('Frame')
-        ref_key = self.key_lookup('Element')
-        date_key = self.key_lookup('RefDate')
-        approved_key = self.key_lookup('Approved')
-        discard_key = self.key_lookup('Unlink')
-
-        logger.debug('ReferenceBox {NAME}: updating reference box display'.format(NAME=self.name))
-
-        is_hl = self.is_hardlink
-        is_pc = self.is_pc
-        referenced = self.referenced
-        warnings = self.notes if self.notes is not None else ''
-
-        # Update value of approved checkbox
-        window[approved_key].update(value=self.approved)
-
-        # Update the Date and ID elements if no values
-        if not window[ref_key].get():  # current ID and date not set yet
-            ref_id = self.reference_id
-            ref_date = settings.format_display_date(self.date) if self.date else None
-            window[ref_key].update(value=ref_id)
-            window[date_key].update(value=ref_date)
-
-        # Update visibility of the element
-        if referenced:
-            window[frame_key].update(visible=True)
-        else:
-            window[frame_key].update(visible=False)
-
-        # Set flag badges and disable delete button if reference is a child or hard-linked
-        if is_hl:
-            window[link_key].update(visible=True)
-            window[discard_key].update(disabled=True)
-        else:
-            window[link_key].update(visible=False)
-
-        if is_pc:
-            window[parent_key].update(visible=True)
-            window[discard_key].update(disabled=True)
-        else:
-            window[parent_key].update(visible=False)
-
-        # Set notes
-        bg_col = self.bg_col if not warnings else mod_const.WARNING_COL
-        window[frame_key].Widget.config(background=bg_col)
-        window[frame_key].Widget.config(highlightbackground=bg_col)
-        window[frame_key].Widget.config(highlightcolor=bg_col)
-
-        window.Element(frame_key).SetTooltip(warnings)
+        pass
 
     def append(self, ref_data, new: bool = False):
         """
@@ -3057,6 +2963,33 @@ class InfoBox(RecordElement):
             return {}
         else:
             return {'ReferenceID': self.collection.summarize_field('ReferenceID', statistic='count')}
+
+    def collapse_expand(self, window):
+        """
+        Collapse record frames.
+        """
+        bttn_key = self.key_lookup('CollapseBttn')
+        bttn = window[bttn_key]
+
+        frame_key = self.key_lookup('Frame')
+        frame = window[frame_key]
+        frame_meta = frame.metadata
+
+        if frame_meta['visible']:  # already visible, so want to collapse the frame
+            logger.debug('DataTable {NAME}: collapsing the entries frame'.format(NAME=self.name))
+            bttn.update(image_data=mod_const.UNHIDE_ICON)
+            frame.update(visible=False)
+
+            frame.metadata['visible'] = False
+        else:  # not visible yet, so want to expand the frame
+            if not frame_meta['disabled']:
+                logger.debug('DataTable {NAME}: expanding the entries frame'.format(NAME=self.name))
+                bttn.update(image_data=mod_const.HIDE_ICON)
+                frame.update(visible=True)
+
+                frame.metadata['visible'] = True
+
+        self.resize(window)
 
 
 class ReferenceBox(RecordElement):
@@ -4820,6 +4753,7 @@ class ElementReference(RecordElement):
         print(values)
         if isinstance(values, dict):  # dictionary of referenced element values
             input_value = mod_dm.evaluate_operation(values, self.operation)
+            #input_value = mod_dm.evaluate_rule(values, self.operation)
         else:  # single value provided
             input_value = values
 

@@ -7,7 +7,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from REM.client import logger
+from REM.client import logger, settings
 
 
 def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=False):
@@ -51,80 +51,12 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
     return lengths
 
 
-def get_column_from_oper(df, condition):
-    """
-    Extract the column name from a condition rule
-    """
-    headers = df.columns.values.tolist()
-
-    if isinstance(condition, str):
-        conditional = parse_operation_string(condition)
-    elif isinstance(condition, list):
-        conditional = condition
-    else:
-        raise ValueError('condition argument must be either a string or list')
-
-    colnames = []
-    for component in conditional:
-        if component in headers:
-            colnames.append(component)
-        elif component.lower() in headers:
-            colnames.append(component.lower())
-        else:  # component is a string or integer
-            continue
-
-    return colnames
-
-
-def generate_column_from_rule(dataframe, rule):
-    """
-    Generate the values of a dataframe column using the defined rule set.
-    """
-    chain_operators = ('or', 'and', 'OR', 'AND', 'Or', 'And')
-
-    # Split string by any chain operator
-    col_list = [i.strip() for i in re.split('{}'.format('|'.join([' {} '.format(i) for i in chain_operators])), rule)]
-
-    col_to_add = pd.Series(np.full([dataframe.shape[0]], np.nan))
-
-    merge_cols = []
-    dtype = None
-    for i, sub_rule in enumerate(col_list):
-        col_oper_list = parse_operation_string(sub_rule)
-
-        sub_colnames = get_column_from_oper(dataframe, col_oper_list)
-        for sub_colname in sub_colnames:
-            merge_cols.append(sub_colname)
-
-            column_dtype = dataframe.dtypes[sub_colname]
-            if i == 0:
-                dtype = column_dtype
-            elif i > 0:
-                if dtype != column_dtype:
-                    logger.warning('attempting to combine column {COL} with dtype {COL_DTYPE} different from the '
-                                   'original dtype {DTYPE}'
-                                   .format(COL=sub_colname, COL_DTYPE=column_dtype, DTYPE=dtype))
-        try:
-            sub_values = evaluate_rule(dataframe, col_oper_list)
-        except Exception as e:
-            logger.warning('merging of columns {COLS} failed - {ERR}'.format(COLS=merge_cols, ERR=e))
-            continue
-        else:
-            try:
-                col_to_add.fillna(pd.Series(sub_values), inplace=True)
-            except Exception as e:
-                logger.error('filling new column with values from rule {COND} failed - {ERR}'
-                             .format(COND=sub_rule, ERR=e))
-
-    # Attempt to set the column data type
-    return col_to_add.astype(dtype, errors='raise')
-
-
-def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
+def evaluate_condition_set(df, conditions, rule_key=None, as_list: bool = True):
     """
     Check whether rows in a dataframe pass a set of conditions. Returns a list or pandas Series of failed indexes.
     """
-    chain_operators = ['and', 'or', 'OR', 'AND', 'And', 'Or']
+    #chain_operators = ['and', 'or', 'OR', 'AND', 'And', 'Or']
+    chain_operators = ('and', 'or')
 
     eval_results = []  # stores list of lists or pandas Series of bools to pass into formatter
     operators = []
@@ -137,8 +69,8 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
         else:
             rule_str = conditions[rule_name]  # db column name is dictionary key
 
-        rule_list = [i.strip() for i in
-                     re.split('({})'.format('|'.join([' {} '.format(i) for i in chain_operators])), rule_str)]
+        split_pttrn = '({})'.format('|'.join([' {} '.format(i) for i in chain_operators]))
+        rule_list = [i.strip() for i in re.split(split_pttrn, rule_str, flags=re.IGNORECASE)]
 
         for component in rule_list:  # evaluation rules should be considered separately at first
             if component.lower() in chain_operators:  # item is chain operators (and / or)
@@ -146,8 +78,8 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
             else:  # item is a separate rule
                 try:
                     logger.debug('dataframe will be evaluated on condition {}'.format(component))
-                    cond_results = evaluate_condition(df, component, as_list=False).fillna(False).astype(np.bool,
-                                                                                                        errors='raise')
+                    cond_results = evaluate_condition(df, component)
+                    cond_results = cond_results.fillna(False).astype(np.bool_, errors='raise')
                 except Exception as e:
                     logger.warning('evaluation failed - {}. Setting values to default "False"'.format(e))
                     if isinstance(df, pd.DataFrame):
@@ -178,12 +110,17 @@ def evaluate_rule_set(df, conditions, rule_key=None, as_list: bool = True):
         return results
 
 
-def evaluate_condition(data, condition, as_list: bool = True):
+def evaluate_condition(data, condition):
     """
     Check whether rows in dataframe pass a given condition rule.
     """
     is_bool_dtype = pd.api.types.is_bool_dtype
-    operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'in', 'not in'}
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_integer_dtype = pd.api.types.is_integer_dtype
+    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+    operators = {'>': gt, '>=': ge, '<': lt, '<=': le, '==': eq, '=': eq, '!=': ne, 'in': isin, 'not in': notin}
+    rev_operators = {'>': lt, '>=': le, '<': gt, '<=': ge, '==': eq, '=': eq, '!=': ne, 'in': isin, 'not in': notin}
 
     if isinstance(data, pd.Series):
         header = data.index.tolist()
@@ -194,40 +131,56 @@ def evaluate_condition(data, condition, as_list: bool = True):
     else:
         raise ValueError('data must be either a pandas DataFrame or Series')
 
-    rule = [i.strip() for i in re.split('({})'.format('|'.join([' {} '.format(i) for i in operators])), condition)]
-    if len(rule) == 3:  # some of the data is being compared to some condition
+    split_pttrn = '({})'.format('|'.join([' {} '.format(i) for i in operators]))
+    rule = [i.strip() for i in re.split(split_pttrn, condition, flags=re.IGNORECASE)]
+    if len(rule) == 3:  # data is evaluated on some condition rule
         left, oper, right = rule
+        oper = oper.lower()
         if oper not in operators:
-            raise SyntaxError('unable to parse rule condition {} - operator must separate the operands'
-                              .format(condition))
+            raise SyntaxError('unable to parse rule condition {COND} - the operator {OPER} must separate two operands'
+                              .format(COND=condition, OPER=oper))
+
+        # Prepare the operation components
+        if left in header:
+            variable = data[left]
+
+            if right in header:
+                values = data[right]
+            else:
+                values = right
+
+            oper_func = operators[oper]
         else:
-            if oper == '=':
-                oper = '=='
+            if right in header:
+                variable = data[right]
+                values = left
 
-        if oper.lower() == 'in':
-            for column in header:
-                left = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), left)
-            eval_str = '{}.isin(right)'.format(left)
-            right = right.replace(' ', '').split(',')
-        elif oper.lower() == 'not in':
-            for column in header:
-                left = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), left)
-            eval_str = '~{}.isin(right)'.format(left)
-            right = right.replace(' ', '').split(',')
+                oper_func = rev_operators[oper]
+            else:
+                raise SyntaxError('at least one operand must be a data field')
+
+        # Enforce data type consistency between left and right
+        dtype = variable.dtype
+        if is_float_dtype(dtype):
+            format_func = settings.format_as_float
+        elif is_integer_dtype(dtype):
+            format_func = settings.format_as_int
+        elif is_datetime_dtype(dtype):
+            format_func = settings.format_as_datetime
+        elif is_bool_dtype(dtype):
+            format_func = settings.format_as_bool
         else:
-            for column in header:
-                left = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), left)
-                right = re.sub(r'\b{}\b'.format(column), 'data["{}"]'.format(column), right)
-            eval_str = "{} {} {}".format(left, oper, right)
+            format_func = str
 
-        try:
-            results = eval(eval_str)
-        except SyntaxError:
-            raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
-        except NameError:  # dataframe does not have column
-            raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
+        if isinstance(values, pd.Series):
+            values = values.apply(format_func)
+        else:
+            values = format_func(values)
 
-    elif len(rule) == 1:  # a part of the data was selected
+        # Evaluate the operation
+        results = oper_func(variable, values)
+
+    elif len(rule) == 1:  # data is tested for existence or truth
         eval_str = rule[0]
         if eval_str[0] == '!':  # not column values or NaN values
             colname = eval_str.replace(' ', '')[1:]
@@ -249,9 +202,6 @@ def evaluate_condition(data, condition, as_list: bool = True):
                 results = pd.Series([False for _ in range(nrow)])
     else:
         raise SyntaxError('unable to parse rule condition {} - unknown format of the condition rule'.format(condition))
-
-    if as_list is True:
-        results = list(results)
 
     return results
 
@@ -407,3 +357,45 @@ def parse_operation_string(condition, equivalent: bool = True):
         parsed_condition_fmt = [i for i in parsed_condition if i]
 
     return parsed_condition_fmt
+
+
+def isin(column, values):
+    if isinstance(values, str):
+        values = re.sub(r'[{}()\[\] ]', '', values).split(',')
+    elif isinstance(values, pd.Series):
+        values = values.tolist()
+
+    return column.isin(values)
+
+
+def notin(column, values):
+    if isinstance(values, str):
+        values = re.sub(r'[{}()\[\] ]', '', values).split(',')
+    elif isinstance(values, pd.Series):
+        values = values.tolist()
+
+    return ~column.isin(values)
+
+
+def ge(column, values):
+    return column.ge(values)
+
+
+def gt(column, values):
+    return column.gt(values)
+
+
+def eq(column, values):
+    return column.eq(values)
+
+
+def ne(column, values):
+    return column.ne(values)
+
+
+def le(column, values):
+    return column.le(values)
+
+
+def lt(column, values):
+    return column.gt(values)

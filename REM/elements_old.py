@@ -1648,7 +1648,7 @@ class TableElement(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                results = mod_dm.evaluate_rule_set(df, {annot_code: annot_condition}, as_list=False)
+                results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition}, as_list=False)
             except Exception as e:
                 logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
@@ -2611,7 +2611,7 @@ class TableElement(RecordElement):
 
                 for default_value in default_rules:
                     default_rule = default_rules[default_value]
-                    results = mod_dm.evaluate_rule_set(row, {default_value: default_rule}, as_list=True)
+                    results = mod_dm.evaluate_condition_set(row, {default_value: default_rule}, as_list=True)
                     for result in results:
                         if result is True:
                             row[column] = default_value
@@ -2681,7 +2681,7 @@ class TableElement(RecordElement):
                 for default_value in default_rules:
                     default_rule = default_rules[default_value]
                     try:
-                        results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
+                        results = mod_dm.evaluate_condition_set(df, {default_value: default_rule}, as_list=False)
                     except Exception as e:
                         msg = 'failed to evaluate condition for rule {RULE} - {ERR}'.format(RULE=default_rule, ERR=e)
                         logger.exception(msg)
@@ -2747,7 +2747,7 @@ class TableElement(RecordElement):
 
                 for default_value in default_rules:
                     default_rule = default_rules[default_value]
-                    results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
+                    results = mod_dm.evaluate_condition_set(df, {default_value: default_rule}, as_list=False)
                     for index, result in results.iteritems():
                         if result is True and pd.isna(df.at[index, column]) is True:
                             df.at[index, column] = dtype_map[dtype](default_value)

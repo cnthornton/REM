@@ -274,7 +274,7 @@ class DataCollection:
                         values = pd.Series(default_value, index=df.index)
 
                     default_rule = column_default[default_value]
-                    results = mod_dm.evaluate_rule_set(df, {default_value: default_rule}, as_list=False)
+                    results = mod_dm.evaluate_condition_set(df, {default_value: default_rule}, as_list=False)
                     for index in results[results].index:  # only "passing", or true, indices
                         default_values[index] = values[index]
 
@@ -305,6 +305,9 @@ class DataCollection:
             return df
 
         for column in columns:
+            logger.debug('DataCollection {NAME}: setting dependant values for dependant field "{COL}"'
+                         .format(NAME=self.name, COL=column))
+
             try:
                 dtype = self.dtypes[column]
             except KeyError:
@@ -323,6 +326,8 @@ class DataCollection:
                 logger.exception(msg)
             else:
                 default_values = format_values(default_values, dtype)
+                print('dependant field {} has values:'.format(column))
+                print(default_values)
                 df.loc[:, column] = default_values
 
         return df
@@ -393,8 +398,11 @@ class DataCollection:
         else:  # dataframe of row values
             values = values.set_index(pd.Index(index))
 
-        shared_cols = [i for i in values.columns if i in header]
-        new_values = self.enforce_conformity(values)[shared_cols]
+        #shared_cols = [i for i in values.columns if i in header]
+        #new_values = self.enforce_conformity(values)[shared_cols]
+        new_values = self.enforce_conformity(values)[header]
+        print('new values after enforcing conformity are:')
+        print(new_values)
 
         edited_rows = set()
         edited_cols = []
@@ -434,6 +442,7 @@ class DataCollection:
         """
         Enforce conformity with the collection data for a new set of data.
         """
+        pd.set_option('display.max_columns', None)
 
         # Set default values for the data
         add_df = self._set_defaults(df=add_df)
@@ -441,6 +450,9 @@ class DataCollection:
 
         # Make sure the data types of the columns are consistent
         add_df = self._set_dtypes(df=add_df)
+
+        print('new data after enforcing conformity has values')
+        print(add_df)
 
         return add_df
 

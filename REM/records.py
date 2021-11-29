@@ -23,6 +23,127 @@ import REM.secondary as mod_win2
 from REM.client import logger, server_conn, settings, user
 
 
+class RecordAssociation:
+    """
+    Manages the relationship between record types.
+
+    Attributes:
+        name (str): name of the association.
+
+        association_type (str): can be one_to_one, one_to_many, or many_to_many.
+
+        association_table (str): name of the database junction table, if relevant.
+
+        primary (dict): entity description of the primary record in the association.
+
+        relation (dict): entity description of the relation record in the association.
+    """
+
+    def __init__(self, entry):
+        """
+        Initialize association attributes.
+
+        Arguments:
+            entry (dict): configuration entry for the record association.
+        """
+        try:
+            self.name = entry['Name']
+        except KeyError:
+            raise AttributeError('missing required configuration field "Name"')
+
+        try:
+            association_type = entry['AssociationType']
+        except KeyError:
+            raise AttributeError('missing required configuration field "AssociationType"')
+        else:
+            if association_type in ['one_to_one', 'one_to_many', 'many_to_many']:
+                self.association_type = association_type
+            else:
+                raise AttributeError('"AssociationType" must be one of "one_to_one", "one_to_many", or "many_to_many"')
+
+        try:
+            self.association_table = entry['AssociationTable']
+        except KeyError:
+            self.association_table = None
+
+        if association_type == 'many_to_many' and self.association_table is None:
+            raise AttributeError('the "AssociationTable" field is required for record associations of type '
+                                 '"many_to_many"')
+
+        try:
+            primary = entry['Primary']
+        except KeyError:
+            raise AttributeError('missing required configuration field "Primary"')
+
+        self.primary = {}
+
+        required_primary_fields = ['RecordType', 'PrimaryKey', 'ForeignKey']
+        for field in required_primary_fields:
+            try:
+                self.primary[field] = primary[field]
+            except KeyError:
+                raise AttributeError('Primary entity is missing required field "{FIELD}"'.format(FIELD=field))
+
+        participation_map = {'optional': 0, 'mandatory': 1}
+        try:
+            participation = primary['Participation']
+        except KeyError:
+            self.primary['Participation'] = 0  # default optional participation
+        else:
+            try:
+                self.primary['Participation'] = int(participation)
+            except ValueError:
+                if participation in participation_map:
+                    self.primary['Participation'] = participation_map[participation]
+                else:
+                    raise AttributeError('Unknown value "{VAL}" provided to the primary entities Participation field'
+                                         .format(VAL=participation))
+
+        try:
+            relation = entry['Relation']
+        except KeyError:
+            raise AttributeError('missing required configuration field "Relation"')
+
+        self.relation = {}
+
+        required_relation_fields = ['RecordType', 'PrimaryKey']
+        if self.association_table is not None:
+            required_relation_fields.append('ForeignKey')
+
+        for field in required_relation_fields:
+            try:
+                self.relation[field] = relation[field]
+            except KeyError:
+                raise AttributeError('Relation entity is missing required field "{FIELD}"'.format(FIELD=field))
+
+        try:
+            participation = relation['Participation']
+        except KeyError:
+            self.relation['Participation'] = 0  # default optional participation
+        else:
+            try:
+                self.relation['Participation'] = int(participation)
+            except ValueError:
+                if participation in participation_map:
+                    self.relation['Participation'] = participation_map[participation]
+                else:
+                    raise AttributeError('Unknown value "{VAL}" provided to the relation entities Participation field'
+                                         .format(VAL=participation))
+
+    def get_entity(self, identifier):
+        """
+        Fetch the relevant entity configuration using the provided identifier.
+        """
+        if identifier == self.primary['RecordType']:
+            return self.primary
+        elif identifier == self.relation['RecordType']:
+            return self.relation
+        else:
+            raise KeyError('no record entity involved in the association matches the provided key "{IDENT}"'
+                           .format(IDENT=identifier))
+
+
+
 class RecordEntry:
 
     def __init__(self, name, entry):
@@ -322,49 +443,6 @@ class RecordEntry:
 
         return df
 
-    def search_unreferenced_ids_old(self, rule_name):
-        """
-        Extract all record IDs from the reference database table that do not have a record reference for the given
-        association rule.
-        """
-        association_rules = self.association_rules
-
-        try:
-            rule = association_rules[rule_name]
-        except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
-                .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ImportError(msg)
-
-        is_primary = rule['Primary']
-        reference_table = rule['ReferenceTable']
-
-        if not is_primary:  # records are used as references, not primary records
-            msg = 'unable to import unreferenced records - {TYPE} records must be the primary records in reference ' \
-                  'table {TBL}'.format(TYPE=self.name, TBL=reference_table)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ImportError(msg)
-
-        # Import reference entries related to record_id
-        columns = ['DocNo']
-        filters = ('RefNo IS NULL', None)
-        import_df = user.read_db(*user.prepare_query_statement(reference_table, columns=columns, filter_rules=filters),
-                                 prog_db=True)
-
-        try:
-            import_ids = import_df.iloc[:, 0].values.tolist()  # first column
-        except IndexError as e:
-            msg = 'unable to import unreferenced records for association rule {RULE} - {ERR}' \
-                .format(RULE=rule_name, ERR=e)
-            logger.error(msg)
-
-            raise ImportError(msg)
-
-        return import_ids
-
     def load_unreferenced_records(self, rule_name):
         """
         Load entry records that do not have a record reference for the given association rule.
@@ -395,7 +473,7 @@ class RecordEntry:
         id_col = mod_db.get_import_column(import_rules, 'RecordID')
         columns = mod_db.format_import_columns(import_rules)
         filters = mod_db.format_import_filters(import_rules)
-        filters_clause = '{}.RefNo IS NULL'.format(reference_table)
+        filters_clause = '{TBL}.RefNo IS NULL'.format(TBL=reference_table)
         filters.append(filters_clause)
         import_rules[reference_table] = {'Columns': {'RefNo': 'RefNo'},
                                          'Join': ["LEFT JOIN", "{} = {}.DocNo".format(id_col, reference_table)]}
@@ -597,6 +675,64 @@ class RecordEntry:
 
             statements = user.prepare_insert_statement(reference_table, export_columns, export_values,
                                                        statements=statements)
+
+        return statements
+
+    def delete_database_references(self, records, rule_name, statements: dict = None):
+        """
+        Prepare to delete database reference entries from the database.
+
+        Arguments:
+            records (list): delete reference entries with these record IDs from the database.
+
+            rule_name (str): name of the association rule linking the relevant records.
+
+            statements (dict): optional dictionary of transactions statements to append to.
+
+        Returns:
+            statements (dict): dictionary of transactions statements.
+        """
+        if statements is None:
+            statements = {}
+
+        association_rules = self.association_rules
+        try:
+            rule = association_rules[rule_name]
+        except KeyError:
+            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                .format(RULE=rule_name)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        reference_table = rule['ReferenceTable']
+        is_primary = rule['Primary']
+
+        if is_primary:  # input record is the primary record ID
+            primary_col = 'RecordID'
+            column_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
+                          'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
+                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
+                          'IsDeleted': 'IsDeleted'}
+        else:  # reference record is the primary record ID
+            primary_col = 'ReferenceID'
+            column_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
+                          'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
+                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
+                          'IsDeleted': 'IsDeleted'}
+
+        if isinstance(records, str):
+            records = [records]
+        elif isinstance(records, pd.Series):
+            records = records.tolist()
+
+        if not len(records) > 0:  # empty list provided
+            return statements
+
+        records = list(set(records))  # duplicate filtering
+
+        # Check existence of the records in the database
+        exists = self.confirm_saved(records, id_field=column_map[primary_col], table=reference_table)
 
         return statements
 
@@ -2087,8 +2223,8 @@ class DatabaseRecord:
                 continue
 
         if nlink > 0 or nchild > 0:  # Record is hard-linked to other records
-            msg = 'Deleting record {ID} will also delete {N} dependent records and {NH} hard-linked records as ' \
-                  'well. Would you like to continue with record deletion?'.format(ID=record_id, N=nchild, NH=nlink)
+            msg = 'Deleting record {ID} will also delete {N} dependent records and {NH} direct hard-linked records ' \
+                  'as well. Would you like to continue with record deletion?'.format(ID=record_id, N=nchild, NH=nlink)
         else:
             msg = 'Are you sure that you would like to delete this record?'
 

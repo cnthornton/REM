@@ -1297,6 +1297,8 @@ class BankRule:
         statements = {}
 
         # Prepare to save the account references and records
+
+        # Save changes to records from all of the active accounts
         for panel_key in self.panels:
             acct = self.fetch_account(panel_key, by_key=True)
 
@@ -1316,7 +1318,9 @@ class BankRule:
 
                 return False
 
-        # Save record references to the references table
+        # Save record references
+
+        # Prepare reference entries from the primary account
         logger.debug('BankRule {NAME}: preparing to save account {ACCT} reference statements'
                      .format(NAME=self.name, ACCT=self.current_account))
         acct = self.fetch_account(self.current_account)
@@ -1348,7 +1352,7 @@ class BankRule:
         print('deleted entries are:')
         print(deleted_df)
 
-        # Save references for the account if component records are the primary records in the reference table
+        # Save references for the account if the account records are the primary records in the reference table
         is_primary = association_rule['Primary']
         if is_primary:
             print('reference entries from the transaction account will be saved:')
@@ -1364,8 +1368,12 @@ class BankRule:
                 logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 return False
+            else:
+                saved_primary_ids = save_df['RecordID'].tolist()
+        else:
+            saved_primary_ids = []
 
-        # Iterate over unique reference types to determine if any referenced records of the given type should have
+        # Iterate over unique reference types to determine if any referenced records of the given type should also have
         # saved entries due to their status as the primary record type in the reference table
         ref_types = save_df['ReferenceType'].append(deleted_df['ReferenceType']).dropna().unique().tolist()
         print('iterating over reference types: {}'.format(ref_types))
@@ -1382,6 +1390,9 @@ class BankRule:
                 sub_df = save_df[save_df['ReferenceType'] == ref_type].copy()
                 sub_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
                                        'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
+
+                # Don't save reference entries twice
+                sub_df = sub_df[~sub_df['RecordID'].isin(saved_primary_ids)]
 
                 print('associated reference entries will also be saved:')
                 print(sub_df)
@@ -1428,69 +1439,6 @@ class BankRule:
         success = user.write_db(sstrings, psets)
         print(statements)
         #success = True
-
-        return success
-
-    def save_references_old(self):
-        """
-        Save record associations to the reference database.
-        """
-        statements = {}
-
-        # Prepare to save the account references
-        for panel in self.panels:
-            acct = self.fetch_account(panel, by_key=True)
-
-            record_type = acct.record_type
-            record_entry = settings.records.fetch_rule(record_type)
-
-            # Save any changes to the records to the records table
-            logger.debug('BankRule {NAME}: preparing account {ACCT} record statements'
-                         .format(NAME=self.name, ACCT=acct.name))
-            record_data = acct.table.data(edited_rows=True)
-            try:
-                statements = record_entry.save_database_records(record_data, statements=statements)
-            except Exception as e:
-                msg = 'failed to prepare the export statement for the account {ACCT} records - {ERR}' \
-                    .format(ACCT=acct.name, ERR=e)
-                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return False
-
-            # Save record references to the references table
-            association_name = acct.association_rule
-            association_rule = record_entry.association_rules[association_name]
-
-            is_primary = association_rule['Primary']
-            if not is_primary:  # only save references if the record is the primary record in the reference table
-                logger.debug('BankRule {NAME}: account {ACCT} records are not primary records in the reference table '
-                             '... skipping'.format(NAME=self.name, ACCT=acct.name))
-                continue
-
-            logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
-                         .format(NAME=self.name, ACCT=acct.name))
-            try:
-                statements = record_entry.save_database_references(acct.ref_df, acct.association_rule,
-                                                                   statements=statements)
-            except Exception as e:
-                msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
-                    .format(ACCT=acct.name, ERR=e)
-                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return False
-
-        logger.info('BankRule {NAME}: saving the results of account {ACCT} reconciliation'
-                    .format(NAME=self.name, ACCT=self.current_account))
-
-        sstrings = []
-        psets = []
-        for i, j in statements.items():
-            sstrings.append(i)
-            psets.append(j)
-
-        #success = user.write_db(sstrings, psets)
-        print(statements)
-        success = True
 
         return success
 
