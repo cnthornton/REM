@@ -156,7 +156,7 @@ def evaluate_condition(data, condition):
         raise ValueError('data must be either a pandas DataFrame or Series')
 
     split_pttrn = '({})'.format('|'.join([' {} '.format(i) for i in operators]))
-    rule = [i.strip() for i in re.split(split_pttrn, condition, flags=re.IGNORECASE)]
+    rule = [i.strip() for i in re.split(split_pttrn, condition, flags=re.IGNORECASE) if not i.isspace()]
     if len(rule) == 3:  # data is evaluated on some condition rule
         left, oper, right = rule
         oper = oper.lower()
@@ -234,63 +234,6 @@ def evaluate_condition(data, condition):
     return results
 
 
-def evaluate_rule(data, condition, as_list: bool = True):
-    """
-    Check whether rows in dataframe pass a given condition rule.
-    """
-    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!=', 'in', 'not in', '!', 'not'}
-
-    if isinstance(data, pd.Series):
-        header = data.index.tolist()
-    elif isinstance(data, pd.DataFrame):
-        header = data.columns.values.tolist()
-    else:
-        raise ValueError('data must be either a pandas DataFrame or Series')
-
-    if isinstance(condition, str):
-        conditional = parse_operation_string(condition)
-    elif isinstance(condition, list):
-        conditional = condition
-    else:
-        raise ValueError('condition argument {} must be either a string or list'.format(condition))
-
-    rule_value = []
-    for i, component in enumerate(conditional):
-        if component.lower() in operators:  # component is an operator
-            if component.lower() in ('!', 'not'):
-                rule_value.append('~')
-            else:
-                rule_value.append(component)
-        elif component in header:
-            rule_value.append('data["{}"]'.format(component))
-        elif component.lower() in header:
-            rule_value.append('data["{}"]'.format(component.lower()))
-        else:  # component is a string or integer
-            if component.isalpha() and '"' not in component:
-                rule_value.append('"{}"'.format(component))
-            else:
-                rule_value.append(component)
-
-    eval_str = ' '.join(rule_value)
-    try:
-        row_status = eval(eval_str)
-    except SyntaxError:
-        raise SyntaxError('invalid syntax for condition rule {NAME}'.format(NAME=condition))
-    except NameError:  # dataframe does not have column
-        raise NameError('unknown column found in condition rule {NAME}'.format(NAME=condition))
-
-    if as_list is True:
-        if isinstance(row_status, pd.Series):
-            row_status = row_status.tolist()
-        else:
-            row_status = [row_status]
-    else:
-        if not isinstance(row_status, pd.Series):
-            row_status = pd.Series(row_status)
-
-    return row_status
-
-
 def evaluate_operation(data, operation):
     """
     Evaluate a given operation.
@@ -303,7 +246,6 @@ def evaluate_operation(data, operation):
     Returns:
         results (pd.Series): results of the evaluation for each row of data provided.
     """
-    #operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!='}
     operators = {'+', '-', '*', '/', '%', '!'}
 
     if isinstance(data, pd.Series):
@@ -354,21 +296,28 @@ def evaluate_operation(data, operation):
     return result
 
 
-def parse_operation_string(condition, equivalent: bool = True):
+def parse_operation_string(operation, substitute: dict = None):
     """
     Split operation string into a list.
+
+    Arguments:
+        operation (str): operation string to parse.
+
+        substitute (dict): one-to-one dictionary of operator substitutions.
     """
     operators = set('+-*/%><=!')
+
+    if not substitute:
+        substitute = {}
 
     # Find the column names and operators defined in the condition rule
     parsed_condition = []
     buff = []
     prev_char = None
-    for char in condition:
+    for char in operation:
         if char.isspace():  # skip whitespace
             parsed_condition.append(''.join(buff))
             buff = []
-#            continue
         elif char in operators:  # character is an operator
             if prev_char not in operators:  # flush buffer for non-operator
                 parsed_condition.append(''.join(buff))
@@ -391,12 +340,12 @@ def parse_operation_string(condition, equivalent: bool = True):
 
     parsed_condition.append(''.join(buff))
 
-    if equivalent:
-        parsed_condition_fmt = [i.replace('=', '==') if len(i) == 1 else i for i in parsed_condition if i]
-    else:
-        parsed_condition_fmt = [i for i in parsed_condition if i]
+    for oper in substitute:
+        oper_sub = substitute[oper]
+        #parsed_condition = [i.replace(oper, oper_sub) if len(i) == 1 else i for i in parsed_condition if i]
+        parsed_condition = [oper_sub if i == oper else i for i in parsed_condition]
 
-    return parsed_condition_fmt
+    return parsed_condition
 
 
 def isin(column, values):

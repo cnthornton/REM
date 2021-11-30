@@ -1900,7 +1900,29 @@ class DataTable(RecordElement):
         else:
             return self.summarize()
 
-    def subset(self, subset_rule, df: pd.DataFrame = None):
+    def subset(self, subset_rule):
+        """
+        Subset the table based on a set of rules.
+        """
+        df = self.data()
+        if df.empty:
+            return df
+
+        logger.debug('DataTable {NAME}: sub-setting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
+        try:
+            results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
+        except Exception as e:
+            msg = 'DataTable {NAME}: failed to subset table on rule {RULE} - {ERR}'\
+                .format(NAME=self.name, RULE=subset_rule, ERR=e)
+            logger.error(msg)
+
+            raise ValueError(msg)
+
+        subset_df = df[results]
+
+        return subset_df
+
+    def subset_old(self, subset_rule, df: pd.DataFrame = None):
         """
         Subset the table based on a set of rules.
         """
