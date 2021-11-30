@@ -274,16 +274,29 @@ class DataCollection:
                         values = pd.Series(default_value, index=df.index)
 
                     default_rule = column_default[default_value]
-                    results = mod_dm.evaluate_condition_set(df, {default_value: default_rule}, as_list=False)
+                    results = mod_dm.evaluate_condition_set(df, {default_value: default_rule})
                     for index in results[results].index:  # only "passing", or true, indices
                         default_values[index] = values[index]
 
                 default_values = format_values(default_values, dtype)
-            else:  # single value supplied
-                if column_default in header:  # defaults are the values of another field in the collection
-                    default_values = format_values(df[column_default], dtype)
+            else:  # single condition supplied
+                try:
+                    operation = mod_dm.parse_operation_string(column_default)
+                except TypeError:
+                    operation = []
+
+                if len(operation) > 1:
+                    results = mod_dm.evaluate_operation(df, operation)
+                else:
+                    if column_default in header:
+                        results = df[column_default]
+                    else:
+                        results = column_default
+
+                if isinstance(results, pd.Series):  # defaults are the values of another field in the collection
+                    default_values = format_values(results, dtype)
                 else:  # single default value supplied
-                    default_values = format_value(column_default, dtype)
+                    default_values = format_value(results, dtype)
 
             df[column].fillna(default_values, inplace=True)
 
@@ -320,7 +333,8 @@ class DataCollection:
 
             rule = columns[column]
             try:
-                default_values = mod_dm.evaluate_rule(df, rule, as_list=False)
+                #default_values = mod_dm.evaluate_rule(df, rule, as_list=False)
+                default_values = mod_dm.evaluate_operation(df, rule)
             except Exception as e:
                 msg = 'failed to evaluate condition for rule {RULE} - {ERR}'.format(RULE=rule, ERR=e)
                 logger.exception(msg)

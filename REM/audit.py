@@ -1257,14 +1257,16 @@ class AuditTransaction:
                          .format(NAME=self.name, COL=column, RULE=filter_rule))
 
             try:
-                filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
+                #filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
+                filter_results = mod_dm.evaluate_condition_set(df, {column: filter_rule})
             except Exception as e:
                 logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
                                .format(NAME=self.name, COL=column, ERR=e))
                 continue
 
             try:
-                failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_cond)].index.tolist()
+                #failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_cond)].index.tolist()
+                failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_results)].index.tolist()
             except Exception as e:
                 logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
                                .format(NAME=self.name, COL=column, ERR=e))
@@ -1922,14 +1924,22 @@ class AuditRecord:
                                            .format(COL=column, NAME=self.name))
                             continue
 
-                        reference = column_map[column]
+                        reference_col = column_map[column]
                         try:
-                            ref_val = mod_dm.evaluate_rule(row, reference, as_list=True)[0]
-                        except Exception as e:
-                            msg = 'failed to add mapped column {COL} - {ERR}'.format(COL=column, ERR=e)
+                            ref_val = row[reference_col]
+                        except KeyError:
+                            msg = 'failed to add values for mapped column {COL} - reference column {REFCOL} not ' \
+                                  'found in the transaction table'.format(COL=column, REFCOL=reference_col)
                             logger.warning('AuditRecord {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         else:
                             record_data[column] = ref_val
+                        #try:
+                        #    ref_val = mod_dm.evaluate_rule(row, reference, as_list=True)[0]
+                        #except Exception as e:
+                        #    msg = 'failed to add mapped column {COL} - {ERR}'.format(COL=column, ERR=e)
+                        #    logger.warning('AuditRecord {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        #else:
+                        #    record_data[column] = ref_val
 
                     # Add record to the components table
                     comp_df = comp_df.append(record_data, ignore_index=True)

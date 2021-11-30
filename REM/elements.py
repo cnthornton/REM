@@ -716,8 +716,11 @@ class DataTable(RecordElement):
                 self._selected_rows = [select_row_index]
                 self.update_annotation(window)
 
+                print('selected table row index is: {}'.format(select_row_index))
+
                 # Get the real index of the selected row
                 index = self.get_index(select_row_index)
+                print('real index is: {}'.format(index))
                 update_event = self.run_table_event(index)
 
         elif event == search_key:
@@ -1336,14 +1339,14 @@ class DataTable(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition}, as_list=False)
+                results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
             except Exception as e:
                 logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
             for row_index, result in results.iteritems():
-                if result:
+                if result:  # condition for the annotation has been met
                     if row_index in rows_annotated:
                         continue
                     else:
@@ -1865,7 +1868,8 @@ class DataTable(RecordElement):
         total = 0
         if tally_rule is not None:
             try:
-                result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
+                #result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
+                result = mod_dm.evaluate_operation(df, tally_rule)
             except Exception as e:
                 msg = 'DataTable {NAME}: unable to calculate table total - {ERR}' \
                     .format(NAME=self.name, ERR=e)
@@ -2301,6 +2305,7 @@ class RecordTable(DataTable):
             savable (bool): database entry of the record can be updated through the record window [Default: True].
         """
         collection = self.collection
+        #df = collection.data(current=False)
         df = collection.data(current=False)
         modifiers = self.modifiers
 
@@ -2318,7 +2323,8 @@ class RecordTable(DataTable):
             return None
 
         # Add any annotations to the exported row
-        annotations = self.annotate_rows(df)
+        #annotations = self.annotate_rows(df)
+        annotations = self.annotate_rows(df.loc[[index]])
         annot_code = annotations.get(index, None)
         if annot_code is not None:
             row['Warnings'] = self.annotation_rules[annot_code]['Description']
@@ -4061,7 +4067,7 @@ class DataElement(RecordElement):
             window[elem_key].update(value=display_value)
 
         # Check if the display value passes any annotations rules and update background.
-        annotation = self.annotate_display(display_value)
+        annotation = self.annotate_display()
         if annotation:
             rule = self.annotation_rules[annotation]
             bg_col = rule['BackgroundColor']
@@ -4070,22 +4076,15 @@ class DataElement(RecordElement):
         window[desc_key].update(background_color=bg_col)
         window[frame_key].SetTooltip(tooltip)
 
-    def annotate_display(self, display_value=None):
+    def annotate_display(self):
         """
         Annotate the display element using configured annotation rules.
         """
         rules = self.annotation_rules
+        current_value = self.value
 
-        if not display_value:
-            display_value = self.format_display()
-
-        if pd.isna(display_value) or not rules:
-            return None
-        else:
-            display_value = settings.format_value(display_value, dtype=self.dtype)
-
-        logger.debug('DataElement {NAME}: annotating display value on configured annotation rules'
-                     .format(NAME=self.name))
+        logger.debug('ElementReference {NAME}: annotating value {VAL} on configured annotation rules'
+                     .format(NAME=self.name, VAL=current_value))
 
         annotation = None
         for annot_code in rules:
@@ -4094,19 +4093,20 @@ class DataElement(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                result = mod_dm.evaluate_operation({self.name: display_value}, annot_condition)
+                results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
             except Exception as e:
                 logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
+            result = results.squeeze()
             if result:
                 logger.debug('DataElement {NAME}: element value {VAL} annotated on annotation code {CODE}'
-                             .format(NAME=self.name, VAL=display_value, CODE=annot_code))
+                             .format(NAME=self.name, VAL=current_value, CODE=annot_code))
                 if annotation:
                     logger.warning('DataElement {NAME}: element value {VAL} has passed two or more annotation '
                                    'rules ... defaulting to the first passed "{CODE}"'
-                                   .format(NAME=self.name, VAL=display_value, CODE=annotation))
+                                   .format(NAME=self.name, VAL=current_value, CODE=annotation))
                 else:
                     annotation = annot_code
 
@@ -4682,7 +4682,7 @@ class ElementReference(RecordElement):
         # Element description and actions
         desc_key = self.key_lookup('Description')
         display_value = self.format_display()
-        annotation = self.annotate_display(display_value)
+        annotation = self.annotate_display()
         if annotation:
             rule = self.annotation_rules[annotation]
             desc_bg_col = rule['BackgroundColor']
@@ -4808,7 +4808,7 @@ class ElementReference(RecordElement):
         window[elem_key].update(value=display_value)
 
         # Check if the display value passes any annotations rules and update background.
-        annotation = self.annotate_display(display_value)
+        annotation = self.annotate_display()
         if annotation:
             rule = self.annotation_rules[annotation]
             bg_col = rule['BackgroundColor']
@@ -4817,22 +4817,15 @@ class ElementReference(RecordElement):
         window[desc_key].update(background_color=bg_col)
         window[desc_key].SetTooltip(tooltip)
 
-    def annotate_display(self, display_value=None):
+    def annotate_display(self):
         """
         Annotate the display element using configured annotation rules.
         """
         rules = self.annotation_rules
+        current_value = self.value
 
-        if not display_value:
-            display_value = self.format_display()
-
-        if pd.isna(display_value) or not rules:
-            return None
-        else:
-            display_value = settings.format_value(display_value, dtype=self.dtype)
-
-        logger.debug('ElementReference {NAME}: annotating display value on configured annotation rules'
-                     .format(NAME=self.name))
+        logger.debug('ElementReference {NAME}: annotating value {VAL} on configured annotation rules'
+                     .format(NAME=self.name, VAL=current_value))
 
         annotation = None
         for annot_code in rules:
@@ -4841,19 +4834,20 @@ class ElementReference(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                result = mod_dm.evaluate_operation({self.name: display_value}, annot_condition)
+                results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
             except Exception as e:
-                logger.error('ElementReference {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
+                logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
                 continue
 
+            result = results.squeeze()
             if result:
                 logger.debug('ElementReference {NAME}: element value {VAL} annotated on annotation code {CODE}'
-                             .format(NAME=self.name, VAL=display_value, CODE=annot_code))
+                             .format(NAME=self.name, VAL=current_value, CODE=annot_code))
                 if annotation:
                     logger.warning('ElementReference {NAME}: element value {VAL} has passed two or more annotation '
                                    'rules ... defaulting to the first evaluated "{CODE}"'
-                                   .format(NAME=self.name, VAL=display_value, CODE=annotation))
+                                   .format(NAME=self.name, VAL=current_value, CODE=annotation))
                 else:
                     annotation = annot_code
 

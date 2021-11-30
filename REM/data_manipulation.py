@@ -51,52 +51,63 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
     return lengths
 
 
-def evaluate_condition_set(df, conditions, rule_key=None, as_list: bool = True):
+def evaluate_condition_set(data, conditions):
     """
-    Check whether rows in a dataframe pass a set of conditions. Returns a list or pandas Series of failed indexes.
+    Check whether data pass a given set of conditions.
+
+    Arguments:
+        data: dictionary, Series, or DataFrame of data containing one or more condition variables.
+
+        conditions (dict): set of conditions to evaluate.
+
+    Returns:
+        results (pd.Series): indexes that either passed or failed the condition set.
     """
     #chain_operators = ['and', 'or', 'OR', 'AND', 'And', 'Or']
     chain_operators = ('and', 'or')
 
+    if isinstance(data, pd.DataFrame):
+        nrow = data.shape[0]
+    elif isinstance(data, pd.Series) or isinstance(data, dict):
+        nrow = 1
+    else:
+        raise ValueError('data must be either a DataFrame, Series, or dictionary')
+
     eval_results = []  # stores list of lists or pandas Series of bools to pass into formatter
     operators = []
     for i, rule_name in enumerate(conditions):
-        if i != 0:
-            operators.append('and')
+        rule_str = conditions[rule_name]  # db column name is dictionary key
 
-        if rule_key:
-            rule_str = conditions[rule_name][rule_key]
-        else:
-            rule_str = conditions[rule_name]  # db column name is dictionary key
+        if i != 0:  # add a join operator for each set of conditions following the first
+            operators.append('and')
 
         split_pttrn = '({})'.format('|'.join([' {} '.format(i) for i in chain_operators]))
         rule_list = [i.strip() for i in re.split(split_pttrn, rule_str, flags=re.IGNORECASE)]
 
-        for component in rule_list:  # evaluation rules should be considered separately at first
-            if component.lower() in chain_operators:  # item is chain operators (and / or)
+        for component in rule_list:  # each condition in the set is evaluated separately at first
+            if component.lower() in chain_operators:  # item is a chain operator (and / or)
                 operators.append(component.lower())
             else:  # item is a separate rule
                 try:
-                    logger.debug('dataframe will be evaluated on condition {}'.format(component))
-                    cond_results = evaluate_condition(df, component)
+                    logger.debug('provided data will be evaluated on condition {}'.format(component))
+                    cond_results = evaluate_condition(data, component)
                     cond_results = cond_results.fillna(False).astype(np.bool_, errors='raise')
                 except Exception as e:
                     logger.warning('evaluation failed - {}. Setting values to default "False"'.format(e))
-                    if isinstance(df, pd.DataFrame):
-                        nrow = df.shape[0]
-                    elif isinstance(df, pd.Series):
-                        nrow = 1
-
                     cond_results = pd.Series([False for _ in range(nrow)])
 
+                print('results of the evaluation are:')
+                print(cond_results)
                 eval_results.append(cond_results)
 
-    results = eval_results[0]  # results of first evaluation rule
-    for index, cond_results in enumerate(eval_results[1:]):
+    results = eval_results[0]  # results of first condition evaluation
+    for index, cond_results in enumerate(eval_results[1:]):  # results of subsequent condition evaluations
         try:
             operator = operators[index]
         except IndexError:
             logger.warning('evaluation failed - not enough operators provided for the number of conditions set')
+            results = pd.Series([False for _ in range(nrow)])
+
             break
 
         if operator == 'and':  # must pass all evaluation rules in the set
@@ -104,15 +115,20 @@ def evaluate_condition_set(df, conditions, rule_key=None, as_list: bool = True):
         else:  # must pass only one of the evaluation rules in the set
             results = results | cond_results
 
-    if as_list is True:
-        return list(results)
-    else:
-        return results
+    return results
 
 
 def evaluate_condition(data, condition):
     """
     Check whether rows in dataframe pass a given condition rule.
+
+    Arguments:
+        data: dictionary, Series, or DataFrame of data containing one or more condition variables.
+
+        condition: condition to test.
+
+    Returns:
+        results (pd.Series): results of the evaluation for each row of data provided.
     """
     is_bool_dtype = pd.api.types.is_bool_dtype
     is_float_dtype = pd.api.types.is_float_dtype
@@ -122,12 +138,20 @@ def evaluate_condition(data, condition):
     operators = {'>': gt, '>=': ge, '<': lt, '<=': le, '==': eq, '=': eq, '!=': ne, 'in': isin, 'not in': notin}
     rev_operators = {'>': lt, '>=': le, '<': gt, '<=': ge, '==': eq, '=': eq, '!=': ne, 'in': isin, 'not in': notin}
 
-    if isinstance(data, pd.Series):
+    if isinstance(data, pd.Series):  # single data entry
         header = data.index.tolist()
+        data = data.to_frame().T
         nrow = data.size
-    elif isinstance(data, pd.DataFrame):
-        header = data.columns.values.tolist()
+    elif isinstance(data, pd.DataFrame):  # one or more entries
+        header = data.columns.tolist()
         nrow = 1
+    elif isinstance(data, dict):  # one or more entries
+        try:
+            data = pd.DataFrame(data)
+        except ValueError:  # single entry was given
+            data = pd.DataFrame(data, index=[0])
+        header = data.columns.tolist()
+        nrow = data.size
     else:
         raise ValueError('data must be either a pandas DataFrame or Series')
 
@@ -141,18 +165,18 @@ def evaluate_condition(data, condition):
                               .format(COND=condition, OPER=oper))
 
         # Prepare the operation components
-        if left in header:
-            variable = data[left]
+        if left in header or left[1:] in header:
+            variable = retrieve_values(data, left)
 
-            if right in header:
-                values = data[right]
+            if right in header or right[1:] in header:
+                values = retrieve_values(data, right)
             else:
                 values = right
 
             oper_func = operators[oper]
         else:
-            if right in header:
-                variable = data[right]
+            if right in header or right[1:] in header:
+                variable = retrieve_values(data, right)
                 values = left
 
                 oper_func = rev_operators[oper]
@@ -182,23 +206,27 @@ def evaluate_condition(data, condition):
 
     elif len(rule) == 1:  # data is tested for existence or truth
         eval_str = rule[0]
-        if eval_str[0] == '!':  # not column values or NaN values
+        if eval_str[0] == '!':  # reverse truth or existence
             colname = eval_str.replace(' ', '')[1:]
             if colname in header:
-                if is_bool_dtype(data[colname].dtype) is True:
+                if is_bool_dtype(data[colname].dtype) is True:  # test for truth
                     results = ~ data[colname]
-                else:  # column values are NaN
+                else:  # test for existence (none NaN values)
                     results = data[colname].isna()
             else:
+                logger.warning('condition value {VAL} is not in the data header'.format(VAL=colname))
                 results = pd.Series([False for _ in range(nrow)])
         else:  # column values or values that are not NaN
             colname = eval_str
             if colname in header:
+                print('data field {} has value'.format(colname))
+                print(data[colname])
                 if is_bool_dtype(data[colname].dtype) is True:
                     results = data[colname]
                 else:  # column values are not NaN
                     results = ~ data[colname].isna()
             else:
+                logger.warning('condition value {VAL} is not in the data header'.format(VAL=colname))
                 results = pd.Series([False for _ in range(nrow)])
     else:
         raise SyntaxError('unable to parse rule condition {} - unknown format of the condition rule'.format(condition))
@@ -266,17 +294,26 @@ def evaluate_rule(data, condition, as_list: bool = True):
 def evaluate_operation(data, operation):
     """
     Evaluate a given operation.
+
+    Arguments:
+        data: dictionary, Series, or DataFrame of data containing one or more operation variables.
+
+        operation:  operation to carry out on the data.
+
+    Returns:
+        results (pd.Series): results of the evaluation for each row of data provided.
     """
-    operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!='}
+    #operators = {'+', '-', '*', '/', '>', '>=', '<', '<=', '==', '!='}
+    operators = {'+', '-', '*', '/', '%', '!'}
 
     if isinstance(data, pd.Series):
         header = data.index.tolist()
     elif isinstance(data, pd.DataFrame):
-        header = data.columns.values.tolist()
+        header = data.columns.tolist()
     elif isinstance(data, dict):
         header = list(data)
     else:
-        raise ValueError('data must be either a pandas DataFrame or Series')
+        raise ValueError('data must be either a pandas DataFrame, Series, or a dictionary')
 
     if isinstance(operation, str):
         components = parse_operation_string(operation)
@@ -288,7 +325,10 @@ def evaluate_operation(data, operation):
     rule_value = []
     for i, component in enumerate(components):
         if component in operators:  # component is an operator
-            rule_value.append(component)
+            if component == '!':
+                rule_value.append('~')
+            else:
+                rule_value.append(component)
         elif component in header:
             rule_value.append('data["{}"]'.format(component))
         elif component.lower() in header:
@@ -398,4 +438,16 @@ def le(column, values):
 
 
 def lt(column, values):
-    return column.gt(values)
+    return column.lt(values)
+
+
+def retrieve_values(df, colname):
+    colname = colname.replace(' ', '')
+
+    if colname[0] == '!':
+        colname = colname[1:]
+        values = ~df[colname]
+    else:
+        values = df[colname]
+
+    return values

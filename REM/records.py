@@ -904,7 +904,8 @@ class RecordEntry:
                     if not condition:
                         df_sub = new_df.copy()
                     else:
-                        df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
+                        #df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
+                        df_sub = new_df[mod_dm.evaluate_condition_set(new_df, {ref_type: condition})]
 
                     if df_sub.empty:
                         continue
