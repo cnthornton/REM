@@ -920,7 +920,7 @@ class AuditRule:
 
         success = user.write_db(sstrings, psets)
         #success = True
-        #print(statements)
+        print(statements)
 
         return success
 
@@ -1035,7 +1035,6 @@ class AuditTransaction:
             filter_rules = entry['FilterRules']
         except KeyError:
             filter_rules = {}
-        #filter_rules = self.table.filter_rules
 
         self.filter_rules = {}
         table_columns = self.table.columns
@@ -1045,22 +1044,6 @@ class AuditTransaction:
             else:
                 logger.warning('DataTable {NAME}: filter rule key {KEY} not found in table columns'
                                .format(NAME=self.name, KEY=filter_key))
-
-#        try:
-#            import_rules = entry['ImportRules']
-#        except KeyError:
-#            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required field "ImportRules".' \
-#                .format(NAME=name)
-#            logger.error(msg)
-#
-#            raise AttributeError(msg)
-#        else:
-#            self.import_rules = import_rules
-#
-#        try:
-#            self.record_layout = entry['RecordLayout']
-#        except KeyError:
-#            self.record_layout = None
 
         try:
             self.id_format = re.findall(r'\{(.*?)\}', entry['IDFormat'])

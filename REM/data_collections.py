@@ -465,9 +465,6 @@ class DataCollection:
         # Make sure the data types of the columns are consistent
         add_df = self._set_dtypes(df=add_df)
 
-        print('new data after enforcing conformity has values')
-        print(add_df)
-
         return add_df
 
     def data(self, current: bool = True, indices: list = None, edited_only: bool = False, deleted_only: bool = False,

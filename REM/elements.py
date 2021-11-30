@@ -2311,6 +2311,8 @@ class RecordTable(DataTable):
                          .format(NAME=self.name, VALS=record_values))
             collection.append(record_values, inplace=True, new=True)
 
+            self.edited = True
+
         return True
 
     def load_record(self, index, level: int = None, references: dict = None, savable: bool = True):

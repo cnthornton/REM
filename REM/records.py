@@ -2373,10 +2373,10 @@ class DatabaseRecord:
                 exist_df = comp_table.data()
                 ref_data = comp_table.export_references(record_id)
             else:
-                if not comp_table.edited:  # don't prepare statements for tables that were not edited in any way
-                    logger.debug('Record {ID}: no components from component table "{COMP}" will be exported'
-                                 .format(ID=record_id, COMP=comp_table.name))
-                    continue
+                #if not comp_table.edited:  # don't prepare statements for tables that were not edited in any way
+                #    logger.debug('Record {ID}: no components from component table "{COMP}" will be exported'
+                #                 .format(ID=record_id, COMP=comp_table.name))
+                #    continue
 
                 logger.debug('Record {ID}: preparing export statements for only the edited components in component '
                              'table {COMP}'.format(ID=record_id, COMP=comp_table.name))
@@ -2470,7 +2470,7 @@ class DatabaseRecord:
 
         success = user.write_db(sstrings, psets)
         #success = True
-        #print(statements)
+        print(statements)
 
         return success
 
@@ -2549,9 +2549,7 @@ class DatabaseRecord:
             else:
                 try:
                     subset_df = comp_table.subset(sub_rule)
-                except (NameError, SyntaxError) as e:
-                    logger.error('{NAME}, Heading {SEC}: unable to subset table on rule {SUB} - '
-                                 '{ERR}'.format(NAME=report_title, SEC=heading, SUB=sub_rule, ERR=e))
+                except ValueError:
                     continue
                 else:
                     if subset_df.empty:
