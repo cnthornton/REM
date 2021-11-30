@@ -1810,6 +1810,35 @@ class AuditRecord:
     def map_summary(self, summary_map):
         """
         Populate the audit record element values with transaction summaries.
+
+        Arguments:
+            summary_map (dict): transaction table summary variables (<table>.<variable>) with their final values.
+        """
+        logger.debug('AuditRecord {NAME}: mapping transaction summaries to audit record elements'
+                     .format(NAME=self.name))
+
+        # Map audit totals columns to transaction table summaries
+        mapping_columns = self.summary_mapping
+        for column in mapping_columns:
+            mapper = mapping_columns[column]
+            try:
+                summary_total = mod_dm.evaluate_operation(summary_map, mapper)
+            except Exception as e:
+                logger.warning('AuditRecord {NAME}: failed to evaluate summary totals - {ERR}'
+                               .format(NAME=self.name, ERR=e))
+                summary_total = 0
+
+            logger.debug('AuditRecord {NAME}: adding {SUMM} to column {COL}'
+                         .format(NAME=self.name, SUMM=summary_total, COL=column))
+
+            self.record_data[column] = summary_total
+
+    def map_summary_old(self, summary_map):
+        """
+        Populate the audit record element values with transaction summaries.
+
+        Arguments:
+            summary_map (dict): transaction table summary variables (<table>.<variable>) with their final values.
         """
         operators = set('+-*/%')
 
@@ -1899,13 +1928,7 @@ class AuditRecord:
                 # Subset transaction records using defined subset rules
                 logger.debug('AuditRecord {NAME}: sub-setting reference table {REF} based on defined payment "{TYPE}" '
                              'rule {RULE}'.format(NAME=self.name, REF=table, TYPE=payment_type, RULE=subset_rule))
-                try:
-                    subset_df = tab.table.subset(subset_rule)
-                except Exception as e:
-                    logger.warning('AuditRecord {NAME}: unable to subset reference table {REF} - {ERR}'
-                                   .format(NAME=self.name, REF=table, ERR=e))
-                    continue
-
+                subset_df = tab.table.subset(subset_rule)
                 if subset_df.empty:
                     logger.debug('AuditRecord {NAME}: no data from reference table {REF} to add to the audit record'
                                  .format(NAME=self.name, REF=table))
