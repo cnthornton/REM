@@ -246,14 +246,19 @@ def evaluate_operation(data, operation):
     Returns:
         results (pd.Series): results of the evaluation for each row of data provided.
     """
-    operators = {'+', '-', '*', '/', '%', '!'}
+    operators = {'+', '-', '*', '/', '%', '!', '^'}
 
     if isinstance(data, pd.Series):
         header = data.index.tolist()
+        data = data.to_frame().T
     elif isinstance(data, pd.DataFrame):
         header = data.columns.tolist()
     elif isinstance(data, dict):
         header = list(data)
+        try:
+            data = pd.DataFrame(data)
+        except ValueError:  # single entry was given
+            data = pd.DataFrame(data, index=[0])
     else:
         raise ValueError('data must be either a pandas DataFrame, Series, or a dictionary')
 
@@ -293,7 +298,7 @@ def evaluate_operation(data, operation):
     except NameError:  # dataframe does not have column
         raise NameError('unknown column found in operation "{NAME}"'.format(NAME=operation))
 
-    return result
+    return result.squeeze()
 
 
 def parse_operation_string(operation, substitute: dict = None):
@@ -305,7 +310,7 @@ def parse_operation_string(operation, substitute: dict = None):
 
         substitute (dict): one-to-one dictionary of operator substitutions.
     """
-    operators = set('+-*/%><=!')
+    operators = set('+-*/%><=!^')
 
     if not substitute:
         substitute = {}

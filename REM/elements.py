@@ -1865,6 +1865,49 @@ class DataTable(RecordElement):
         if df.empty:
             return 0
 
+        if tally_rule:
+            header = df.columns.tolist()
+            summary_df = pd.DataFrame(columns=header, index=[0])
+
+            for column in header:
+                col_values = df[column]
+                dtype = col_values.dtype
+                if is_float_dtype(dtype) or is_integer_dtype(dtype) or is_bool_dtype(dtype):
+                    col_total = col_values.sum()
+                elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
+                    col_total = col_values.nunique()
+                else:  # possibly empty dataframe
+                    col_total = 0
+
+                summary_df[column] = col_total
+
+            try:
+                total = mod_dm.evaluate_operation(summary_df, tally_rule)
+            except Exception as e:
+                msg = 'DataTable {NAME}: unable to calculate table total - {ERR}' \
+                    .format(NAME=self.name, ERR=e)
+                logger.warning(msg)
+                total = 0
+        else:
+            total = df.shape[0]
+
+        return total
+
+    def calculate_total_old(self, df: pd.DataFrame = None):
+        """
+        Calculate the data table total using the configured tally rule.
+        """
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_integer_dtype = pd.api.types.is_integer_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+        tally_rule = self.tally_rule
+        df = df if df is not None else self.data(display_rows=True)
+        if df.empty:
+            return 0
+
         total = 0
         if tally_rule is not None:
             try:
@@ -1919,61 +1962,6 @@ class DataTable(RecordElement):
             raise ValueError(msg)
 
         subset_df = df[results]
-
-        return subset_df
-
-    def subset_old(self, subset_rule, df: pd.DataFrame = None):
-        """
-        Subset the table based on a set of rules.
-        """
-        operators = {'>', '>=', '<', '<=', '==', '!=', '=', 'IN', 'In', 'in'}
-        chain_map = {'or': '|', 'OR': '|', 'Or': '|', 'and': '&', 'AND': '&', 'And': '&'}
-
-        df = self.data() if df is None else df
-        if df.empty:
-            return df
-
-        header = df.columns.values.tolist()
-
-        logger.debug('DataTable {NAME}: sub-setting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
-        rule_list = [i.strip() for i in
-                     re.split('({})'.format('|'.join([' {} '.format(i) for i in chain_map])), subset_rule)]
-
-        conditionals = []
-        for component in rule_list:
-            if component in chain_map:
-                conditionals.append(chain_map[component])
-            else:
-                conditional = mod_dm.parse_operation_string(component)
-                cond_items = []
-                for item in conditional:
-                    if item in operators:  # item is operator
-                        if item == '=':
-                            cond_items.append('==')
-                        else:
-                            cond_items.append(item)
-                    elif item in header:  # item is in header
-                        cond_items.append('df["{}"]'.format(item))
-                    elif item.lower() in header:  # item is header converted by ODBC implementation
-                        cond_items.append('df["{}"]'.format(item.lower()))
-                    else:  # item is string or int
-                        try:
-                            float(item)
-                        except (ValueError, TypeError):  # format as a string
-                            cond_items.append('"{}"'.format(item))
-                        else:
-                            cond_items.append(item)
-
-                conditionals.append('({})'.format(' '.join(cond_items)))
-
-        cond_str = ' '.join(conditionals)
-
-        try:
-            subset_df = eval('df[{}]'.format(cond_str))
-        except SyntaxError:
-            raise SyntaxError('invalid syntax for subset rule {NAME}'.format(NAME=subset_rule))
-        except NameError:
-            raise NameError('unknown column specified in subset rule {NAME}'.format(NAME=subset_rule))
 
         return subset_df
 
