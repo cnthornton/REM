@@ -2356,7 +2356,7 @@ class TableElement(RecordElement):
             if component in chain_map:
                 conditionals.append(chain_map[component])
             else:
-                conditional = mod_dm.parse_operation_string(component)
+                conditional = mod_dm.parse_expression(component)
                 cond_items = []
                 for item in conditional:
                     if item in operators:  # item is operator

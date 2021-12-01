@@ -1339,7 +1339,8 @@ class DataTable(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
+                #results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
+                results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
                 logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
@@ -1953,7 +1954,8 @@ class DataTable(RecordElement):
 
         logger.debug('DataTable {NAME}: sub-setting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
         try:
-            results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
+            #results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
+            results = mod_dm.evaluate_condition(df, subset_rule)
         except Exception as e:
             msg = 'DataTable {NAME}: failed to subset table on rule {RULE} - {ERR}'\
                 .format(NAME=self.name, RULE=subset_rule, ERR=e)
@@ -4105,7 +4107,8 @@ class DataElement(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
+                #results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
+                results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
             except Exception as e:
                 logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))
@@ -4846,7 +4849,8 @@ class ElementReference(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
+                #results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
+                results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
             except Exception as e:
                 logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
                              .format(NAME=self.name, CODE=annot_code, ERR=e))

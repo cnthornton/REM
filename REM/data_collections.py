@@ -274,14 +274,15 @@ class DataCollection:
                         values = pd.Series(default_value, index=df.index)
 
                     default_rule = column_default[default_value]
-                    results = mod_dm.evaluate_condition_set(df, {default_value: default_rule})
+                    #results = mod_dm.evaluate_condition_set(df, {default_value: default_rule})
+                    results = mod_dm.evaluate_condition(df, default_rule)
                     for index in results[results].index:  # only "passing", or true, indices
                         default_values[index] = values[index]
 
                 default_values = format_values(default_values, dtype)
             else:  # single condition supplied
                 try:
-                    operation = mod_dm.parse_operation_string(column_default)
+                    operation = mod_dm.parse_expression(column_default)
                 except TypeError:
                     operation = []
 

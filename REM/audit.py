@@ -1241,7 +1241,8 @@ class AuditTransaction:
 
             try:
                 #filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
-                filter_results = mod_dm.evaluate_condition_set(df, {column: filter_rule})
+                #filter_results = mod_dm.evaluate_condition_set(df, {column: filter_rule})
+                filter_results = mod_dm.evaluate_condition(df, filter_rule)
             except Exception as e:
                 logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
                                .format(NAME=self.name, COL=column, ERR=e))
@@ -1835,7 +1836,7 @@ class AuditRecord:
         for column in mapping_columns:
             mapper = mapping_columns[column]
             rule_values = []
-            for component in mod_dm.parse_operation_string(mapper):
+            for component in mod_dm.parse_expression(mapper):
                 if component in operators:
                     rule_values.append(component)
                     continue
