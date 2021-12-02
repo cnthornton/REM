@@ -2,15 +2,10 @@
 REM data container classes.
 """
 
-import datetime
-import sys
-
 import numpy as np
 import pandas as pd
 
 import REM.data_manipulation as mod_dm
-import REM.records as mod_records
-import REM.secondary as mod_win2
 from REM.client import logger, settings
 
 
@@ -61,7 +56,7 @@ class DataVector:
 
     def _set_dtype(self, value=None):
         """
-
+        Format an input value according to the vector's dtype.
         """
         value = value if value else self.value
         dtype = self.dtype
@@ -83,56 +78,41 @@ class DataVector:
         elif dtype in ('bool', 'boolean'):
             value = np.bool_(value)
         elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-            value = np.object_(value)
+            value = np.str_(value)
         else:
-            value = np.object_(value)
+            logger.warning('DataVector {NAME}: data vector has unknown dtype "{DTYPE}" - setting to string'
+                           .format(NAME=self.name, DTYPE=dtype))
+            value = np.str_(value)
 
         return value
 
+    def reset(self):
+        """
+        Reset the vector to default.
+        """
+        self.value = self.default
+
     def data(self):
         """
-
+        Return the value of the data vector as a python object.
         """
         return self.value.item()
 
     def update_value(self, input_value):
         """
-        Set the value of the data element from user input.
+        Update the value of the vector.
 
         Arguments:
-
             input_value: value input into the GUI element.
         """
         if input_value == '' or pd.isna(input_value):
-            return None
-
-        # Format the input value as the element datatype
-        dtype = self.dtype
-        if dtype in settings.supported_date_dtypes:
-            value_fmt = settings.format_as_datetime(input_value)
-
-        elif dtype in settings.supported_float_dtypes:
-            value_fmt = settings.format_as_float(input_value)
-
-        elif dtype in settings.supported_int_dtypes:
-            value_fmt = settings.format_as_int(input_value)
-
-        elif dtype in settings.supported_bool_dtypes:
-            value_fmt = settings.format_as_bool(input_value)
-
+            value = None
         else:
-            try:
-                value_fmt = str(input_value).strip()  # trailing newline sometimes added for multiline elements
-            except ValueError:
-                msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
-                logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            value = self._set_dtype(input_value)
 
-                raise ValueError(msg)
+        self.value = value
 
-        logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
-                     .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
-
-        return value_fmt
+        return value
 
 
 # Data collection classes
@@ -1072,10 +1052,10 @@ def format_values(values, dtype):
     elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
         values = pd.to_numeric(values, errors='coerce')
     elif dtype in ('bool', 'boolean'):
-        values = values.fillna(False).astype(np.bool, errors='raise')
+        values = values.fillna(False).astype(np.bool_, errors='raise')
     elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        values = values.astype(np.object, errors='raise')
+        values = values.astype(np.object_, errors='raise')
     else:
-        values = values.astype(np.object, errors='raise')
+        values = values.astype(np.object_, errors='raise')
 
     return values
