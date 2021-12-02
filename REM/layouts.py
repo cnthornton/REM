@@ -32,6 +32,158 @@ def set_size(window, element_key, size):
 
 
 # GUI Element Functions
+def generate_layout(etype, attributes):
+    """
+    Generate a layout for different element types.
+    """
+    func_mapper = {'input': input_layout, 'multiline': multiline_layout, 'combo': combo_layout,
+                   'checkbox': checkbox_layout, 'text': text_layout}
+    try:
+        layout_func = func_mapper[etype]
+    except KeyError:
+        logger.warning('unknown element type "{ETYPE}" provided'.format(ETYPE=etype))
+        layout_func = func_mapper['text']
+
+    layout = layout_func(attributes)
+
+    return layout
+
+
+def text_layout(attributes):
+    # Standard element parameters
+    font = attributes.get('Font', mod_const.LARGE_FONT)
+    size = attributes.get('Size', None)
+    pad = attributes.get('Pad', None)
+    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
+    def_text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+    disabled_text_col = mod_const.DISABLED_TEXT_COL
+    disabled = attributes.get('Disabled', False)
+    tooltip = attributes.get('Tooltip', None)
+
+    if disabled:
+        text_col = disabled_text_col
+    else:
+        text_col = def_text_col
+
+    # Element layout
+    elem_key = attributes['Key']
+    display_value = attributes.get('DisplayValue', '')
+    layout = [sg.Text(display_value, key=elem_key, enable_events=True, size=size, pad=pad, background_color=bg_col,
+                      text_color=text_col, font=font, border_width=1, relief='sunken', tooltip=tooltip,
+                      metadata={'disabled': disabled})]
+
+    return layout
+
+
+def input_layout(attributes):
+    # Standard element parameters
+    font = attributes.get('Font', mod_const.LARGE_FONT)
+    size = attributes.get('Size', None)
+    pad = attributes.get('Pad', None)
+    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
+    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+
+    disabled_text_col = mod_const.DISABLED_TEXT_COL
+    disabled_bg_col = mod_const.ACTION_COL
+
+    disabled = attributes.get('Disabled', False)
+    tooltip = attributes.get('Tooltip', None)
+
+    # Element layout
+    elem_key = attributes['Key']
+    display_value = attributes.get('DisplayValue', '')
+    layout = [sg.Input(display_value, key=elem_key, enable_events=True, disabled=disabled, size=size, pad=pad,
+                       font=font, background_color=bg_col, text_color=text_col,
+                       disabled_readonly_background_color=disabled_bg_col,
+                       disabled_readonly_text_color=disabled_text_col, tooltip=tooltip,
+                       metadata={'disabled': disabled})]
+
+    return layout
+
+
+def combo_layout(attributes):
+    # Standard element parameters
+    font = attributes.get('Font', mod_const.LARGE_FONT)
+    size = attributes.get('Size', None)
+    pad = attributes.get('Pad', None)
+    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
+    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+
+    disabled = attributes.get('Disabled', False)
+    tooltip = attributes.get('Tooltip', None)
+
+    # Combobox parameters
+    values = attributes.get('ComboValues', [])
+
+    # Element layout
+    elem_key = attributes['Key']
+    display_value = attributes.get('DisplayValue', '')
+    layout = [sg.Combo(values, default_value=display_value, key=elem_key, enable_events=True, size=size, pad=pad,
+                       font=font, text_color=text_col, background_color=bg_col, disabled=disabled,
+                       tooltip=tooltip, metadata={'disabled': disabled})]
+
+    return layout
+
+
+def multiline_layout(attributes):
+    # Standard element parameters
+    font = attributes.get('Font', mod_const.LARGE_FONT)
+    size = attributes.get('Size', None)
+    pad = attributes.get('Pad', None)
+    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
+    def_text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+    disabled_text_col = mod_const.DISABLED_TEXT_COL
+
+    disabled = attributes.get('Disabled', False)
+    tooltip = attributes.get('Tooltip', None)
+
+    if disabled:
+        text_col = disabled_text_col
+    else:
+        text_col = def_text_col
+
+    # Multiline parameters
+    height = attributes.get('NRow', size[1])
+    width = size[0]
+
+    # Element layout
+    elem_key = attributes['Key']
+    display_value = attributes.get('DisplayValue', '')
+    layout = [sg.Multiline(display_value, key=elem_key, size=(width, height), pad=pad, font=font, disabled=disabled,
+                           background_color=bg_col, text_color=text_col, border_width=1,
+                           tooltip=tooltip, metadata={'disabled': disabled})]
+
+    return layout
+
+
+def checkbox_layout(attributes):
+    # Standard element parameters
+    font = attributes.get('Font', mod_const.LARGE_FONT)
+    size = attributes.get('Size', None)
+    pad = attributes.get('Pad', None)
+    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
+    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+
+    disabled = attributes.get('Disabled', False)
+    tooltip = attributes.get('Tooltip', None)
+
+    # Checkbox settings
+    box_col = bg_col if not disabled else mod_const.DISABLED_BG_COL
+
+    width, height = size
+    elem_w = 0
+    elem_h = height
+
+    # Parameter settings
+    elem_key = attributes['Key']
+    display_value = attributes.get('DisplayValue', False)
+    layout = [sg.Checkbox('', default=display_value, key=elem_key, enable_events=True, disabled=disabled,
+                          size=(elem_w, elem_h), pad=pad, font=font, background_color=bg_col, text_color=text_col,
+                          checkbox_color=box_col, tooltip=tooltip, metadata={'disabled': disabled})]
+
+    return layout
+
+
 def B1(*args, **kwargs):
     """
     Action button element defaults.
