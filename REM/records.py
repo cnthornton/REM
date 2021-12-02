@@ -2696,21 +2696,6 @@ class DatabaseRecord:
         # Layout elements
 
         # Record header
-        #left_layout = []
-        #right_layout = []
-        #for param in self.headers:
-        #    if param.justification == 'right':
-        #        right_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
-        #    else:
-        #        left_layout += param.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1))
-
-        #header_key = self.key_lookup('Header')
-        #header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
-        #                         sg.Col([left_layout], background_color=bg_col, justification='l',
-        #                                element_justification='l', expand_x=True, vertical_alignment='c'),
-        #                         sg.Col([right_layout], background_color=bg_col, justification='r',
-        #                                element_justification='r', vertical_alignment='c')]],
-        #                       key=header_key, background_color=bg_col)
         headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
         headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
         headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
@@ -2768,10 +2753,12 @@ class DatabaseRecord:
                              key=tab_key, background_color=bg_col)
 
         # Create layout for record metadata
-        markable = True if (permissions['mark'] in user_priv and is_new is False and view_only is False) \
-            else False
-        approvable = True if (permissions['approve'] in user_priv and is_new is False and view_only is False) \
-            else False
+        markable = True if (permissions['mark'] in user_priv and not view_only) else False
+        #markable = True if (permissions['mark'] in user_priv and is_new is False and view_only is False) \
+        #    else False
+        approvable = True if (permissions['approve'] in user_priv and not view_only) else False
+        #approvable = True if (permissions['approve'] in user_priv and is_new is False and view_only is False) \
+        #    else False
         meta_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
         metadata = self.metadata
         if len(metadata) > 0:

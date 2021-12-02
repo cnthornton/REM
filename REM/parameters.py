@@ -660,6 +660,9 @@ class DataParameterSingle(DataParameter):
         except KeyError:
             display_value = self.format_display_value(value)
 
+        logger.debug('DataParameter {NAME}: editable {EDIT}; hidden {VIS}'
+                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
+
         logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
@@ -1150,6 +1153,9 @@ class DataParameterCheckbox(DataParameter):
 
         display_value = self.format_display_value(value)
 
+        logger.debug('DataParameter {NAME}: editable {EDIT}; hidden {VIS}'
+                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
+
         logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
@@ -1624,6 +1630,9 @@ class DataParameterCondition(DataParameterMulti):
 
         if not self.has_value():  # no parameter value + operator combo set
             return ''
+
+        logger.debug('DataParameter {NAME}: editable {EDIT}; hidden {VIS}'
+                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
 
         logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
                      .format(NAME=self.name, VAL=value))

@@ -3,7 +3,6 @@ REM function for manipulating data.
 """
 
 import re
-
 import pandas as pd
 
 from REM.client import logger
@@ -64,8 +63,8 @@ def evaluate_condition(data, expression):
     Returns:
         results (pd.Series): results of the evaluation for each row of data provided.
     """
-    reserved_chars = ('and', 'or', 'in', 'not', '+', '-', '/', '//', '*', '**', '%', '>', '>=', '<', '<=', '==', '~',
-                      ',', '(', ')', '[', ']', '{', '}')
+    reserved_chars = ('and', 'or', 'in', 'not', '+', '-', '/', '//', '*', '**', '%', '>', '>=', '<', '<=', '==', '!=',
+                      '~', ',', '(', ')', '[', ']', '{', '}')
 
     if isinstance(data, pd.Series):  # single data entry
         df = data.to_frame().T
@@ -79,8 +78,6 @@ def evaluate_condition(data, expression):
     else:
         raise ValueError('data must be either a pandas DataFrame or Series')
 
-    header = df.columns.tolist()
-
     if isinstance(expression, str):
         components = parse_expression(expression)
     elif isinstance(expression, list):
@@ -89,6 +86,7 @@ def evaluate_condition(data, expression):
         raise ValueError('expression {} must be provided as either a string or list'.format(expression))
 
     # Quote non-numeric, static expression variables
+    header = df.columns.tolist()
     expression = ' '.join([i if (i in header or is_numeric(i) or i in reserved_chars) else '"{}"'.format(i) for i in
                            components])
 
@@ -151,10 +149,10 @@ def parse_expression(expression):
     operators = set('+-*/%><=!^')
     group_chars = set('()[]{},')
 
-    # Remove quotations around a component
+    # Remove any quotations around expression components
     expression = re.sub(r'"|\'', '', expression)
 
-    # Force boolean word operators to lowercase
+    # Ensure that any boolean word operators are lowercase (pandas requirement)
     bool_pttrn = ' | '.join(map(re.escape, ('and', 'or', 'not', 'in')))
     expression = re.sub(bool_pttrn, lambda match: match.group(0).lower(), expression, flags=re.IGNORECASE)
 
@@ -192,7 +190,7 @@ def parse_expression(expression):
 
     parsed_expression.append(''.join(buff))  # flush remaining characters in buffer
 
-    # Replace common math operators with their python/pandas equivalents
+    # Replace common operators with their python/pandas equivalents
     substitutions = {'^': '**', '!': '~', '=': '=='}
     parsed_expression[:] = [substitutions[i] if i in substitutions else i for i in parsed_expression if i]
 
@@ -200,6 +198,12 @@ def parse_expression(expression):
 
 
 def is_numeric(input):
+    """
+    Test if a string can be converted into a numeric data type.
+
+    Arguments:
+        input (str): input string.
+    """
     try:
         pd.to_numeric(input)
         return True
