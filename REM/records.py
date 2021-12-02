@@ -2728,14 +2728,14 @@ class DatabaseRecord:
                 element = self.fetch_element(element_name)
                 element_class = element.eclass
 
-                try:
-                    can_edit = editable and permissions[element_class] in user_priv
-                except KeyError:
-                    msg = 'unknown element class {CLASS} provided to record permissions'.format(CLASS=element_class)
-                    logger.warning('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    can_edit = False
-
+                #try:
+                #    can_edit = editable and permissions[element_class] in user_priv
+                #except KeyError:
+                #    msg = 'unknown element class {CLASS} provided to record permissions'.format(CLASS=element_class)
+                #    logger.warning('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                #
+                #    can_edit = False
+                can_edit = editable and element.permissions in user_priv
                 element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
                                                  level=level)]
                 section_layout.append(element_layout)

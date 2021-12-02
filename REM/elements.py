@@ -4,7 +4,6 @@ REM standard GUI element classes such as tables and information boxes.
 
 import datetime
 from math import ceil as ceiling
-import re
 import sys
 from random import randint
 
@@ -45,6 +44,8 @@ class RecordElement:
         tooltip (str): element tooltip.
 
         edited (bool): record element was edited [Default: False].
+
+        permissions (str): permissions group required to edit the element.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -75,6 +76,11 @@ class RecordElement:
             self.description = entry['Description']
         except KeyError:
             self.description = name
+
+        try:
+            self.permissions = entry['Permissions']
+        except KeyError:
+            self.permissions = settings.default_pgroup
 
         # Layout styling options
         try:
@@ -3620,7 +3626,7 @@ class ReferenceBox(RecordElement):
 
 class DataElement(RecordElement):
     """
-    Record data element.
+    Record element that holds information on a single data variable.
 
     Attributes:
 
@@ -4711,11 +4717,16 @@ class ElementReference(RecordElement):
         # Element layout
         width_key = self.key_lookup('Width')
         elem_key = self.key_lookup('Element')
+        #element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
+        #                          [sg.Text(display_value, key=elem_key, size=(width, 1), pad=(0, 0),
+        #                                   background_color=bg_col, text_color=text_col, font=font, enable_events=True,
+        #                                   border_width=1, relief='sunken',
+        #                                   metadata={'name': self.name, 'disabled': is_disabled})]],
+        #                         background_color=bg_col)]
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-                                  [sg.Text(display_value, key=elem_key, size=(width, 1), pad=(0, 0),
-                                           background_color=bg_col, text_color=text_col, font=font, enable_events=True,
-                                           border_width=1, relief='sunken',
-                                           metadata={'name': self.name, 'disabled': is_disabled})]],
+                                  mod_lo.generate_layout('text', layout_attrs)],
                                  background_color=bg_col)]
 
         # Layout
@@ -4759,7 +4770,6 @@ class ElementReference(RecordElement):
         Set the value of the element reference from user input.
 
         Arguments:
-
             values (dict): single value or dictionary of reference element values.
         """
         dtype = self.dtype
@@ -4799,10 +4809,7 @@ class ElementReference(RecordElement):
         if value == '' or pd.isna(value):
             return ''
 
-        if dtype == 'money':
-            display_value = settings.format_display_money(value)
-        else:
-            display_value = str(value)
+        display_value = settings.format_display(value, dtype)
 
         return display_value
 
@@ -4894,6 +4901,237 @@ class ElementReference(RecordElement):
         Return True if the record element has a valid value else False
         """
         value = self.value
+        if not pd.isna(value) and not value == '':
+            return True
+        else:
+            return False
+
+
+class MetaElement(RecordElement):
+    """
+    Flags or text of record information.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        elements (list): list of data element GUI keys.
+
+        modifiers (dict): flags that alter the element's behavior.
+
+        value: data vector containing the element value.
+
+        edited (bool): element value was edited [Default: False].
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize the data element attributes.
+
+        Arguments:
+            name (str): data element configuration name.
+
+            entry (dict): configuration entry for the data element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                              ('Description', 'Element')])
+        self._event_elements = ['Element']
+
+        # Element-specific bindings
+        self.bindings = [self.key_lookup(i) for i in self._event_elements]
+
+        # Modifiers
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'edit': False, 'require': False, 'hide': False}
+        else:
+            self.modifiers = {'edit': modifiers.get('edit', 0), 'require': modifiers.get('require', 0),
+                              'hide': modifiers.get('hide', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
+                                   .format(TBL=self.name, MOD=modifier))
+                    flag = False
+
+                self.modifiers[modifier] = flag
+
+        # Data vector
+        self.value = mod_col.DataVector(name, entry)
+
+        # Dynamic variables
+        self._dimensions = (mod_const.DE_WIDTH, mod_const.DE_HEIGHT)
+
+    def export_values(self, edited_only: bool = False):
+        """
+        Export the record element value as a dictionary.
+
+        Arguments:
+            edited_only (bool): only export element values if the record element had been edited [Default: False].
+        """
+        if edited_only and not self.edited:
+            return {}
+        else:
+            return {self.name: self.value.data()}
+
+    def reset(self, window):
+        """
+        Reset data element to default.
+        """
+        self.value.reset()
+        self.edited = False
+
+        # Update the element display
+        self.update_display(window)
+
+    def run_event(self, window, event, values):
+        """
+        Perform an element action.
+        """
+        elem_key = self.key_lookup('Element')
+        if event == elem_key:
+            input_value = values[elem_key]
+            self.value.update_value(input_value)
+            self.update_display(window)
+
+    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
+               overwrite: bool = False, level: int = 0):
+        """
+        GUI layout for the record element.
+        """
+        modifiers = self.modifiers
+
+        is_disabled = False if overwrite is True or (editable is True and level < 1) else True
+        is_required = modifiers['require']
+        hidden = modifiers['hide']
+
+        size = self._dimensions if not size else size
+        self._dimensions = size
+
+        background = self.bg_col
+        tooltip = tooltip if tooltip else self.tooltip
+
+        # Layout options
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+
+        font = mod_const.LARGE_FONT
+        bold_font = mod_const.BOLD_HEADING_FONT
+
+        bg_col = background
+        text_col = mod_const.DISABLED_TEXT_COL
+
+        # Element Icon, if provided
+        icon = self.icon
+        if icon is not None:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+            else:
+                icon_layout = []
+        else:
+            icon_layout = []
+
+        # Required symbol
+        if is_required is True:
+            required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
+                                       text_color=mod_const.NOTE_COL, tooltip='required')]
+        else:
+            required_layout = []
+
+        # Element description and actions
+        elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
+        display_value = self.format_display()
+        desc_bg_col = bg_col
+
+        desc_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
+                               font=bold_font, auto_size_text=True, tooltip=tooltip)]
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
+        elem_layout = mod_lo.generate_layout(self.etype, layout_attrs)
+
+        # Layout
+        frame_key = self.key_lookup('Frame')
+        row1 = icon_layout + desc_layout + elem_layout + required_layout
+        layout = sg.Col([row1], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
+
+        return layout
+
+    def update_value(self, input_value):
+        """
+        Update the element's value.
+        """
+        value_fmt = self.value.update_value(input_value)
+
+        return value_fmt
+
+    def update_display(self, window):
+        """
+        Format element for display.
+        """
+        modifiers = self.modifiers
+        hidden = modifiers['hide']
+        editable = modifiers['edit']
+
+        elem_key = self.key_lookup('Element')
+        # Update element display value
+        logger.debug('DataElement {NAME}: editable {EDIT}; hidden {VIS}'
+                     .format(NAME=self.name, EDIT=editable, VIS=hidden))
+        if editable and not hidden:  # element is not disabled and is visible to the user
+            logger.debug("DataElement {NAME}: updating the element display"
+                         .format(NAME=self.name))
+
+            display_value = self.format_display()
+            window[elem_key].update(value=display_value)
+        else:  # element is either disabled or hidden
+            if not pd.isna(self.value):
+                display_value = self.format_display()
+            else:
+                logger.debug("DataElement {NAME}: no values provided to update the element's display"
+                             .format(NAME=self.name))
+
+                display_value = ''
+
+            window[elem_key].update(value=display_value)
+
+    def format_display(self):
+        """
+        Format the elements value for displaying.
+        """
+        value = self.value.data()
+        if value == '' or pd.isna(value):
+            return ''
+
+        logger.debug('DataElement {NAME}: formatting display for element value {VAL} of type {TYPE}'
+                     .format(NAME=self.name, VAL=value, TYPE=type(value)))
+
+        display_value = settings.format_display(value, self.value.dtype)
+
+        logger.debug('DataElement {NAME}: display value is {VAL}'
+                     .format(NAME=self.name, VAL=display_value))
+
+        return display_value
+
+    def check_requirements(self):
+        """
+        Verify that the record element passes requirements.
+        """
+        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
+
+        return passed
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        value = self.value.data()
         if not pd.isna(value) and not value == '':
             return True
         else:

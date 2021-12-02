@@ -561,6 +561,8 @@ class SettingsManager:
         self.reference_lookup = None
         self.bank_lookup = None
 
+        self.default_pgroup = 'admin'  # default permissions group when not configured
+
     def translate(self):
         """
         Translate text using language defined in settings.
@@ -655,21 +657,27 @@ class SettingsManager:
             logger.error(msg)
             popup_error(msg)
 
-            conf_const = {}
+            configuration = {}
         else:
-            conf_const = response['value']
+            configuration = response['value']
 
-        self.audit_rules = conf_const.get('audit_rules', None)
-        self.cash_rules = conf_const.get('cash_rules', None)
-        self.bank_rules = conf_const.get('bank_rules', None)
-        self.record_rules = conf_const.get('records', None)
-        param_def = conf_const.get('parameters', None)
+        self.audit_rules = configuration.get('audit_rules', None)
+        self.cash_rules = configuration.get('cash_rules', None)
+        self.bank_rules = configuration.get('bank_rules', None)
+        self.record_rules = configuration.get('records', None)
+        param_def = configuration.get('parameters', None)
         try:
             self.aliases = param_def['definition']
         except KeyError:
             logger.warning('parameter configuration is missing the definitions entry')
 
-        database_attrs = conf_const.get('database', {})
+        constants = configuration.get('constants', None)
+        try:
+            self.default_pgroup = constants['default_pgroup']
+        except KeyError:
+            self.default_pgroup = 'admin'
+
+        database_attrs = configuration.get('database', {})
         self.prog_db = database_attrs.get('program_database', 'REM')
         self.alt_dbs = database_attrs.get('databases', [])
         if not self.dbname or self.dbname not in self.alt_dbs:
@@ -677,7 +685,7 @@ class SettingsManager:
         self.date_format = database_attrs.get('db_date_format', self.format_date_str('YYYY-MM-DD HH:MI:SS'))
 
         # Reserved tables and table columns
-        table_field_attrs = conf_const.get('table_fields', {})
+        table_field_attrs = configuration.get('table_fields', {})
         self.creator_code = table_field_attrs.get('creator_code', 'CreatorName')
         self.creation_date = table_field_attrs.get('creation_time', 'CreationTime')
         self.editor_code = table_field_attrs.get('editor_code', 'EditorName')
