@@ -128,15 +128,23 @@ def evaluate_operation(data, expression):
     elif isinstance(expression, list):
         components = expression
     else:
-        raise ValueError('expression {} must be provided as either a string or list'.format(expression))
+        components = parse_expression(str(expression))
 
     expression = ' '.join(components)
-    print('evaluating math expression: {}'.format(expression))
-    results = df.eval(expression)
-    print('results of the evaluation are:')
-    print(results.squeeze())
+    header = df.columns.tolist()
 
-    return results.squeeze()
+    print('evaluating math expression: {}'.format(expression))
+    if len(components) > 1:
+        results = df.eval(expression).squeeze()
+    else:
+        if expression in header:
+            results = df[expression].squeeze()
+        else:
+            results = expression
+    print('results of the evaluation are:')
+    print(results)
+
+    return results
 
 
 def parse_expression(expression):

@@ -665,13 +665,13 @@ class SettingsManager:
         self.cash_rules = configuration.get('cash_rules', None)
         self.bank_rules = configuration.get('bank_rules', None)
         self.record_rules = configuration.get('records', None)
-        param_def = configuration.get('parameters', None)
+        param_def = configuration.get('parameters', {})
         try:
             self.aliases = param_def['definition']
         except KeyError:
             logger.warning('parameter configuration is missing the definitions entry')
 
-        constants = configuration.get('constants', None)
+        constants = configuration.get('constants', {})
         try:
             self.default_pgroup = constants['default_pgroup']
         except KeyError:

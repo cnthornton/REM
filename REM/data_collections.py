@@ -261,18 +261,7 @@ class DataCollection:
 
                 default_values = format_values(default_values, dtype)
             else:  # single condition supplied
-                try:
-                    operation = mod_dm.parse_expression(column_default)
-                except TypeError:
-                    operation = []
-
-                if len(operation) > 1:
-                    results = mod_dm.evaluate_operation(df, operation)
-                else:
-                    if column_default in header:
-                        results = df[column_default]
-                    else:
-                        results = column_default
+                results = mod_dm.evaluate_operation(df, column_default)
 
                 if isinstance(results, pd.Series):  # defaults are the values of another field in the collection
                     default_values = format_values(results, dtype)
@@ -317,7 +306,7 @@ class DataCollection:
                 #default_values = mod_dm.evaluate_rule(df, rule, as_list=False)
                 default_values = mod_dm.evaluate_operation(df, rule)
             except Exception as e:
-                msg = 'failed to evaluate condition for rule {RULE} - {ERR}'.format(RULE=rule, ERR=e)
+                msg = 'failed to evaluate rule expression {RULE} - {ERR}'.format(RULE=rule, ERR=e)
                 logger.exception(msg)
             else:
                 default_values = format_values(default_values, dtype)
@@ -605,6 +594,9 @@ class DataCollection:
                          .format(NAME=self.name, COL=field))
 
             return 0
+
+        print('summary field {} has values:'.format(field))
+        print(col_values)
 
         if col_values.empty:
             return 0
