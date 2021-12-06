@@ -2285,7 +2285,7 @@ class DatabaseRecord:
 
         success = user.write_db(sstrings, psets)
         #success = True
-        #print(statements)
+        print(statements)
 
         return success
 

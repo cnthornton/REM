@@ -309,7 +309,7 @@ class DataCollection:
                 msg = 'failed to evaluate rule expression {RULE} - {ERR}'.format(RULE=rule, ERR=e)
                 logger.exception(msg)
             else:
-                default_values = format_values(default_values, dtype)
+                default_values = format_values(default_values, dtype).squeeze()
                 print('dependant field {} has values:'.format(column))
                 print(default_values)
                 df.loc[:, column] = default_values
@@ -627,6 +627,8 @@ class DataCollection:
                 col_summary = col_values.sum()
             else:  # default statistic for non-numeric data types like strings and datetime objects
                 col_summary = col_values.nunique()
+
+        print('summary field {} has total {}'.format(field, col_summary))
 
         return col_summary
 
