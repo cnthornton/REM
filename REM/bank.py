@@ -1261,9 +1261,16 @@ class BankRule:
 
             warning = ["Potential false positive:"]
             for column in expanded_cols:
+                try:
+                    rule_entry = assoc_rules[column]
+                except KeyError:
+                    logger.warning('BankRule {NAME}: column {COL} does not have a configured association parameter for '
+                                   'association account {ACCT}'.format(NAME=self.name, COL=column, ACCT=acct_name))
+                    continue
+
                 if getattr(row, column) != results[column]:
                     alt_warn = 'values for expanded column {COL} do not match'.format(COL=column)
-                    col_warning = assoc_rules[column].get('Description', alt_warn)
+                    col_warning = rule_entry.get('Description', alt_warn)
                     warning.append('- {}'.format(col_warning))
 
             warning = '\n'.join(warning)
