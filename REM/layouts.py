@@ -323,7 +323,7 @@ def importer_layout(win_size: tuple = None):
     record_types = settings.records.print_rules(by_title=True)
 
     cond_operators = ['=', '!=', '>', '<', '>=', '<=']
-    math_operators = ['+', '-', '*', '/', '%']
+    math_operators = ['+', '-', '*', '/', '%', '^', '//']
 
     # Window Layout
 

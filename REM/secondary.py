@@ -913,27 +913,34 @@ def database_importer_window(win_size: tuple = None):
     """
     pd.set_option('display.max_columns', None)
 
-    is_numeric_dtype = pd.api.types.is_numeric_dtype
-    is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    #is_numeric_dtype = pd.api.types.is_numeric_dtype
+    #is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
     relativedelta = dateutil.relativedelta.relativedelta
+    strptime = datetime.datetime.strptime
 
+    #dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64, 'time': np.datetime64,
+    #             'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
+    #             'int': 'Int64', 'integer': 'Int64', 'bit': 'Int8', 'tinyint': 'Int8',
+    #             'bool': bool, 'boolean': bool,
+    #             'char': np.object_, 'varchar': np.object_, 'binary': np.object_, 'varbinary': np.object_,
+    #             'tinytext': np.object_, 'text': np.object_, 'string': np.object_}
     dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64, 'time': np.datetime64,
                  'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
-                 'int': 'Int64', 'integer': 'Int64', 'bit': 'Int64',
+                 'int': np.int_, 'integer': np.int_, 'bit': np.byte, 'tinyint': np.byte,
                  'bool': bool, 'boolean': bool,
                  'char': np.object_, 'varchar': np.object_, 'binary': np.object_, 'varbinary': np.object_,
                  'tinytext': np.object_, 'text': np.object_, 'string': np.object_}
 
-    oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
+    #oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
 
-    math_operators = ('+', '-', '*', '/', '%')
+    #math_operators = ('+', '-', '*', '/', '%')
     date_types = settings.supported_date_dtypes
 
     # Layout settings
     main_font = mod_const.MAIN_FONT
 
-    text_col = mod_const.TEXT_COL
-    select_col = mod_const.SELECT_TEXT_COL
+    text_color = mod_const.TEXT_COL
+    select_color = mod_const.SELECT_TEXT_COL
 
     # Window and element size parameters
     if win_size is not None:
@@ -1019,26 +1026,6 @@ def database_importer_window(win_size: tuple = None):
 
                 return False
 
-            # Prepare references for all associations where record entry is the primary record type
-            #association_rules = record_entry.association_rules
-            #for rule_name in association_rules:
-            #    association_rule = association_rules[rule_name]
-            #    if not association_rule['Primary']:
-            #        continue
-
-            #    # Create an initial reference entry for the records
-            #    ref_data = pd.DataFrame({'RecordID': record_ids, 'RecordType': record_entry.name,
-            #                             'IsDeleted': False})
-            #    try:
-            #        statements = record_entry.save_database_references(ref_data, rule_name, statements=statements)
-            #    except Exception as e:
-            #        msg = 'failed to upload {TYPE} reference entries to the database for association rule {RULE} - ' \
-            #              '{ERR}'.format(TYPE=record_entry.name, RULE=rule_name, ERR=e)
-            #        logger.exception(msg)
-            #        popup_error(msg)
-
-            #        return False
-
             sstrings = []
             psets = []
             for i, j in statements.items():
@@ -1121,7 +1108,8 @@ def database_importer_window(win_size: tuple = None):
 
                 thousands_sep = values['-TSEP-']
                 if len(thousands_sep) > 1:
-                    msg = 'unsupported character provided as the thousands separator'
+                    msg = 'unsupported character "{SEP}" provided as the thousands separator'\
+                        .format(SEP=values['-TSEP-'])
                     popup_notice(msg)
                     logger.warning(msg)
 
@@ -1137,7 +1125,8 @@ def database_importer_window(win_size: tuple = None):
                 try:
                     date_offset = abs(int(date_offset))
                 except ValueError:
-                    msg = 'unsupported character provided as the date offset - date offset requires an integer value'
+                    msg = 'unsupported character "{OFFSET}" provided as the date offset - date offset requires an ' \
+                          'integer value'.format(OFFSET=date_offset)
                     popup_notice(msg)
                     logger.warning(msg)
 
@@ -1146,7 +1135,8 @@ def database_importer_window(win_size: tuple = None):
                 try:
                     date_format = settings.format_date_str(values['-DATE_FORMAT-'])
                 except TypeError:
-                    msg = 'unknown format provided to the date format parameter'
+                    msg = 'unaccepted format "{FMT}" provided to the date format parameter'\
+                        .format(FMT=values['-DATE_FORMAT-'])
                     popup_notice(msg)
                     logger.warning(msg)
 
@@ -1178,8 +1168,8 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             coltype = dtype_map[db_type.lower()]
                         except KeyError:
-                            msg = 'database data type {DTYPE} of row {ROW} not in list of expected data types' \
-                                .format(DTYPE=db_type, ROW=index + 1)
+                            msg = 'database data type {DTYPE} for row {ROW} not in list of expected data types' \
+                                .format(DTYPE=db_type, ROW=index)
                             logger.warning(msg)
                             popup_notice(msg)
 
@@ -1217,66 +1207,80 @@ def database_importer_window(win_size: tuple = None):
                     # Rename columns based on mapping information
                     col_mapper = pd.Series(map_df['Table Column Name'].values,
                                            index=map_df['File Column Name']).to_dict()
-                    import_df.rename(col_mapper, axis=1, inplace=True)
+                    print('column mapping is:')
+                    print(col_mapper)
+                    try:
+                        import_df.rename(col_mapper, axis=1, inplace=True, errors='raise')
+                    except KeyError as e:
+                        msg = 'failed to map file column names to database table column names'
+                        logger.error('{MSG} - {ERR}'.format(MSG=msg, ERR=e))
+                        logger.debug('column mapping is: {}'.format(col_mapper))
+                        popup_error('{MSG} - please verify that the file column names were accurately recorded'
+                                    .format(MSG=msg))
 
-                    # Set values for the required columns.
+                        continue
+
+                    # Set values for the required / static columns.
                     for index, row in req_df.iterrows():
                         column_name = row['Table Column Name']
                         column_value = row['Default Value']
 
-                        import_df[column_name] = column_value
+                        import_df.loc[:, column_name] = column_value
 
-                    all_cols = req_df['Table Column Name'].append(map_df['Table Column Name'])
+                    # Subset the imported data on the selected static and mapping columns
+                    selected_columns = req_df['Table Column Name'].append(map_df['Table Column Name'])
                     try:
-                        final_df = import_df[all_cols]
+                        final_df = import_df[selected_columns]
                     except KeyError:
-                        popup_notice('Please verify that column names are mapped correctly')
-                        for all_col in all_cols:
-                            if all_col not in import_df.columns.values.tolist():
-                                logger.warning('column "{COL}" not a valid database column in table {TBL}'
-                                               .format(COL=all_col, TBL=table))
+                        missing_cols = []
+                        for tbl_column in selected_columns:
+                            if tbl_column not in import_df.columns.tolist():
+                                missing_cols.append(tbl_column)
+                        msg = 'mapped column(s) "{COL}" not found in database table {TBL}'\
+                            .format(COL=','.join(missing_cols), TBL=table)
+                        popup_error(msg)
+                        logger.warning(msg)
 
                         continue
-                    else:
-                        # Set columns dtypes
-                        dtypes = {}
-                        date_cols = []
-                        for final_col in all_cols:
-                            if final_col in columns:
-                                coltype = columns[final_col][0]
-                                if coltype in date_types:  # set the datatype of datetime columns separately
-                                    date_cols.append(final_col)
-                                    continue
 
-                                try:
-                                    dtype = dtype_map[coltype.lower()]
-                                except KeyError:
-                                    logger.warning('unable to get the data type for column "{COL}" ... setting to '
-                                                   'default')
-                                    dtype = np.object
-                                dtypes[final_col] = dtype
+                    # Set column data types
+                    dtypes_set = True
+                    for selected_column in selected_columns:
+                        coltype = columns[selected_column][0]
+                        if coltype in date_types:  # need to strip the date offset, if any
+                            try:
+                                if offset_oper == '+':
+                                    formatted_values = final_df[selected_column].apply(lambda x: (strptime(x, date_format) - relativedelta(years=+date_offset)).strftime(settings.date_format))
+                                else:
+                                    formatted_values = final_df[selected_column].apply(lambda x: (strptime(x, date_format) + relativedelta(years=+date_offset)).strftime(settings.date_format))
+                            except Exception as e:
+                                msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}'.format(COL=selected_column, ERR=e)
+                                print(final_df[selected_column])
+                                popup_error(msg)
+                                logger.exception(msg)
+                                dtypes_set = False
 
-                        final_df = final_df.astype(dtypes)
-                        if values['-DATES-']:
-                            for date_col in date_cols:
-                                try:
-                                    if offset_oper == '+':
-                                        final_df.loc[:, date_col] = final_df[date_col] \
-                                            .apply(lambda x: datetime.datetime.strptime(x, date_format) -
-                                                             relativedelta(years=+date_offset))
-                                    else:
-                                        final_df.loc[:, date_col] = final_df[date_col] \
-                                            .apply(lambda x: datetime.datetime.strptime(x, date_format) +
-                                                             relativedelta(years=+date_offset))
+                                break
+                        else:
+                            try:
+                                formatted_values = mod_dm.format_values(final_df[selected_column], coltype)
+                            except Exception as e:
+                                msg = 'unable to convert values in column "{COL}" to "{FMT}" - {ERR}'.format(COL=selected_column, FMT=coltype, ERR=e)
+                                print(final_df[selected_column])
+                                logger.exception(msg)
+                                popup_error(msg)
+                                dtypes_set = False
 
-                                except Exception as e:
-                                    print(final_df[date_col])
-                                    msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}' \
-                                        .format(COL=date_col, ERR=e)
-                                    popup_error(msg)
-                                    logger.exception(msg)
+                                break
 
-                    # Subset table based on specified subset rules
+                        print('formatted column {} has values:'.format(selected_column))
+                        print(formatted_values)
+                        final_df.loc[:, selected_column] = formatted_values
+
+                    if not dtypes_set:
+                        continue
+
+                    # Subset imported data on the specified subset rules
                     subset_df = final_df
                     for sub_num in subs_in_view:
                         sub_col = values['-SUBSET_COL_{}-'.format(sub_num)]
@@ -1285,72 +1289,42 @@ def database_importer_window(win_size: tuple = None):
                         if not sub_col or not sub_oper:
                             continue
 
-                        if sub_col not in all_cols.values.tolist():
+                        if sub_col not in selected_columns.values.tolist():
                             msg = 'column "{COL}" used in subset rule "{RULE}" must be one of the required or ' \
                                   'mapping columns chosen for importing'.format(COL=sub_col, RULE=sub_num + 1)
                             popup_error(msg)
                             logger.warning(msg)
                             continue
 
-                        # Get dtype of subset column and convert value to the correct dtype
-                        try:
-                            sub_dtype = columns[sub_col][0]
-                        except KeyError:
-                            msg = 'column "{COL}" used in subset rule "{RULE}" must be a valid table column' \
-                                .format(COL=sub_col, RULE=sub_num + 1)
-                            popup_error(msg)
-                            logger.warning(msg)
-                            continue
-                        else:
-                            sub_obj = dtype_map[sub_dtype]
+                        cond_str = '{COL} {OPER} {VAL}'.format(COL=sub_col, OPER=sub_oper, VAL=sub_val)
+                        logger.debug('sub-setting table column "{COL}" on condition {RULE}'
+                                     .format(COL=sub_col, RULE=cond_str))
 
                         try:
-                            sub_val_fmt = sub_obj(sub_val)
-                        except ValueError:
-                            msg = 'unable to convert the value "{VAL}" from subset rule "{RULE}" to {DTYPE}' \
-                                .format(VAL=sub_val, RULE=sub_num + 1, DTYPE=sub_dtype)
-                            popup_error(msg)
-                            logger.warning(msg)
-                            continue
-                        else:
-                            logger.debug('sub-setting table column "{COL}" by value "{VAL}"'
-                                         .format(COL=sub_col, VAL=sub_val_fmt))
-
-                        if sub_oper == '<':
-                            cond_results = subset_df[sub_col] < sub_val_fmt
-                        elif sub_oper == '>':
-                            cond_results = subset_df[sub_col] > sub_val_fmt
-                        elif sub_oper == '<=':
-                            cond_results = subset_df[sub_col] <= sub_val_fmt
-                        elif sub_oper == '>=':
-                            cond_results = subset_df[sub_col] >= sub_val_fmt
-                        elif sub_oper == '=':
-                            cond_results = subset_df[sub_col] == sub_val_fmt
-                        elif sub_oper == '!=':
-                            cond_results = subset_df[sub_col] != sub_val_fmt
-                        else:
-                            msg = 'operator "{OPER}" used in subset rule "{RULE}" is not a supported ' \
-                                  'subset operator'.format(OPER=sub_oper, RULE=sub_num + 1)
-                            popup_error(msg)
-                            logger.warning(msg)
-                            continue
-
-                        try:
-                            subset_df = subset_df[cond_results]
+                            subset_df = subset_df[mod_dm.evaluate_condition(subset_df, cond_str)]
                         except Exception as e:
-                            msg = 'failed to subset the dataframe using subset rule "{RULE}" - {ERR}' \
-                                .format(RULE=sub_num, ERR=e)
+                            msg = 'failed to subset data on rule "{RULE}" - {ERR}'.format(RULE=cond_str, ERR=e)
                             popup_error(msg)
-                            logger.error(msg)
+                            logger.warning(msg)
+
+                            continue
 
                     # Create record IDs for each row in the final import table
                     record_entry = settings.records.fetch_rule(record_type, by_title=True)
                     try:
-                        date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
+                        #date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
+                        date_list = pd.to_datetime(subset_df[settings.date_field].fillna(pd.NaT), errors='coerce', format=settings.date_format, utc=False)
+                        #date_list = subset_df[settings.date_field]
                     except KeyError:
+                        logger.warning('the record date field has not been set - defaulting to current date')
                         date_list = [datetime.datetime.now()] * subset_df.shape[0]
                     else:
                         date_list = date_list.tolist()
+
+                    print('data used to create record IDs:')
+                    print(subset_df)
+                    print('creating record IDs from record date:')
+                    print(date_list)
 
                     record_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
                     if not record_ids:
@@ -1375,7 +1349,7 @@ def database_importer_window(win_size: tuple = None):
                         if not elem_col or not elem_oper:
                             continue
 
-                        if elem_col not in all_cols.values.tolist():
+                        if elem_col not in selected_columns.values.tolist():
                             msg = 'column "{COL}" used in modify rule "{RULE}" must be one of the required ' \
                                   'or mapping columns chosen for importing'.format(COL=elem_col, RULE=elem_num + 1)
                             popup_error(msg)
@@ -1383,94 +1357,73 @@ def database_importer_window(win_size: tuple = None):
 
                             continue
 
-                        if elem_oper not in math_operators:
-                            msg = 'operator "{OPER}" selected used in modify rule "{RULE}" is not a supported ' \
-                                  'math operator'.format(OPER=elem_oper, RULE=elem_num + 1)
-                            popup_error(msg)
-                            logger.warning(msg)
+                        oper_str = '{COL} {OPER} {VAL}'.format(COL=elem_col, OPER=elem_oper, VAL=elem_val)
+                        logger.debug('modifying table column "{COL}" by value "{VAL}" on rule "{RULE}"'
+                                     .format(COL=elem_col, VAL=elem_val, RULE=elem_num + 1))
 
-                            continue
-
-                        # Get the datatype of the column to modify
                         try:
-                            elem_dtype = columns[elem_col][0]
-                        except KeyError:
-                            msg = 'column "{COL}" used in modify rule "{RULE}" must be a valid table column' \
-                                .format(COL=elem_col, RULE=elem_num + 1)
+                            subset_df.loc[:, elem_col] = mod_dm.evaluate_operation(subset_df, oper_str)
+                        except Exception as e:
+                            msg = 'failed to modify data column "{COL}" based on modifier rule "{RULE}" - {ERR}'\
+                                .format(COL=elem_col, RULE=oper_str, ERR=e)
                             popup_error(msg)
                             logger.warning(msg)
 
                             continue
-                        else:
-                            elem_obj = dtype_map[elem_dtype]
-
-                        # Convert value to numeric datatype
-                        try:
-                            elem_val_fmt = float(elem_val)
-                        except ValueError:
-                            msg = 'unable to convert the value "{VAL}" from modify column rule "{RULE}" to numeric' \
-                                .format(VAL=elem_val, RULE=elem_num + 1)
-                            popup_error(msg)
-                            logger.warning(msg)
-
-                            continue
-                        else:
-                            logger.debug('modifying table column "{COL}" by value "{VAL}" on rule "{RULE}"'
-                                         .format(COL=elem_col, VAL=elem_val_fmt, RULE=elem_num + 1))
 
                         # Create the evaluation string
-                        if is_numeric_dtype(elem_obj):
-                            eval_str = 'subset_df["{COL}"] {OPER} {VAL}' \
-                                .format(COL=elem_col, OPER=elem_oper, VAL=elem_val_fmt)
-                            try:
-                                subset_df[elem_col] = eval(eval_str)
-                            except SyntaxError:
-                                msg = 'failed to modify column "{COL}" values with rule "{NAME}" - invalid syntax in ' \
-                                      'evaluation string {STR}'.format(COL=elem_col, NAME=elem_num + 1, STR=eval_str)
-                                popup_error(msg)
-                                logger.warning(msg)
-                            except NameError:
-                                msg = 'failed to modify column "{COL}" values with rule "{NAME}" - unknown column ' \
-                                      'specified in the rule'.format(COL=elem_col, NAME=elem_num + 1)
-                                popup_error(msg)
-                                logger.warning(msg)
-                            else:
-                                logger.info('successfully modified column "{COL}" values based on "{RULE}"'
-                                            .format(COL=elem_col, RULE=elem_num + 1))
-                        elif is_datetime_dtype(elem_obj):
-                            if elem_oper == '+':
-                                offset = relativedelta(days=+elem_val_fmt)
-                            elif elem_oper == '-':
-                                offset = relativedelta(days=-elem_val_fmt)
-                            else:
-                                msg = 'failed to modify column "{COL}" values with rule "{RULE}" - operator "{OPER}" ' \
-                                      'is not a valid operator. Only addition and subtraction is supported for date ' \
-                                      'columns.'.format(COL=elem_col, OPER=oper_map[elem_oper], RULE=elem_num + 1)
-                                popup_error(msg)
-                                logger.warning(msg)
+                        #if is_numeric_dtype(elem_obj):
+                        #    eval_str = 'subset_df["{COL}"] {OPER} {VAL}' \
+                        #        .format(COL=elem_col, OPER=elem_oper, VAL=elem_val_fmt)
+                        #    try:
+                        #        subset_df[elem_col] = eval(eval_str)
+                        #    except SyntaxError:
+                        #        msg = 'failed to modify column "{COL}" values with rule "{NAME}" - invalid syntax in ' \
+                        #              'evaluation string {STR}'.format(COL=elem_col, NAME=elem_num + 1, STR=eval_str)
+                        #        popup_error(msg)
+                        #        logger.warning(msg)
+                        #    except NameError:
+                        #        msg = 'failed to modify column "{COL}" values with rule "{NAME}" - unknown column ' \
+                        #              'specified in the rule'.format(COL=elem_col, NAME=elem_num + 1)
+                        #        popup_error(msg)
+                        #        logger.warning(msg)
+                        #    else:
+                        #        logger.info('successfully modified column "{COL}" values based on "{RULE}"'
+                        #                    .format(COL=elem_col, RULE=elem_num + 1))
+                        #elif is_datetime_dtype(elem_obj):
+                        #    if elem_oper == '+':
+                        #        offset = relativedelta(days=+elem_val_fmt)
+                        #    elif elem_oper == '-':
+                        #        offset = relativedelta(days=-elem_val_fmt)
+                        #    else:
+                        #        msg = 'failed to modify column "{COL}" values with rule "{RULE}" - operator "{OPER}" ' \
+                        #              'is not a valid operator. Only addition and subtraction is supported for date ' \
+                        #              'columns.'.format(COL=elem_col, OPER=oper_map[elem_oper], RULE=elem_num + 1)
+                        #        popup_error(msg)
+                        #        logger.warning(msg)
 
-                                continue
+                        #        continue
 
-                            try:
-                                subset_df[elem_col] = subset_df[elem_col].apply(lambda x: x + offset)
-                            except Exception as e:
-                                msg = 'failed to modify column "{COL}" values with rule "{RULE}" - {ERR}' \
-                                    .format(COL=elem_col, RULE=elem_num + 1, ERR=e)
-                                popup_error(msg)
-                                logger.error(msg)
-                            else:
-                                logger.info('successfully modified column "{COL}" values on rule "{RULE}"'
-                                            .format(COL=elem_col, RULE=elem_num + 1))
-                        else:
-                            msg = 'failed to modify column "{COL}" values with rule "{RULE}" - only columns with the ' \
-                                  'numeric or date data type can be modified'.format(RULE=elem_num + 1, COL=elem_col)
-                            popup_error(msg)
-                            logger.error(msg)
+                        #    try:
+                        #        subset_df[elem_col] = subset_df[elem_col].apply(lambda x: x + offset)
+                        #    except Exception as e:
+                        #        msg = 'failed to modify column "{COL}" values with rule "{RULE}" - {ERR}' \
+                        #            .format(COL=elem_col, RULE=elem_num + 1, ERR=e)
+                        #        popup_error(msg)
+                        #        logger.error(msg)
+                        #    else:
+                        #        logger.info('successfully modified column "{COL}" values on rule "{RULE}"'
+                        #                    .format(COL=elem_col, RULE=elem_num + 1))
+                        #else:
+                        #    msg = 'failed to modify column "{COL}" values with rule "{RULE}" - only columns with the ' \
+                        #          'numeric or date data type can be modified'.format(RULE=elem_num + 1, COL=elem_col)
+                        #    popup_error(msg)
+                        #    logger.error(msg)
 
-                            continue
+                        #    continue
 
                     # Populate preview with table values
-                    final_cols = subset_df.columns.values.tolist()
+                    final_cols = subset_df.columns.tolist()
                     preview_cols = [settings.id_field] + [i for i in final_cols if i != settings.id_field]
                     col_widths = mod_dm.calc_column_widths(preview_cols, width=width * 0.77, pixels=True)
                     window['-PREVIEW-'].Widget['columns'] = tuple(preview_cols)
@@ -1509,8 +1462,8 @@ def database_importer_window(win_size: tuple = None):
             window[panel_keys[next_panel]].update(visible=True)
 
             # Change high-lighted flow control text
-            window[panel_names[current_panel]].update(text_color=text_col)
-            window[panel_names[next_panel]].update(text_color=select_col)
+            window[panel_names[current_panel]].update(text_color=text_color)
+            window[panel_names[next_panel]].update(text_color=select_color)
 
             # Disable next button if next panel is last panel
             if next_panel == last_panel:
@@ -1549,8 +1502,8 @@ def database_importer_window(win_size: tuple = None):
             window[panel_keys[prev_panel]].update(visible=True)
 
             # Change high-lighted flow control text
-            window[panel_names[current_panel]].update(text_color=text_col)
-            window[panel_names[prev_panel]].update(text_color=select_col)
+            window[panel_names[current_panel]].update(text_color=text_color)
+            window[panel_names[prev_panel]].update(text_color=select_color)
 
             # Disable back button if on first panel
             if prev_panel == first_panel:
@@ -2638,7 +2591,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
         if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
             dtype_obj = np.datetime64
         elif dtype == 'dropdown':
-            dtype_obj = np.object
+            dtype_obj = np.object_
         elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
             dtype_obj = float
         elif dtype in ('int', 'integer', 'bit'):
@@ -2646,7 +2599,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
         elif dtype in ('bool', 'boolean'):
             dtype_obj = bool
         else:
-            dtype_obj = np.object
+            dtype_obj = np.object_
 
         dtype_map[display_column] = dtype_obj
 

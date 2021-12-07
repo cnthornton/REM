@@ -259,14 +259,14 @@ class DataCollection:
                     for index in results[results].index:  # only "passing", or true, indices
                         default_values[index] = values[index]
 
-                default_values = format_values(default_values, dtype)
+                default_values = mod_dm.format_values(default_values, dtype)
             else:  # single condition supplied
                 results = mod_dm.evaluate_operation(df, column_default)
 
                 if isinstance(results, pd.Series):  # defaults are the values of another field in the collection
-                    default_values = format_values(results, dtype)
+                    default_values = mod_dm.format_values(results, dtype)
                 else:  # single default value supplied
-                    default_values = format_value(results, dtype)
+                    default_values = mod_dm.format_value(results, dtype)
 
             df[column].fillna(default_values, inplace=True)
 
@@ -309,7 +309,7 @@ class DataCollection:
                 msg = 'failed to evaluate rule expression {RULE} - {ERR}'.format(RULE=rule, ERR=e)
                 logger.exception(msg)
             else:
-                default_values = format_values(default_values, dtype).squeeze()
+                default_values = mod_dm.format_values(default_values, dtype).squeeze()
                 print('dependant field {} has values:'.format(column))
                 print(default_values)
                 df.loc[:, column] = default_values
@@ -345,7 +345,7 @@ class DataCollection:
             dtype = dtype_map[column_name]
             column = df[column_name]
             try:
-                column_values = format_values(column, dtype)
+                column_values = mod_dm.format_values(column, dtype)
             except Exception as e:
                 logger.exception('DataCollection {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
                                  .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
@@ -409,7 +409,7 @@ class DataCollection:
             dtype = self.dtypes[column]
             current_vals = df[column]
             try:
-                column_values = format_values(current_vals, dtype)
+                column_values = mod_dm.format_values(current_vals, dtype)
             except Exception as e:
                 logger.exception('DataCollection {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
                                  .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
@@ -773,7 +773,7 @@ class DataCollection:
             values = pd.Series(values, index=indices)
 
         dtype = self.dtypes[column]
-        values = format_values(values, dtype)
+        values = mod_dm.format_values(values, dtype)
 
         # Set "Is Edited" to True where existing column values do not match the update values
         try:
@@ -987,9 +987,9 @@ def format_value(value, dtype):
     elif dtype in ('bool', 'boolean'):
         value = np.bool_(value)
     elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        value = np.object_(value)
+        value = np.str_(value)
     else:
-        value = np.object_(value)
+        value = np.str_(value)
 
     return value
 
