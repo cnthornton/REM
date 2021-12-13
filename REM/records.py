@@ -883,7 +883,13 @@ class RecordEntry:
 
                     # Get hard-linked references of the existing records
                     current_ids = exist_df['RecordID'].tolist()
+                    print('existing records:')
+                    print(exist_df)
                     exist_ref_df = self.import_references(current_ids, association)
+                    print('existing references:')
+                    print(exist_ref_df)
+                    assoc_record_ids = exist_ref_df['RecordID'].tolist()
+                    print('records with existing references: {}'.format(assoc_record_ids))
 
                     exist_ref_df = exist_ref_df[(exist_ref_df['IsHardLink']) & (~exist_ref_df['ReferenceID'].isin(ref_ids))]
                     if not exist_ref_df.empty:
@@ -898,23 +904,36 @@ class RecordEntry:
                         statements = ref_entry.save_database_records(merged_df, statements=statements, ref_ids=current_ids)
 
                     # Create new hard-linked records
-                    if new_df.empty or not rule['Primary']:  # skip if no new records or records not primary in reftable
+                    if not rule['Primary']:  # restricting to primary record types prevents endless recursion
                         continue
 
-                    if not condition:
-                        df_sub = new_df.copy()
-                    else:
-                        #df_sub = new_df[mod_dm.evaluate_rule(new_df, condition)]
-                        #df_sub = new_df[mod_dm.evaluate_condition_set(new_df, {ref_type: condition})]
-                        df_sub = new_df[mod_dm.evaluate_condition(new_df, condition)]
+                    create_df = new_df.copy()
+                    print('new records with hard-link associations:')
+                    print(create_df)
+                    if condition and not create_df.empty:
+                        create_df = create_df[mod_dm.evaluate_condition(create_df, condition)]
 
-                    if df_sub.empty:
+                    # Add existing records w/o hard-links to the "add df" so that new hard-linked records can be created
+                    missing_df = exist_df[~exist_df['RecordID'].isin(assoc_record_ids)]
+                    print('records missing hard-linked associations:')
+                    print(missing_df)
+                    if condition and not missing_df.empty:
+                        missing_df = missing_df[mod_dm.evaluate_condition(missing_df, condition)]
+
+                    for index, row in missing_df.iterrows():
+                        msg = 'existing record {ID} does not currently have an associated {TYPE} record. Would you ' \
+                              'like to create one now?'.format(ID=row['RecordID'], TYPE=ref_type)
+                        confirm = mod_win2.popup_confirm(msg)
+                        if confirm:
+                            create_df = create_df.append(row, ignore_index=True)
+
+                    if create_df.empty:
                         continue
 
                     # Create new record IDs for the hard-linked records
-                    primary_ids = df_sub['RecordID'].tolist()
+                    primary_ids = create_df['RecordID'].tolist()
                     try:
-                        ref_dates = pd.to_datetime(df_sub['RecordDate'], errors='coerce')
+                        ref_dates = pd.to_datetime(create_df['RecordDate'], errors='coerce')
                     except KeyError:
                         msg = 'failed to create IDs for the new records - failed to create associated "{TYPE}" ' \
                               'records'.format(TYPE=record_type, RTYPE=ref_type)
@@ -927,7 +946,7 @@ class RecordEntry:
                     ref_ids = ref_entry.create_record_ids(ref_dates, offset=settings.get_date_offset())
 
                     # Subset the dataframe on the mapped columns and rename the columns
-                    ref_df = df_sub[sub_cols].rename(columns=colmap)
+                    ref_df = create_df[sub_cols].rename(columns=colmap)
                     ref_df['RecordID'] = ref_ids
                     ref_df['RecordDate'] = ref_dates
 
@@ -1075,10 +1094,10 @@ class RecordEntry:
         id_col = mod_db.get_import_column(self.import_rules, id_field)
 
         # Prepare the date range
-        record_dates.sort()
+        sorted_dates = sorted(record_dates)
         try:
-            first_date = record_dates[0]
-            last_date = record_dates[-1]
+            first_date = sorted_dates[0]
+            last_date = sorted_dates[-1]
         except IndexError:
             logger.error('failed to import saved record IDs - no dates provided to the method')
             raise
@@ -2319,15 +2338,17 @@ class DatabaseRecord:
         # Prepare to save the record values
         logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
-            if self.new or save_all:  # export all values if record is new or if indicated to do so
-                logger.debug('RecordEntry {NAME}, Record {ID}: exporting all record values'
-                             .format(NAME=self.name, ID=record_id))
-                record_data = self.export_values()
-            else:  # export only edited values and component table rows
-                logger.debug('RecordEntry {NAME}, Record {ID}: exporting only values for record elements that were '
-                             'edited'.format(NAME=self.name, ID=record_id))
-                record_data = self.export_values(edited_only=True)
-
+            #if self.new or save_all:  # export all values if record is new or if indicated to do so
+            #    logger.debug('RecordEntry {NAME}, Record {ID}: exporting all record values'
+            #                 .format(NAME=self.name, ID=record_id))
+            #    record_data = self.export_values()
+            #else:  # export only edited values and component table rows
+            #    logger.debug('RecordEntry {NAME}, Record {ID}: exporting only values for record elements that were '
+            #                 'edited'.format(NAME=self.name, ID=record_id))
+            #    record_data = self.export_values(edited_only=True)
+            logger.debug('RecordEntry {NAME}, Record {ID}: exporting record values'
+                         .format(NAME=self.name, ID=record_id))
+            record_data = self.export_values()
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
@@ -2469,8 +2490,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
-        #success = True
+        #success = user.write_db(sstrings, psets)
+        success = True
         print(statements)
 
         return success
