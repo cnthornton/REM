@@ -143,7 +143,6 @@ class RecordAssociation:
                            .format(IDENT=identifier))
 
 
-
 class RecordEntry:
 
     def __init__(self, name, entry):
@@ -921,10 +920,11 @@ class RecordEntry:
                         missing_df = missing_df[mod_dm.evaluate_condition(missing_df, condition)]
 
                     for index, row in missing_df.iterrows():
-                        msg = 'existing record {ID} does not currently have an associated {TYPE} record. Would you ' \
-                              'like to create one now?'.format(ID=row['RecordID'], TYPE=ref_type)
+                        msg = 'Existing {DOCTYPE} record {ID} does not currently have an associated {REFTYPE} record. ' \
+                              'Would you like to create one now?'.format(DOCTYPE=self.menu_title, ID=row['RecordID'],
+                                                                         REFTYPE=ref_entry.menu_title)
                         confirm = mod_win2.popup_confirm(msg)
-                        if confirm:
+                        if confirm == 'OK':
                             create_df = create_df.append(row, ignore_index=True)
 
                     if create_df.empty:
@@ -2490,8 +2490,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
+        success = user.write_db(sstrings, psets)
+        #success = True
         print(statements)
 
         return success
