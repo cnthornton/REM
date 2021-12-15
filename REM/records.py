@@ -890,6 +890,7 @@ class RecordEntry:
                     assoc_record_ids = exist_ref_df['RecordID'].tolist()
                     print('records with existing references: {}'.format(assoc_record_ids))
 
+                    # Update hard-linked record element values to match record element values
                     exist_ref_df = exist_ref_df[(exist_ref_df['IsHardLink']) & (~exist_ref_df['ReferenceID'].isin(ref_ids))]
                     if not exist_ref_df.empty:
                         # Merge the relevant columns of the records dataframe with the reference dataframe
@@ -899,13 +900,28 @@ class RecordEntry:
                         merged_df = merged_df[['ReferenceID'] + sub_cols].rename(columns=colmap)
                         merged_df.rename(columns={'ReferenceID': 'RecordID'}, inplace=True)
 
-                        # Edit the hard-linked records
+                        # Prepare the update statements for the hard-linked records
                         statements = ref_entry.save_database_records(merged_df, statements=statements, ref_ids=current_ids)
 
-                    # Create new hard-linked records
                     if not rule['Primary']:  # restricting to primary record types prevents endless recursion
                         continue
 
+                    # Allow the user to delete dependent records when dependency conditions are no longer met
+                    #if condition and not exist_df.empty:
+                    #    delete_ids = exist_df.loc[~mod_dm.evaluate_condition(exist_df, condition), 'RecordID']
+                    #    delete_ref_df = exist_ref_df[exist_ref_df['RecordID'].isin(delete_ids.tolist())]
+                    #    to_delete = []
+                    #    for index, row in delete_ref_df.iterrows():
+                    #        delete_id = row['ReferenceID']
+                    #        parent_id = row['RecordID']
+                    #        msg = ''.format(DOCTYPE=self.menu_title, PID=parent_id, ID=delete_id, REFTYPE=ref_entry.menu_title)
+                    #        confirm = mod_win2.popup_confirm(msg)
+                    #        if confirm == 'OK':
+                    #            to_delete.append(delete_id)
+
+                    #    statements = ref_entry.delete_database_records(to_delete, statements=statements)
+
+                    # Create new hard-linked records
                     create_df = new_df.copy()
                     print('new records with hard-link associations:')
                     print(create_df)
@@ -920,7 +936,7 @@ class RecordEntry:
                         missing_df = missing_df[mod_dm.evaluate_condition(missing_df, condition)]
 
                     for index, row in missing_df.iterrows():
-                        msg = 'Existing {DOCTYPE} record {ID} does not currently have an associated {REFTYPE} record. ' \
+                        msg = 'Existing {DOCTYPE} record {ID} does not currently have an associated {REFTYPE} record. '\
                               'Would you like to create one now?'.format(DOCTYPE=self.menu_title, ID=row['RecordID'],
                                                                          REFTYPE=ref_entry.menu_title)
                         confirm = mod_win2.popup_confirm(msg)
