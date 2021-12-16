@@ -4,7 +4,6 @@ REM standard GUI element classes such as tables and information boxes.
 
 import datetime
 from math import ceil as ceiling
-import sys
 from random import randint
 
 import PySimpleGUI as sg
@@ -161,8 +160,6 @@ class DataTable(RecordElement):
 
         elements (list): list of table GUI element keys.
 
-        eclass (str): record element class.
-
         columns (list): list of table columns.
 
         display_columns (dict): display names of the table columns.
@@ -205,7 +202,6 @@ class DataTable(RecordElement):
         super().__init__(name, entry, parent)
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
-        self.eclass = 'data'
         self.etype = 'table'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
@@ -261,7 +257,7 @@ class DataTable(RecordElement):
         for action_name in actions:
             action_entry = actions[action_name]
             try:
-                action = ActionButton(action_name, self.name, self.id, action_entry)
+                action = TableButton(action_name, self.name, self.id, action_entry)
             except AttributeError as e:
                 msg = self.format_log('failed to initialize action {BTTN} - {ERR}'.format(BTTN=action_name, ERR=e))
                 logger.error(msg)
@@ -1345,7 +1341,7 @@ class DataTable(RecordElement):
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
-                #results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
+                # results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
                 logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
@@ -1918,7 +1914,7 @@ class DataTable(RecordElement):
         total = 0
         if tally_rule is not None:
             try:
-                #result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
+                # result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
                 result = mod_dm.evaluate_operation(df, tally_rule)
             except Exception as e:
                 msg = 'DataTable {NAME}: unable to calculate table total - {ERR}' \
@@ -1960,10 +1956,10 @@ class DataTable(RecordElement):
 
         logger.debug('DataTable {NAME}: sub-setting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
         try:
-            #results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
+            # results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
             results = mod_dm.evaluate_condition(df, subset_rule)
         except Exception as e:
-            msg = 'DataTable {NAME}: failed to subset table on rule {RULE} - {ERR}'\
+            msg = 'DataTable {NAME}: failed to subset table on rule {RULE} - {ERR}' \
                 .format(NAME=self.name, RULE=subset_rule, ERR=e)
             logger.error(msg)
 
@@ -2325,7 +2321,7 @@ class RecordTable(DataTable):
             savable (bool): database entry of the record can be updated through the record window [Default: True].
         """
         collection = self.collection
-        #df = collection.data(current=False)
+        # df = collection.data(current=False)
         df = collection.data(current=False)
         modifiers = self.modifiers
 
@@ -2343,7 +2339,7 @@ class RecordTable(DataTable):
             return None
 
         # Add any annotations to the exported row
-        #annotations = self.annotate_rows(df)
+        # annotations = self.annotate_rows(df)
         annotations = self.annotate_rows(df.loc[[index]])
         annot_code = annotations.get(index, None)
         if annot_code is not None:
@@ -2661,7 +2657,6 @@ class InfoBox(RecordElement):
         """
         super().__init__(name, entry, parent)
         self.etype = 'refbox'
-        self.eclass = 'references'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Element', 'Frame', 'CollapseBttn')])
@@ -3056,7 +3051,6 @@ class ReferenceBox(RecordElement):
         """
         super().__init__(name, entry, parent)
         self.etype = 'refbox'
-        self.eclass = 'references'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Frame', 'RefDate', 'Unlink', 'ParentFlag', 'HardLinkFlag', 'Approved')])
@@ -3386,11 +3380,11 @@ class ReferenceBox(RecordElement):
         # Set notes
         bg_col = self.bg_col if not reference_note else mod_const.BOX_COL
         window[frame_key].Widget.config(background=bg_col)
-        #window[frame_key].Widget.config(highlightbackground=bg_col)
+        # window[frame_key].Widget.config(highlightbackground=bg_col)
         window[frame_key].Widget.config(highlightcolor=bg_col)
 
         tooltip = self.format_tooltip()
-        #window.Element(frame_key).SetTooltip(reference_note)
+        # window.Element(frame_key).SetTooltip(reference_note)
         window[frame_key].set_tooltip(tooltip)
 
     def format_tooltip(self):
@@ -3624,7 +3618,8 @@ class ReferenceBox(RecordElement):
         return values.to_dict()
 
 
-class DataElement(RecordElement):
+# Data variable classes
+class DataVariable(RecordElement):
     """
     Record element that holds information on a single data variable.
 
@@ -3632,23 +3627,11 @@ class DataElement(RecordElement):
 
         name (str): data element configuration name.
 
-        id (int): data element number.
-
         elements (list): list of data element GUI keys.
-
-        description (str): display name of the data element.
-
-        etype (str): program element type. Can be dropdown, input, text, or multiline
-
-        dtype (str): element data type.
 
         modifiers (dict): flags that alter the element's behavior.
 
-        default: default value of the data element.
-
-        value: value of the data element.
-
-        edited (bool): element value was edited [Default: False].
+        value: data vector containing the variable's value
     """
 
     def __init__(self, name, entry, parent=None):
@@ -3663,39 +3646,8 @@ class DataElement(RecordElement):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-        self.etype = 'text'
-        self.eclass = 'data'
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ['Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary']])
-        self._event_elements = ['Edit', 'Save', 'Cancel']
 
-        # Element-specific bindings
-        elem_key = self.key_lookup('Element')
-        lclick_event = '{}+LCLICK+'.format(elem_key)
-        return_key = '{}+RETURN+'.format(elem_key)
-        escape_key = '{}+ESCAPE+'.format(elem_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [lclick_event, return_key, escape_key]
-
-        try:
-            dtype = entry['DataType']
-        except KeyError:
-            self.dtype = 'varchar'
-        else:
-            supported_dtypes = settings.get_supported_dtypes()
-            if dtype not in supported_dtypes:
-                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types '
-                               'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
-                self.dtype = 'varchar'
-            else:
-                self.dtype = dtype
-
-        # Add additional calendar element for input with datetime data types to list of editable elements
-        if self.dtype in settings.supported_date_dtypes:
-            calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
-            self.elements.append(calendar_key)
-            self.bindings.append(calendar_key)
-
-        # Modifiers
+        # Parameters that modify the record element's behavior
         try:
             modifiers = entry['Modifiers']
         except KeyError:
@@ -3713,45 +3665,60 @@ class DataElement(RecordElement):
 
                 self.modifiers[modifier] = flag
 
-        # Formatting options
-        try:
-            aliases = entry['Aliases']
-        except KeyError:
-            aliases = settings.fetch_alias_definition(self.name)
-
-        self.aliases = {}  # only str and int types can have aliases - aliases dict reversed during value formatting
-        if self.dtype in settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes:
-            for alias in aliases:  # alias should have same datatype as the element
-                alias_value = aliases[alias]
-                self.aliases[settings.format_value(alias, self.dtype)] = alias_value
-
-        try:
-            self.date_format = entry['DateFormat']
-        except KeyError:
-            self.date_format = settings.display_date_format
-
-        # Starting value
-        try:
-            self.default = self.format_value(entry['DefaultValue'])
-        except KeyError:
-            self.default = None
-        except TypeError as e:
-            msg = 'failed to format configured default value {DEF} - {ERR}' \
-                .format(DEF=entry['DefaultValue'], ERR=e)
-            logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            self.default = None
-
         # Dynamic variables
+        self.value = mod_col.DataVector(name, entry)
         self._dimensions = (mod_const.DE_WIDTH, mod_const.DE_HEIGHT)
-        self.value = self.default
-
-        logger.debug('DataElement {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value {DEF} '
-                     'and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
         self.disabled = False
-        self.edit_mode = False
+
+    def annotate_display(self):
+        """
+        Annotate the display element using configured annotation rules.
+        """
+        rules = self.annotation_rules
+        current_value = self.value.data()
+
+        logger.debug('ElementReference {NAME}: annotating value {VAL} on configured annotation rules'
+                     .format(NAME=self.name, VAL=current_value))
+
+        annotation = None
+        for annot_code in rules:
+            logger.debug('DataElement {NAME}: annotating element based on configured annotation rule "{CODE}"'
+                         .format(NAME=self.name, CODE=annot_code))
+            rule = rules[annot_code]
+            annot_condition = rule['Condition']
+            try:
+                results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
+            except Exception as e:
+                logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
+                             .format(NAME=self.name, CODE=annot_code, ERR=e))
+                continue
+
+            result = results.squeeze()
+            if result:
+                logger.debug('DataElement {NAME}: element value {VAL} annotated on annotation code {CODE}'
+                             .format(NAME=self.name, VAL=current_value, CODE=annot_code))
+                if annotation:
+                    logger.warning('DataElement {NAME}: element value {VAL} has passed two or more annotation '
+                                   'rules ... defaulting to the first passed "{CODE}"'
+                                   .format(NAME=self.name, VAL=current_value, CODE=annotation))
+                else:
+                    annotation = annot_code
+
+        return annotation
+
+    def check_requirements(self):
+        """
+        Verify that the record element passes requirements.
+        """
+        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
+
+        return passed
+
+    def dimensions(self):
+        """
+        Return the current dimensions of the element.
+        """
+        return self._dimensions
 
     def export_values(self, edited_only: bool = False):
         """
@@ -3763,7 +3730,152 @@ class DataElement(RecordElement):
         if edited_only and not self.edited:
             return {}
         else:
-            return {self.name: self.value}
+            return {self.name: self.value.data()}
+
+    def format_display(self, editing: bool = False, value=None):
+        """
+        Format the element's value for displaying.
+        """
+        return self.value.format_display(editing=editing, value=value)
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        value = self.value.data()
+        if not pd.isna(value) and not value == '':
+            return True
+        else:
+            return False
+
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the display element.
+        """
+        current_w, current_h = self.dimensions()
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+        else:
+            new_w, new_h = (current_w, current_h)
+
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(new_w, None))
+        window[elem_key].expand(expand_x=True)
+
+        self._dimensions = (new_w, new_h)
+
+        return window[self.key_lookup('Frame')].get_size()
+
+    def update_display(self, window):
+        """
+        Format element for display.
+        """
+        bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
+        tooltip = self.description
+
+        elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
+        frame_key = self.key_lookup('Frame')
+
+        # Update element display value
+        display_value = self.format_display()
+        window[elem_key].update(value=display_value)
+
+        # Check if the display value passes any annotations rules and update background.
+        annotation = self.annotate_display()
+        if annotation:
+            rule = self.annotation_rules[annotation]
+            bg_col = rule['BackgroundColor']
+            tooltip = rule['Description']
+
+        window[desc_key].update(background_color=bg_col)
+        window[frame_key].SetTooltip(tooltip)
+
+    def update_value(self, input_value):
+        """
+        Update the element's value.
+        """
+        value_fmt = self.value.update_value(input_value)
+
+        return value_fmt
+
+
+class RecordVariable(DataVariable):
+    """
+    Record element that holds information on a single data variable.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        elements (list): list of data element GUI keys.
+
+        edit_mode (bool): element is currently in edit mode [Default: False].
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize the data element attributes.
+
+        Arguments:
+            name (str): data element configuration name.
+
+            entry (dict): configuration entry for the data element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+        self.etype = 'text'
+
+        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                              ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')])
+        self._event_elements = ['Edit', 'Save', 'Cancel']
+
+        # Element-specific bindings
+        elem_key = self.key_lookup('Element')
+        lclick_event = '{}+LCLICK+'.format(elem_key)
+        return_key = '{}+RETURN+'.format(elem_key)
+        escape_key = '{}+ESCAPE+'.format(elem_key)
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [lclick_event, return_key, escape_key]
+
+        # Dynamic variables
+        self.edit_mode = False
+
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the data element.
+        """
+        elem_key = self.key_lookup('Element')
+
+        if not self.disabled:
+            window[elem_key].bind('<Button-1>', '+LCLICK+')
+            window[elem_key].bind('<Return>', '+RETURN+')
+            window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
+
+    def format_value(self, values):
+        """
+        Obtain the value of the element from the set of GUI element values.
+
+        Arguments:
+            values (dict): single value or dictionary of element values.
+        """
+        if isinstance(values, dict):  # dictionary of referenced element values
+            try:
+                value = values[self.name]
+            except KeyError:
+                msg = self.format_log('input data is missing a value for the record element')
+                logger.warning(msg)
+
+                raise KeyError(msg)
+        else:  # single value provided
+            value = values
+
+        fmt_value = self.update_value(value)
+
+        return fmt_value
 
     def reset(self, window):
         """
@@ -3775,14 +3887,10 @@ class DataElement(RecordElement):
         aux_key = self.key_lookup('Auxiliary')
 
         # Reset element value to its default
-        if not pd.isna(self.default) and not pd.isna(self.value):
-            logger.debug('DataElement {NAME}: resetting data element value "{VAL}" to default "{DEF}"'
-                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
-
-        self.value = self.default
-        self.edited = False
+        self.value.reset()
 
         # Reset element editing
+        self.edited = False
         self.edit_mode = False
         window[edit_key].update(disabled=False)
         window[update_key].update(visible=False)
@@ -3808,6 +3916,10 @@ class DataElement(RecordElement):
         cancel_hkey = '{}+ESCAPE+'.format(elem_key)
         aux_key = self.key_lookup('Auxiliary')
         left_click = '{}+LCLICK+'.format(elem_key)
+        try:
+            calendar_key = self.key_lookup('Calendar')
+        except KeyError:
+            calendar_key = None
 
         currently_editing = self.edit_mode
 
@@ -3831,9 +3943,8 @@ class DataElement(RecordElement):
 
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=text_col)
-            if self.dtype in settings.supported_date_dtypes:
-                date_key = self.key_lookup('Calendar')
-                window[date_key].update(disabled=False)
+            if calendar_key:
+                window[calendar_key].update(disabled=False)
 
             self.edit_mode = True
 
@@ -3847,7 +3958,7 @@ class DataElement(RecordElement):
                                .format(NAME=self.name, KEY=elem_key))
             else:
                 try:
-                    new_value = self.format_value(value)
+                    new_value = self.update_value(value)
                 except Exception as e:
                     msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
                     logger.exception('DataElement {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -3855,7 +3966,6 @@ class DataElement(RecordElement):
 
                 else:
                     if new_value != self.value:
-                        self.value = new_value
                         self.edited = True
                         update_event = True
 
@@ -3868,9 +3978,8 @@ class DataElement(RecordElement):
             window[aux_key].update(visible=False)
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=disabled_text_col)
-            if self.dtype in settings.supported_date_dtypes:
-                date_key = self.key_lookup('Calendar')
-                window[date_key].update(disabled=True)
+            if calendar_key:
+                window[calendar_key].update(disabled=True)
 
             self.edit_mode = False
 
@@ -3882,26 +3991,14 @@ class DataElement(RecordElement):
             window[aux_key].update(visible=False)
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=disabled_text_col)
-            if self.dtype in settings.supported_date_dtypes:
-                date_key = self.key_lookup('Calendar')
-                window[date_key].update(disabled=True)
+            if calendar_key:
+                window[calendar_key].update(disabled=False)
 
             self.edit_mode = False
 
             self.update_display(window)
 
         return update_event
-
-    def bind_keys(self, window):
-        """
-        Add hotkey bindings to the data element.
-        """
-        elem_key = self.key_lookup('Element')
-
-        if not self.disabled:
-            window[elem_key].bind('<Button-1>', '+LCLICK+')
-            window[elem_key].bind('<Return>', '+RETURN+')
-            window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
@@ -3911,7 +4008,7 @@ class DataElement(RecordElement):
         modifiers = self.modifiers
 
         is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
-                       self.etype != 'text' and level < 2 else True)
+                                self.etype != 'text' and level < 2 else True)
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
@@ -3922,6 +4019,8 @@ class DataElement(RecordElement):
 
         background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
+
+        elem_key = self.key_lookup('Element')
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -3952,9 +4051,11 @@ class DataElement(RecordElement):
 
         # Add auxiliary elements to the layout, such as a calendar button for datetime elements.
         accessory_layout = []
-        if self.dtype in settings.supported_date_dtypes and not is_disabled:
+        try:
             date_key = self.key_lookup('Calendar')
-            elem_key = self.key_lookup('Element')
+        except KeyError:
+            pass
+        else:
             accessory_layout.append(sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d',
                                                       pad=(pad_el, 0), image_data=mod_const.CALENDAR_ICON,
                                                       button_color=(text_col, bg_col), border_width=0,
@@ -3995,8 +4096,13 @@ class DataElement(RecordElement):
 
         # Element layout
         width_key = self.key_lookup('Width')
+        #element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
+        #                          self.element_layout(size=(width, 1), bg_col=bg_col, is_disabled=is_disabled)],
+        #                         background_color=bg_col)]
+
+        layout_attrs = self.layout_attributes(size=(width, 1), bg_col=bg_col, disabled=is_disabled)
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-                                  self.element_layout(size=(width, 1), bg_col=bg_col, is_disabled=is_disabled)],
+                                  mod_lo.generate_layout(self.etype, layout_attrs)],
                                  background_color=bg_col)]
 
         # Layout
@@ -4007,6 +4113,22 @@ class DataElement(RecordElement):
         layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
 
         return layout
+
+    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+        """
+        Configure the attributes for the element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
+        text_col = mod_const.TEXT_COL
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip}
+
+        return layout_attrs
 
     def element_layout(self, size: tuple = None, bg_col: str = None, is_disabled: bool = True):
         """
@@ -4025,252 +4147,16 @@ class DataElement(RecordElement):
 
         return layout
 
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the display element.
-        """
-        current_w, current_h = self.dimensions()
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
-        else:
-            new_w, new_h = (current_w, current_h)
 
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(new_w, None))
-        window[elem_key].expand(expand_x=True)
-
-        self._dimensions = (new_w, new_h)
-
-        return window[self.key_lookup('Frame')].get_size()
-
-    def dimensions(self):
-        """
-        Return the current dimensions of the element.
-        """
-        return self._dimensions
-
-    def update_display(self, window):
-        """
-        Format element for display.
-        """
-        modifiers = self.modifiers
-        hidden = modifiers['hide']
-
-        bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
-        tooltip = self.description
-
-        elem_key = self.key_lookup('Element')
-        desc_key = self.key_lookup('Description')
-        frame_key = self.key_lookup('Frame')
-
-        # Update element display value
-        logger.debug('DataElement {NAME}: disabled {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=self.disabled, VIS=hidden))
-        if not self.disabled and not hidden:  # element is not disabled and is visible to the user
-            logger.debug("DataElement {NAME}: updating the element display"
-                         .format(NAME=self.name))
-
-            display_value = self.format_display()
-            window[elem_key].update(value=display_value)
-        else:  # element is either disabled or hidden
-            if not pd.isna(self.value):
-                display_value = self.format_display()
-            else:
-                logger.debug("DataElement {NAME}: no values provided to update the element's display"
-                             .format(NAME=self.name))
-
-                display_value = ''
-
-            window[elem_key].update(value=display_value)
-
-        # Check if the display value passes any annotations rules and update background.
-        annotation = self.annotate_display()
-        if annotation:
-            rule = self.annotation_rules[annotation]
-            bg_col = rule['BackgroundColor']
-            tooltip = rule['Description']
-
-        window[desc_key].update(background_color=bg_col)
-        window[frame_key].SetTooltip(tooltip)
-
-    def annotate_display(self):
-        """
-        Annotate the display element using configured annotation rules.
-        """
-        rules = self.annotation_rules
-        current_value = self.value
-
-        logger.debug('ElementReference {NAME}: annotating value {VAL} on configured annotation rules'
-                     .format(NAME=self.name, VAL=current_value))
-
-        annotation = None
-        for annot_code in rules:
-            logger.debug('DataElement {NAME}: annotating element based on configured annotation rule "{CODE}"'
-                         .format(NAME=self.name, CODE=annot_code))
-            rule = rules[annot_code]
-            annot_condition = rule['Condition']
-            try:
-                #results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
-                results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
-            except Exception as e:
-                logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
-                             .format(NAME=self.name, CODE=annot_code, ERR=e))
-                continue
-
-            result = results.squeeze()
-            if result:
-                logger.debug('DataElement {NAME}: element value {VAL} annotated on annotation code {CODE}'
-                             .format(NAME=self.name, VAL=current_value, CODE=annot_code))
-                if annotation:
-                    logger.warning('DataElement {NAME}: element value {VAL} has passed two or more annotation '
-                                   'rules ... defaulting to the first passed "{CODE}"'
-                                   .format(NAME=self.name, VAL=current_value, CODE=annotation))
-                else:
-                    annotation = annot_code
-
-        return annotation
-
-    def format_value(self, input_value):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-
-            input_value: value input into the GUI element.
-        """
-        if input_value == '' or pd.isna(input_value):
-            return None
-
-        # Format the input value as the element datatype
-        dtype = self.dtype
-        if dtype in settings.supported_date_dtypes:
-            date_format = self.date_format
-            value_fmt = settings.format_as_datetime(input_value, date_format=date_format)
-
-        elif dtype in settings.supported_float_dtypes:
-            value_fmt = settings.format_as_float(input_value)
-
-        elif dtype in settings.supported_int_dtypes:
-            value_fmt = settings.format_as_int(input_value)
-
-        elif dtype in settings.supported_bool_dtypes:
-            value_fmt = settings.format_as_bool(input_value)
-
-        else:
-            try:
-                value_fmt = str(input_value).strip()  # trailing newline sometimes added for multiline elements
-            except ValueError:
-                msg = 'failed to format the input value {VAL} as "{DTYPE}"'.format(VAL=input_value, DTYPE=self.dtype)
-                logger.warning('DataElement {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise ValueError(msg)
-
-        # Set the value alias, if applicable
-        aliases = {j: i for i, j in self.aliases.items()}
-        if value_fmt in aliases:
-            value_fmt = aliases[value_fmt]
-
-        logger.debug('DataElement {NAME}: input value "{VAL}" formatted as "{FMT}"'
-                     .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
-
-        return value_fmt
-
-    def format_display(self, editing: bool = False):
-        """
-        Format the elements value for displaying.
-        """
-        value = self.value
-        if value == '' or pd.isna(value):
-            return ''
-
-        logger.debug('DataElement {NAME}: formatting display for element value {VAL} of type {TYPE}'
-                     .format(NAME=self.name, VAL=value, TYPE=type(value)))
-
-        dtype = self.dtype
-        if dtype == 'money':
-            dec_sep = settings.decimal_sep
-            group_sep = settings.thousands_sep
-
-            value = str(value)
-            if not editing:
-                display_value = settings.format_display_money(value)
-            else:
-                display_value = value.replace(group_sep, '').replace(dec_sep, '.')
-
-        elif isinstance(value, float):
-            display_value = str(value)
-
-        elif isinstance(value, int):
-            display_value = value
-
-        elif isinstance(value, datetime.datetime):
-            if not editing:  # use global settings to determine how to format date
-                display_value = settings.format_display_date(value)  # default format is ISO
-            else:  # enforce ISO formatting if element is editable
-                display_value = value.strftime(settings.format_date_str(date_str=self.date_format))
-
-        else:
-            display_value = str(value).rstrip('\n\r')
-
-        # Set display value alias, if applicable
-        aliases = self.aliases
-        if display_value in aliases:
-            display_value = aliases[display_value]
-
-        logger.debug('DataElement {NAME}: display value is {VAL}'
-                     .format(NAME=self.name, VAL=display_value))
-
-        return str(display_value)
-
-    def check_requirements(self):
-        """
-        Verify that the record element passes requirements.
-        """
-        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
-
-        return passed
-
-    def has_value(self):
-        """
-        Return True if element has a valid value else False
-        """
-        value = self.value
-        if not pd.isna(value) and not value == '':
-            return True
-        else:
-            return False
-
-
-class DataElementInput(DataElement):
+class RecordVariableInput(RecordVariable):
     """
-    Input-style record data element.
+    Input-style data variable element.
 
     Attributes:
 
         name (str): data element configuration name.
 
-        id (int): data element number.
-
         elements (list): list of data element GUI keys.
-
-        description (str): display name of the data element.
-
-        etype (str): GUI element type. Can be dropdown, input, multiline, reference, or checkbox
-
-        dtype (str): element data type.
-
-        editable (bool): element is editable. [Default: False]
-
-        hidden (bool): element is not visible to the user. [Default: False]
-
-        required (bool): element requires a value [Default: False].
-
-        default: default value of the data element.
-
-        value: value of the data element.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4285,8 +4171,28 @@ class DataElementInput(DataElement):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-
         self.etype = 'input'
+
+        if entry['DataType'] in settings.supported_date_dtypes:
+            calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
+            self.elements.append(calendar_key)
+            self.bindings.append(calendar_key)
+
+    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+        """
+        Configure the attributes for the element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
+        text_col = mod_const.TEXT_COL
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip}
+
+        return layout_attrs
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
@@ -4313,7 +4219,7 @@ class DataElementInput(DataElement):
         return layout
 
 
-class DataElementCombo(DataElement):
+class RecordVariableCombo(RecordVariable):
     """
     Dropdown-style record data element.
 
@@ -4321,29 +4227,9 @@ class DataElementCombo(DataElement):
 
         name (str): data element configuration name.
 
-        id (int): data element number.
-
         elements (list): list of data element GUI keys.
 
-        description (str): display name of the data element.
-
-        etype (str): GUI element type. Can be dropdown, input, multiline, reference, or checkbox
-
-        dtype (str): element data type.
-
-        editable (bool): element is editable. [Default: False]
-
-        hidden (bool): element is not visible to the user. [Default: False]
-
-        required (bool): element requires a value [Default: False].
-
-        values (list): list of available combobox values.
-
-        alias (dict): value aliases.
-
-        default: default value of the data element.
-
-        value: value of the data element.
+        combo_values (list): list of possible combobox values.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4358,17 +4244,16 @@ class DataElementCombo(DataElement):
             parent (str): name of the parent element.
         """
         super().__init__(name, entry, parent)
-
         self.etype = 'dropdown'
 
         # Enforce supported data types for the dropdown parameter
         supported_dtypes = settings.supported_str_dtypes + settings.supported_int_dtypes + settings.supported_cat_dtypes
-        if not self.dtype or self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
-                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+        if entry['DataType'] not in supported_dtypes:
+            msg = self.format_log('unsupported data type provided for the "{ETYPE}" parameter. Supported data types '
+                                  'are {DTYPES}'.format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes)))
+            logger.error(msg)
 
-            self.dtype = 'varchar'
+            raise AttributeError(msg)
 
         # Dropdown values
         self.combo_values = []
@@ -4378,22 +4263,47 @@ class DataElementCombo(DataElement):
             msg = 'missing required parameter "Values" for data parameters of type "{ETYPE}"'.format(ETYPE=self.etype)
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-
         else:
             for combo_value in combo_values:
                 try:
-                    self.combo_values.append(self.format_value(combo_value))
+                    self.combo_values.append(settings.format_value(combo_value, entry['DataType']))
                 except ValueError:
-                    msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
+                    msg = 'unable to format dropdown value "{VAL}"'.format(VAL=combo_value)
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+        """
+        Configure the attributes for the element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
+        text_col = mod_const.TEXT_COL
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+
+        try:
+            values = self.combo_values
+        except KeyError:
+            logger.warning('DataElement {NAME}: dropdown was selected for the data element but no '
+                           'values were provided to populate the dropdown'.format(NAME=self.name))
+            display_values = []
+        else:
+            display_values = []
+            for option in values:
+                display_values.append(self.format_display(value=option))
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip,
+                        'ComboValues': display_values}
+
+        return layout_attrs
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
         GUI layout for the data element.
         """
-        aliases = self.aliases
-
         # Layout options
         font = mod_const.LARGE_FONT
 
@@ -4409,11 +4319,13 @@ class DataElementCombo(DataElement):
             display_values = []
         else:
             display_values = []
+            # for option in values:
+            #    if option in aliases:
+            #        display_values.append(aliases[option])
+            #    else:
+            #        display_values.append(option)
             for option in values:
-                if option in aliases:
-                    display_values.append(aliases[option])
-                else:
-                    display_values.append(option)
+                display_values.append(self.format_display(value=option))
 
         display_value = self.format_display()
         elem_key = self.key_lookup('Element')
@@ -4425,7 +4337,7 @@ class DataElementCombo(DataElement):
         return layout
 
 
-class DataElementMultiline(DataElement):
+class RecordVariableMultiline(RecordVariable):
     """
     Multiline-style record data element.
 
@@ -4433,25 +4345,9 @@ class DataElementMultiline(DataElement):
 
         name (str): data element configuration name.
 
-        id (int): data element number.
-
         elements (list): list of data element GUI keys.
 
-        description (str): display name of the data element.
-
-        etype (str): GUI element type. Can be dropdown, input, multiline, reference, or checkbox
-
-        dtype (str): element data type.
-
-        editable (bool): element is editable. [Default: False]
-
-        hidden (bool): element is not visible to the user. [Default: False]
-
-        required (bool): element requires a value [Default: False].
-
-        default: default value of the data element.
-
-        value: value of the data element.
+        nrow (int): number of rows in the multiline element.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4471,18 +4367,36 @@ class DataElementMultiline(DataElement):
 
         # Enforce supported data types for the dropdown parameter
         supported_dtypes = settings.supported_str_dtypes
-        if self.dtype not in supported_dtypes:
-            msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
-                .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+        if entry['DataType'] not in supported_dtypes:
+            msg = self.format_log('unsupported data type provided for the "{ETYPE}" parameter. Supported data types '
+                                  'are {DTYPES}'.format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes)))
+            logger.error(msg)
 
-            self.dtype = 'varchar'
+            raise AttributeError(msg)
 
         # Number of rows to display in the multiline element
         try:
             self.nrow = int(entry['Nrow'])
         except (KeyError, ValueError):
             self.nrow = None
+
+    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+        """
+        Configure the attributes for the element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
+        text_col = mod_const.TEXT_COL
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+        nrow = self.nrow
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip,
+                        'NRow': nrow}
+
+        return layout_attrs
 
     def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
         """
@@ -4507,32 +4421,18 @@ class DataElementMultiline(DataElement):
         return layout
 
 
-# Element references
-class ElementReference(RecordElement):
+# Element reference variable
+class DependentVariable(DataVariable):
     """
-    Record element that references the values of other record elements.
+    Record element that is dependent on the values of other record elements.
 
     Attributes:
 
         name (str): data element configuration name.
 
-        id (int): number of the element reference element.
-
         elements (list): list of data element GUI keys.
 
-        description (str): display name of the element.
-
-        etype (str): GUI element type.
-
-        dtype (str): data type of the parameter's data storage elements. Must be an integer, float, or bool data type.
-
         operation (str): reference operation.
-
-        icon (str): file name of the parameter's icon [Default: None].
-
-        value: value of the parameter's data storage elements.
-
-        edited (bool): element value was edited [Default: False].
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4548,8 +4448,7 @@ class ElementReference(RecordElement):
         """
         super().__init__(name, entry, parent)
 
-        self.etype = 'reference'
-        self.eclass = 'data'
+        self.etype = 'dependent'
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Description', 'Frame', 'Width')])
 
@@ -4560,91 +4459,32 @@ class ElementReference(RecordElement):
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
                            settings.supported_bool_dtypes
-        try:
-            self.dtype = entry['DataType']
-        except KeyError:
-            self.dtype = 'int'
-        else:
-            if self.dtype not in supported_dtypes:
-                msg = 'unsupported data type provided for the "{ETYPE}" parameter. Supported data types are {DTYPES}' \
-                    .format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes))
-                logger.warning('ElementReference {NAME}: {MSG}'.format(NAME=name, MSG=msg))
+        if entry['DataType'] not in supported_dtypes:
+            msg = self.format_log('unsupported data type provided for the "{ETYPE}" parameter. Supported data types '
+                                  'are {DTYPES}'.format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes)))
+            logger.error(msg)
 
-                self.dtype = 'int'
-
-        # Element modifier flags
-        try:
-            modifiers = entry['Modifiers']
-        except KeyError:
-            self.modifiers = {'require': False, 'hide': False}
-        else:
-            self.modifiers = {'require': modifiers.get('require', 0), 'hide': modifiers.get('hide', 0)}
-            for modifier in self.modifiers:
-                try:
-                    flag = bool(int(self.modifiers[modifier]))
-                except ValueError:
-                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, MOD=modifier))
-                    flag = False
-
-                self.modifiers[modifier] = flag
+            raise AttributeError(msg)
 
         # Reference parameter information
         try:
             self.operation = entry['Operation']
         except KeyError:
-            msg = 'Configuration Error: ElementReference {NAME}: reference element is missing required parameter ' \
-                  '"Operation".'.format(NAME=name)
+            msg = self.format_log('reference element is missing required parameter "Operation".'.format(NAME=name))
             logger.error(msg)
-            mod_win2.popup_error(msg)
 
-            sys.exit(1)
-
-        try:
-            self.default = entry['DefaultValue']
-        except KeyError:
-            self.default = None
-
-        # Dynamic attributes
-        self._dimensions = (mod_const.DE_WIDTH, mod_const.DE_HEIGHT)
-
-        self.value = self.default
-        logger.debug('ElementReference {NAME}: initializing {ETYPE} element of data type {DTYPE} with default value '
-                     '{DEF} and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-        self.disabled = True
-        self.edited = False
+            raise AttributeError(msg)
 
     def reset(self, window):
         """
         Reset element reference value to default.
         """
         # Reset to default
-        if not pd.isna(self.default) and not pd.isna(self.value):
-            logger.debug('ElementReference {NAME}: resetting data element value "{VAL}" to default "{DEF}"'
-                         .format(NAME=self.name, VAL=self.value, DEF=self.default))
-
-        self.value = self.default
+        self.value.reset()
         self.edited = False
 
-        # Update the parameter window element
-        display_value = self.format_display()
-        window[self.key_lookup('Element')].update(value=display_value)
-
-    def run_event(self, window, event, values):
-        """
-        Run an element reference event.
-        """
-        elem_key = self.key_lookup('Element')
-
-        if event == elem_key:
-            new_value = self.format_value(values)
-            if new_value != self.value:
-                self.value = new_value
-                self.edited = True
-
-                self.update_display(window)
+        # Update the element display
+        self.update_display(window)
 
     def bind_keys(self, window):
         """
@@ -4652,6 +4492,19 @@ class ElementReference(RecordElement):
         """
         elem_key = self.key_lookup('Element')
         window[elem_key].bind('<Button-1>', '+LCLICK+')
+
+    def run_event(self, window, event, values):
+        """
+        Run an element reference event.
+        """
+        elem_key = self.key_lookup('Element')
+        current_value = self.value.data()
+
+        if event == elem_key:
+            new_value = self.format_value(values)
+            if new_value != current_value:
+                self.edited = True
+                self.update_display(window)
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
@@ -4717,7 +4570,7 @@ class ElementReference(RecordElement):
         # Element layout
         width_key = self.key_lookup('Width')
         elem_key = self.key_lookup('Element')
-        #element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
+        # element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
         #                          [sg.Text(display_value, key=elem_key, size=(width, 1), pad=(0, 0),
         #                                   background_color=bg_col, text_color=text_col, font=font, enable_events=True,
         #                                   border_width=1, relief='sunken',
@@ -4759,155 +4612,32 @@ class ElementReference(RecordElement):
 
         return window[self.key_lookup('Frame')].get_size()
 
-    def dimensions(self):
-        """
-        Return the current dimensions of the element.
-        """
-        return self._dimensions
-
     def format_value(self, values):
         """
         Set the value of the element reference from user input.
 
         Arguments:
-            values (dict): single value or dictionary of reference element values.
+            values (dict): single value or dictionary of element values.
         """
-        dtype = self.dtype
-
         # Update element display value
         print(values)
         if isinstance(values, dict):  # dictionary of referenced element values
             input_value = mod_dm.evaluate_operation(values, self.operation)
-            #input_value = mod_dm.evaluate_rule(values, self.operation)
         else:  # single value provided
             input_value = values
 
         if input_value == '' or pd.isna(input_value):
             return None
 
-        if dtype in settings.supported_float_dtypes:
-            value_fmt = settings.format_as_float(input_value)
-
-        elif dtype in settings.supported_int_dtypes:
-            value_fmt = settings.format_as_int(input_value)
-
-        else:  # boolean
-            value_fmt = settings.format_as_bool(input_value)
+        value_fmt = self.update_value(input_value)
 
         logger.debug('ElementReference {NAME}: input value "{VAL}" formatted as "{FMT}"'
                      .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
 
         return value_fmt
 
-    def format_display(self, **kwargs):
-        """
-        Format the elements value for displaying.
-        """
-        dtype = self.dtype
-        value = self.value
 
-        if value == '' or pd.isna(value):
-            return ''
-
-        display_value = settings.format_display(value, dtype)
-
-        return display_value
-
-    def update_display(self, window):
-        """
-        Format record element for display.
-
-        Arguments:
-            window: GUI window.
-        """
-        bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
-        tooltip = self.description
-
-        elem_key = self.key_lookup('Element')
-        desc_key = self.key_lookup('Description')
-
-        display_value = self.format_display()
-        window[elem_key].update(value=display_value)
-
-        # Check if the display value passes any annotations rules and update background.
-        annotation = self.annotate_display()
-        if annotation:
-            rule = self.annotation_rules[annotation]
-            bg_col = rule['BackgroundColor']
-            tooltip = rule['Description']
-
-        window[desc_key].update(background_color=bg_col)
-        window[desc_key].SetTooltip(tooltip)
-
-    def annotate_display(self):
-        """
-        Annotate the display element using configured annotation rules.
-        """
-        rules = self.annotation_rules
-        current_value = self.value
-
-        logger.debug('ElementReference {NAME}: annotating value {VAL} on configured annotation rules'
-                     .format(NAME=self.name, VAL=current_value))
-
-        annotation = None
-        for annot_code in rules:
-            logger.debug('ElementReference {NAME}: annotating element based on configured annotation rule "{CODE}"'
-                         .format(NAME=self.name, CODE=annot_code))
-            rule = rules[annot_code]
-            annot_condition = rule['Condition']
-            try:
-                #results = mod_dm.evaluate_condition_set({self.name: current_value}, {annot_code: annot_condition})
-                results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
-            except Exception as e:
-                logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
-                             .format(NAME=self.name, CODE=annot_code, ERR=e))
-                continue
-
-            result = results.squeeze()
-            if result:
-                logger.debug('ElementReference {NAME}: element value {VAL} annotated on annotation code {CODE}'
-                             .format(NAME=self.name, VAL=current_value, CODE=annot_code))
-                if annotation:
-                    logger.warning('ElementReference {NAME}: element value {VAL} has passed two or more annotation '
-                                   'rules ... defaulting to the first evaluated "{CODE}"'
-                                   .format(NAME=self.name, VAL=current_value, CODE=annotation))
-                else:
-                    annotation = annot_code
-
-        return annotation
-
-    def export_values(self, edited_only: bool = False):
-        """
-        Export the element reference value as a dictionary.
-
-        Arguments:
-            edited_only (bool): only export element values if the element reference had been edited [Default: False].
-        """
-        if edited_only and not self.edited:
-            return {}
-        else:
-            return {self.name: self.value}
-
-    def check_requirements(self):
-        """
-        Verify that the record element passes requirements.
-        """
-        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
-
-        return passed
-
-    def has_value(self):
-        """
-        Return True if the record element has a valid value else False
-        """
-        value = self.value
-        if not pd.isna(value) and not value == '':
-            return True
-        else:
-            return False
-
-
-class MetaElement(RecordElement):
+class MetaVariable(DataVariable):
     """
     Flags or text of record information.
 
@@ -4916,12 +4646,6 @@ class MetaElement(RecordElement):
         name (str): data element configuration name.
 
         elements (list): list of data element GUI keys.
-
-        modifiers (dict): flags that alter the element's behavior.
-
-        value: data vector containing the element value.
-
-        edited (bool): element value was edited [Default: False].
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4937,47 +4661,11 @@ class MetaElement(RecordElement):
         """
         super().__init__(name, entry, parent)
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description', 'Element')])
+                              ('Description', 'Element', 'Frame', 'Width')])
         self._event_elements = ['Element']
 
         # Element-specific bindings
         self.bindings = [self.key_lookup(i) for i in self._event_elements]
-
-        # Modifiers
-        try:
-            modifiers = entry['Modifiers']
-        except KeyError:
-            self.modifiers = {'edit': False, 'require': False, 'hide': False}
-        else:
-            self.modifiers = {'edit': modifiers.get('edit', 0), 'require': modifiers.get('require', 0),
-                              'hide': modifiers.get('hide', 0)}
-            for modifier in self.modifiers:
-                try:
-                    flag = bool(int(self.modifiers[modifier]))
-                except ValueError:
-                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, MOD=modifier))
-                    flag = False
-
-                self.modifiers[modifier] = flag
-
-        # Data vector
-        self.value = mod_col.DataVector(name, entry)
-
-        # Dynamic variables
-        self._dimensions = (mod_const.DE_WIDTH, mod_const.DE_HEIGHT)
-
-    def export_values(self, edited_only: bool = False):
-        """
-        Export the record element value as a dictionary.
-
-        Arguments:
-            edited_only (bool): only export element values if the record element had been edited [Default: False].
-        """
-        if edited_only and not self.edited:
-            return {}
-        else:
-            return {self.name: self.value.data()}
 
     def reset(self, window):
         """
@@ -4996,7 +4684,7 @@ class MetaElement(RecordElement):
         elem_key = self.key_lookup('Element')
         if event == elem_key:
             input_value = values[elem_key]
-            self.value.update_value(input_value)
+            self.update_value(input_value)
             self.update_display(window)
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
@@ -5059,94 +4747,42 @@ class MetaElement(RecordElement):
 
         # Layout
         frame_key = self.key_lookup('Frame')
+        width_key = self.key_lookup('Width')
         row1 = icon_layout + desc_layout + elem_layout + required_layout
-        layout = sg.Col([row1], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
+                         row1], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
 
         return layout
 
-    def update_value(self, input_value):
+    def resize(self, window, size: tuple = None):
         """
-        Update the element's value.
+        Resize the display element.
         """
-        value_fmt = self.value.update_value(input_value)
-
-        return value_fmt
-
-    def update_display(self, window):
-        """
-        Format element for display.
-        """
-        modifiers = self.modifiers
-        hidden = modifiers['hide']
-        editable = modifiers['edit']
+        current_w, current_h = self.dimensions()
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+        else:
+            new_w, new_h = (current_w, current_h)
 
         elem_key = self.key_lookup('Element')
-        # Update element display value
-        logger.debug('DataElement {NAME}: editable {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=editable, VIS=hidden))
-        if editable and not hidden:  # element is not disabled and is visible to the user
-            logger.debug("DataElement {NAME}: updating the element display"
-                         .format(NAME=self.name))
+        width_key = self.key_lookup('Width')
+        window[width_key].set_size(size=(new_w, None))
+        window[elem_key].expand(expand_x=True)
 
-            display_value = self.format_display()
-            window[elem_key].update(value=display_value)
-        else:  # element is either disabled or hidden
-            if not pd.isna(self.value):
-                display_value = self.format_display()
-            else:
-                logger.debug("DataElement {NAME}: no values provided to update the element's display"
-                             .format(NAME=self.name))
+        self._dimensions = (new_w, new_h)
 
-                display_value = ''
-
-            window[elem_key].update(value=display_value)
-
-    def format_display(self):
-        """
-        Format the elements value for displaying.
-        """
-        value = self.value.data()
-        if value == '' or pd.isna(value):
-            return ''
-
-        logger.debug('DataElement {NAME}: formatting display for element value {VAL} of type {TYPE}'
-                     .format(NAME=self.name, VAL=value, TYPE=type(value)))
-
-        display_value = settings.format_display(value, self.value.dtype)
-
-        logger.debug('DataElement {NAME}: display value is {VAL}'
-                     .format(NAME=self.name, VAL=display_value))
-
-        return display_value
-
-    def check_requirements(self):
-        """
-        Verify that the record element passes requirements.
-        """
-        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
-
-        return passed
-
-    def has_value(self):
-        """
-        Return True if element has a valid value else False
-        """
-        value = self.value.data()
-        if not pd.isna(value) and not value == '':
-            return True
-        else:
-            return False
+        return window[self.key_lookup('Frame')].get_size()
 
 
-class ActionButton:
+class TableButton:
     """
     Table action button.
 
     Attributes:
 
         name (str): data element configuration name.
-
-        id (int): data element number.
 
         elements (list): list of data element GUI keys.
 
@@ -5155,18 +4791,22 @@ class ActionButton:
         icon (str): file name of the parameter's icon [Default: None].
     """
 
-    def __init__(self, name, parent, id, entry):
+    def __init__(self, name, parent, parent_id, entry):
         """
         GUI data storage element.
 
         Arguments:
             name (str): name of the configured element.
 
+            parent (str): name of the parent table.
+
+            parent_id (int): ID of the parent table.
+
             entry (dict): configuration entry for the data storage element.
         """
         self.name = name
-        self.element_key = '-{PARENT}_{ID}_{NAME}-'.format(PARENT=parent, NAME=name, ID=id)
-        self.parent_key = '-{PARENT}_{ID}_Element-'.format(PARENT=parent, ID=id)
+        self.element_key = '-{PARENT}_{ID}_{NAME}-'.format(PARENT=parent, NAME=name, ID=parent_id)
+        self.parent_key = '-{PARENT}_{ID}_Element-'.format(PARENT=parent, ID=parent_id)
         self.bindings = [self.element_key]
 
         try:

@@ -41,7 +41,7 @@ class DataVector:
 
         # Starting value
         try:
-            self.default = self._set_dtype(value=entry['Default'])
+            self.default = mod_dm.format_value(entry['Default'], self.dtype)
         except KeyError:
             self.default = None
         except TypeError as e:
@@ -51,40 +51,25 @@ class DataVector:
 
             self.default = None
 
+        # Formatting options
+        try:
+            aliases = entry['Aliases']
+        except KeyError:
+            aliases = settings.fetch_alias_definition(self.name)
+
+        self.aliases = {}  # only str and int types can have aliases - aliases dict reversed during value formatting
+        if self.dtype in settings.supported_int_dtypes + settings.supported_cat_dtypes + settings.supported_str_dtypes:
+            for alias in aliases:  # alias should have same datatype as the element
+                alias_value = aliases[alias]
+                self.aliases[settings.format_value(alias, self.dtype)] = alias_value
+
+        try:
+            self.date_format = entry['DateFormat']
+        except KeyError:
+            self.date_format = settings.display_date_format
+
         # Dynamic variables
         self.value = self.default
-
-    def _set_dtype(self, value=None):
-        """
-        Format an input value according to the vector's dtype.
-        """
-        value = value if value else self.value
-        dtype = self.dtype
-
-        if dtype in ('date', 'datetime', 'timestamp', 'time'):
-            value = np.datetime64(value)
-        elif dtype in ('int', 'integer', 'bigint'):
-            value = np.int_(value)
-        elif dtype == 'mediumint':
-            value = np.intc(value)
-        elif dtype == 'smallint':
-            value = np.short(value)
-        elif dtype in ('tinyint', 'bit'):
-            value = np.byte(value)
-        elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-            value = np.single(value)
-        elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-            value = np.double(value)
-        elif dtype in ('bool', 'boolean'):
-            value = np.bool_(value)
-        elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-            value = np.str_(value)
-        else:
-            logger.warning('DataVector {NAME}: data vector has unknown dtype "{DTYPE}" - setting to string'
-                           .format(NAME=self.name, DTYPE=dtype))
-            value = np.str_(value)
-
-        return value
 
     def reset(self):
         """
@@ -108,11 +93,59 @@ class DataVector:
         if input_value == '' or pd.isna(input_value):
             value = None
         else:
-            value = self._set_dtype(input_value)
+            value = mod_dm.format_value(input_value, self.dtype)
 
         self.value = value
 
         return value
+
+    def format_display(self, editing: bool = False, value=None):
+        """
+        Format the vector's value for displaying.
+        """
+        value = value if value is not None else self.data()
+        if value == '' or pd.isna(value):
+            return ''
+
+        logger.debug('DataVector {NAME}: formatting display for element value {VAL} of type {TYPE}'
+                     .format(NAME=self.name, VAL=value, TYPE=type(value)))
+
+        dtype = self.dtype
+        if dtype == 'money':
+            #dec_sep = settings.decimal_sep
+            #group_sep = settings.thousands_sep
+
+            value = str(value)
+            if not editing:
+                display_value = settings.format_display_money(value)
+            else:
+                #display_value = value.replace(group_sep, '').replace(dec_sep, '.')
+                display_value = value
+
+        elif dtype in settings.supported_float_dtypes:
+            display_value = str(value)
+
+        elif dtype in settings.supported_int_dtypes:
+            display_value = value
+
+        elif dtype in settings.supported_date_dtypes:
+            if not editing:  # use global settings to determine how to format date
+                display_value = settings.format_display_date(value)  # default format is ISO
+            else:  # enforce ISO formatting if element is editable
+                display_value = value.strftime(settings.format_date_str(date_str=self.date_format))
+
+        else:
+            display_value = str(value).rstrip('\n\r')
+
+        # Set display value alias, if applicable
+        aliases = self.aliases
+        if display_value in aliases:
+            display_value = aliases[display_value]
+
+        logger.debug('DataVector {NAME}: display value is {VAL}'
+                     .format(NAME=self.name, VAL=display_value))
+
+        return str(display_value)
 
 
 # Data collection classes
