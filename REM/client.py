@@ -924,7 +924,7 @@ class SettingsManager:
         if pd.isna(dt):
             return ''
 
-        if not is_datetime_dtype(type(dt)) and not isinstance(dt, datetime.datetime):
+        if not is_datetime_dtype(type(dt)) and not isinstance(dt, datetime.datetime) and not isinstance(dt, datetime.date):
             raise ValueError('a datetime object is required in order to format a date for display - an object of '
                              'type "{TYPE}" was provided instead'.format(TYPE=type(dt)))
 
@@ -1201,6 +1201,8 @@ class SettingsManager:
                 raise ValueError(msg)
         elif isinstance(value, datetime.datetime) or is_datetime_dtype(value):
             value_fmt = value.replace(tzinfo=None)
+        elif isinstance(value, datetime.date):
+            value_fmt = value
         else:
             msg = 'unable to convert value {VAL} of type "{TYPE}" to an datetime value' \
                 .format(VAL=value, TYPE=type(value))
@@ -1884,7 +1886,7 @@ def convert_datatypes(value):
             converted_value = None
     elif is_bool_dtype(type(value)) is True or isinstance(value, bool):
         converted_value = bool(value)
-    elif is_datetime_dtype(type(value)) is True or isinstance(value, datetime.datetime):
+    elif is_datetime_dtype(type(value)) or isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
         strptime = datetime.datetime.strptime
         date_fmt = settings.date_format
 

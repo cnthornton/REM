@@ -383,8 +383,8 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                 continue
 
             # Update modifier values
-            for modifier in record.metadata:
-                modifier.format_value(values)
+            #for modifier in record.metadata:
+            #    modifier.format_value(values)
 
             # Verify that required parameters have values
             can_continue = record.check_required_parameters()
@@ -415,8 +415,8 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                 continue
 
             # Update modifier values
-            for modifier in record.metadata:
-                modifier.format_value(values)
+            #for modifier in record.metadata:
+            #    modifier.format_value(values)
 
             # Save the record to the database table
             saved = record.save()

@@ -136,8 +136,6 @@ class RecordElement:
             msg = '{ETYPE} {NAME}: component "{COMP}" not found in list of element components' \
                 .format(ETYPE=self.etype, NAME=self.name, COMP=component)
             logger.warning(msg)
-            logger.debug('{ETYPE} {NAME}: element contains components {COMP}'
-                         .format(ETYPE=self.etype, NAME=self.name, COMP=element_names))
 
             raise KeyError(msg)
 
@@ -3625,9 +3623,9 @@ class DataVariable(RecordElement):
 
     Attributes:
 
-        name (str): data element configuration name.
+        name (str): record element configuration name.
 
-        elements (list): list of data element GUI keys.
+        elements (list): list of element GUI keys.
 
         modifiers (dict): flags that alter the element's behavior.
 
@@ -3639,11 +3637,11 @@ class DataVariable(RecordElement):
         Initialize the data element attributes.
 
         Arguments:
-            name (str): data element configuration name.
+            name (str): record element configuration name.
 
-            entry (dict): configuration entry for the data element.
+            entry (dict): configuration entry for the record element.
 
-            parent (str): name of the parent element.
+            parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
 
@@ -3659,8 +3657,8 @@ class DataVariable(RecordElement):
                 try:
                     flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
-                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, MOD=modifier))
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(TBL=self.name, MOD=modifier)))
                     flag = False
 
                 self.modifiers[modifier] = flag
@@ -3672,35 +3670,34 @@ class DataVariable(RecordElement):
 
     def annotate_display(self):
         """
-        Annotate the display element using configured annotation rules.
+        Annotate the element display using configured annotation rules.
         """
         rules = self.annotation_rules
         current_value = self.value.data()
 
-        logger.debug('ElementReference {NAME}: annotating value {VAL} on configured annotation rules'
-                     .format(NAME=self.name, VAL=current_value))
+        logger.debug(self.format_log('annotating value {VAL} on configured annotation rules'.format(VAL=current_value)))
 
         annotation = None
         for annot_code in rules:
-            logger.debug('DataElement {NAME}: annotating element based on configured annotation rule "{CODE}"'
-                         .format(NAME=self.name, CODE=annot_code))
+            logger.debug(self.format_log('annotating element based on configured annotation rule "{CODE}"'
+                                         .format(NAME=self.name, CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
                 results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
             except Exception as e:
-                logger.error('DataElement {NAME}: failed to annotate element using annotation rule {CODE} - {ERR}'
-                             .format(NAME=self.name, CODE=annot_code, ERR=e))
+                logger.error(self.format_log('failed to annotate element using annotation rule {CODE} - {ERR}'
+                                             .format(CODE=annot_code, ERR=e)))
                 continue
 
             result = results.squeeze()
             if result:
-                logger.debug('DataElement {NAME}: element value {VAL} annotated on annotation code {CODE}'
-                             .format(NAME=self.name, VAL=current_value, CODE=annot_code))
+                logger.debug(self.format_log('element value {VAL} annotated on annotation code {CODE}'
+                                             .format(VAL=current_value, CODE=annot_code)))
                 if annotation:
-                    logger.warning('DataElement {NAME}: element value {VAL} has passed two or more annotation '
-                                   'rules ... defaulting to the first passed "{CODE}"'
-                                   .format(NAME=self.name, VAL=current_value, CODE=annotation))
+                    logger.warning(self.format_log('element value {VAL} has passed two or more annotation '
+                                                   'rules ... defaulting to the first passed "{CODE}"'
+                                                   .format(VAL=current_value, CODE=annotation)))
                 else:
                     annotation = annot_code
 
@@ -3716,7 +3713,7 @@ class DataVariable(RecordElement):
 
     def data(self):
         """
-        Return the data variable's value.
+        Return the value of the record element.
         """
         return self.value.data()
 
@@ -3728,7 +3725,7 @@ class DataVariable(RecordElement):
 
     def export_values(self, edited_only: bool = False):
         """
-        Export the data element value as a dictionary.
+        Export the element's value as a dictionary.
 
         Arguments:
             edited_only (bool): only export element values if the data element had been edited [Default: False].
@@ -3756,7 +3753,7 @@ class DataVariable(RecordElement):
 
     def resize(self, window, size: tuple = None):
         """
-        Resize the display element.
+        Resize the element display.
         """
         current_w, current_h = self.dimensions()
         if size:
@@ -3815,9 +3812,9 @@ class RecordVariable(DataVariable):
 
     Attributes:
 
-        name (str): data element configuration name.
+        name (str): record element configuration name.
 
-        elements (list): list of data element GUI keys.
+        elements (list): list of element GUI keys.
 
         edit_mode (bool): element is currently in edit mode [Default: False].
     """
@@ -3827,11 +3824,11 @@ class RecordVariable(DataVariable):
         Initialize the data element attributes.
 
         Arguments:
-            name (str): data element configuration name.
+            name (str): record element configuration name.
 
-            entry (dict): configuration entry for the data element.
+            entry (dict): configuration entry for the record element.
 
-            parent (str): name of the parent element.
+            parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
         self.etype = 'text'
@@ -3852,7 +3849,7 @@ class RecordVariable(DataVariable):
 
     def bind_keys(self, window):
         """
-        Add hotkey bindings to the data element.
+        Add hotkey bindings to the record element.
         """
         elem_key = self.key_lookup('Element')
 
@@ -3863,7 +3860,7 @@ class RecordVariable(DataVariable):
 
     def format_value(self, values):
         """
-        Obtain the value of the element from the set of GUI element values.
+        Obtain the value of the record element from the set of GUI element values.
 
         Arguments:
             values (dict): single value or dictionary of element values.
@@ -3885,7 +3882,7 @@ class RecordVariable(DataVariable):
 
     def reset(self, window):
         """
-        Reset data element to default.
+        Reset record element to default.
         """
         elem_key = self.key_lookup('Element')
         edit_key = self.key_lookup('Edit')
@@ -3908,7 +3905,7 @@ class RecordVariable(DataVariable):
 
     def run_event(self, window, event, values):
         """
-        Perform an element action.
+        Run a record element event.
         """
         text_col = mod_const.TEXT_COL
         disabled_text_col = mod_const.DISABLED_TEXT_COL
@@ -3960,14 +3957,14 @@ class RecordVariable(DataVariable):
             try:
                 value = values[elem_key]
             except KeyError:
-                logger.warning('DataElement {NAME}: unable to locate values for element key "{KEY}"'
-                               .format(NAME=self.name, KEY=elem_key))
+                logger.warning(self.format_log('unable to locate values for element key "{KEY}"'
+                                               .format(NAME=self.name, KEY=elem_key)))
             else:
                 try:
                     edited = self.update_value(value)
                 except Exception as e:
                     msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
-                    logger.exception('DataElement {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                    logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
                     mod_win2.popup_error(msg)
 
                 else:
@@ -4009,12 +4006,11 @@ class RecordVariable(DataVariable):
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
         """
-        GUI layout for the data element.
+        GUI layout for the record element.
         """
         modifiers = self.modifiers
 
-        is_disabled = (False if (overwrite is True or (editable is True and modifiers['edit'] is True)) and
-                                self.etype != 'text' and level < 2 else True)
+        is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
         self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
@@ -4102,10 +4098,6 @@ class RecordVariable(DataVariable):
 
         # Element layout
         width_key = self.key_lookup('Width')
-        #element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-        #                          self.element_layout(size=(width, 1), bg_col=bg_col, is_disabled=is_disabled)],
-        #                         background_color=bg_col)]
-
         layout_attrs = self.layout_attributes(size=(width, 1), bg_col=bg_col, disabled=is_disabled)
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout(self.etype, layout_attrs)],
@@ -4122,7 +4114,7 @@ class RecordVariable(DataVariable):
 
     def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
         """
-        Configure the attributes for the element's GUI layout.
+        Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
@@ -4132,26 +4124,9 @@ class RecordVariable(DataVariable):
         tooltip = display_value = self.format_display()
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip}
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
 
         return layout_attrs
-
-    def element_layout(self, size: tuple = None, bg_col: str = None, is_disabled: bool = True):
-        """
-        Generate the layout for the data component of the data element.
-        """
-        font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-
-        elem_key = self.key_lookup('Element')
-        display_value = self.format_display()
-
-        layout = [sg.Text(display_value, key=elem_key, size=size, pad=(0, 0), background_color=bg_col,
-                          text_color=disabled_text_col, font=font, enable_events=True, border_width=1,
-                          relief='sunken', metadata={'name': self.name, 'disabled': is_disabled})]
-
-        return layout
 
 
 class RecordVariableInput(RecordVariable):
@@ -4160,21 +4135,21 @@ class RecordVariableInput(RecordVariable):
 
     Attributes:
 
-        name (str): data element configuration name.
+        name (str): record element configuration name.
 
-        elements (list): list of data element GUI keys.
+        elements (list): list of element GUI keys.
     """
 
     def __init__(self, name, entry, parent=None):
         """
-        Initialize data element attributes.
+        Initialize the record element attributes.
 
         Arguments:
-            name (str): data element configuration name.
+            name (str): record element configuration name.
 
-            entry (dict): configuration entry for the data element.
+            entry (dict): configuration entry for the record element.
 
-            parent (str): name of the parent element.
+            parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
         self.etype = 'input'
@@ -4186,7 +4161,7 @@ class RecordVariableInput(RecordVariable):
 
     def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
         """
-        Configure the attributes for the element's GUI layout.
+        Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
@@ -4196,46 +4171,22 @@ class RecordVariableInput(RecordVariable):
         tooltip = display_value = self.format_display()
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip}
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
 
         return layout_attrs
-
-    def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
-        """
-        GUI layout for the data element.
-        """
-        # Layout options
-        font = mod_const.LARGE_FONT
-
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        disabled_bg_col = mod_const.ACTION_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-
-        # Element layout
-        display_value = self.format_display()
-        elem_key = self.key_lookup('Element')
-
-        layout = [sg.Input(display_value, key=elem_key, size=size, enable_events=True, font=font,
-                           background_color=bg_col, text_color='black', disabled=True,
-                           disabled_readonly_background_color=disabled_bg_col,
-                           disabled_readonly_text_color=disabled_text_col,
-                           tooltip='Input value for {}'.format(self.description),
-                           metadata={'disabled': is_disabled, 'name': self.name})]
-
-        return layout
 
 
 class RecordVariableCombo(RecordVariable):
     """
-    Dropdown-style record data element.
+    Dropdown-style data variable element.
 
     Attributes:
 
-        name (str): data element configuration name.
+        name (str): record element configuration name.
 
-        elements (list): list of data element GUI keys.
+        elements (list): list of element GUI keys.
 
-        combo_values (list): list of possible combobox values.
+        combo_values (list): list of possible element values.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -4268,7 +4219,7 @@ class RecordVariableCombo(RecordVariable):
         except KeyError:
             msg = 'missing required parameter "Values" for data parameters of type "{ETYPE}"'.format(ETYPE=self.etype)
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-            logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning(self.format_log(msg))
         else:
             for combo_value in combo_values:
                 try:
@@ -4276,11 +4227,11 @@ class RecordVariableCombo(RecordVariable):
                 except ValueError:
                     msg = 'unable to format dropdown value "{VAL}"'.format(VAL=combo_value)
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                    logger.warning('DataElement {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                    logger.warning(self.format_log(msg))
 
     def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
         """
-        Configure the attributes for the element's GUI layout.
+        Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
@@ -4292,8 +4243,8 @@ class RecordVariableCombo(RecordVariable):
         try:
             values = self.combo_values
         except KeyError:
-            logger.warning('DataElement {NAME}: dropdown was selected for the data element but no '
-                           'values were provided to populate the dropdown'.format(NAME=self.name))
+            logger.warning(self.format_log('dropdown was selected for the data element but no '
+                                           'values were provided to populate the dropdown'))
             display_values = []
         else:
             display_values = []
@@ -4301,64 +4252,28 @@ class RecordVariableCombo(RecordVariable):
                 display_values.append(self.format_display(value=option))
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'ComboValues': display_values}
 
         return layout_attrs
 
-    def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
-        """
-        GUI layout for the data element.
-        """
-        # Layout options
-        font = mod_const.LARGE_FONT
-
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        text_col = mod_const.TEXT_COL
-
-        # Element layout
-        try:
-            values = self.combo_values
-        except KeyError:
-            logger.warning('DataElement {NAME}: dropdown was selected for the data element but no '
-                           'values were provided to populate the dropdown'.format(NAME=self.name))
-            display_values = []
-        else:
-            display_values = []
-            # for option in values:
-            #    if option in aliases:
-            #        display_values.append(aliases[option])
-            #    else:
-            #        display_values.append(option)
-            for option in values:
-                display_values.append(self.format_display(value=option))
-
-        display_value = self.format_display()
-        elem_key = self.key_lookup('Element')
-        layout = [sg.Combo(display_values, default_value=display_value, key=elem_key, size=size,
-                           enable_events=True, font=font, text_color=text_col, background_color=bg_col, disabled=True,
-                           tooltip='Select value from list for {}'.format(self.description),
-                           metadata={'disabled': is_disabled, 'name': self.name})]
-
-        return layout
-
 
 class RecordVariableMultiline(RecordVariable):
     """
-    Multiline-style record data element.
+    Multiline-style data variable element.
 
     Attributes:
 
-        name (str): data element configuration name.
+        name (str): record element configuration name.
 
-        elements (list): list of data element GUI keys.
+        elements (list): list of element GUI keys.
 
         nrow (int): number of rows in the multiline element.
     """
 
     def __init__(self, name, entry, parent=None):
         """
-        Initialize the data element attributes.
+        Initialize the record element attributes.
 
         Arguments:
             name (str): data element configuration name.
@@ -4384,11 +4299,11 @@ class RecordVariableMultiline(RecordVariable):
         try:
             self.nrow = int(entry['Nrow'])
         except (KeyError, ValueError):
-            self.nrow = None
+            self.nrow = 1
 
     def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
         """
-        Configure the attributes for the element's GUI layout.
+        Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
@@ -4403,28 +4318,6 @@ class RecordVariableMultiline(RecordVariable):
                         'NRow': nrow}
 
         return layout_attrs
-
-    def element_layout(self, size: tuple = (20, 1), bg_col: str = None, is_disabled: bool = True):
-        """
-        GUI layout for the data element.
-        """
-        # Layout options
-        font = mod_const.LARGE_FONT
-
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-
-        # Element layout
-        display_value = self.format_display()
-        elem_key = self.key_lookup('Element')
-
-        height = self.nrow if self.nrow else size[1]
-        width = size[0]
-        layout = [sg.Multiline(display_value, key=elem_key, size=(width, height), font=font, disabled=True,
-                               background_color=bg_col, text_color=disabled_text_col, border_width=1,
-                               metadata={'disabled': is_disabled, 'name': self.name})]
-
-        return layout
 
 
 # Element reference variable
@@ -4483,7 +4376,7 @@ class DependentVariable(DataVariable):
 
     def reset(self, window):
         """
-        Reset element reference value to default.
+        Reset record element to default.
         """
         # Reset to default
         self.value.reset()
@@ -4501,7 +4394,7 @@ class DependentVariable(DataVariable):
 
     def run_event(self, window, event, values):
         """
-        Run an element reference event.
+        Run a record element event.
         """
         elem_key = self.key_lookup('Element')
 
@@ -4575,12 +4468,6 @@ class DependentVariable(DataVariable):
         # Element layout
         width_key = self.key_lookup('Width')
         elem_key = self.key_lookup('Element')
-        # element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-        #                          [sg.Text(display_value, key=elem_key, size=(width, 1), pad=(0, 0),
-        #                                   background_color=bg_col, text_color=text_col, font=font, enable_events=True,
-        #                                   border_width=1, relief='sunken',
-        #                                   metadata={'name': self.name, 'disabled': is_disabled})]],
-        #                         background_color=bg_col)]
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
@@ -4598,7 +4485,7 @@ class DependentVariable(DataVariable):
 
     def resize(self, window, size: tuple = None):
         """
-        Resize the display element.
+        Resize the record element display.
         """
         current_w, current_h = self.dimensions()
         if size:
@@ -4652,26 +4539,37 @@ class MetaVariable(DataVariable):
 
     def __init__(self, name, entry, parent=None):
         """
-        Initialize the data element attributes.
+        Initialize the record element attributes.
 
         Arguments:
-            name (str): data element configuration name.
+            name (str): record element configuration name.
 
-            entry (dict): configuration entry for the data element.
+            entry (dict): configuration entry for the record element.
 
-            parent (str): name of the parent element.
+            parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Description', 'Element', 'Frame', 'Width')])
         self._event_elements = ['Element']
 
+        if self.etype != 'checkbox':
+            self.etype = 'text'
+
         # Element-specific bindings
         self.bindings = [self.key_lookup(i) for i in self._event_elements]
 
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the record element.
+        """
+        if not self.disabled:
+            elem_key = self.key_lookup('Element')
+            window[elem_key].bind('<Button-1>', '+LCLICK+')
+
     def format_value(self, values):
         """
-        Obtain the value of the element from the set of GUI element values.
+        Obtain the value of the record element from the set of GUI element values.
 
         Arguments:
             values (dict): single value or dictionary of element values.
@@ -4696,7 +4594,7 @@ class MetaVariable(DataVariable):
 
     def reset(self, window):
         """
-        Reset data element to default.
+        Reset record element to default.
         """
         self.value.reset()
         self.edited = False
@@ -4706,11 +4604,13 @@ class MetaVariable(DataVariable):
 
     def run_event(self, window, event, values):
         """
-        Perform an element action.
+        Run a record element event.
         """
         elem_key = self.key_lookup('Element')
+        print('running event for metadata element {}'.format(self.name))
         if event == elem_key:
             input_value = values[elem_key]
+            print('setting metadata value to {}'.format(input_value))
             self.update_value(input_value)
             self.update_display(window)
 
@@ -4721,11 +4621,15 @@ class MetaVariable(DataVariable):
         """
         modifiers = self.modifiers
 
-        is_disabled = False if overwrite is True or (editable is True and level < 1) else True
+        is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
+        self.disabled = is_disabled
         is_required = modifiers['require']
         hidden = modifiers['hide']
 
+        print('metadata element {} is disabled: {}'.format(self.name, is_disabled))
+
         size = self._dimensions if not size else size
+        width, height = size
         self._dimensions = size
 
         background = self.bg_col
@@ -4739,7 +4643,7 @@ class MetaVariable(DataVariable):
         bold_font = mod_const.BOLD_HEADING_FONT
 
         bg_col = background
-        text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.TEXT_COL
 
         # Element Icon, if provided
         icon = self.icon
@@ -4765,10 +4669,10 @@ class MetaVariable(DataVariable):
         display_value = self.format_display()
         desc_bg_col = bg_col
 
-        desc_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
-                               font=bold_font, auto_size_text=True, tooltip=tooltip)]
+        desc_layout = [sg.Text('{}:'.format(self.description), key=desc_key, pad=((0, pad_h), 0), font=bold_font,
+                               background_color=desc_bg_col, auto_size_text=True, tooltip=tooltip)]
 
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
         elem_layout = mod_lo.generate_layout(self.etype, layout_attrs)
 
@@ -4776,14 +4680,15 @@ class MetaVariable(DataVariable):
         frame_key = self.key_lookup('Frame')
         width_key = self.key_lookup('Width')
         row1 = icon_layout + desc_layout + elem_layout + required_layout
-        layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-                         row1], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)], row1],
+                        key=frame_key, pad=padding, background_color=bg_col, vertical_alignment='c',
+                        visible=(not hidden))
 
         return layout
 
     def resize(self, window, size: tuple = None):
         """
-        Resize the display element.
+        Resize the record element display.
         """
         current_w, current_h = self.dimensions()
         if size:

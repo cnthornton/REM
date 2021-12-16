@@ -81,7 +81,12 @@ class DataVector:
         """
         Return the value of the data vector as a python object.
         """
-        return self.value.item()
+        try:
+            value = self.value.item()
+        except AttributeError:
+            value = None
+
+        return value
 
     def update_value(self, input_value):
         """
@@ -139,6 +144,14 @@ class DataVector:
             else:  # enforce ISO formatting if element is editable
                 display_value = value.strftime(settings.format_date_str(date_str=self.date_format))
 
+        elif dtype in settings.supported_bool_dtypes:
+            try:
+                display_value = bool(int(value))
+            except ValueError:
+                logger.warning('DataVector {NAME}: unsupported value {VAL} of type {TYPE} provided'
+                               .format(NAME=self.name, VAL=value, TYPE=type(value)))
+                display_value = False
+
         else:
             display_value = str(value).rstrip('\n\r')
 
@@ -147,10 +160,10 @@ class DataVector:
         if display_value in aliases:
             display_value = aliases[display_value]
 
-        logger.debug('DataVector {NAME}: display value is {VAL}'
+        logger.debug('DataVector {NAME}: setting display value to {VAL}'
                      .format(NAME=self.name, VAL=display_value))
 
-        return str(display_value)
+        return display_value
 
 
 # Data collection classes

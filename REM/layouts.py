@@ -36,7 +36,7 @@ def generate_layout(etype, attributes):
     """
     Generate a layout for different element types.
     """
-    func_mapper = {'input': input_layout, 'multiline': multiline_layout, 'combo': combo_layout,
+    func_mapper = {'input': input_layout, 'multiline': multiline_layout, 'dropdown': combo_layout,
                    'checkbox': checkbox_layout, 'text': text_layout}
     try:
         layout_func = func_mapper[etype]
@@ -55,22 +55,14 @@ def text_layout(attributes):
     size = attributes.get('Size', None)
     pad = attributes.get('Pad', None)
     bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
-    def_text_col = attributes.get('TextColor', mod_const.TEXT_COL)
-    disabled_text_col = mod_const.DISABLED_TEXT_COL
-    disabled = attributes.get('Disabled', False)
+    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
     tooltip = attributes.get('Tooltip', None)
-
-    if disabled:
-        text_col = disabled_text_col
-    else:
-        text_col = def_text_col
 
     # Element layout
     elem_key = attributes['Key']
     display_value = attributes.get('DisplayValue', '')
     layout = [sg.Text(display_value, key=elem_key, enable_events=True, size=size, pad=pad, background_color=bg_col,
-                      text_color=text_col, font=font, border_width=1, relief='sunken', tooltip=tooltip,
-                      metadata={'disabled': disabled})]
+                      text_color=text_col, font=font, border_width=0, relief='sunken', tooltip=tooltip)]
 
     return layout
 
@@ -143,8 +135,10 @@ def multiline_layout(attributes):
         text_col = def_text_col
 
     # Multiline parameters
-    height = attributes.get('NRow', size[1])
+    height = attributes.get('NRow', 1)
     width = size[0]
+
+    print('height of the multiline element is: {}'.format(height))
 
     # Element layout
     elem_key = attributes['Key']

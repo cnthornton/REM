@@ -1458,7 +1458,6 @@ class DatabaseRecord:
                          ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
                           'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
 
-        # User access permissions
         try:
             permissions = entry['Permissions']
         except KeyError:
@@ -1732,12 +1731,12 @@ class DatabaseRecord:
             #except KeyError:
             #    logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
             #                   .format(NAME=self.name, COL=param_name))
-            else:
-                if not pd.isna(value):
-                    logger.debug('RecordType {NAME}: initializing metadata field "{PARAM}" with value "{VAL}"'
-                                 .format(NAME=self.name, PARAM=param_name, VAL=value))
-                    #meta_param.format_value(value)
-                    meta_param.update_value(value)
+            #else:
+            #    if not pd.isna(value):
+            #        logger.debug('RecordType {NAME}: initializing metadata field "{PARAM}" with value "{VAL}"'
+            #                     .format(NAME=self.name, PARAM=param_name, VAL=value))
+            #        #meta_param.format_value(value)
+            #        meta_param.update_value(value)
 
         # Populate the record elements with data
         record_id = self.record_id()
@@ -2814,20 +2813,16 @@ class DatabaseRecord:
                              key=tab_key, background_color=bg_col)
 
         # Create layout for record metadata
-        markable = True if (permissions['mark'] in user_priv and not view_only) else False
-        approvable = True if (permissions['approve'] in user_priv and not view_only) else False
-        meta_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
-
         metadata = self.metadata
         if len(metadata) > 0:
             metadata_visible = True
             annotation_layout = []
             for param in metadata:
                 param_name = param.name
-                if param_name in meta_perms:
-                    param.editable = meta_perms[param_name]
+                can_edit = editable and param.permissions in user_priv
 
-                annotation_layout.append(param.layout())
+                print('metadata parameter {} is editable: {}'.format(param_name, can_edit))
+                annotation_layout.append([param.layout(editable=can_edit, level=level)])
         else:  # don't show tab for new records or record w/o configured metadata
             metadata_visible = False
             annotation_layout = [[]]
