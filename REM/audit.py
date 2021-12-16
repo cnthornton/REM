@@ -492,7 +492,7 @@ class AuditRule:
         elif event == save_key:
             # Check if any data elements are in edit mode before saving. Attempt to save if so.
             for audit_record in self.records:
-                for record_element in audit_record.record.record_elements():
+                for record_element in audit_record.record.modules:
                     try:
                         edit_mode = record_element.edit_mode
                     except AttributeError:

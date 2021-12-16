@@ -1521,23 +1521,39 @@ class DatabaseRecord:
             self.elements += param.elements
 
         # Record metadata
+        #self.metadata = []
+        #try:
+        #    metadata = entry['Metadata']
+        #except KeyError:
+        #    self.metadata = []
+        #else:
+        #    for param_name in metadata:
+        #        param_entry = metadata[param_name]
+        #        try:
+        #            param = mod_param.initialize_parameter(param_name, param_entry)
+        #        except Exception as e:
+        #            logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+
+        #            raise AttributeError(e)
+
+        #        self.metadata.append(param)
+        #        self.elements += param.elements
         self.metadata = []
         try:
             metadata = entry['Metadata']
         except KeyError:
-            self.metadata = []
-        else:
-            for param_name in metadata:
-                param_entry = metadata[param_name]
-                try:
-                    param = mod_param.initialize_parameter(param_name, param_entry)
-                except Exception as e:
-                    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+            metadata = []
+        for param_name in metadata:
+            param_entry = metadata[param_name]
+            try:
+                param = mod_param.initialize_parameter(param_name, param_entry)
+            except Exception as e:
+                logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
 
-                    raise AttributeError(e)
+                raise AttributeError(e)
 
-                self.metadata.append(param)
-                self.elements += param.elements
+            self.metadata.append(param)
+            self.elements += param.elements
 
         # Record data elements
         self.sections = {}
@@ -1574,18 +1590,18 @@ class DatabaseRecord:
                         element_class = mod_elem.DataTable
                     elif etype == 'component_table':
                         element_class = mod_elem.ComponentTable
-                    elif etype == 'refbox':
+                    elif etype in ('refbox', 'reference'):
                         element_class = mod_elem.ReferenceBox
-                    elif etype == 'reference':
-                        element_class = mod_elem.ElementReference
-                    elif etype == 'text':
-                        element_class = mod_elem.DataElement
-                    elif etype in ('input', 'date'):
-                        element_class = mod_elem.DataElementInput
-                    elif etype in ('dropdown', 'combo'):
-                        element_class = mod_elem.DataElementCombo
-                    elif etype == 'multiline':
-                        element_class = mod_elem.DataElementMultiline
+                    elif etype in ('dependent_variable', 'dependent'):
+                        element_class = mod_elem.DependentVariable
+                    elif etype in ('text_variable', 'text'):
+                        element_class = mod_elem.RecordVariable
+                    elif etype in ('input_variable', 'date_variable', 'input', 'date'):
+                        element_class = mod_elem.RecordVariableInput
+                    elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
+                        element_class = mod_elem.RecordVariableCombo
+                    elif etype in ('multiline_variable', 'multiline', 'multi'):
+                        element_class = mod_elem.RecordVariableMultiline
                     else:
                         raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
                                              .format(ETYPE=etype, ELEM=element_name))
@@ -1791,20 +1807,26 @@ class DatabaseRecord:
                     logger.warning('RecordType {NAME}: failed to load reference information for reference box {REF}'
                                    .format(NAME=self.name, REF=element_name))
 
-            else:  # data element
+            else:  # record variable element (reference or record variable)
                 try:
-                    value = record_data[element_name]
+                    record_element.format_value(record_data)
                 except KeyError:
                     logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
                                    .format(NAME=self.name, PARAM=element_name))
-                else:
-                    if not pd.isna(value):
-                        logger.debug('RecordType {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
-                                     .format(NAME=self.name, PARAM=element_name, VAL=value))
-                        record_element.value = record_element.format_value(value)
-                    else:
-                        logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
-                                     .format(NAME=self.name, PARAM=element_name))
+                #try:
+                #    value = record_data[element_name]
+                #except KeyError:
+                #    logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
+                #                   .format(NAME=self.name, PARAM=element_name))
+                #else:
+                #    if not pd.isna(value):
+                #        logger.debug('RecordType {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
+                #                     .format(NAME=self.name, PARAM=element_name, VAL=value))
+                #        #record_element.value = record_element.format_value(value)
+                #        record_element.update_value(value)
+                #    else:
+                #        logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
+                #                     .format(NAME=self.name, PARAM=element_name))
 
     def reset(self, window):
         """
@@ -1831,7 +1853,7 @@ class DatabaseRecord:
         Remove any unsaved IDs associated with the record, including the records own ID.
         """
         record_id = self.record_id()
-        record_elements = self.record_elements()
+        record_elements = self.modules
 
         record_entry = settings.records.fetch_rule(self.name)
 
@@ -1877,7 +1899,7 @@ class DatabaseRecord:
 
             by_type (bool): fetch record elements by element type [Default: False].
         """
-        elements = self.record_elements()
+        elements = self.modules
 
         if by_key is True:
             # Remove any binding strings and get last component of element key
@@ -1963,7 +1985,7 @@ class DatabaseRecord:
             return False
 
         # Record element events
-        elem_events = self.record_events(record_elements_only=True)
+        elem_events = self.record_events(components_only=True)
         record_elements = self.modules
 
         update_event = False
@@ -2054,7 +2076,6 @@ class DatabaseRecord:
         Update the record display.
         """
         record_id = self.record_id()
-        record_elements = self.record_elements()
 
         # Update the records header
         logger.debug('Record {ID}: updating display header'.format(ID=record_id))
@@ -2065,26 +2086,33 @@ class DatabaseRecord:
             meta.update_display(window)
 
         # Update the record elements
-        record_values = self.export_values(header=False)
+        #record_values = self.export_values(header=False)
 
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
-        for record_element in record_elements:
-            if record_element.etype == 'reference':
-                record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
-            else:
-                record_element.update_display(window)
+        for record_element in self.modules:
+            #if record_element.etype == 'reference':
+            #    record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
+            #else:
+            #    record_element.update_display(window)
+            record_element.update_display(window)
 
-    def record_events(self, record_elements_only: bool = False):
+    def record_events(self, components_only: bool = False):
         """
         Return a list of available record events.
+
+        Arguments:
+            components_only (bool):
         """
-        record_elements = self.record_elements()
-        if record_elements_only:
+        if components_only:
             events = []
         else:
             events = self.elements
 
-        events.extend([i for record_element in record_elements for i in record_element.bindings])
+        # Add record component events
+        events.extend([i for record_element in self.modules for i in record_element.bindings])
+
+        # Add record metadata events
+        events.extend([i for param in self.metadata for i in param.bindings])
 
         return events
 
@@ -2092,7 +2120,7 @@ class DatabaseRecord:
         """
         Return a list of all record elements.
         """
-        return self.modules
+        return self.modules + self.metadata
 
     def check_required_parameters(self):
         """
@@ -2165,7 +2193,8 @@ class DatabaseRecord:
         if isinstance(record_data, pd.Series):
             record_data = record_data.to_frame().T
 
-        defaults = self.export_values(header=False, references=False).to_dict()
+        #defaults = self.export_values(header=False, references=False).to_dict()
+        defaults = self.export_values(header=False).to_dict()
         for default_col in defaults:
             if default_col in header:
                 default_value = defaults[default_col]
@@ -2180,14 +2209,12 @@ class DatabaseRecord:
 
         return record_data.squeeze()
 
-    def export_values(self, header: bool = True, references: bool = True, edited_only: bool = False):
+    def export_values(self, header: bool = True, edited_only: bool = False):
         """
         Export record data as a table row.
 
         Arguments:
             header (bool): include header components in the exported values [Default: True].
-
-            references (bool): include record references and components in the export values [Default: True].
 
             edited_only (bool): only include values for record elements that were edited [Default: False].
 
@@ -2214,9 +2241,8 @@ class DatabaseRecord:
         # Add parameter values
         record_elements = self.modules
         for record_element in record_elements:
-            if record_element.eclass == 'references' and not references:  # reference boxes and component tables
-                continue
-
+            #if record_element.eclass == 'references' and not references:  # reference boxes and component tables
+            #    continue
             values = {**values, **record_element.export_values(edited_only=edited_only)}
 
         return pd.Series(values)
@@ -2763,15 +2789,7 @@ class DatabaseRecord:
             section_layout = []
             for element_name in section_elements:
                 element = self.fetch_element(element_name)
-                element_class = element.eclass
 
-                #try:
-                #    can_edit = editable and permissions[element_class] in user_priv
-                #except KeyError:
-                #    msg = 'unknown element class {CLASS} provided to record permissions'.format(CLASS=element_class)
-                #    logger.warning('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                #
-                #    can_edit = False
                 can_edit = editable and element.permissions in user_priv
                 element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
                                                  level=level)]
@@ -2791,12 +2809,9 @@ class DatabaseRecord:
 
         # Create layout for record metadata
         markable = True if (permissions['mark'] in user_priv and not view_only) else False
-        #markable = True if (permissions['mark'] in user_priv and is_new is False and view_only is False) \
-        #    else False
         approvable = True if (permissions['approve'] in user_priv and not view_only) else False
-        #approvable = True if (permissions['approve'] in user_priv and is_new is False and view_only is False) \
-        #    else False
         meta_perms = {'MarkedForDeletion': markable, 'Approved': approvable, 'Deleted': False}
+
         metadata = self.metadata
         if len(metadata) > 0:
             metadata_visible = True
@@ -2928,4 +2943,3 @@ def replace_nth(s, sub, new, ns):
         new_s = before + after
 
     return new_s
-
