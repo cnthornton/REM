@@ -3714,6 +3714,12 @@ class DataVariable(RecordElement):
 
         return passed
 
+    def data(self):
+        """
+        Return the data variable's value.
+        """
+        return self.value.data()
+
     def dimensions(self):
         """
         Return the current dimensions of the element.
@@ -3798,9 +3804,9 @@ class DataVariable(RecordElement):
         """
         Update the element's value.
         """
-        value_fmt = self.value.update_value(input_value)
+        edited = self.value.update_value(input_value)
 
-        return value_fmt
+        return edited
 
 
 class RecordVariable(DataVariable):
@@ -3873,9 +3879,9 @@ class RecordVariable(DataVariable):
         else:  # single value provided
             value = values
 
-        fmt_value = self.update_value(value)
+        edited = self.update_value(value)
 
-        return fmt_value
+        return edited
 
     def reset(self, window):
         """
@@ -3958,14 +3964,14 @@ class RecordVariable(DataVariable):
                                .format(NAME=self.name, KEY=elem_key))
             else:
                 try:
-                    new_value = self.update_value(value)
+                    edited = self.update_value(value)
                 except Exception as e:
                     msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
                     logger.exception('DataElement {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     mod_win2.popup_error(msg)
 
                 else:
-                    if new_value != self.value:
+                    if edited:
                         self.edited = True
                         update_event = True
 
@@ -4498,11 +4504,10 @@ class DependentVariable(DataVariable):
         Run an element reference event.
         """
         elem_key = self.key_lookup('Element')
-        current_value = self.value.data()
 
         if event == elem_key:
-            new_value = self.format_value(values)
-            if new_value != current_value:
+            edited = self.format_value(values)
+            if edited:
                 self.edited = True
                 self.update_display(window)
 
@@ -4629,12 +4634,9 @@ class DependentVariable(DataVariable):
         if input_value == '' or pd.isna(input_value):
             return None
 
-        value_fmt = self.update_value(input_value)
+        edited = self.update_value(input_value)
 
-        logger.debug('ElementReference {NAME}: input value "{VAL}" formatted as "{FMT}"'
-                     .format(NAME=self.name, VAL=input_value, FMT=value_fmt))
-
-        return value_fmt
+        return edited
 
 
 class MetaVariable(DataVariable):
@@ -4666,6 +4668,31 @@ class MetaVariable(DataVariable):
 
         # Element-specific bindings
         self.bindings = [self.key_lookup(i) for i in self._event_elements]
+
+    def format_value(self, values):
+        """
+        Obtain the value of the element from the set of GUI element values.
+
+        Arguments:
+            values (dict): single value or dictionary of element values.
+        """
+        if isinstance(values, dict):  # dictionary of referenced element values
+            try:
+                value = values[self.name]
+            except KeyError:
+                msg = self.format_log('input data is missing a value for the record element')
+                logger.warning(msg)
+
+                raise KeyError(msg)
+        else:  # single value provided
+            value = values
+
+        if not pd.isna(value):  # should not update when metadata is missing
+            edited = self.update_value(value)
+        else:
+            edited = False
+
+        return edited
 
     def reset(self, window):
         """

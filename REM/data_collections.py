@@ -90,14 +90,19 @@ class DataVector:
         Arguments:
             input_value: value input into the GUI element.
         """
+        current_value = self.value
+
         if input_value == '' or pd.isna(input_value):
-            value = None
+            new_value = None
         else:
-            value = mod_dm.format_value(input_value, self.dtype)
+            new_value = mod_dm.format_value(input_value, self.dtype)
 
-        self.value = value
+        edited = False
+        if current_value != new_value:
+            self.value = new_value
+            edited = True
 
-        return value
+        return edited
 
     def format_display(self, editing: bool = False, value=None):
         """

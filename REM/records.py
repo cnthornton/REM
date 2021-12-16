@@ -1520,7 +1520,7 @@ class DatabaseRecord:
             self._record_date = param
             self.elements += param.elements
 
-        # Record metadata
+        # Record metadata elements
         #self.metadata = []
         #try:
         #    metadata = entry['Metadata']
@@ -1546,16 +1546,15 @@ class DatabaseRecord:
         for param_name in metadata:
             param_entry = metadata[param_name]
             try:
-                param = mod_param.initialize_parameter(param_name, param_entry)
+                param = mod_elem.MetaVariable(param_name, param_entry, parent=self.name)
             except Exception as e:
                 logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
 
                 raise AttributeError(e)
 
             self.metadata.append(param)
-            self.elements += param.elements
 
-        # Record data elements
+        # Record data components
         self.sections = {}
         self.modules = []
         try:
@@ -1606,14 +1605,14 @@ class DatabaseRecord:
                         raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
                                              .format(ETYPE=etype, ELEM=element_name))
 
-                    # Initialize parameter object
+                    # Initialize the record element
                     try:
                         elem_obj = element_class(element_name, elem_entry, parent=self.name)
                     except Exception as e:
                         raise AttributeError('failed to initialize {NAME} element {ELEM} - {ERR}'
                                              .format(NAME=self.name, ELEM=element_name, ERR=e))
 
-                    # Add the parameter to the record
+                    # Add the element to the set of record components
                     self.modules.append(elem_obj)
 
         # Record report layout definition
@@ -1718,20 +1717,27 @@ class DatabaseRecord:
             record_data[settings.creator_code] = user.uid
             record_data[settings.creation_date] = datetime.datetime.now()
 
-        # Set metadata parameter values
+        # Set metadata element values
         for meta_param in meta_params:
             param_name = meta_param.name
 
             try:
-                value = record_data[param_name]
+                meta_param.format_value(record_data)
             except KeyError:
                 logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
                                .format(NAME=self.name, COL=param_name))
+
+            #try:
+            #    value = record_data[param_name]
+            #except KeyError:
+            #    logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
+            #                   .format(NAME=self.name, COL=param_name))
             else:
                 if not pd.isna(value):
                     logger.debug('RecordType {NAME}: initializing metadata field "{PARAM}" with value "{VAL}"'
                                  .format(NAME=self.name, PARAM=param_name, VAL=value))
-                    meta_param.format_value(value)
+                    #meta_param.format_value(value)
+                    meta_param.update_value(value)
 
         # Populate the record elements with data
         record_id = self.record_id()
@@ -1834,19 +1840,17 @@ class DatabaseRecord:
         """
         self.new = False
 
-        # Reset header values
+        # Reset the header elements record ID and record date
         self._record_id.reset(window)
         self._record_date.reset(window)
-        #for header in self.headers:
-        #    header.reset(window)
 
-        # Reset modifier values
-        for modifier in self.metadata:
-            modifier.reset(window)
+        # Reset metadata elements
+        for meta_param in self.metadata:
+            meta_param.reset(window)
 
-        # Reset record elements
-        for module in self.modules:
-            module.reset(window)
+        # Reset record data component elements
+        for component in self.modules:
+            component.reset(window)
 
     def remove_unsaved_ids(self):
         """
@@ -1972,15 +1976,15 @@ class DatabaseRecord:
             return False
 
         # Run a modifier event
-        modifier_elems = [i for param in self.metadata for i in param.elements]
-        if event in modifier_elems:
+        meta_events = [i for param in self.metadata for i in param.bindings]
+        if event in meta_events:
             try:
-                param = self.fetch_metadata(event, by_key=True)
+                meta_param = self.fetch_metadata(event, by_key=True)
             except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find modifier associated with event key {KEY}'
-                             .format(NAME=self.name, ID=self.record_id(), KEY=event))
+                logger.error('RecordType {NAME}, Record {ID}: unable to find the metadata element associated with '
+                             'event key "{KEY}"'.format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
-                param.run_event(window, event, values)
+                meta_param.run_event(window, event, values)
 
             return False
 
@@ -2078,12 +2082,12 @@ class DatabaseRecord:
         record_id = self.record_id()
 
         # Update the records header
-        logger.debug('Record {ID}: updating display header'.format(ID=record_id))
+        logger.debug('Record {ID}: updating the display header'.format(ID=record_id))
         self._record_id.update_display(window)
         self._record_date.update_display(window)
 
-        for meta in self.metadata:
-            meta.update_display(window)
+        for meta_elem in self.metadata:
+            meta_elem.update_display(window)
 
         # Update the record elements
         #record_values = self.export_values(header=False)
@@ -2120,7 +2124,10 @@ class DatabaseRecord:
         """
         Return a list of all record elements.
         """
-        return self.modules + self.metadata
+        elements = self.modules
+        elements.extend(self.metadata)
+
+        return elements
 
     def check_required_parameters(self):
         """
@@ -2211,7 +2218,7 @@ class DatabaseRecord:
 
     def export_values(self, header: bool = True, edited_only: bool = False):
         """
-        Export record data as a table row.
+        Export record data as a Series.
 
         Arguments:
             header (bool): include header components in the exported values [Default: True].
@@ -2219,7 +2226,7 @@ class DatabaseRecord:
             edited_only (bool): only include values for record elements that were edited [Default: False].
 
         Returns:
-            values (Series): record values.
+            values (Series): values of the record's elements.
         """
         values = {}
 
@@ -2232,11 +2239,10 @@ class DatabaseRecord:
             values[record_date.name] = record_date.value
 
             # Add modifier values
-            modifiers = self.metadata
-            for modifier_elem in modifiers:
-                mod_value = modifier_elem.value
+            for meta_elem in self.metadata:
+                mod_value = meta_elem.data()
                 if not pd.isna(mod_value):
-                    values[modifier_elem.name] = mod_value
+                    values[meta_elem.name] = mod_value
 
         # Add parameter values
         record_elements = self.modules
