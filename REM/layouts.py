@@ -53,6 +53,7 @@ def text_layout(attributes):
     # Standard element parameters
     font = attributes.get('Font', mod_const.LARGE_FONT)
     size = attributes.get('Size', None)
+    bw = attributes.get('BW', 0)
     pad = attributes.get('Pad', None)
     bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
     text_col = attributes.get('TextColor', mod_const.TEXT_COL)
@@ -60,9 +61,9 @@ def text_layout(attributes):
 
     # Element layout
     elem_key = attributes['Key']
-    display_value = attributes.get('DisplayValue', '')
+    display_value = attributes.get('DisplayValue', None)
     layout = [sg.Text(display_value, key=elem_key, enable_events=True, size=size, pad=pad, background_color=bg_col,
-                      text_color=text_col, font=font, border_width=0, relief='sunken', tooltip=tooltip)]
+                      text_color=text_col, font=font, border_width=bw, relief='sunken', tooltip=tooltip)]
 
     return layout
 

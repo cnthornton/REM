@@ -114,14 +114,15 @@ class DataVector:
         Format the vector's value for displaying.
         """
         value = value if value is not None else self.data()
-        if value == '' or pd.isna(value):
-            return ''
 
         logger.debug('DataVector {NAME}: formatting display for element value {VAL} of type {TYPE}'
                      .format(NAME=self.name, VAL=value, TYPE=type(value)))
 
         dtype = self.dtype
         if dtype == 'money':
+            if pd.isna(value):
+                return ''
+
             #dec_sep = settings.decimal_sep
             #group_sep = settings.thousands_sep
 
@@ -133,18 +134,30 @@ class DataVector:
                 display_value = value
 
         elif dtype in settings.supported_float_dtypes:
+            if pd.isna(value):
+                return ''
+
             display_value = str(value)
 
         elif dtype in settings.supported_int_dtypes:
+            if pd.isna(value):
+                return ''
+
             display_value = value
 
         elif dtype in settings.supported_date_dtypes:
+            if pd.isna(value):
+                return ''
+
             if not editing:  # use global settings to determine how to format date
                 display_value = settings.format_display_date(value)  # default format is ISO
             else:  # enforce ISO formatting if element is editable
                 display_value = value.strftime(settings.format_date_str(date_str=self.date_format))
 
         elif dtype in settings.supported_bool_dtypes:
+            if pd.isna(value):
+                return False
+
             try:
                 display_value = bool(int(value))
             except ValueError:
@@ -153,6 +166,9 @@ class DataVector:
                 display_value = False
 
         else:
+            if pd.isna(value):
+                return ''
+
             display_value = str(value).rstrip('\n\r')
 
         # Set display value alias, if applicable
@@ -645,9 +661,6 @@ class DataCollection:
                          .format(NAME=self.name, COL=field))
 
             return 0
-
-        print('summary field {} has values:'.format(field))
-        print(col_values)
 
         if col_values.empty:
             return 0

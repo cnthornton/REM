@@ -722,6 +722,7 @@ class DataTable(RecordElement):
                 index = self.get_index(select_row_index)
                 print('real index is: {}'.format(index))
                 update_event = self.run_table_event(index)
+                print(update_event)
 
         elif event == search_key:
             # Update the search field value
@@ -2137,7 +2138,7 @@ class RecordTable(DataTable):
 
         elements (list): list of table element keys.
 
-        collection (Class):
+        collection (Class): data collection class storing the table values.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -2237,10 +2238,7 @@ class RecordTable(DataTable):
                 msg = 'unable to update row {IND} values'.format(IND=index)
                 logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
             else:
-                print('updating table collection at entry {} with values:'.format(index))
-                print(record_values)
                 update_event = collection.update_entry(index, record_values)
-                print('event load record was an update event: {}'.format(update_event))
 
         return update_event
 
@@ -4468,7 +4466,7 @@ class DependentVariable(DataVariable):
         # Element layout
         width_key = self.key_lookup('Width')
         elem_key = self.key_lookup('Element')
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1), 'BW': 1,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout('text', layout_attrs)],
@@ -4512,9 +4510,16 @@ class DependentVariable(DataVariable):
             values (dict): single value or dictionary of element values.
         """
         # Update element display value
+        logger.debug(self.format_log('setting the value of the dependent variable'))
         print(values)
         if isinstance(values, dict):  # dictionary of referenced element values
-            input_value = mod_dm.evaluate_operation(values, self.operation)
+            try:
+                input_value = mod_dm.evaluate_operation(values, self.operation)
+            except Exception as e:
+                msg = self.format_log('failed to set the value of the dependent variable - {ERR}'.format(ERR=e))
+                logger.error(msg)
+                input_value = None
+
         else:  # single value provided
             input_value = values
 
@@ -4650,7 +4655,7 @@ class MetaVariable(DataVariable):
         if icon is not None:
             icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_h), 0), background_color=bg_col)]
             else:
                 icon_layout = []
         else:
@@ -4669,17 +4674,21 @@ class MetaVariable(DataVariable):
         display_value = self.format_display()
         desc_bg_col = bg_col
 
-        desc_layout = [sg.Text('{}:'.format(self.description), key=desc_key, pad=((0, pad_h), 0), font=bold_font,
+        desc_layout = [sg.Text('{}:'.format(self.description), key=desc_key, pad=((0, pad_el), 0), font=bold_font,
                                background_color=desc_bg_col, auto_size_text=True, tooltip=tooltip)]
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
+        print(layout_attrs)
+        print(self.etype)
+        print(padding)
         elem_layout = mod_lo.generate_layout(self.etype, layout_attrs)
 
         # Layout
         frame_key = self.key_lookup('Frame')
         width_key = self.key_lookup('Width')
         row1 = icon_layout + desc_layout + elem_layout + required_layout
+        print(row1)
         layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)], row1],
                         key=frame_key, pad=padding, background_color=bg_col, vertical_alignment='c',
                         visible=(not hidden))
@@ -4689,16 +4698,29 @@ class MetaVariable(DataVariable):
     def resize(self, window, size: tuple = None):
         """
         Resize the record element display.
+
+        Arguments:
+            window: GUI window.
+
+            size (tuple): new width and height of the element [Default: set to size of the value + description].
         """
         current_w, current_h = self.dimensions()
+        elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
+
         if size:
             width, height = size
             new_h = current_h if height is None else height
             new_w = current_w if width is None else width
         else:
-            new_w, new_h = (current_w, current_h)
+            new_h = current_h
 
-        elem_key = self.key_lookup('Element')
+            font = mod_const.LARGE_FONT
+            desc_w = window[desc_key].get_size()[0]
+            elem_w = window[elem_key].string_width_in_pixels(font, self.format_display())
+            new_w = desc_w + elem_w + mod_const.HORZ_PAD
+            window[elem_key].set_size(size=(1, None))
+
         width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)

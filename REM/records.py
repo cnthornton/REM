@@ -1461,17 +1461,12 @@ class DatabaseRecord:
         try:
             permissions = entry['Permissions']
         except KeyError:
-            self.permissions = {'edit': None, 'delete': None, 'mark': None, 'references': None,
-                                'components': None, 'approve': None, 'report': None, 'data': 'user'}
+            self.permissions = {'edit': None, 'delete': None, 'report': None}
         else:
             self.permissions = {'edit': permissions.get('Edit', None),
                                 'delete': permissions.get('Delete', None),
-                                'mark': permissions.get('MarkForDeletion', None),
-                                'references': permissions.get('ModifyReferences',
-                                                              permissions.get('ModifyComponents', None)),
-                                'approve': permissions.get('Approve', None),
                                 'report': permissions.get('Report', None),
-                                'data': 'user'}
+                                }
 
         try:
             self.title = entry['Title']
@@ -1484,40 +1479,67 @@ class DatabaseRecord:
         except KeyError:
             headers = {}
 
+        #try:
+        #    id_entry = headers[self.id_field]
+        #except KeyError:
+        #    id_entry = {'ElementType': 'input', 'DataType': 'varchar', 'Description': 'Record ID', 'IsEditable': False}
+        #else:
+        #    id_entry['IsEditable'] = False
+        #    id_entry['IsHidden'] = False
+        #    id_entry['ElementType'] = 'input'
+        #    id_entry['DataType'] = 'varchar'
+        #try:
+        #    param = mod_param.initialize_parameter(self.id_field, id_entry)
+        #except Exception as e:
+        #    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+        #    raise AttributeError(e)
+        #else:
+        #    self._record_id = param
+        #    self.elements += param.elements
+
+        #try:
+        #    date_entry = headers[self.date_field]
+        #except KeyError:
+        #    date_entry = {'ElementType': 'date', 'DataType': 'date', 'Description': 'Record Date', 'IsEditable': False}
+        #else:
+        #    date_entry['IsEditable'] = False
+        #    date_entry['ElementType'] = 'date'
+        #    date_entry['DataType'] = 'date'
+        #try:
+        #    param = mod_param.initialize_parameter(self.date_field, date_entry)
+        #except Exception as e:
+        #    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+        #    raise AttributeError(e)
+        #else:
+        #    self._record_date = param
+        #    self.elements += param.elements
         try:
             id_entry = headers[self.id_field]
         except KeyError:
-            id_entry = {'ElementType': 'input', 'DataType': 'varchar', 'Description': 'Record ID', 'IsEditable': False}
+            id_entry = {'ElementType': 'text', 'DataType': 'varchar', 'Description': 'Record ID'}
         else:
-            id_entry['IsEditable'] = False
-            id_entry['IsHidden'] = False
-            id_entry['ElementType'] = 'input'
+            id_entry['Modifiers'] = {}
+            id_entry['ElementType'] = 'text'
             id_entry['DataType'] = 'varchar'
         try:
-            param = mod_param.initialize_parameter(self.id_field, id_entry)
+            self._record_id = mod_elem.MetaVariable(self.id_field, id_entry)
         except Exception as e:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
-        else:
-            self._record_id = param
-            self.elements += param.elements
 
         try:
             date_entry = headers[self.date_field]
         except KeyError:
-            date_entry = {'ElementType': 'date', 'DataType': 'date', 'Description': 'Record Date', 'IsEditable': False}
+            date_entry = {'ElementType': 'text', 'DataType': 'date', 'Description': 'Record Date'}
         else:
-            date_entry['IsEditable'] = False
-            date_entry['ElementType'] = 'date'
+            date_entry['Modifiers'] = {}
+            date_entry['ElementType'] = 'text'
             date_entry['DataType'] = 'date'
         try:
-            param = mod_param.initialize_parameter(self.date_field, date_entry)
+            self._record_date = mod_elem.MetaVariable(self.date_field, date_entry)
         except Exception as e:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
-        else:
-            self._record_date = param
-            self.elements += param.elements
 
         # Record metadata elements
         #self.metadata = []
@@ -1648,13 +1670,13 @@ class DatabaseRecord:
         """
         Convenience method for returning the record ID of the record object.
         """
-        return self._record_id.value
+        return self._record_id.data()
 
     def record_date(self):
         """
         Convenience method for returning the record date of the record object.
         """
-        return self._record_date.value
+        return self._record_date.data()
 
     def initialize(self, data, new: bool = False, as_new: bool = False, references: dict = None):
         """
@@ -1699,18 +1721,26 @@ class DatabaseRecord:
         logger.debug('RecordType {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
 
         # Set header values from required columns
+        #try:
+        #    record_id_value = record_data[self.id_field]
+        #except KeyError:
+        #    raise ImportError('input record data is missing required column "{}"'.format(self.id_field))
+        #else:
+        #    self._record_id.format_value(record_id_value)
+        #try:
+        #    record_date_value = record_data[self.date_field]
+        #except KeyError:
+        #    raise ImportError('input record data is missing required column "{}"'.format(self.date_field))
+        #else:
+        #    self._record_date.format_value(record_date_value)
         try:
-            record_id_value = record_data[self.id_field]
+            self._record_id.format_value(record_data)
         except KeyError:
             raise ImportError('input record data is missing required column "{}"'.format(self.id_field))
-        else:
-            self._record_id.format_value(record_id_value)
         try:
-            record_date_value = record_data[self.date_field]
+            self._record_date.format_value(record_data)
         except KeyError:
             raise ImportError('input record data is missing required column "{}"'.format(self.date_field))
-        else:
-            self._record_date.format_value(record_date_value)
 
         if new or as_new:
             record_data[settings.creator_code] = user.uid
@@ -1813,25 +1843,25 @@ class DatabaseRecord:
                                    .format(NAME=self.name, REF=element_name))
 
             else:  # record variable element (reference or record variable)
-                try:
-                    record_element.format_value(record_data)
-                except KeyError:
-                    logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
-                                   .format(NAME=self.name, PARAM=element_name))
                 #try:
-                #    value = record_data[element_name]
+                #    record_element.format_value(record_data)
                 #except KeyError:
                 #    logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
                 #                   .format(NAME=self.name, PARAM=element_name))
-                #else:
-                #    if not pd.isna(value):
-                #        logger.debug('RecordType {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
-                #                     .format(NAME=self.name, PARAM=element_name, VAL=value))
-                #        #record_element.value = record_element.format_value(value)
-                #        record_element.update_value(value)
-                #    else:
-                #        logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
-                #                     .format(NAME=self.name, PARAM=element_name))
+                try:
+                    value = record_data[element_name]
+                except KeyError:
+                    logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
+                                   .format(NAME=self.name, PARAM=element_name))
+                else:
+                    if not pd.isna(value):
+                        logger.debug('RecordType {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
+                                     .format(NAME=self.name, PARAM=element_name, VAL=value))
+                        #record_element.value = record_element.format_value(value)
+                        record_element.update_value(value)
+                    else:
+                        logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
+                                     .format(NAME=self.name, PARAM=element_name))
 
     def reset(self, window):
         """
@@ -2065,7 +2095,7 @@ class DatabaseRecord:
             # Update any element references with new values
             record_values = self.export_values(header=False)
             try:
-                element_references = self.fetch_element('reference', by_type=True)
+                element_references = self.fetch_element('dependent', by_type=True)
             except KeyError:
                 pass
             else:
@@ -2234,8 +2264,8 @@ class DatabaseRecord:
             record_date = self._record_date
 
             # Add header values
-            values[record_id.name] = record_id.value
-            values[record_date.name] = record_date.value
+            values[record_id.name] = record_id.data()
+            values[record_date.name] = record_date.data()
 
             # Add modifier values
             for meta_elem in self.metadata:
@@ -2725,7 +2755,6 @@ class DatabaseRecord:
         width, height = size
 
         # Permissions
-        permissions = self.permissions
         level = self.level
         is_new = self.new
 
@@ -2765,8 +2794,10 @@ class DatabaseRecord:
 
         # Record header
         headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
-        headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
-        headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
+        #headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
+        #headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
+        headers.append(self._record_id.layout(padding=((0, pad_h), 0), editable=False))
+        headers.append(self._record_date.layout(editable=False))
         header_key = self.key_lookup('Header')
         header_layout = sg.Col([headers], key=header_key, expand_x=True, background_color=bg_col, justification='l',
                                vertical_alignment='c')
@@ -2874,6 +2905,16 @@ class DatabaseRecord:
         tab_size = (record_w, height - bffr_h)
         mod_lo.set_size(window, self.key_lookup('DetailsCol'), tab_size)
         mod_lo.set_size(window, self.key_lookup('MetaCol'), tab_size)
+
+        # Set the size of the header elements
+        for header in (self._record_id, self._record_date):
+            header.resize(window)
+
+        # Set the size of the metadata elements
+        meta_h = None
+        meta_w = int(width * 0.5)
+        for meta_param in self.metadata:
+            meta_param.resize(window, size=(meta_w, meta_h))
 
         # Expand the size of the record elements
         for record_element in self.modules:
