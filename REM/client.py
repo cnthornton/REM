@@ -2006,7 +2006,12 @@ cipher = Fernet(encrypt_key)
 del encrypt_key
 
 # Load user-defined configuration settings
-CNF_FILE = os.path.join(DIRNAME, 'settings.yaml')
+cnf_file = os.path.join(os.getcwd(), 'settings.yaml')
+if os.path.exists(cnf_file):  # first attempt to find configuration from the current working directroy
+    CNF_FILE = cnf_file
+else:  # fallback to default config in the program directory
+    CNF_FILE = os.path.join(DIRNAME, 'settings.yaml')
+
 CNFG = load_config(CNF_FILE)
 
 # Create the logger
