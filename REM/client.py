@@ -2007,7 +2007,7 @@ del encrypt_key
 
 # Load user-defined configuration settings
 cnf_file = os.path.join(os.getcwd(), 'settings.yaml')
-if os.path.exists(cnf_file):  # first attempt to find configuration from the current working directroy
+if os.path.exists(cnf_file):  # first attempt to find configuration from the current working directory
     CNF_FILE = cnf_file
 else:  # fallback to default config in the program directory
     CNF_FILE = os.path.join(DIRNAME, 'settings.yaml')

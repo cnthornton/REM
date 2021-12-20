@@ -2756,8 +2756,6 @@ class InfoBox(RecordElement):
 
         # Dynamic values
         self.level = 0
-        self.edited = False
-
         self._dimensions = (mod_const.REFBOX_WIDTH, mod_const.REFBOX_HEIGHT)
 
     def reset(self, window):
@@ -2852,11 +2850,20 @@ class InfoBox(RecordElement):
         """
         pass
 
-    def add_reference(self, ref_data):
+    def append(self, data, inplace: bool = True, reindex: bool = True):
         """
-        Add a reference to the info box collection.
+        Add data to the info box collection.
+
+        Arguments:
+            data: new data to append to the table.
+
+            inplace (bool): append to the collection in-place [Default: True].
+
+            reindex (bool): reset the index after appending the new rows to the table [Default: True].
         """
-        pass
+        df = self.collection.append(data, inplace=inplace, reindex=reindex)
+
+        return df
 
     def resize(self, window, size: tuple = None):
         """
@@ -2891,23 +2898,6 @@ class InfoBox(RecordElement):
         Update the display element.
         """
         pass
-
-    def append(self, ref_data, new: bool = False):
-        """
-        Append record references to the collection.
-
-        Arguments:
-            ref_data (Series): reference data to append to the reference collection.
-
-            new (bool): reference is newly created instead of already existing [Default: False].
-
-        Returns:
-            success (bool): reference import was successful.
-        """
-        # Append the reference data to the collection
-        df = self.collection.append(ref_data, new=new)
-
-        return df
 
     def export_references(self):
         """
