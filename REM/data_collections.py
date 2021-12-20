@@ -237,6 +237,32 @@ class DataCollection:
             self.dependant_columns[field] = dependant_fields[field]
 
         try:
+            aliases = entry['Aliases']
+        except KeyError:
+            aliases = {}
+            for column in dtypes:
+                alias_def = settings.fetch_alias_definition(column)
+                if alias_def:
+                    aliases[column] = alias_def
+
+        self.aliases = {}
+        for alias_column in aliases:
+            if alias_column in dtypes:
+                alias_map = aliases[alias_column]
+
+                # Convert values into correct column datatype
+                column_dtype = dtypes[alias_column]
+                if column_dtype in (settings.supported_int_dtypes + settings.supported_cat_dtypes +
+                                    settings.supported_str_dtypes):
+                    alias_map = {settings.format_value(i, column_dtype): j for i, j in alias_map.items()}
+
+                    self.aliases[alias_column] = alias_map
+            else:
+                msg = 'DataCollection {NAME}: alias column {COL} not found in list of display columns'\
+                    .format(NAME=self.name, COL=alias_column)
+                logger.warning(msg)
+
+        try:
             default = entry['Defaults']
         except KeyError:
             default = {}
@@ -533,6 +559,9 @@ class DataCollection:
             deleted_indices = self._deleted_rows()
             df.drop(deleted_indices, inplace=True)
 
+        if isinstance(indices, int):
+            indices = [indices]
+
         if indices is not None:
             df = df.loc[indices]
 
@@ -636,9 +665,61 @@ class DataCollection:
 
         return df
 
+    def format_display(self, field, indices: list = None):
+        """
+        Format the values of a collection field for display.
+
+        Arguments:
+            field (str): collection field to summarize.
+
+            indices (list): format field values for a subset of the collection at the given indices.
+        """
+        is_float_dtype = pd.api.types.is_float_dtype
+        is_integer_dtype = pd.api.types.is_integer_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+
+        aliases = self.aliases
+
+        if indices:
+            df = self.df.copy().loc[indices]
+        else:
+            df = self.data()
+
+        try:
+            display_col = df[field]
+        except KeyError:
+            msg = 'field {COL} not found in the collection dataframe'.format(COL=field)
+            logger.error('DataCollection {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise KeyError(msg)
+
+        dtype = display_col.dtype
+        if is_float_dtype(dtype) and self.dtypes[field] == 'money':
+            display_col = display_col.apply(settings.format_display_money)
+        elif is_datetime_dtype(dtype):
+            display_col = display_col.apply(settings.format_display_date)
+        elif is_bool_dtype(dtype):
+            display_col = display_col.apply(lambda x: '✓' if x is True else '')
+        elif is_integer_dtype(dtype) or is_string_dtype(dtype):
+            if field in aliases:
+                alias_map = aliases[field]
+                display_col = display_col.apply(lambda x: alias_map[x] if x in alias_map else x)
+
+        return display_col.astype('object').fillna('')
+
     def summarize_field(self, field, indices: list = None, statistic: str = None):
         """
         Summarize the values of a field.
+
+        Arguments:
+            field (str): collection field to summarize.
+
+            indices (list): summarize a subset of the collection at the given indices.
+
+            statistic (str): summarize the field using the provided statistic [Default: sum if field is a numeric
+                data type else unique].
         """
         supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
         is_numeric_dtype = pd.api.types.is_numeric_dtype
