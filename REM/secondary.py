@@ -814,11 +814,11 @@ def parameter_window(account, win_size: tuple = None):
     return param_values
 
 
-def add_note_window():
+def add_note_window(note: str = None):
     """
     Display a window with a multiline window for capturing a custom note.
     """
-    note = None
+    note_text = '' if not note else note
 
     # Layout options
     pad_frame = mod_const.FRAME_PAD
@@ -847,7 +847,7 @@ def add_note_window():
     #elem_layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
     #               [sg.Multiline('', key=elem_key, size=(width, nrow), font=font,
     #                             background_color=bg_col, text_color=text_col, border_width=1)]]
-    elem_layout = [[sg.Multiline('', key=elem_key, size=(width, nrow), font=font, background_color=bg_col,
+    elem_layout = [[sg.Multiline(note_text, key=elem_key, size=(width, nrow), font=font, background_color=bg_col,
                                  text_color=text_col, border_width=1)]]
 
     layout = [[sg.Col(elem_layout, pad=(pad_frame, pad_frame), expand_x=True, element_justification='l',
