@@ -643,13 +643,46 @@ class DataCollection:
 
         return df
 
-    def set_state(self, field, flag, indices: list = None, inplace: bool = True):
+    def get_state(self, state_field, indices: list = None):
         """
-        Set the value for the state field at the given indices.
+        Get the value for the state field at the given indices.
+
+        Arguments:
+            state_field (str): retrieve the value of the given state field.
+
+            indices (list): retrieve state values at the given indices [Default: all].
         """
         state_fields = self._state_fields
         try:
-            column = state_fields[field]
+            field = state_fields[state_field]
+        except KeyError:
+            raise KeyError('field must be one of {}'.format(list(state_fields)))
+
+        df = self.df.copy()
+
+        if indices is None:
+            indices = df.index
+
+        state = df.loc[indices, field]
+
+        return state.squeeze()
+
+    def set_state(self, state_field, flag, indices: list = None, inplace: bool = True):
+        """
+        Set the value for the state field at the given indices.
+
+        Arguments:
+            state_field (str): set the value for the given state field.
+
+            flag (bool): value to set the state field to.
+
+            indices (list): set the state at the given indices [Default: all].
+
+            inplace (bool): modify the state field in-place [Default: True].
+        """
+        state_fields = self._state_fields
+        try:
+            field = state_fields[state_field]
         except KeyError:
             raise KeyError('field must be one of {}'.format(list(state_fields)))
 
@@ -661,7 +694,7 @@ class DataCollection:
         if indices is None:
             indices = df.index
 
-        df.loc[indices, column] = flag
+        df.loc[indices, field] = flag
 
         return df
 
