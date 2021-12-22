@@ -191,7 +191,7 @@ def debug_window():
 
     bttn_layout = [[sg.Button('', key='-CANCEL-', image_data=mod_const.CANCEL_ICON, image_size=mod_const.BTTN_SIZE,
                               pad=(pad_el, 0), tooltip='Stop debugging'),
-                    sg.Button('', key='-CLEAR-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+                    sg.Button('', key='-CLEAR-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
                               bind_return_key=True, pad=(pad_el, 0), tooltip='Clear debug output')]]
 
     debug_layout = [[sg.Text('Log level:', pad=((pad_frame, pad_el), (pad_frame, pad_v)), font=bold_font,

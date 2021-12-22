@@ -706,7 +706,7 @@ class BankRule:
                            sg.Combo(entries, default_value='', key=entry_key, size=param_size, pad=((0, pad_el * 2), 0),
                                     font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
                                     enable_events=True, tooltip='Select reconciliation account'),
-                           sg.Button('', key=param_key, image_data=mod_const.PARAM_ICON, image_size=(28, 28),
+                           sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON, image_size=(28, 28),
                                      button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
                          expand_x=True, justification='l', element_justification='l', vertical_alignment='b',
                          background_color=bg_col)

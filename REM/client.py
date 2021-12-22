@@ -1031,15 +1031,16 @@ class SettingsManager:
 
         return dt_mod
 
-    def get_icon_path(self, icon):
+    def get_icon_path(self, icon: str = None):
         """
         Return the path of an icon, if exists.
         """
-        icon = "{}.png".format(icon)
+        icon = "{}.png".format(icon) if icon else 'blank_icon.png'
+
         icon_path = os.path.join(self.icons_dir, icon)
         if not os.path.exists(icon_path):
             logger.warning('unable to open icon PNG {ICON}'.format(ICON=icon))
-            icon_path = None
+            icon_path = os.path.join(self.icons_dir, 'blank_icon.png')
 
         return icon_path
 
