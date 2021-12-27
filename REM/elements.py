@@ -1554,7 +1554,7 @@ class DataTable(RecordElement):
         if any([modifiers['fill'], modifiers['sort'], modifiers['export']]):
             options_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                               [sg.Canvas(size=(0, bar_h), background_color=header_col),
-                               sg.Button('', key=options_key, image_data=mod_const.OPTIONS_ICON, border_width=0,
+                               sg.Button('', key=options_key, image_data=mod_const.SETTINGS_ICON, border_width=0,
                                          button_color=(text_col, header_col),
                                          tooltip='Show additional table options ({})'.format(options_shortcut))]]
         else:
@@ -2762,6 +2762,20 @@ class DataList(RecordElement):
                                       .format(COL=flag_column))
                 logger.warning(msg)
 
+        try:  # boolean fields can be displayed as a toggle option
+            display_options = entry['Options']
+        except KeyError:
+            display_options = []
+
+        self.options = {}
+        for option in display_options:
+            if option in columns:
+                self.options[option] = display_options[option]
+            else:
+                msg = self.format_log('option field {COL} not found in the list of data fields'
+                                      .format(COL=option))
+                logger.warning(msg)
+
         try:
             summary_rules = entry['SummaryRules']
         except KeyError:
@@ -2883,7 +2897,7 @@ class DataList(RecordElement):
         font = mod_const.BOLD_LARGE_FONT
 
         text_col = mod_const.TEXT_COL
-        bg_col = self.bg_col
+        bg_col = mod_const.TBL_HEADER_COL
 
         pad_el = mod_const.ELEM_PAD
 
@@ -2915,11 +2929,15 @@ class DataList(RecordElement):
         editable = self.editable
         display_cols = self.display_columns
         flag_cols = self.flags
+        option_cols = self.options
         entries = window[self.key_lookup('Element')]
 
         row = self.collection.data(indices=index).squeeze()
+        display_row = self.collection.format_display(indices=index).squeeze()
 
         print('creating a list entry for index {}'.format(index))
+        print(row)
+        print(display_row)
 
         entry_elements = {i: '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=i, INDEX=index) for
                           i in ('Entry', 'Annotation', 'Header', 'Delete', 'Edit', 'Notes', 'Warnings', 'Options')}
@@ -2932,11 +2950,12 @@ class DataList(RecordElement):
         # layout options
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
+        pad_action = int(pad_h / 2)
 
         font = mod_const.LARGE_FONT
 
         text_color = mod_const.TEXT_COL
-        separator_color = mod_const.FRAME_COL
+        icon_color = separator_color = mod_const.FRAME_COL
         disabled_text_color = mod_const.DISABLED_TEXT_COL
         bg_color = self.bg_col
         select_text_color = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
@@ -2945,41 +2964,43 @@ class DataList(RecordElement):
         frame_w = width - pad_el * 2
         frame_h = mod_const.LISTBOX_HEIGHT
 
-        icon_w = mod_const.RE_ICON_SIZE[0] + pad_h * 2
+        icon_w = int(frame_h * 0.8)
         annot_w = 5
         flag_size = mod_const.FLAG_ICON_SIZE
 
         # List entry layout
         if self._notes_field:
-            notes = row[self._notes_field]
-            edit_visible = True
+            notes = display_row[self._notes_field]
+            can_edit = True
         else:
-            notes = ''
-            edit_visible = False
+            notes = None
+            can_edit = False
+
+        note_text = '' if pd.isna(notes) else notes
 
         if self._warning_field:
-            warning_text = row[self._warning_field]
+            warning = display_row[self._warning_field]
         else:
-            warning_text = ''
+            warning = None
 
         # Annotation strip
         annot_key = entry_elements['Annotation']
-        column1 = sg.Col([[sg.Canvas(key=annot_key, size=(annot_w, frame_h), background_color=bg_color)]],
-                         background_color=bg_color)
+        column1 = sg.Col([[sg.Canvas(key=annot_key, size=(annot_w, frame_h), background_color=icon_color)]],
+                         background_color=icon_color)
 
         # Listbox icon
         icon_path = settings.get_icon_path(self.icon)
         if icon_path is None:
             icon_path = settings.get_icon_path('default')
 
-        column2 = sg.Col([[sg.VerticalSeparator(color=separator_color),
-                           sg.Image(filename=icon_path, size=(icon_w, frame_h), pad=(0, 0), background_color=bg_color),
-                           sg.VerticalSeparator(color=separator_color)]],
-                         background_color=bg_color, element_justification='c', vertical_alignment='c')
+        column2 = sg.Col([[sg.Image(filename=icon_path, size=(icon_w, frame_h), pad=(0, 0),
+                                    background_color=icon_color)]],
+                         background_color=icon_color, element_justification='c', vertical_alignment='c')
 
         # List entry data and element action buttons
+
         # Listbox header and options button
-        header = row[self._header_field]
+        header = display_row[self._header_field]
         header_key = entry_elements['Header']
         self.bindings.append(header_key)
         header_layout = [sg.Text(header, key=header_key, enable_events=True, font=font, text_color=select_text_color,
@@ -2989,23 +3010,30 @@ class DataList(RecordElement):
             flag_entry = flag_cols[flag_col]
             flag_name = flag_entry['Description']
             flag_icon = flag_entry['Icon']
+            print('reference {} flag {} has icon {}'.format(self.name, flag_col, flag_icon))
 
             flag_key = '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=flag_col, INDEX=index)
             entry_elements[flag_col] = flag_key
 
             try:
-                flag_visible = row[flag_col]
+                flag_visible = bool(int(row[flag_col]))
             except KeyError:
                 msg = self.format_log('missing value for flag {FIELD}'.format(FIELD=flag_col))
                 logger.warning(msg)
-                continue
+                flag_visible = False
+            except (ValueError, TypeError):
+                msg = self.format_log('unknown value "{VAL}" set for flag {FIELD}'
+                                      .format(VAL=row[flag_col], FIELD=flag_col))
+                logger.warning(msg)
+                flag_visible = False
 
-            print('setting visibility of flag {} to {}'.format(flag_name, flag_visible))
+            print('setting visibility of flag {} to {} ({})'.format(flag_name, flag_visible, type(flag_visible)))
             flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((pad_el, 0), 0),
                                    visible=flag_visible, background_color=bg_color, tooltip=flag_name)
 
             header_layout.append(flag_layout)
 
+        warning_text = '' if pd.isna(warning) else warning
         warnings_key = entry_elements['Warnings']
         warnings_icon = mod_const.WARNING_FLAG_ICON
         warning_visible = True if warning_text else False
@@ -3020,7 +3048,7 @@ class DataList(RecordElement):
         for i, column in enumerate(display_cols):
             col_alias = display_cols[column]
             try:
-                col_value = row[column]
+                col_value = display_row[column]
             except KeyError:
                 msg = self.format_log('missing value for display field {FIELD}'.format(FIELD=column))
                 logger.warning(msg)
@@ -3037,10 +3065,10 @@ class DataList(RecordElement):
 
         # Listbox notes
         notes_key = entry_elements['Notes']
-        row3 = [sg.Text(notes, key=notes_key, size=(20, 1), font=font, text_color=disabled_text_color,
-                        background_color=bg_color)]
+        row3 = [sg.Text(note_text, key=notes_key, size=(20, 1), font=font, text_color=disabled_text_color,
+                        background_color=bg_color, tooltip=note_text)]
 
-        column3 = sg.Col([row1, row2, row3], pad=(pad_el, pad_el), background_color=bg_color, expand_x=True)
+        column3 = sg.Col([row1, row2, row3], pad=(pad_h, pad_h), background_color=bg_color, expand_x=True)
 
         # Listbox actions
         options_key = entry_elements['Options']
@@ -3048,14 +3076,16 @@ class DataList(RecordElement):
         edit_key = entry_elements['Edit']
         self.bindings.extend([edit_key, delete_key, options_key])
 
-        action_layout = [sg.Button('', key=delete_key, image_data=mod_const.DELETE_ICON, pad=(pad_h, 0),
-                                   button_color=(text_color, bg_color), disabled=(not can_delete)),
-                         sg.Button('', key=edit_key, image_data=mod_const.EDIT_ICON, pad=(pad_h, 0),
-                                   button_color=(text_color, bg_color), visible=edit_visible),
-                         sg.Button('', key=options_key, image_data=mod_const.OPTIONS_ICON, pad=(pad_h, 0),
-                                   border_width=0, button_color=(text_color, bg_color), tooltip='Show options')
+        options_menu = ['&Options', [option_cols[i] for i in option_cols]]
+        action_layout = [sg.Button('', key=delete_key, image_data=mod_const.DISCARD_ICON, pad=(pad_action, 0),
+                                   border_width=0, button_color=(text_color, bg_color), visible=can_delete),
+                         sg.Button('', key=edit_key, image_data=mod_const.TAKE_NOTE_ICON, pad=(pad_action, 0),
+                                   border_width=0, button_color=(text_color, bg_color), visible=can_edit),
+                         sg.ButtonMenu('', options_menu, key=options_key, image_data=mod_const.OPTIONS_ICON,
+                                       pad=(pad_action, 0), border_width=0, button_color=(text_color, bg_color),
+                                       tooltip='Show options')
                          ]
-        column4 = sg.Col([action_layout], pad=(pad_h, 0), background_color=bg_color, element_justification='c',
+        column4 = sg.Col([action_layout], pad=(pad_action, 0), background_color=bg_color, element_justification='c',
                          vertical_alignment='c')
 
         # Create the entry frame
@@ -3066,7 +3096,6 @@ class DataList(RecordElement):
 
         # Add the entry frame to the entries column
         window.extend_layout(entries, layout)
-        # entries.contents_changed()
 
         # Reset the added state to False
         self.collection.set_state('added', False, indices=index)
@@ -3084,7 +3113,8 @@ class DataList(RecordElement):
         flag_cols = self.flags
         display_cols = self.display_columns
 
-        row = self.collection.data(indices=index)
+        row = self.collection.data(indices=index).squeeze()
+        display_row = self.collection.format_display(indices=index).squeeze()
 
         # Update visibility of flag icons
         for flag_col in flag_cols:
@@ -3093,27 +3123,34 @@ class DataList(RecordElement):
             window[flag_key].update(visible=flag_visible)
 
         # Update values of the display data
+        header = display_row[self._header_field]
+        header_key = self.key_lookup('{NAME}:{INDEX}'.format(NAME='Header', INDEX=index))
+        window[header_key].update(value=header)
+
         for column in display_cols:
-            col_value = row[column]
+            col_value = display_row[column]
             col_key = self.key_lookup('{NAME}:{INDEX}'.format(NAME=column, INDEX=index))
             window[col_key].update(value=col_value)
 
         # Update note text
         notes_key = self.key_lookup('Notes:{}'.format(index))
         if self._notes_field:
-            notes = row[self._notes_field]
+            notes = display_row[self._notes_field]
         else:
-            notes = ''
+            notes = None
 
-        window[notes_key].update(value=notes)
+        note_text = '' if pd.isna(notes) else notes
+        window[notes_key].update(value=note_text)
+        window[notes_key].set_tooltip(note_text)
 
         # Update warning tooltip
         warnings_key = self.key_lookup('Warnings:{}'.format(index))
         if self._warning_field:
-            warning_text = row[self._warning_field]
+            warning = display_row[self._warning_field]
         else:
-            warning_text = ''
+            warning = None
 
+        warning_text = '' if pd.isna(warning) else warning
         warning_visible = True if warning_text else False
         window[warnings_key].set_tooltip(warning_text)
         window[warnings_key].update(visible=warning_visible)
@@ -3158,6 +3195,9 @@ class DataList(RecordElement):
 
             mod_lo.set_size(window, entry_key, (listbox_w, listbox_h))
 
+            notes_key = self.key_lookup('Notes:{}'.format(index))
+            window[notes_key].expand(expand_x=True)
+
         frame_key = self.key_lookup('Frame')
         new_size = (new_w, new_h)
         mod_lo.set_size(window, frame_key, new_size)
@@ -3176,6 +3216,8 @@ class DataList(RecordElement):
 
         df = collection.data(current=False)
         annotations = self.annotate_display(df)
+        print('annotations are:')
+        print(annotations)
 
         # Create or update index entries
         nnew = 0
@@ -3199,17 +3241,21 @@ class DataList(RecordElement):
 
             # Annotate the entry
             annotation_key = self.key_lookup('Annotation:{}'.format(index))
+            print(annotation_key)
             try:
                 annotation_code = annotations[index]
             except KeyError:
-                continue
-
-            annotation_entry = annotation_rules[annotation_code]
-            bg_color = annotation_entry['BackgroundColor']
-            tooltip = annotation_entry['Description']
+                print('index has no annotation')
+                bg_color = mod_const.FRAME_COL
+                tooltip = ''
+            else:
+                annotation_entry = annotation_rules[annotation_code]
+                bg_color = annotation_entry['BackgroundColor']
+                tooltip = annotation_entry['Description']
+                print('index has annotation {} with color {} and description {}'.format(annotation_code, bg_color, tooltip))
 
             window[annotation_key].set_tooltip(tooltip)
-            window[annotation_key].update(background_color=bg_color)
+            window[annotation_key].Widget.config(background=bg_color)
 
         if nnew > 0:
             self.resize(window)
@@ -3222,6 +3268,9 @@ class DataList(RecordElement):
         if df.empty or rules is None:
             return {}
 
+        print('annotating list entry {}'.format(self.name))
+        print(df)
+
         annotations = {}
         rows_annotated = []
         for annot_code in rules:
@@ -3229,12 +3278,16 @@ class DataList(RecordElement):
                                          .format(CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
+            print(annot_condition)
             try:
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
                 logger.error(self.format_log('failed to annotate list entries using annotation rule {CODE} - {ERR}'
                                              .format(CODE=annot_code, ERR=e)))
                 continue
+
+            print('annotation results are:')
+            print(results)
 
             for row_index, result in results.iteritems():
                 if result:  # condition for the annotation has been met

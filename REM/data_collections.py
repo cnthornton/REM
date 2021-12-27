@@ -207,6 +207,7 @@ class DataCollection:
         self.name = name
 
         self.dtypes = {self._deleted_column: 'bool', self._edited_column: 'bool', self._added_column: 'bool'}
+        self._fields = []
         try:
             dtypes = entry['Columns']
         except KeyError:
@@ -214,6 +215,7 @@ class DataCollection:
         else:
             supported_dtypes = settings.get_supported_dtypes()
             for field, dtype in dtypes.items():
+                self._fields.append(field)
                 if dtype not in supported_dtypes:
                     msg = 'the data type specified for field "{COL}" is not a supported data type - supported data ' \
                           'types are {TYPES}'.format(COL=field, TYPES=', '.join(supported_dtypes))
@@ -698,7 +700,27 @@ class DataCollection:
 
         return df
 
-    def format_display(self, field, indices: list = None):
+    def format_display(self, indices: list = None):
+        """
+        Format the table values for display.
+        """
+        # Subset dataframe by specified columns to display
+        display_df = pd.DataFrame()
+        fields = self._fields
+        for field in fields:
+            try:
+                col_to_add = self.format_display_field(field, indices=indices)
+            except Exception as e:
+                msg = 'failed to format field {COL} for display'.format(COL=field)
+                logger.exception('DataCollection {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+                continue
+
+            display_df[field] = col_to_add
+
+        return display_df.astype('object').fillna('')
+
+    def format_display_field(self, field, indices: list = None):
         """
         Format the values of a collection field for display.
 
@@ -716,7 +738,7 @@ class DataCollection:
         aliases = self.aliases
 
         if indices:
-            df = self.df.copy().loc[indices]
+            df = self.data(current=False, indices=indices)
         else:
             df = self.data()
 
@@ -764,7 +786,7 @@ class DataCollection:
             statistic = None
 
         if indices:
-            df = self.df.copy().loc[indices]
+            df = self.data(current=False, indices=indices)
         else:
             df = self.data()
 
