@@ -1072,7 +1072,7 @@ class RecordCollection(DataCollection):
         return row_ids
 
 
-class ReferenceCollection(DataCollection):
+class ReferenceCollection(RecordCollection):
     """
     Collections of record reference data.
     """
@@ -1091,12 +1091,11 @@ class ReferenceCollection(DataCollection):
                               'added': self._added_column, 'approved': 'IsApproved', 'child': 'IsChild',
                               'link': 'IsHardLink'}
 
-        self.dtypes = {self._deleted_column: 'bool', self._edited_column: 'bool', self._added_column: 'bool',
-                       'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
-                       'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool', 'IsHardLink': 'bool',
-                       'IsChild': 'bool', 'IsDeleted': 'bool'}
+        self.ref_dtypes = {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
+                           'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool',
+                           'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool'}
 
-        self.df = pd.DataFrame(columns=list(self.dtypes))
+        self.ref_df = pd.DataFrame(columns=list(self.ref_dtypes))
 
 #    def merge(self, df: pd.DataFrame = None, ref_df: pd.DataFrame = None):
 #        """

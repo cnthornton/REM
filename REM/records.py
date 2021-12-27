@@ -622,7 +622,6 @@ class RecordEntry:
         # Check if references exists in the table already
         #exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
         exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
-        print(exists)
         existing_ids = exists[exists].index.tolist()
         new_ids = exists[~exists].index.tolist()
 
@@ -779,7 +778,6 @@ class RecordEntry:
             return statements
 
         exists = self.confirm_saved(df[id_field].values.tolist(), id_field=id_field)
-        print(exists)
         existing_ids = exists[exists].index.tolist()
         new_ids = exists[~exists].index.tolist()
 
@@ -882,13 +880,8 @@ class RecordEntry:
 
                     # Get hard-linked references of the existing records
                     current_ids = exist_df['RecordID'].tolist()
-                    print('existing records:')
-                    print(exist_df)
                     exist_ref_df = self.import_references(current_ids, association)
-                    print('existing references:')
-                    print(exist_ref_df)
                     assoc_record_ids = exist_ref_df['RecordID'].tolist()
-                    print('records with existing references: {}'.format(assoc_record_ids))
 
                     # Update hard-linked record element values to match record element values
                     exist_ref_df = exist_ref_df[(exist_ref_df['IsHardLink']) & (~exist_ref_df['ReferenceID'].isin(ref_ids))]
@@ -923,15 +916,11 @@ class RecordEntry:
 
                     # Create new hard-linked records
                     create_df = new_df.copy()
-                    print('new records with hard-link associations:')
-                    print(create_df)
                     if condition and not create_df.empty:
                         create_df = create_df[mod_dm.evaluate_condition(create_df, condition)]
 
                     # Add existing records w/o hard-links to the "add df" so that new hard-linked records can be created
                     missing_df = exist_df[~exist_df['RecordID'].isin(assoc_record_ids)]
-                    print('records missing hard-linked associations:')
-                    print(missing_df)
                     if condition and not missing_df.empty:
                         missing_df = missing_df[mod_dm.evaluate_condition(missing_df, condition)]
 
@@ -1479,40 +1468,6 @@ class DatabaseRecord:
         except KeyError:
             headers = {}
 
-        #try:
-        #    id_entry = headers[self.id_field]
-        #except KeyError:
-        #    id_entry = {'ElementType': 'input', 'DataType': 'varchar', 'Description': 'Record ID', 'IsEditable': False}
-        #else:
-        #    id_entry['IsEditable'] = False
-        #    id_entry['IsHidden'] = False
-        #    id_entry['ElementType'] = 'input'
-        #    id_entry['DataType'] = 'varchar'
-        #try:
-        #    param = mod_param.initialize_parameter(self.id_field, id_entry)
-        #except Exception as e:
-        #    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
-        #    raise AttributeError(e)
-        #else:
-        #    self._record_id = param
-        #    self.elements += param.elements
-
-        #try:
-        #    date_entry = headers[self.date_field]
-        #except KeyError:
-        #    date_entry = {'ElementType': 'date', 'DataType': 'date', 'Description': 'Record Date', 'IsEditable': False}
-        #else:
-        #    date_entry['IsEditable'] = False
-        #    date_entry['ElementType'] = 'date'
-        #    date_entry['DataType'] = 'date'
-        #try:
-        #    param = mod_param.initialize_parameter(self.date_field, date_entry)
-        #except Exception as e:
-        #    logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
-        #    raise AttributeError(e)
-        #else:
-        #    self._record_date = param
-        #    self.elements += param.elements
         try:
             id_entry = headers[self.id_field]
         except KeyError:
@@ -1542,23 +1497,6 @@ class DatabaseRecord:
             raise AttributeError(e)
 
         # Record metadata elements
-        #self.metadata = []
-        #try:
-        #    metadata = entry['Metadata']
-        #except KeyError:
-        #    self.metadata = []
-        #else:
-        #    for param_name in metadata:
-        #        param_entry = metadata[param_name]
-        #        try:
-        #            param = mod_param.initialize_parameter(param_name, param_entry)
-        #        except Exception as e:
-        #            logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
-
-        #            raise AttributeError(e)
-
-        #        self.metadata.append(param)
-        #        self.elements += param.elements
         self.metadata = []
         try:
             metadata = entry['Metadata']
@@ -1606,12 +1544,16 @@ class DatabaseRecord:
                                              .format(NAME=element_name))
 
                     # Set the object type of the record element.
-                    if etype == 'table':
+                    if etype in ('data_table', 'table'):
                         element_class = mod_elem.DataTable
-                    elif etype == 'component_table':
+                    elif etype in ('component_table', 'components'):
                         element_class = mod_elem.ComponentTable
-                    elif etype in ('refbox', 'reference'):
-                        element_class = mod_elem.ReferenceBox
+                    #elif etype in ('refbox', 'reference'):
+                    #    element_class = mod_elem.ReferenceBox
+                    elif etype in ('data_list', 'list'):
+                        element_class = mod_elem.DataList
+                    elif etype in ('reference_list', 'reference'):
+                        element_class = mod_elem.ReferenceList
                     elif etype in ('dependent_variable', 'dependent'):
                         element_class = mod_elem.DependentVariable
                     elif etype in ('text_variable', 'text'):
@@ -1721,18 +1663,6 @@ class DatabaseRecord:
         logger.debug('RecordType {NAME}: {DATA}'.format(NAME=self.name, DATA=record_data))
 
         # Set header values from required columns
-        #try:
-        #    record_id_value = record_data[self.id_field]
-        #except KeyError:
-        #    raise ImportError('input record data is missing required column "{}"'.format(self.id_field))
-        #else:
-        #    self._record_id.format_value(record_id_value)
-        #try:
-        #    record_date_value = record_data[self.date_field]
-        #except KeyError:
-        #    raise ImportError('input record data is missing required column "{}"'.format(self.date_field))
-        #else:
-        #    self._record_date.format_value(record_date_value)
         try:
             self._record_id.format_value(record_data)
         except KeyError:
@@ -1756,18 +1686,6 @@ class DatabaseRecord:
                 logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
                                .format(NAME=self.name, COL=param_name))
 
-            #try:
-            #    value = record_data[param_name]
-            #except KeyError:
-            #    logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
-            #                   .format(NAME=self.name, COL=param_name))
-            #else:
-            #    if not pd.isna(value):
-            #        logger.debug('RecordType {NAME}: initializing metadata field "{PARAM}" with value "{VAL}"'
-            #                     .format(NAME=self.name, PARAM=param_name, VAL=value))
-            #        #meta_param.format_value(value)
-            #        meta_param.update_value(value)
-
         # Populate the record elements with data
         record_id = self.record_id()
         if not record_id:
@@ -1779,20 +1697,23 @@ class DatabaseRecord:
             element_name = record_element.name
             etype = record_element.etype
 
-            if etype == 'table':  # data table
-                table_columns = record_element.columns
-                table_data = pd.Series(index=table_columns)
-                for table_column in table_columns:
+            if etype in ('table', 'list'):  # data table or data list
+                element_fields = record_element.columns
+                element_data = pd.Series(index=element_fields)
+                for element_field in element_fields:
                     try:
-                        table_data[table_column] = record_data[table_column]
+                        element_data[element_field] = record_data[element_field]
                     except KeyError:
                         continue
 
-                record_element.append(table_data)
+                record_element.append(element_data)
 
-            elif etype == 'component_table':  # component table
+            elif etype == 'component':  # component table
                 assoc_rule = record_element.association_rule
-                comp_entry = settings.records.fetch_rule(record_element.record_type)
+                ref_entry = settings.records.fetch_rule(record_element.record_type)
+
+                logger.debug('RecordType {NAME}: initializing component table "{PARAM}" with association "{TYPE}"'
+                             .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
 
                 # Load the reference entries defined by the given association rule
                 if assoc_rule in references:  # use provided reference entries instead of importing from reference table
@@ -1802,20 +1723,24 @@ class DatabaseRecord:
                     ref_data = record_entry.import_references(record_id, assoc_rule)
 
                 if ref_data.empty:
-                    logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations for component table {ELEM}'
-                                 .format(NAME=self.name, ID=record_id, TYPE=assoc_rule, ELEM=element_name))
+                    logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
+                                 .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
 
                 import_ids = ref_data['ReferenceID']
 
                 # Load the component records
-                import_df = comp_entry.load_records(import_ids)
+                import_df = ref_entry.load_records(import_ids)
                 import_df = import_df[[i for i in import_df.columns if i in record_element.columns]]
                 record_element.append(import_df)
 
-            elif etype == 'refbox':  # reference box
+            elif etype == 'reference':  # reference list
                 assoc_rule = record_element.association_rule
 
+                logger.debug('RecordType {NAME}: initializing reference list "{PARAM}" with association "{TYPE}"'
+                             .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
+
+                # Load the reference entries defined by the given association rule
                 if assoc_rule in references:  # use provided reference entries instead of importing from reference table
                     assoc_refs = references[assoc_rule]
                     ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
@@ -1823,31 +1748,42 @@ class DatabaseRecord:
                     ref_data = record_entry.import_references(record_id, assoc_rule)
 
                 if ref_data.empty:
-                    logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations'
+                    logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
 
-                elif ref_data.shape[0] > 1:
-                    logger.warning('RecordType {NAME}: more than one {TYPE} reference found for record {ID}'
-                                   .format(NAME=self.name, TYPE=assoc_rule, ID=self.record_id))
+                record_element.append(ref_data)
 
-                logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
-                             .format(NAME=self.name, REF=element_name))
-                record_element.referenced = record_element.import_reference(ref_data)
+            #elif etype == 'refbox':  # reference box
+            #    assoc_rule = record_element.association_rule
+
+            #    if assoc_rule in references:  # use provided reference entries instead of importing from reference table
+            #        assoc_refs = references[assoc_rule]
+            #        ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
+            #    else:
+            #        ref_data = record_entry.import_references(record_id, assoc_rule)
+
+            #    if ref_data.empty:
+            #        logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations'
+            #                     .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
+            #        continue
+
+            #    elif ref_data.shape[0] > 1:
+            #        logger.warning('RecordType {NAME}: more than one {TYPE} reference found for record {ID}'
+            #                       .format(NAME=self.name, TYPE=assoc_rule, ID=self.record_id))
+
+            #    logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
+            #                 .format(NAME=self.name, REF=element_name))
+            #    record_element.referenced = record_element.import_reference(ref_data)
                 #record_element.append(ref_data)
-                if record_element.referenced:
-                    logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
-                                .format(NAME=self.name, REF=element_name))
-                else:
-                    logger.warning('RecordType {NAME}: failed to load reference information for reference box {REF}'
-                                   .format(NAME=self.name, REF=element_name))
+            #    if record_element.referenced:
+            #        logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
+            #                    .format(NAME=self.name, REF=element_name))
+            #    else:
+            #        logger.warning('RecordType {NAME}: failed to load reference information for reference box {REF}'
+            #                       .format(NAME=self.name, REF=element_name))
 
-            else:  # record variable element (reference or record variable)
-                #try:
-                #    record_element.format_value(record_data)
-                #except KeyError:
-                #    logger.warning('RecordType {NAME}: input data is missing a value for data element "{PARAM}"'
-                #                   .format(NAME=self.name, PARAM=element_name))
+            else:  # record variable element (dependent or record variables)
                 try:
                     value = record_data[element_name]
                 except KeyError:
@@ -1857,7 +1793,6 @@ class DatabaseRecord:
                     if not pd.isna(value):
                         logger.debug('RecordType {NAME}: initializing data element "{PARAM}" with value "{VAL}"'
                                      .format(NAME=self.name, PARAM=element_name, VAL=value))
-                        #record_element.value = record_element.format_value(value)
                         record_element.update_value(value)
                     else:
                         logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
@@ -1899,7 +1834,7 @@ class DatabaseRecord:
 
         # Remove unsaved components
         for record_element in record_elements:
-            if record_element.etype != 'component_table':
+            if record_element.etype != 'component':
                 continue
 
             comp_type = record_element.record_type
@@ -2065,7 +2000,7 @@ class DatabaseRecord:
         if record_element is not None:
             logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
                          .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
-            if record_element.etype == 'component_table':
+            if record_element.etype == 'component':
                 try:
                     add_bttn = record_element.fetch_parameter('Add', filters=False)
                     add_key, add_hkey = add_bttn.key_lookup()
@@ -2196,7 +2131,6 @@ class DatabaseRecord:
             record_data = pd.Series(index=header)
             creation_date = record_date
         else:
-            print(record_data)
             if isinstance(record_data, pd.DataFrame):
                 if record_data.empty:
                     msg = 'Record {ID}: unable to create record IDs when no components were provided'\
@@ -2234,7 +2168,6 @@ class DatabaseRecord:
         for default_col in defaults:
             if default_col in header:
                 default_value = defaults[default_col]
-                print('filling default column {} with value {}'.format(default_col, default_value))
                 if pd.isna(default_value):
                     continue
 
@@ -2415,14 +2348,6 @@ class DatabaseRecord:
         # Prepare to save the record values
         logger.debug('Record {ID}: preparing database transaction statements'.format(ID=record_id))
         try:
-            #if self.new or save_all:  # export all values if record is new or if indicated to do so
-            #    logger.debug('RecordEntry {NAME}, Record {ID}: exporting all record values'
-            #                 .format(NAME=self.name, ID=record_id))
-            #    record_data = self.export_values()
-            #else:  # export only edited values and component table rows
-            #    logger.debug('RecordEntry {NAME}, Record {ID}: exporting only values for record elements that were '
-            #                 'edited'.format(NAME=self.name, ID=record_id))
-            #    record_data = self.export_values(edited_only=True)
             logger.debug('RecordEntry {NAME}, Record {ID}: exporting record values'
                          .format(NAME=self.name, ID=record_id))
             record_data = self.export_values()
@@ -2437,27 +2362,31 @@ class DatabaseRecord:
 
         # Prepare to save record references
         try:
-            refbox_elements = self.fetch_element('refbox', by_type=True)
+            refbox_elements = self.fetch_element('reference', by_type=True)
         except KeyError:
             refbox_elements = []
 
         for refbox in refbox_elements:
             association_rule = refbox.association_rule
 
-            if self.new or save_all or refbox.edited:  # export if record is new, indicated, or reference edited
-                logger.debug('Record {ID}: preparing export statements for reference "{ELEM}"'
-                             .format(ID=record_id, ELEM=refbox.name))
-                ref_data = refbox.export_reference()
-            else:  # skip exporting the reference
-                logger.debug('RecordEntry {NAME}, Record {ID}: reference {REF} will not be exported'
-                             .format(NAME=self.name, ID=record_id, REF=refbox.name))
-                continue
-
+            if self.new or save_all:  # export all referenced if record is new or otherwise indicated
+                logger.debug('Record {ID}: preparing export statements for all "{ASSOC}" references'
+                             .format(ID=record_id, ASSOC=association_rule))
+                ref_data = refbox.data()
+            else:  # export only the added references
+                logger.debug('Record {ID}: preparing export statements for added "{ASSOC}" references'
+                             .format(ID=record_id, ASSOC=association_rule))
+                ref_data = refbox.data(added_rows=True)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
+
+            logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
+                         .format(ID=record_id, ASSOC=association_rule))
+            deleted_df = refbox.data(deleted_rows=True)
+            statements = record_entry.delete_database_references(deleted_df, association_rule, statements=statements)
 
         # Prepare to save record components
         try:
-            component_tables = self.fetch_element('component_table', by_type=True)
+            component_tables = self.fetch_element('component', by_type=True)
         except KeyError:
             component_tables = []
 
@@ -2635,7 +2564,7 @@ class DatabaseRecord:
                                    .format(NAME=report_title, SEC=heading, COMP=component))
                     continue
                 else:
-                    if comp_table.etype != 'component_table':
+                    if comp_table.etype != 'component':
                         logger.warning('{NAME}, Heading {SEC}: Component "{COMP}" defined in report configuration must '
                                        'be a component table'.format(NAME=report_title, SEC=heading, COMP=component))
                         continue
@@ -2852,7 +2781,6 @@ class DatabaseRecord:
                 param_name = param.name
                 can_edit = editable and param.permissions in user_priv
 
-                print('metadata parameter {} is editable: {}'.format(param_name, can_edit))
                 annotation_layout.append([param.layout(editable=can_edit, level=level)])
         else:  # don't show tab for new records or record w/o configured metadata
             metadata_visible = False
@@ -2919,19 +2847,16 @@ class DatabaseRecord:
         # Expand the size of the record elements
         for record_element in self.modules:
             etype = record_element.etype
-            if etype == 'multiline':  # multiline data elements
+            if etype == 'multiline':  # multiline data variable
                 elem_h = None
                 elem_w = width - (pad_w * 2 + scroll_w)
-            elif etype == 'table':  # data table elements
+            elif etype in ('table', 'component'):  # data table type
                 elem_h = None
                 elem_w = width - (pad_w * 2 + scroll_w)
-            elif etype == 'refbox':  # data table elements
-                elem_h = mod_const.REFBOX_HEIGHT
+            elif etype in ('list', 'reference'):  # data list type
+                elem_h = mod_const.LISTBOX_HEIGHT
                 elem_w = width - (pad_w * 2 + scroll_w)
-            elif etype == 'component_table':
-                elem_h = None
-                elem_w = width - (pad_w * 2 + scroll_w)
-            else:  # data element types or element reference
+            else:  # data variable type
                 elem_h = None
                 elem_w = int(width * 0.5)
 
