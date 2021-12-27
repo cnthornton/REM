@@ -185,10 +185,7 @@ def evaluate_condition(data, expression):
     expression = ' '.join([i if (i in header or is_numeric(i) or i in reserved_chars) else '"{}"'.format(i) for i in
                            components])
 
-    print('evaluating conditional expression: {}'.format(expression))
     df_match = df.eval(expression)
-    print('results of the evaluation are:')
-    print(df_match)
 
     return df_match
 
@@ -228,7 +225,6 @@ def evaluate_operation(data, expression):
     expression = ' '.join(components)
     header = df.columns.tolist()
 
-    print('evaluating math expression: {}'.format(expression))
     if len(components) > 1:
         results = df.eval(expression).squeeze()
     else:  # results are a single static value or the values of a column in the dataframe
@@ -236,8 +232,6 @@ def evaluate_operation(data, expression):
             results = df[expression].squeeze()
         else:
             results = expression
-    print('results of the evaluation are:')
-    print(results)
 
     return results
 

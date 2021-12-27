@@ -259,7 +259,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     bttn_h = mod_const.BTTN_HEIGHT
     if savable:
         bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-                        sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+                        sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=deletable,
                                   tooltip='Delete the record from the database'),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
@@ -270,7 +270,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                                   tooltip='Save record changes to the database')]]
     else:
         bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-                        sg.Button('', key='-DELETE-', image_data=mod_const.TRASH_ICON, image_size=mod_const.BTTN_SIZE,
+                        sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
                                   pad=(pad_el, 0), visible=deletable,
                                   tooltip='Delete the record from the database'),
                         sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,

@@ -81,8 +81,8 @@ TBL_ROW_HEIGHT = 25  # default table row height
 TBL_NROW = 5  # default table nrow
 
 # Data List
-REFBOX_HEIGHT = 82  # pixels
-REFBOX_WIDTH = 120  # pixels
+LISTBOX_HEIGHT = 100  # set listbox height in pixels
+LISTBOX_WIDTH = 120  # default width of the listbox in pixels
 
 # Data Variable Elements
 DE_HEIGHT = 52  # pixels
@@ -91,6 +91,7 @@ MULTI_HEIGHT = 78  # pixels
 
 # Images (pixels)
 FLAG_ICON_SIZE = (18, 18)
+RE_ICON_SIZE = (24, 24)
 
 # Icons (base64 images)
 

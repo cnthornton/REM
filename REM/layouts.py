@@ -139,8 +139,6 @@ def multiline_layout(attributes):
     height = attributes.get('NRow', 1)
     width = size[0]
 
-    print('height of the multiline element is: {}'.format(height))
-
     # Element layout
     elem_key = attributes['Key']
     display_value = attributes.get('DisplayValue', '')
