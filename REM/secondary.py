@@ -488,6 +488,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                     .format(ID=record_id, EVENT=event, ERR=e)
                 logger.exception(msg)
                 popup_notice('failed to run event for record {}'.format(record_id))
+                print(values)
 
                 continue
 
@@ -876,6 +877,7 @@ def add_note_window(note: str = None):
 
         # Cancel parameter selection
         if event in (sg.WIN_CLOSED, cancel_key, '-HK_ESCAPE-'):  # selected to close window without setting param values
+            note = None
             break
 
         # Window resized
