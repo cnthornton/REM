@@ -2909,7 +2909,12 @@ class DataList(RecordElement):
                 logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
             else:
                 if not import_rows.empty:
-                    self.collection.append(import_rows, new=True)
+                    import_indices = import_rows.index.tolist()
+                    # Change deleted column of existing selected records to False
+                    logger.debug(self.format_log('changing deleted status of selected entries at indices {INDS} '
+                                                 'to False'.format(INDS=import_indices)))
+                    self.collection.set_state('deleted', False, indices=import_indices)
+                    self.collection.set_state('added', True, indices=import_indices)
 
                 update_event = True
 
@@ -3189,6 +3194,8 @@ class DataList(RecordElement):
 
         row = self.collection.data(indices=index).squeeze()
         display_row = self.collection.format_display(indices=index).squeeze()
+        print(row)
+        print(display_row)
 
         # Update visibility of flag icons
         for flag_col in flag_cols:
@@ -3301,7 +3308,7 @@ class DataList(RecordElement):
         for index in df.index.tolist():
             entry_deleted = collection.get_state('deleted', indices=[index])
             entry_added = collection.get_state('added', indices=[index])
-            print('added state is {} and deleted state is {}'.format(entry_added, entry_deleted))
+            print('index {} has added state {} and deleted state {}'.format(index, entry_added, entry_deleted))
 
             if entry_deleted and not entry_added:  # listbox corresponding to the entry should be hidden when "deleted"
                 entry_key = self.key_lookup('Entry:{}'.format(index))
@@ -3309,13 +3316,14 @@ class DataList(RecordElement):
                 window[entry_key].metadata['visible'] = False
                 resize_event = True
             elif entry_deleted and entry_added:  # entry data at the given index was replaced with new data
+                resize_event = True
                 self.update_entry(index, window)
             elif entry_added:
+                resize_event = True
                 if index in entry_indices:  # a listbox has already been created for the given index
                     self.update_entry(index, window)
                 else:
                     # Create a new listbox for the entry
-                    resize_event = True
                     self.create_entry(index, window)
 
             # Annotate the entry
@@ -3408,8 +3416,7 @@ class DataList(RecordElement):
         """
         # pd.set_option('display.max_columns', None)
         collection = self.collection
-        display_columns = self.display_columns
-        display_columns[self._header_field] = ''
+        display_columns = {**{self._header_field: self.description}, **self.display_columns}
 
         table_layout = {'Columns': collection.dtypes, 'DisplayColumns': display_columns,
                         'Aliases': collection.aliases, 'Description': self.description,
@@ -3429,13 +3436,8 @@ class DataList(RecordElement):
         # Get table of user selected import records
         print('opening the import window')
         select_df = mod_win2.import_window(import_table)
-
-        if not select_df.empty:
-            # Change deleted column of existing selected records to False
-            logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
-                         'False'.format(NAME=self.name))
-            collection.set_state('deleted', False, indices=select_df.index.tolist())
-            collection.set_state('added', True, indices=select_df.index.tolist())
+        print('selected entries are:')
+        print(select_df)
 
         return select_df
 
