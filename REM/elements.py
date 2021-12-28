@@ -2643,8 +2643,8 @@ class DataList(RecordElement):
         self.etype = 'list'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Element', 'Frame', 'CollapseBttn')])
-        self._event_elements = ['Element', 'CollapseBttn']
+                              ('Element', 'Frame')])
+        self._event_elements = ['Element']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -2689,7 +2689,7 @@ class DataList(RecordElement):
                 self._notes_field = None
 
         try:
-            warning_field = entry['WarningField']
+            warning_field = entry['WarningsField']
         except KeyError:
             self._warning_field = None
         else:
@@ -2844,12 +2844,8 @@ class DataList(RecordElement):
         """
         update_event = False
 
-        # List events
-        collapse_key = self.key_lookup('CollapseBttn')
-        if event == collapse_key:
-            self.collapse_expand(window)
-
         # Entry events
+
         # Get the entry index of the element corresponding to the event
         event_type, index = self.fetch_entry(event)
 
@@ -2902,18 +2898,13 @@ class DataList(RecordElement):
         pad_el = mod_const.ELEM_PAD
 
         # Element description
-        collapse_key = self.key_lookup('CollapseBttn')
         desc_layout = sg.Col([[sg.Text(self.description, auto_size_text=True, pad=(0, 0), text_color=text_col,
                                        font=font, background_color=bg_col, tooltip=tooltip)]],
                              pad=(pad_el, pad_el), background_color=bg_col, expand_x=True, vertical_alignment='c')
-        collapse_layout = sg.Col([[sg.Button('', image_data=mod_const.HIDE_ICON, key=collapse_key,
-                                             button_color=(text_col, bg_col), border_width=0, visible=True,
-                                             metadata={'visible': True, 'disabled': False})]],
-                                 pad=(pad_el, pad_el), background_color=bg_col, vertical_alignment='c')
 
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
-        layout = sg.Frame('', [[desc_layout, collapse_layout],
+        layout = sg.Frame('', [[desc_layout],
                                [sg.Col([[sg.HorizontalSeparator()]], background_color=bg_col, expand_x=True)],
                                [sg.Col([[]], key=elem_key, background_color=bg_col, expand_x=True, expand_y=True)]],
                           key=frame_key, pad=padding, size=size, background_color=bg_col)
@@ -2955,7 +2946,7 @@ class DataList(RecordElement):
         font = mod_const.LARGE_FONT
 
         text_color = mod_const.TEXT_COL
-        icon_color = separator_color = mod_const.FRAME_COL
+        icon_color = mod_const.FRAME_COL
         disabled_text_color = mod_const.DISABLED_TEXT_COL
         bg_color = self.bg_col
         select_text_color = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
@@ -3037,6 +3028,7 @@ class DataList(RecordElement):
         warnings_key = entry_elements['Warnings']
         warnings_icon = mod_const.WARNING_FLAG_ICON
         warning_visible = True if warning_text else False
+        print('listbox has warning {} and is visible: {}'.format(warning_text, warning_visible))
         header_layout.append(sg.Image(data=warnings_icon, key=warnings_key, size=flag_size, pad=((pad_el, 0), 0),
                                       visible=warning_visible, background_color=bg_color, tooltip=warning_text))
 
@@ -3282,7 +3274,7 @@ class DataList(RecordElement):
             try:
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
-                logger.error(self.format_log('failed to annotate list entries using annotation rule {CODE} - {ERR}'
+                logger.exception(self.format_log('failed to annotate list entries using annotation rule {CODE} - {ERR}'
                                              .format(CODE=annot_code, ERR=e)))
                 continue
 
@@ -3358,34 +3350,6 @@ class DataList(RecordElement):
             return {}
         else:
             return self.summarize()
-
-    def collapse_expand(self, window):
-        """
-        Collapse or expand the entry frames.
-        """
-        bttn_key = self.key_lookup('CollapseBttn')
-        bttn = window[bttn_key]
-
-        frame_key = self.key_lookup('Frame')
-        frame = window[frame_key]
-        frame_meta = frame.metadata
-
-        if frame_meta['visible']:  # already visible, so want to collapse the frame
-            logger.debug(self.format_log('collapsing the entries frame'))
-            bttn.update(image_data=mod_const.UNHIDE_ICON)
-            frame.update(visible=False)
-
-            frame.metadata['visible'] = False
-        else:  # not visible yet, so want to expand the frame
-            if not frame_meta['disabled']:
-                logger.debug(self.format_log('expanding the entries frame'))
-                bttn.update(image_data=mod_const.HIDE_ICON)
-                frame.update(visible=True)
-
-                frame.metadata['visible'] = True
-
-        self.resize(window)
-
 
 class ReferenceList(DataList):
     """

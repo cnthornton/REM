@@ -158,6 +158,7 @@ def evaluate_condition(data, expression):
     Returns:
         results (pd.Series): results of the evaluation for each row of data provided.
     """
+    is_bool_dtype = pd.api.types.is_bool_dtype
     reserved_chars = ('and', 'or', 'in', 'not', '+', '-', '/', '//', '*', '**', '%', '>', '>=', '<', '<=', '==', '!=',
                       '~', ',', '(', ')', '[', ']', '{', '}')
 
@@ -185,7 +186,18 @@ def evaluate_condition(data, expression):
     expression = ' '.join([i if (i in header or is_numeric(i) or i in reserved_chars) else '"{}"'.format(i) for i in
                            components])
 
-    df_match = df.eval(expression)
+    print('evaluating boolean expression: {}'.format(expression))
+    if len(components) > 1:
+        df_match = df.eval(expression)
+    else:  # results are a single static value or the values of a column in the dataframe
+        if expression in header:
+            values = df[expression]
+            if is_bool_dtype(values.dtype):
+                df_match = values
+            else:
+                df_match = ~ values.isna()
+        else:
+            df_match = df.eval(expression)
 
     return df_match
 
