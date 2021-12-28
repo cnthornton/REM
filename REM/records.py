@@ -416,12 +416,13 @@ class RecordEntry:
 
         if is_primary:  # input records are the primary record IDs
             columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate', 'DocType AS RecordType',
-                       'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'IsChild', 'IsHardLink', 'IsApproved']
+                       'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
+                       'IsChild', 'IsHardLink', 'IsApproved']
             filter_str = 'DocNo IN ({VALS}) AND IsDeleted = ?'
         else:  # input records are the reference record ID
             columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
-                       'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes', 'IsChild',
-                       'IsHardLink', 'IsApproved']
+                       'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes',
+                       'Warnings AS ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved']
             filter_str = 'RefNo IN ({VALS}) AND IsDeleted = ?'
 
         # Import reference entries related to record_id
@@ -604,14 +605,14 @@ class RecordEntry:
             primary_col = 'RecordID'
             column_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
                           'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
-                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
-                          'IsDeleted': 'IsDeleted'}
+                          'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
+                          'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
         else:  # reference record is the primary record ID
             primary_col = 'ReferenceID'
             column_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
                           'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
-                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
-                          'IsDeleted': 'IsDeleted'}
+                          'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
+                          'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
 
         # Remove rows where the primary column is NULL
         df.drop(df[df[primary_col].isna()].index, inplace=True)
