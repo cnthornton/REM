@@ -301,7 +301,7 @@ class BankRule:
                     record_warning = None
                 else:  # single primary account record selected
                     # Set the reference warning, if any
-                    record_warning = acct.fetch_reference_parameter('ReferenceNotes', record_indices).squeeze()
+                    record_warning = acct.fetch_reference_parameter('ReferenceWarnings', record_indices).squeeze()
 
                     # Select the reference in the associated table, if any
                     if current_assoc:
@@ -334,7 +334,7 @@ class BankRule:
                 if len(record_indices) > 1:
                     record_warning = None
                 else:
-                    record_warning = assoc_acct.fetch_reference_parameter('ReferenceNotes', record_indices).squeeze()
+                    record_warning = assoc_acct.fetch_reference_parameter('ReferenceWarnings', record_indices).squeeze()
                 window[warn2_key].update(value=settings.format_display(record_warning, 'varchar'))
 
             return current_rule
@@ -905,8 +905,8 @@ class BankRule:
             user_note = mod_win2.add_note_window()
 
             # Manually set a mutual references for the selected records
-            acct.add_reference(record_id, reference_id, assoc_acct.record_type, approved=True, warning=user_note)
-            assoc_acct.add_reference(reference_id, record_id, acct.record_type, approved=True, warning=user_note)
+            acct.add_reference(record_id, reference_id, assoc_acct.record_type, approved=True, note=user_note)
+            assoc_acct.add_reference(reference_id, record_id, acct.record_type, approved=True, note=user_note)
 
     def link_records_new(self, acct_name, assoc_name: str = None):
         """
@@ -1422,7 +1422,7 @@ class BankRule:
                 sub_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
                                        'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
                 ref_columns = {'ReferenceID': None, 'ReferenceDate': None, 'ReferenceType': None,
-                               'ReferenceNotes': None, 'IsApproved': False}
+                               'ReferenceNotes': None, 'ReferenceWarnings': None, 'IsApproved': False}
                 sub_df = sub_df.assign(**ref_columns)
                 try:
                     statements = ref_entry.save_database_references(sub_df, acct.association_rule,
@@ -1582,8 +1582,8 @@ class BankAccount:
             ref_map = entry['ReferenceMap']
         except KeyError:
             ref_map = {}
-        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
-                    'IsChild', 'IsDeleted']
+        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'ReferenceWarnings',
+                    'IsApproved', 'IsHardLink', 'IsChild', 'IsDeleted']
         self.ref_map = {}
         for column in ref_map:
             if column not in ref_cols:
@@ -2049,7 +2049,7 @@ class BankAccount:
         df.set_index('RecordID', inplace=True)
         ref_df.set_index('ReferenceID', inplace=True)
 
-        mod_cols = ['ReferenceDate', 'ReferenceNotes', 'IsApproved']
+        mod_cols = ['ReferenceDate', 'ReferenceNotes', 'ReferenceWarnings', 'IsApproved']
         df.loc[ref_df.index, mod_cols] = ref_df[mod_cols]
 
         df.reset_index(inplace=True)
@@ -2126,8 +2126,9 @@ class BankAccount:
         # Clear the reference entries corresponding to the selected record
         logger.info('DataTable {TBL}: removing references for records {IDS}'
                     .format(TBL=self.name, IDS=identifiers))
-        ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved']
-        ref_df.loc[indices, ref_columns] = [None, None, None, None, False]
+        ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'ReferenceWarnings',
+                       'IsApproved']
+        ref_df.loc[indices, ref_columns] = [None, None, None, None, None, False]
 
         return indices
 
@@ -2246,14 +2247,14 @@ class BankAccount:
 
         return df
 
-    def add_reference(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None):
+    def add_reference(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None, note: str = None):
         """
         Add a record reference to the references dataframe.
         """
-        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'IsApproved', 'IsHardLink',
-                    'IsChild', 'IsDeleted']
+        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'ReferenceWarnings',
+                    'IsApproved',  'IsHardLink', 'IsChild', 'IsDeleted']
 
-        ref_values = [reference_id, datetime.datetime.now(), reftype, warning, approved, False, False, False]
+        ref_values = [reference_id, datetime.datetime.now(), reftype, note, warning, approved, False, False, False]
 
         self.ref_df.loc[self.ref_df['RecordID'] == record_id, ref_cols] = ref_values
 
