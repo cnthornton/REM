@@ -2643,15 +2643,14 @@ class DataList(RecordElement):
         self.etype = 'list'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Element', 'Frame', 'Description')])
-        self._event_elements = ['Element']
+                              ('Element', 'Frame', 'Description', 'Options')])
+        self._event_elements = ['Element', 'Options']
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        return_key = '{}+RETURN+'.format(elem_key)
         frame_key = self.key_lookup('Frame')
         focus_key = '{}+FOCUS+'.format(frame_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [return_key, focus_key]
+        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [focus_key]
 
         try:
             self.collection = mod_col.DataCollection(name, entry)
@@ -2660,6 +2659,29 @@ class DataList(RecordElement):
             raise AttributeError(msg)
 
         self.columns = columns = list(self.collection.dtypes)
+
+        # Actions that allow modification of the list, such as importing deleted entries
+        try:
+            actions = entry['Actions']
+        except KeyError:
+            actions = {}
+
+        self.actions = {}
+        self._actions = {}
+        self._bindings = {}
+        for action_name in actions:
+            action_entry = actions[action_name]
+
+            if 'Description' not in action_entry:
+                action_entry['Description'] = action_name
+
+            if 'Shortcut' in action_entry:
+                bind_key = '{ELEM}+{DESC}+'.format(ELEM=elem_key, DESC=action_name.upper())
+                self.bindings.append(bind_key)
+                self._bindings[bind_key] = action_name
+
+            self.actions[action_name] = action_entry
+            self._actions[action_entry['Description']] = action_name
 
         try:
             header_field = entry['HeaderField']
@@ -2808,7 +2830,24 @@ class DataList(RecordElement):
         """
         Add hotkey bindings to the record element.
         """
-        pass
+        level = self.level
+
+        elem_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('Frame')
+
+        if level < 2:
+            window[frame_key].bind('<Enter>', '+FOCUS+')
+
+            actions = self.actions
+            for action in actions:
+                action_entry = actions[action]
+
+                shortcut = action_entry['Shortcut']
+                if shortcut:
+                    shortcut_name = '<{}>'.format(shortcut)
+                    bind_key = '+{DESC}+'.format(DESC=action.upper())
+                    print('binding shortcut {} to element {} with binding {}'.format(shortcut, elem_key, bind_key))
+                    window[elem_key].bind(shortcut_name, bind_key)
 
     def fetch_entry(self, event):
         """
@@ -2837,12 +2876,45 @@ class DataList(RecordElement):
         """
         update_event = False
 
-        # Entry events
+        # List element events
+        bind_keys = self._bindings
+        elem_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('Frame')
+        options_key = self.key_lookup('Options')
 
-        # Get the entry index of the element corresponding to the event
-        event_type, index = self.fetch_entry(event)
+        focus_event = '{}+FOCUS+'.format(frame_key)
 
-        if event_type == 'Delete':
+        # Set focus to the element and enable edit mode
+        if event == focus_event:
+            print('setting focus to data list element')
+            window[elem_key].set_focus()
+            return update_event
+
+        if event == options_key:
+            selection = values[options_key]
+            event_type = self._actions[selection]
+            index = None
+        elif event in bind_keys:
+            event_type = bind_keys[event]
+            index = None
+        else:  # entry events
+            event_type, index = self.fetch_entry(event)
+
+        # Import a previously deleted entry
+        if event_type == 'Import':
+            try:
+                import_rows = self.import_entries()
+            except Exception as e:
+                msg = 'failed to run the import entry event'
+                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+            else:
+                if not import_rows.empty:
+                    self.collection.append(import_rows, new=True)
+
+                update_event = True
+
+        # Delete a list entry
+        elif event_type == 'Delete':
             msg = 'Are you sure that you would like to disassociate reference from the record? Disassociating ' \
                   'records does not delete either record involved.'
             user_action = mod_win2.popup_confirm(msg)
@@ -2851,6 +2923,7 @@ class DataList(RecordElement):
                 update_event = True
                 self.collection.set_state('deleted', True, indices=[index])
 
+        # Edit the notes field of a list entry
         elif event_type == 'Edit':
             note_key = self.key_lookup('Notes:{}'.format(index))
             current_note = window[note_key].metadata['value']
@@ -2859,6 +2932,7 @@ class DataList(RecordElement):
                 window[note_key].update(value=note)
                 window[note_key].metadata['value'] = note
 
+        # Run a header event
         elif event_type == 'Header':
             self.run_header_event(index)
 
@@ -2886,11 +2960,13 @@ class DataList(RecordElement):
 
         self.level = level
         self.editable = True if editable or overwrite else False
+        actions = self.actions
 
         tooltip = tooltip if tooltip else ''
 
         # layout options
         font = mod_const.BOLD_LARGE_FONT
+        menu_font = mod_const.MAIN_FONT
 
         text_col = mod_const.TEXT_COL
         bg_col = mod_const.TBL_HEADER_COL
@@ -2904,9 +2980,27 @@ class DataList(RecordElement):
                              key=desc_key, pad=(pad_el, pad_el), background_color=bg_col, expand_x=True,
                              vertical_alignment='c')
 
+        options_list = []
+        for action in actions:
+            action_entry = actions[action]
+            action_desc = action_entry['Description']
+            options_list.append(action_desc)
+
+        if len(options_list) > 0:
+            options_visible = True
+        else:
+            options_visible = False
+
+        menu = ['&Options', options_list]
+        options_key = self.key_lookup('Options')
+        options_layout = sg.Col([[sg.ButtonMenu('', menu, key=options_key, image_data=mod_const.OPTIONS_ICON,
+                                                visible=options_visible, font=menu_font,
+                                                button_color=(text_col, bg_col), border_width=0)]],
+                                pad=(pad_el, pad_el), background_color=bg_col, vertical_alignment='c')
+
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
-        layout = sg.Frame('', [[desc_layout],
+        layout = sg.Frame('', [[desc_layout, options_layout],
                                [sg.Col([[sg.HorizontalSeparator()]], background_color=bg_col, expand_x=True)],
                                [sg.Col([[]], key=elem_key, background_color=bg_col, expand_x=True, expand_y=True)]],
                           key=frame_key, pad=padding, size=size, background_color=bg_col)
@@ -3250,9 +3344,6 @@ class DataList(RecordElement):
         if df.empty or rules is None:
             return {}
 
-        print('annotating list entry {}'.format(self.name))
-        print(df)
-
         annotations = {}
         rows_annotated = []
         for annot_code in rules:
@@ -3260,16 +3351,12 @@ class DataList(RecordElement):
                                          .format(CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
-            print(annot_condition)
             try:
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
                 logger.exception(self.format_log('failed to annotate list entries using annotation rule {CODE} - {ERR}'
                                              .format(CODE=annot_code, ERR=e)))
                 continue
-
-            print('annotation results are:')
-            print(results)
 
             for row_index, result in results.iteritems():
                 if result:  # condition for the annotation has been met
@@ -3314,6 +3401,43 @@ class DataList(RecordElement):
             summary[column] = summary_total
 
         return summary
+
+    def import_entries(self, import_df: pd.DataFrame = None):
+        """
+        Import deleted list entries through the data import window.
+        """
+        # pd.set_option('display.max_columns', None)
+        collection = self.collection
+        display_columns = self.display_columns
+        display_columns[self._header_field] = ''
+
+        table_layout = {'Columns': collection.dtypes, 'DisplayColumns': display_columns,
+                        'Aliases': collection.aliases, 'Description': self.description,
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
+                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
+                        }
+        import_table = DataTable(self.name, table_layout)
+
+        if import_df is None:
+            import_df = collection.data(current=False, deleted_only=True)
+
+        print('the import data frame is:')
+        print(import_df)
+
+        import_table.append(import_df, reindex=False)
+
+        # Get table of user selected import records
+        print('opening the import window')
+        select_df = mod_win2.import_window(import_table)
+
+        if not select_df.empty:
+            # Change deleted column of existing selected records to False
+            logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
+                         'False'.format(NAME=self.name))
+            collection.set_state('deleted', False, indices=select_df.index.tolist())
+            collection.set_state('added', True, indices=select_df.index.tolist())
+
+        return select_df
 
     def check_requirements(self):
         """
