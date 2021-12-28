@@ -2643,7 +2643,7 @@ class DataList(RecordElement):
         self.etype = 'list'
 
         self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Element', 'Frame')])
+                              ('Element', 'Frame', 'Description')])
         self._event_elements = ['Element']
 
         # Element-specific bindings
@@ -2762,20 +2762,6 @@ class DataList(RecordElement):
                                       .format(COL=flag_column))
                 logger.warning(msg)
 
-        try:  # boolean fields can be displayed as a toggle option
-            display_options = entry['Options']
-        except KeyError:
-            display_options = []
-
-        self.options = {}
-        for option in display_options:
-            if option in columns:
-                self.options[option] = display_options[option]
-            else:
-                msg = self.format_log('option field {COL} not found in the list of data fields'
-                                      .format(COL=option))
-                logger.warning(msg)
-
         try:
             summary_rules = entry['SummaryRules']
         except KeyError:
@@ -2835,6 +2821,13 @@ class DataList(RecordElement):
         except ValueError:
             msg = self.format_log('unknown entry event "{EVENT}"'.format(EVENT=event))
             raise KeyError(msg)
+        else:
+            try:
+                index = int(index)
+            except ValueError:
+                msg = self.format_log('index {INDEX} from "{EVENT}" must be an integer value'
+                                      .format(EVENT=event, INDEX=index))
+                raise KeyError(msg)
 
         return entry_event, index
 
@@ -2850,16 +2843,23 @@ class DataList(RecordElement):
         event_type, index = self.fetch_entry(event)
 
         if event_type == 'Delete':
-            update_event = True
-            self.collection.set_state('deleted', True, indices=index)
+            msg = 'Are you sure that you would like to disassociate reference from the record? Disassociating ' \
+                  'records does not delete either record involved.'
+            user_action = mod_win2.popup_confirm(msg)
+
+            if user_action.upper() == 'OK':
+                update_event = True
+                self.collection.set_state('deleted', True, indices=[index])
 
         elif event_type == 'Edit':
             note_key = self.key_lookup('Notes:{}'.format(index))
-            current_note = values[note_key]
+            current_note = window[note_key].metadata['value']
             note = mod_win2.add_note_window(current_note)
-            window[note_key].update(value=note)
+            if not pd.isna(note):
+                window[note_key].update(value=note)
+                window[note_key].metadata['value'] = note
 
-        elif event == 'Header':
+        elif event_type == 'Header':
             self.run_header_event(index)
 
         if update_event:
@@ -2868,7 +2868,7 @@ class DataList(RecordElement):
         return update_event
 
     def run_header_event(self, index):
-        pass
+        logger.debug(self.format_log('running header event at index {INDEX}'.format(INDEX=index)))
 
     def dimensions(self):
         """
@@ -2898,9 +2898,11 @@ class DataList(RecordElement):
         pad_el = mod_const.ELEM_PAD
 
         # Element description
+        desc_key = self.key_lookup('Description')
         desc_layout = sg.Col([[sg.Text(self.description, auto_size_text=True, pad=(0, 0), text_color=text_col,
                                        font=font, background_color=bg_col, tooltip=tooltip)]],
-                             pad=(pad_el, pad_el), background_color=bg_col, expand_x=True, vertical_alignment='c')
+                             key=desc_key, pad=(pad_el, pad_el), background_color=bg_col, expand_x=True,
+                             vertical_alignment='c')
 
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
@@ -2920,18 +2922,13 @@ class DataList(RecordElement):
         editable = self.editable
         display_cols = self.display_columns
         flag_cols = self.flags
-        option_cols = self.options
         entries = window[self.key_lookup('Element')]
 
         row = self.collection.data(indices=index).squeeze()
         display_row = self.collection.format_display(indices=index).squeeze()
 
-        print('creating a list entry for index {}'.format(index))
-        print(row)
-        print(display_row)
-
         entry_elements = {i: '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=i, INDEX=index) for
-                          i in ('Entry', 'Annotation', 'Header', 'Delete', 'Edit', 'Notes', 'Warnings', 'Options')}
+                          i in ('Entry', 'Annotation', 'Header', 'Delete', 'Edit', 'Notes', 'Warnings')}
 
         # Allowed actions and visibility of component elements
         is_disabled = False if (editable is True and level < 1) else True
@@ -3001,7 +2998,6 @@ class DataList(RecordElement):
             flag_entry = flag_cols[flag_col]
             flag_name = flag_entry['Description']
             flag_icon = flag_entry['Icon']
-            print('reference {} flag {} has icon {}'.format(self.name, flag_col, flag_icon))
 
             flag_key = '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=flag_col, INDEX=index)
             entry_elements[flag_col] = flag_key
@@ -3018,7 +3014,6 @@ class DataList(RecordElement):
                 logger.warning(msg)
                 flag_visible = False
 
-            print('setting visibility of flag {} to {} ({})'.format(flag_name, flag_visible, type(flag_visible)))
             flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((pad_el, 0), 0),
                                    visible=flag_visible, background_color=bg_color, tooltip=flag_name)
 
@@ -3028,7 +3023,6 @@ class DataList(RecordElement):
         warnings_key = entry_elements['Warnings']
         warnings_icon = mod_const.WARNING_FLAG_ICON
         warning_visible = True if warning_text else False
-        print('listbox has warning {} and is visible: {}'.format(warning_text, warning_visible))
         header_layout.append(sg.Image(data=warnings_icon, key=warnings_key, size=flag_size, pad=((pad_el, 0), 0),
                                       visible=warning_visible, background_color=bg_color, tooltip=warning_text))
 
@@ -3049,7 +3043,6 @@ class DataList(RecordElement):
             col_key = '-{NAME}_{ID}_{ELEM}:{INDEX}-'.format(NAME=self.name, ID=self.id, ELEM=column, INDEX=index)
             entry_elements[column] = col_key
 
-            print('adding display field {} with value {}'.format(col_alias, col_value))
             if i != 0:
                 row2.append(sg.VerticalSeparator(pad=(pad_h, 0)))
             row2.append(sg.Text(col_value, key=col_key, font=font, text_color=text_color, background_color=bg_color,
@@ -3058,24 +3051,19 @@ class DataList(RecordElement):
         # Listbox notes
         notes_key = entry_elements['Notes']
         row3 = [sg.Text(note_text, key=notes_key, size=(20, 1), font=font, text_color=disabled_text_color,
-                        background_color=bg_color, tooltip=note_text)]
+                        background_color=bg_color, tooltip=note_text, metadata={'value': note_text})]
 
         column3 = sg.Col([row1, row2, row3], pad=(pad_h, pad_h), background_color=bg_color, expand_x=True)
 
         # Listbox actions
-        options_key = entry_elements['Options']
         delete_key = entry_elements['Delete']
         edit_key = entry_elements['Edit']
-        self.bindings.extend([edit_key, delete_key, options_key])
+        self.bindings.extend([edit_key, delete_key])
 
-        options_menu = ['&Options', [option_cols[i] for i in option_cols]]
-        action_layout = [sg.Button('', key=delete_key, image_data=mod_const.DISCARD_ICON, pad=(pad_action, 0),
-                                   border_width=0, button_color=(text_color, bg_color), visible=can_delete),
-                         sg.Button('', key=edit_key, image_data=mod_const.TAKE_NOTE_ICON, pad=(pad_action, 0),
+        action_layout = [sg.Button('', key=edit_key, image_data=mod_const.TAKE_NOTE_ICON, pad=(pad_action, 0),
                                    border_width=0, button_color=(text_color, bg_color), visible=can_edit),
-                         sg.ButtonMenu('', options_menu, key=options_key, image_data=mod_const.OPTIONS_ICON,
-                                       pad=(pad_action, 0), border_width=0, button_color=(text_color, bg_color),
-                                       tooltip='Show options')
+                         sg.Button('', key=delete_key, image_data=mod_const.DISCARD_ICON, pad=(pad_action, 0),
+                                   border_width=0, button_color=(text_color, bg_color), visible=can_delete)
                          ]
         column4 = sg.Col([action_layout], pad=(pad_action, 0), background_color=bg_color, element_justification='c',
                          vertical_alignment='c')
@@ -3133,6 +3121,7 @@ class DataList(RecordElement):
 
         note_text = '' if pd.isna(notes) else notes
         window[notes_key].update(value=note_text)
+        window[notes_key].metadata['value'] = note_text
         window[notes_key].set_tooltip(note_text)
 
         # Update warning tooltip
@@ -3152,8 +3141,9 @@ class DataList(RecordElement):
         window[entry_key].update(visible=True)
         window[entry_key].metadata['visible'] = True
 
-        # Reset the added state to False
+        # Reset the added and deleted state to False
         self.collection.set_state('deleted', False, indices=index)
+        self.collection.set_state('added', False, indices=index)
 
     def resize(self, window, size: tuple = None):
         """
@@ -3161,7 +3151,6 @@ class DataList(RecordElement):
         """
         current_w, current_h = self.dimensions()
         border_w = 1
-        header_h = 20
         pad_el = mod_const.ELEM_PAD
 
         if size:
@@ -3174,10 +3163,9 @@ class DataList(RecordElement):
         listbox_h = mod_const.LISTBOX_HEIGHT
         listbox_w = new_w - pad_el * 2
 
-        new_h = header_h
+        desc_key = self.key_lookup('Description')
+        new_h = window[desc_key].get_size()[1] + pad_el * 5 + border_w
         for index in self.indices:
-            new_h += listbox_h + pad_el * 2 + border_w * 2
-
             try:
                 entry_key = self.key_lookup('Entry:{}'.format(index))
             except KeyError as e:
@@ -3186,6 +3174,11 @@ class DataList(RecordElement):
                 continue
 
             mod_lo.set_size(window, entry_key, (listbox_w, listbox_h))
+
+            if window[entry_key].metadata['visible']:
+                new_h += listbox_h + pad_el * 2 + border_w * 2
+            else:
+                new_h += 1
 
             notes_key = self.key_lookup('Notes:{}'.format(index))
             window[notes_key].expand(expand_x=True)
@@ -3208,19 +3201,19 @@ class DataList(RecordElement):
 
         df = collection.data(current=False)
         annotations = self.annotate_display(df)
-        print('annotations are:')
-        print(annotations)
 
         # Create or update index entries
-        nnew = 0
+        resize_event = False
         for index in df.index.tolist():
-            entry_deleted = collection.get_state('deleted', indices=index)
-            entry_added = collection.get_state('added', indices=index)
+            entry_deleted = collection.get_state('deleted', indices=[index])
+            entry_added = collection.get_state('added', indices=[index])
+            print('added state is {} and deleted state is {}'.format(entry_added, entry_deleted))
 
             if entry_deleted and not entry_added:  # listbox corresponding to the entry should be hidden when "deleted"
                 entry_key = self.key_lookup('Entry:{}'.format(index))
                 window[entry_key].update(visible=False)
                 window[entry_key].metadata['visible'] = False
+                resize_event = True
             elif entry_deleted and entry_added:  # entry data at the given index was replaced with new data
                 self.update_entry(index, window)
             elif entry_added:
@@ -3228,28 +3221,25 @@ class DataList(RecordElement):
                     self.update_entry(index, window)
                 else:
                     # Create a new listbox for the entry
-                    nnew += 1
+                    resize_event = True
                     self.create_entry(index, window)
 
             # Annotate the entry
             annotation_key = self.key_lookup('Annotation:{}'.format(index))
-            print(annotation_key)
             try:
                 annotation_code = annotations[index]
             except KeyError:
-                print('index has no annotation')
                 bg_color = mod_const.FRAME_COL
                 tooltip = ''
             else:
                 annotation_entry = annotation_rules[annotation_code]
                 bg_color = annotation_entry['BackgroundColor']
                 tooltip = annotation_entry['Description']
-                print('index has annotation {} with color {} and description {}'.format(annotation_code, bg_color, tooltip))
 
             window[annotation_key].set_tooltip(tooltip)
             window[annotation_key].Widget.config(background=bg_color)
 
-        if nnew > 0:
+        if resize_event:
             self.resize(window)
 
     def annotate_display(self, df):
@@ -3351,6 +3341,7 @@ class DataList(RecordElement):
         else:
             return self.summarize()
 
+
 class ReferenceList(DataList):
     """
     Record element that displays record associations in the form of a category list.
@@ -3400,6 +3391,7 @@ class ReferenceList(DataList):
             raise AttributeError(msg)
 
     def run_header_event(self, index):
+        logger.debug(self.format_log('running header event at index {INDEX}'.format(INDEX=index)))
         try:
             record = self.load_record(index)
         except Exception as e:
