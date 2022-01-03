@@ -1353,24 +1353,6 @@ class AccountManager:
             else:
                 ugroup = series['UserGroup']
 
-        #        conn = self.db_connect(database=self.dbname, timeout=timeout)
-        #        cursor = conn.cursor()
-
-        # Privileges
-        #        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
-        #        cursor.execute(query_str, (uid,))
-
-        #        ugroup = None
-        #        results = cursor.fetchall()
-        #        for row in results:
-        #            username, user_group = row
-        #            if username == uid:
-        #                ugroup = user_group
-        #                break
-
-        #        cursor.close()
-        #        conn.close()
-
         if not ugroup:
             self.uid = None
             self.pwd = None
@@ -1574,7 +1556,7 @@ class AccountManager:
 
     def prepare_update_statement(self, table, columns, values, where_clause, filter_values, statements: dict = None):
         """
-        Prepare a statement and parameters for updating an existing entry in an ODBC dataabase.
+        Prepare a statement and parameters for updating an existing entry in an ODBC database.
         """
         if not statements:
             statements = {}
@@ -1658,6 +1640,111 @@ class AccountManager:
         for param_tuple in params:  # only append unique parameter sets
             if param_tuple not in statements[update_str]:
                 statements[update_str].append(param_tuple)
+
+        return statements
+
+    def prepare_upsert_statement(self, table, columns, values, conditionals, statements: dict = None):
+        """
+        Prepare a statement and parameters for inserting or updating an existing entry in an ODBC database, depending
+        on whether it currently exists in the database or not.
+
+        Arguments:
+            table (str): name of the database table to modify.
+
+            columns (list): list of database table columns that will be modified.
+
+            values (tuple): tuple or list of tuples containing column values for the table entry / entries.
+
+            conditionals (list): table column(s) used to match the existing table entries and the upsert entries.
+
+            statements (dict): dictionary of current transaction statements to add to.
+        """
+        if not statements:
+            statements = {}
+
+        if isinstance(conditionals, str):
+            conditionals = [conditionals]
+
+        # Format parameters
+        if isinstance(values, list):  # multiple updates requested
+            if not all([isinstance(i, tuple) for i in values]):
+                msg = 'failed to generate upsert statement - individual transactions must be formatted as tuple'
+                logger.error(msg)
+
+                raise SQLStatementError(msg)
+
+            if not all([len(columns) == len(i) for i in values]):
+                msg = 'failed to generate upsert statement - the number of columns is not equal to the number ' \
+                      'of provided parameters for all transactions requested'
+                logger.error(msg)
+
+                raise SQLStatementError(msg)
+
+            params = []
+            for index, param_tup in enumerate(values):
+                # Convert parameter types
+                mod_params = [convert_datatypes(i) for i in param_tup]
+
+                params.append(tuple(mod_params))
+
+        elif isinstance(values, tuple):  # single update requested
+            if len(columns) != len(values):
+                msg = 'failed to generate upsert statement - the number of columns is not equal to the number of ' \
+                      'provided parameters for the transaction'
+                logger.error(msg)
+
+                raise SQLStatementError(msg)
+
+            params = [tuple([convert_datatypes(i) for i in values])]
+
+        elif isinstance(values, str) or pd.isna(values):  # single update of one column is requested
+            if not isinstance(columns, str):
+                msg = 'failed to generate upsert statement - the number of columns is not equal to the number of ' \
+                      'provided parameters for the transaction'
+                logger.error(msg)
+
+                raise SQLStatementError(msg)
+
+            params = [tuple([convert_datatypes(values)])]
+        else:
+            msg = 'failed to generate upsert statement - unknown values type {}'.format(type(values))
+            logger.error(msg)
+
+            raise SQLStatementError(msg)
+
+        # Conditional statement
+        where_clause = ' AND '.join(['Target.{COL}=Source.{COL}'.format(COL=i) for i in conditionals])
+
+        # Query terms of the command
+        markers = '({})'.format(','.join(['?' for _ in columns]))
+
+        # Insert terms of the command
+        insert_cols = ','.join(columns)
+        sr_cols_list = ['Source.{COL}'.format(COL=i) for i in columns]
+        sr_cols_list_query = ','.join(sr_cols_list)
+
+        # Update terms of the command
+        up_cols_list = ['{COL}=Source.{COL}'.format(COL=i) for i in columns]
+        up_cols_list_query = ','.join(up_cols_list)
+
+        # Prepare the database transaction statement
+        upsert_str = f'''
+                      MERGE {table} AS Target 
+                      USING (SELECT * FROM (VALUES {markers}) AS s ({insert_cols})) AS Source
+                      ON {where_clause}
+                      WHEN NOT MATCHED THEN
+                      INSERT ({insert_cols}) VALUES ({sr_cols_list_query})
+                      WHEN MATCHED THEN
+                      UPDATE SET {up_cols_list_query};
+                      '''
+        logger.debug('update string is "{STR}" with parameters "{PARAMS}"'.format(STR=upsert_str, PARAMS=params))
+
+        if upsert_str not in statements:  # new transaction statement
+            statements[upsert_str] = []
+
+        for param_tuple in params:  # only append unique parameter sets
+            if param_tuple not in statements[upsert_str]:
+                statements[upsert_str].append(param_tuple)
 
         return statements
 
