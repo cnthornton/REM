@@ -577,8 +577,6 @@ class RecordEntry:
         if statements is None:
             statements = {}
 
-        save_time = datetime.datetime.now().strftime(settings.date_format)
-
         if isinstance(ref_data, pd.DataFrame):
             df = ref_data
         elif isinstance(ref_data, pd.Series):
@@ -600,19 +598,18 @@ class RecordEntry:
 
         reference_table = rule['ReferenceTable']
         is_primary = rule['Primary']
-
         if is_primary:  # input record is the primary record ID
             primary_col = 'RecordID'
-            column_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
-                          'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
-                          'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
-                          'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
+            export_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
+                              'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
+                              'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
+                              'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
         else:  # reference record is the primary record ID
             primary_col = 'ReferenceID'
-            column_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
-                          'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
-                          'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
-                          'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
+            export_col_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
+                              'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
+                              'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
+                              'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
 
         # Remove rows where the primary column is NULL
         df.drop(df[df[primary_col].isna()].index, inplace=True)
@@ -620,69 +617,24 @@ class RecordEntry:
             logger.warning('RecordType {NAME}: no reference entries provided for saving'.format(NAME=self.name))
             return statements
 
-        # Check if references exists in the table already
-        #exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
-        exists = self.confirm_saved(df[primary_col], id_field=column_map[primary_col], table=reference_table)
-        existing_ids = exists[exists].index.tolist()
-        new_ids = exists[~exists].index.tolist()
-
         # Prepare separate update and insert statements depending on whether an individual reference entry exists
-        export_df = df[[i for i in column_map if i in df.columns]].rename(columns=column_map)
+        export_df = df[[i for i in export_col_map if i in df.columns]].rename(columns=export_col_map)
 
-        # Prepare update statements for the existing reference entries
-        #current_df = export_df[exists]
-        current_df = export_df[export_df[column_map[primary_col]].isin(existing_ids)]
-        if not current_df.empty:
-            # Add reference edit details to the reference entries
-            current_df.loc[:, settings.editor_code] = user.uid
-            current_df.loc[:, settings.edit_date] = save_time
+        # Prepare the upsert statement
+        export_columns = export_df.columns.tolist()
+        export_values = [tuple(i) for i in export_df.values.tolist()]
 
-            # Prepare update statements
-            export_values = [tuple(i) for i in current_df.values.tolist()]
-            export_columns = current_df.columns.tolist()
-
-            record_ids = current_df[column_map[primary_col]]
-            if not isinstance(record_ids, pd.Series):
-                record_ids = [record_ids]
-            else:
-                record_ids = record_ids.values.tolist()
-            filter_params = [(i,) for i in record_ids]
-            filter_clause = '{COL} = ?'.format(COL=column_map[primary_col])
-            statements = user.prepare_update_statement(reference_table, export_columns, export_values, filter_clause,
-                                                       filter_params, statements=statements)
-
-        # Prepare insertion statements for the new reference entries
-        #new_df = export_df[[not i for i in exists]]
-        new_df = export_df[export_df[column_map[primary_col]].isin(new_ids)]
-        if not new_df.empty:
-            # Add reference creation details to the reference entries
-
-            try:
-                new_df[settings.creator_code].fillna(user.uid, inplace=True)
-                new_df[settings.creation_date].fillna(save_time, inplace=True)
-            except KeyError:
-                new_df.loc[:, settings.creator_code] = user.uid
-                new_df.loc[:, settings.creation_date] = save_time
-
-            # Ignore new reference entries that were deleted, because they never made it to the database anyway
-            new_df = new_df[~new_df['IsDeleted']]
-            new_df.drop(columns=['IsDeleted'], inplace=True)
-
-            # Prepare insert statements
-            export_columns = new_df.columns.tolist()
-            export_values = [tuple(i) for i in new_df.values.tolist()]
-
-            statements = user.prepare_insert_statement(reference_table, export_columns, export_values,
-                                                       statements=statements)
+        statements = user.prepare_upsert_statement(reference_table, export_columns, export_values, ['DocNo', 'RefNo'],
+                                                   statements=statements)
 
         return statements
 
-    def delete_database_references(self, records, rule_name, statements: dict = None):
+    def delete_database_references(self, ref_data, rule_name, statements: dict = None):
         """
         Prepare to delete database reference entries from the database.
 
         Arguments:
-            records (list): delete reference entries with these record IDs from the database.
+            ref_data (DataFrame): reference entries to delete from the database table specified by the association rule.
 
             rule_name (str): name of the association rule linking the relevant records.
 
@@ -693,6 +645,19 @@ class RecordEntry:
         """
         if statements is None:
             statements = {}
+
+        if isinstance(ref_data, pd.DataFrame):
+            df = ref_data
+        elif isinstance(ref_data, pd.Series):
+            df = ref_data.to_frame().transpose()
+        elif isinstance(ref_data, dict):
+            df = pd.DataFrame(ref_data)
+        else:
+            raise ValueError('ref_data must be one of DataFrame, Series, or dictionary')
+
+        if df.empty:
+            logger.warning('RecordEntry {NAME}: no reference entries provided for deleting'.format(NAME=self.name))
+            return statements
 
         association_rules = self.association_rules
         try:
@@ -706,32 +671,23 @@ class RecordEntry:
 
         reference_table = rule['ReferenceTable']
         is_primary = rule['Primary']
-
         if is_primary:  # input record is the primary record ID
-            primary_col = 'RecordID'
-            column_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
-                          'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
-                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
-                          'IsDeleted': 'IsDeleted'}
+            export_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'IsDeleted': 'IsDeleted'}
         else:  # reference record is the primary record ID
-            primary_col = 'ReferenceID'
-            column_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
-                          'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
-                          'IsApproved': 'IsApproved', 'IsChild': 'IsChild', 'IsHardLink': 'IsHardLink',
-                          'IsDeleted': 'IsDeleted'}
+            export_col_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'IsDeleted': 'IsDeleted'}
 
-        if isinstance(records, str):
-            records = [records]
-        elif isinstance(records, pd.Series):
-            records = records.tolist()
+        # Prepare separate upsert statements
+        export_df = df[[i for i in export_col_map if i in df.columns]].rename(columns=export_col_map)
 
-        if not len(records) > 0:  # empty list provided
-            return statements
+        # Set reference entries to deleted
+        export_df.loc[:, 'IsDeleted'] = 1
 
-        records = list(set(records))  # duplicate filtering
+        # Prepare the upsert statement
+        export_columns = export_df.columns.tolist()
+        export_values = [tuple(i) for i in export_df.values.tolist()]
 
-        # Check existence of the records in the database
-        exists = self.confirm_saved(records, id_field=column_map[primary_col], table=reference_table)
+        statements = user.prepare_upsert_statement(reference_table, export_columns, export_values, ['DocNo', 'RefNo'],
+                                                   statements=statements)
 
         return statements
 
@@ -788,27 +744,26 @@ class RecordEntry:
             table_entry = export_rules[table]
 
             if export_columns:
-                references = table_entry['Columns']
+                export_col_map = table_entry['Columns']
             else:
-                references = {i: i for i in table_entry['Columns'].values()}
+                export_col_map = {i: i for i in table_entry['Columns'].values()}
 
             try:
-                id_col = references[id_field]
+                id_col = export_col_map[id_field]
             except KeyError:
                 msg = 'RecordEntry {NAME}: missing ID column "{COL}" from record import columns {COLS}' \
-                    .format(NAME=self.name, COL=id_field, COLS=list(references.keys()))
+                    .format(NAME=self.name, COL=id_field, COLS=list(export_col_map.keys()))
                 logger.error(msg)
 
                 raise KeyError(msg)
 
             # Prepare column value updates
-            include_columns = [i for i in columns if i in references]
+            include_columns = [i for i in columns if i in export_col_map]
             export_df = df[include_columns]
 
             # Prepare separate update and insert statements depending on whether an individual record already exists
 
             # Extract all currently existing records from the table
-            #current_df = export_df[exists]
             current_df = export_df[export_df[id_field].isin(existing_ids)]
 
             # Prepare update statements for the existing records
@@ -817,7 +772,7 @@ class RecordEntry:
                 current_df.loc[:, settings.editor_code] = user.uid
                 current_df.loc[:, settings.edit_date] = save_time
 
-                export_columns = current_df.rename(columns=references).columns.tolist()
+                export_columns = current_df.rename(columns=export_col_map).columns.tolist()
                 export_values = [tuple(i) for i in current_df.values.tolist()]
 
                 record_ids = current_df[id_field]
@@ -831,7 +786,6 @@ class RecordEntry:
                                                            filter_params, statements=statements)
 
             # Extract all new records from the table
-            #new_df = export_df[[not i for i in exists]]
             new_df = export_df[export_df[id_field].isin(new_ids)]
 
             # Prepare insertion statements for the new records
@@ -844,7 +798,7 @@ class RecordEntry:
                     new_df.loc[:, settings.creator_code] = user.uid
                     new_df.loc[:, settings.creation_date] = save_time
 
-                export_columns = new_df.rename(columns=references).columns.tolist()
+                export_columns = new_df.rename(columns=export_col_map).columns.tolist()
                 export_values = [tuple(i) for i in new_df.values.tolist()]
                 statements = user.prepare_insert_statement(table, export_columns, export_values, statements=statements)
 
@@ -1021,12 +975,12 @@ class RecordEntry:
         for export_table in export_rules:
             table_entry = export_rules[export_table]
 
-            references = table_entry['Columns']
-            if 'Deleted' not in references:
+            export_col_map = table_entry['Columns']
+            if 'Deleted' not in export_col_map:
                 continue
 
-            id_col = references[id_field]
-            delete_col = references['Deleted']
+            id_col = export_col_map[id_field]
+            delete_col = export_col_map['Deleted']
 
             export_columns = [delete_col, settings.editor_code, settings.edit_date]
             export_values = [(1, user.uid, datetime.datetime.now().strftime(settings.date_format)) for _ in record_ids]
@@ -1045,7 +999,7 @@ class RecordEntry:
             rule = association_rules[association]
             assoc_type = rule['AssociationType']
 
-            # Import references to be deleted
+            # Import reference entries to be deleted
             import_df = self.import_references(record_ids, association)
 
             # Delete the reference entries and remove already used references from the list - this is necessary for
@@ -1056,7 +1010,7 @@ class RecordEntry:
                 continue
             statements = self.save_database_references(export_df, association, statements=statements)
 
-            # Subset references to include those that are child records or hard-linked
+            # Subset reference entries to include those that are child records or hard-linked
             if assoc_type == 'parent':  # referenced records are child records and should be deleted with parent
                 condition = export_df['IsChild'].astype(bool)
             elif assoc_type == 'reference':  # deleting hard-linked records should also delete reference records
@@ -1071,7 +1025,7 @@ class RecordEntry:
             # Update the list of used reference IDs
             ignore_ids = list(set(ref_ids + record_ids))
 
-            # Remove hard-linked and child records. Do not include references that have already been deleted.
+            # Remove hard-linked and child records. Do not include reference entries that have already been deleted.
             record_types = import_df['ReferenceType'].unique()
             for record_type in record_types:
                 record_entry = settings.records.fetch_rule(record_type)
@@ -1082,7 +1036,7 @@ class RecordEntry:
 
                     raise AttributeError(msg)
 
-                # Subset imported references by record class
+                # Subset imported reference entries by record class of the reference record
                 sub_df = linked_df[linked_df['ReferenceType'] == record_type]
 
                 # Prepare deletion statements for reference records
