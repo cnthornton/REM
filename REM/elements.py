@@ -2870,6 +2870,33 @@ class DataList(RecordElement):
 
         return entry_event, index
 
+    def data(self, all_rows: bool = False, edited_rows: bool = False, deleted_rows: bool = False,
+             added_rows: bool = False, indices=None):
+        """
+        Return the collection data.
+
+        Arguments:
+            all_rows (bool): return all table rows, including the deleted rows [Default: False].
+
+            edited_rows (bool): return only rows that have been edited in the table [Default: False].
+
+            deleted_rows (bool): return only rows that have been deleted from the table [Default: False].
+
+            added_rows (bool): return only rows that have been added to the table [Default: False].
+
+            indices: list or series of entry indices.
+
+        Returns:
+            df (DataFrame): table data matching the selection requirements.
+        """
+        collection = self.collection
+
+        current = (not all_rows) if indices is None or deleted_rows is False else False
+        df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
+                             added_only=added_rows, indices=indices)
+
+        return df
+
     def run_event(self, window, event, values):
         """
         Run a record element event.

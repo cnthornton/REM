@@ -926,11 +926,9 @@ class SQLTransactManager:
     Program account object.
 
     Attributes:
-        server (str): ODBC server name.
+        conn (Connection): pyodbc Connection.
 
-        port (str): ODBC listening port.
-
-        driver (str): ODBC driver details.
+        cursor (Cursor): database cursor made from the connection.
     """
 
     def __init__(self, conn_obj, timeout: int = 5):

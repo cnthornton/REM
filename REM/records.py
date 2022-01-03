@@ -676,18 +676,20 @@ class RecordEntry:
         else:  # reference record is the primary record ID
             export_col_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'IsDeleted': 'IsDeleted'}
 
-        # Prepare separate upsert statements
+        # Prepare the export reference entries
+        df = df[(~df['RecordID'].isna()) & (~df['ReferenceID'].isna())]
         export_df = df[[i for i in export_col_map if i in df.columns]].rename(columns=export_col_map)
 
-        # Set reference entries to deleted
-        export_df.loc[:, 'IsDeleted'] = 1
+        # Prepare the update statement
+        export_columns = [export_col_map['IsDeleted']]
+        export_values = [(1, ) for _ in range(export_df.shape[0])]
 
-        # Prepare the upsert statement
-        export_columns = export_df.columns.tolist()
-        export_values = [tuple(i) for i in export_df.values.tolist()]
+        filter_clause = '{COL} = ? AND {REFCOL} = ?'.format(COL=export_col_map['RecordID'],
+                                                            REFCOL=export_col_map['ReferenceID'])
+        filter_params = [(row[export_col_map['RecordID']], row[export_col_map['ReferenceID']]) for _, row in export_df.iterrows()]
 
-        statements = user.prepare_upsert_statement(reference_table, export_columns, export_values, ['DocNo', 'RefNo'],
-                                                   statements=statements)
+        statements = user.prepare_update_statement(reference_table, export_columns, export_values, filter_clause,
+                                                   filter_params, statements=statements)
 
         return statements
 
@@ -2267,8 +2269,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
-        #success = True
+        #success = user.write_db(sstrings, psets)
+        success = True
         print(statements)
 
         return success
@@ -2332,6 +2334,7 @@ class DatabaseRecord:
                 logger.debug('Record {ID}: preparing export statements for added "{ASSOC}" references'
                              .format(ID=record_id, ASSOC=association_rule))
                 ref_data = refbox.data(added_rows=True)
+            print(ref_data)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
@@ -2352,24 +2355,16 @@ class DatabaseRecord:
             if self.new or save_all:
                 logger.debug('Record {ID}: preparing export statements for all components in component table "{COMP}"'
                              .format(ID=record_id, COMP=comp_table.name))
-                #comp_df = comp_table.data(all_rows=True)
                 exist_df = comp_table.data()
                 ref_data = comp_table.export_references(record_id)
             else:
-                #if not comp_table.edited:  # don't prepare statements for tables that were not edited in any way
-                #    logger.debug('Record {ID}: no components from component table "{COMP}" will be exported'
-                #                 .format(ID=record_id, COMP=comp_table.name))
-                #    continue
-
                 logger.debug('Record {ID}: preparing export statements for only the edited components in component '
                              'table {COMP}'.format(ID=record_id, COMP=comp_table.name))
-                #comp_df = comp_table.data(all_rows=True, edited_rows=True)
                 ref_data = comp_table.export_references(record_id, edited_only=True)
                 exist_df = comp_table.data(edited_rows=True)
 
             deleted_df = comp_table.data(all_rows=True, deleted_rows=True)
 
-            #if comp_df.empty:
             if deleted_df.empty and exist_df.empty:
                 logger.debug('Record {ID}: no components in component table {COMP} available to export'
                              .format(ID=record_id, COMP=comp_table.name))
@@ -2381,15 +2376,7 @@ class DatabaseRecord:
             assoc_rule_name = comp_table.association_rule
             assoc_rule = comp_entry.association_rules.get(assoc_rule_name)
             if assoc_rule['AssociationType'] == 'child':  # component records are a child records
-                pc = True
-            else:
-                pc = False
-
-            # Fully remove deleted component records if parent-child relationship
-            if pc:
-                # Remove records that should be deleted if reference association is parent-child
-                #deleted_df = comp_df[comp_df[comp_table.deleted_column]]
-                #deleted_ids = deleted_df[comp_table.id_column].tolist()
+                # Fully remove deleted component records if parent-child relationship
                 deleted_ids = comp_table.row_ids(indices=deleted_df.index)
                 if not deleted_df.empty:
                     statements = comp_entry.delete_database_records(deleted_ids, statements=statements)
@@ -2406,7 +2393,6 @@ class DatabaseRecord:
             statements = record_entry.save_database_references(ref_data, assoc_rule_name, statements=statements)
 
             # Prepare transaction statements for the component records
-            #exist_df = comp_df[~comp_df[comp_table.deleted_column]]  # don't update removed references
             try:
                 statements = comp_entry.save_database_records(exist_df, statements=statements)
             except Exception as e:
@@ -2451,8 +2437,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
-        #success = True
+        #success = user.write_db(sstrings, psets)
+        success = True
         print(statements)
 
         return success
