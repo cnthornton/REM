@@ -867,7 +867,7 @@ class BankRule:
             acct = self.fetch_account(acct_panel, by_key=True)
             acct.update_display(window)
 
-    def link_records(self, acct_name, assoc_name: str = None):
+    def link_records_old(self, acct_name, assoc_name: str = None):
         """
         Link two or more selected records.
         """
@@ -908,7 +908,7 @@ class BankRule:
             acct.add_reference(record_id, reference_id, assoc_acct.record_type, approved=True, note=user_note)
             assoc_acct.add_reference(reference_id, record_id, acct.record_type, approved=True, note=user_note)
 
-    def link_records_new(self, acct_name, assoc_name: str = None):
+    def link_records(self, acct_name, assoc_name: str = None):
         """
         Link two or more selected records.
         """
@@ -939,9 +939,10 @@ class BankRule:
         if (n_select_assoc >= 1 and n_select_acct == 1) or (n_select_acct >= 1 and n_select_assoc == 1):
             record_ids = acct_table.row_ids(indices=acct_rows, deleted=True)
             reference_ids = assoc_table.row_ids(indices=assoc_rows, deleted=True)
-
         else:
-            msg = ''.format(ACCT=acct_name, ASSOC=assoc_name)
+            msg = 'only one record from the primary account can be associated of one or more records from the ' \
+                  'associated account or one record from the associated account linked with one or more records from ' \
+                  'the primary account'.format(ACCT=acct_name, ASSOC=assoc_name)
             raise AssertionError(msg)
 
         if acct.has_reference(record_ids) or assoc_acct.has_reference(reference_ids):
@@ -2285,11 +2286,14 @@ class BankAccount:
         Confirm whether an account record is referenced.
         """
         ref_df = self.ref_df
-        reference = ref_df.loc[ref_df['RecordID'] == record_id, 'ReferenceID']
+        if isinstance(record_id, str):
+            record_id = [record_id]
+        #reference = ref_df.loc[ref_df['RecordID'] == record_id, 'ReferenceID']
+        references = ref_df.loc[ref_df['RecordID'].isin(record_id)]
 
-        if reference.empty:
+        if references.empty:
             return False
-        elif pd.isna(reference.squeeze()):
+        elif references['ReferenceID'].isna().any():
             return False
         else:
             return True
