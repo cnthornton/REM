@@ -1338,26 +1338,30 @@ class BankRule:
         association_name = acct.association_rule
         association_rule = record_entry.association_rules[association_name]
 
-        save_df = acct.ref_df.copy()
+        ref_df = acct.ref_df.copy()
         print('loading existing references')
         try:
-            existing_df = acct.load_references(save_df['RecordID'].tolist())
+            existing_df = acct.load_references(ref_df['RecordID'].tolist())
         except Exception as e:
             mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
 
             return False
 
-        # Drop reference entries that were not changed
-        save_df.set_index('RecordID', inplace=True)
+        # Prepare the export reference entries by dropping existing entries that were not changed during the
+        # reconciliation
+        ref_df.set_index('RecordID', inplace=True)
         existing_df.set_index('RecordID', inplace=True)
-        save_df = save_df.loc[save_df.compare(existing_df).index].reset_index()
+        export_df = ref_df.loc[ref_df.compare(existing_df).index].reset_index()
 
-        # Get changed reference entries where the reference was deleted
-        deleted_ids = save_df.loc[save_df['ReferenceID'].isna(), 'RecordID'].tolist()
+        # Prepare the modified reference entries that were deleted
+        deleted_ids = export_df.loc[export_df['ReferenceID'].isna(), 'RecordID'].tolist()
         print('will update deleted references: {}'.format(deleted_ids))
         deleted_df = existing_df[(existing_df.index.isin(deleted_ids)) & (~existing_df['ReferenceID'].isna())].reset_index()
         print('deleted entries are:')
         print(deleted_df)
+
+        # Prepare the modified reference entries that were not deleted
+        save_df = export_df.loc[~export_df['ReferenceID'].isna()]
 
         # Save references for the account if the account records are the primary records in the reference table
         is_primary = association_rule['Primary']
@@ -1366,6 +1370,16 @@ class BankRule:
             print(save_df)
             logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
                          .format(NAME=self.name, ACCT=acct.name))
+            try:
+                statements = record_entry.delete_database_references(deleted_df, acct.association_rule,
+                                                                     statements=statements)
+            except Exception as e:
+                msg = 'failed to prepare the delete statement for the account {ACCT} references - {ERR}' \
+                    .format(ACCT=acct.name, ERR=e)
+                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                return False
+
             try:
                 statements = record_entry.save_database_references(save_df, acct.association_rule,
                                                                    statements=statements)
@@ -1421,12 +1435,20 @@ class BankRule:
 
                 sub_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
                                        'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
-                ref_columns = {'ReferenceID': None, 'ReferenceDate': None, 'ReferenceType': None,
-                               'ReferenceNotes': None, 'ReferenceWarnings': None, 'IsApproved': False}
-                sub_df = sub_df.assign(**ref_columns)
+                #ref_columns = {'ReferenceID': None, 'ReferenceDate': None, 'ReferenceType': None,
+                #               'ReferenceNotes': None, 'ReferenceWarnings': None, 'IsApproved': False}
+                #sub_df = sub_df.assign(**ref_columns)
+                #try:
+                #    statements = ref_entry.save_database_references(sub_df, acct.association_rule,
+                #                                                    statements=statements)
+                #except Exception as e:
+                #    msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                #        .format(ACCT=acct.name, ERR=e)
+                #    logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                #   return False
                 try:
-                    statements = ref_entry.save_database_references(sub_df, acct.association_rule,
-                                                                    statements=statements)
+                    statements = ref_entry.delete_database_references(sub_df, acct.association_rule,
+                                                                      statements=statements)
                 except Exception as e:
                     msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
                         .format(ACCT=acct.name, ERR=e)
@@ -1443,9 +1465,9 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+        #success = user.write_db(sstrings, psets)
         print(statements)
-        #success = True
+        success = True
 
         return success
 
