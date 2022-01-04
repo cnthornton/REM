@@ -704,30 +704,40 @@ class DataCollection:
         """
         Format the table values for display.
         """
+        if indices is not None:
+            df = self.data(current=False, indices=indices)
+        else:
+            df = self.data()
+
+        print('data selected for display at indices {} is'.format(indices))
+        print(df)
+
         # Subset dataframe by specified columns to display
         display_df = pd.DataFrame()
         fields = self._fields
         for field in fields:
             try:
-                col_to_add = self.format_display_field(field, indices=indices)
+                col_to_add = self.format_display_field(field, data=df)
             except Exception as e:
                 msg = 'failed to format field {COL} for display'.format(COL=field)
                 logger.exception('DataCollection {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
                 continue
+            print('adding display values to field {} at indices {}'.format(field, indices))
+            print(col_to_add)
 
             display_df[field] = col_to_add
 
         return display_df.astype('object').fillna('')
 
-    def format_display_field(self, field, indices: list = None):
+    def format_display_field(self, field, data=None):
         """
         Format the values of a collection field for display.
 
         Arguments:
             field (str): collection field to summarize.
 
-            indices (list): format field values for a subset of the collection at the given indices.
+            data (DataFrame): format field values for a custom subset of the data.
         """
         is_float_dtype = pd.api.types.is_float_dtype
         is_integer_dtype = pd.api.types.is_integer_dtype
@@ -737,10 +747,10 @@ class DataCollection:
 
         aliases = self.aliases
 
-        if indices:
-            df = self.data(current=False, indices=indices)
-        else:
+        if data is None:
             df = self.data()
+        else:
+            df = data
 
         try:
             display_col = df[field]
