@@ -398,15 +398,12 @@ class DataCollection:
 
             rule = columns[column]
             try:
-                #default_values = mod_dm.evaluate_rule(df, rule, as_list=False)
                 default_values = mod_dm.evaluate_operation(df, rule)
             except Exception as e:
                 msg = 'failed to evaluate rule expression {RULE} - {ERR}'.format(RULE=rule, ERR=e)
                 logger.exception(msg)
             else:
                 default_values = mod_dm.format_values(default_values, dtype).squeeze()
-                print('dependant field {} has values:'.format(column))
-                print(default_values)
                 df.loc[:, column] = default_values
 
         return df
@@ -477,11 +474,7 @@ class DataCollection:
         else:  # dataframe of row values
             values = values.set_index(pd.Index(index))
 
-        #shared_cols = [i for i in values.columns if i in header]
-        #new_values = self.enforce_conformity(values)[shared_cols]
         new_values = self.enforce_conformity(values)[header]
-        print('new values after enforcing conformity are:')
-        print(new_values)
 
         edited_rows = set()
         edited_cols = []
@@ -709,9 +702,6 @@ class DataCollection:
         else:
             df = self.data()
 
-        print('data selected for display at indices {} is'.format(indices))
-        print(df)
-
         # Subset dataframe by specified columns to display
         display_df = pd.DataFrame()
         fields = self._fields
@@ -723,8 +713,6 @@ class DataCollection:
                 logger.exception('DataCollection {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
                 continue
-            print('adding display values to field {} at indices {}'.format(field, indices))
-            print(col_to_add)
 
             display_df[field] = col_to_add
 
@@ -837,8 +825,6 @@ class DataCollection:
                 col_summary = col_values.sum()
             else:  # default statistic for non-numeric data types like strings and datetime objects
                 col_summary = col_values.nunique()
-
-        print('summary field {} has total {}'.format(field, col_summary))
 
         return col_summary
 

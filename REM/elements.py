@@ -2846,7 +2846,6 @@ class DataList(RecordElement):
                 if shortcut:
                     shortcut_name = '<{}>'.format(shortcut)
                     bind_key = '+{DESC}+'.format(DESC=action.upper())
-                    print('binding shortcut {} to element {} with binding {}'.format(shortcut, elem_key, bind_key))
                     window[elem_key].bind(shortcut_name, bind_key)
 
     def fetch_entry(self, event):
@@ -2913,7 +2912,6 @@ class DataList(RecordElement):
 
         # Set focus to the element and enable edit mode
         if event == focus_event:
-            print('setting focus to data list element')
             window[elem_key].set_focus()
             return update_event
 
@@ -2953,6 +2951,7 @@ class DataList(RecordElement):
 
             if user_action.upper() == 'OK':
                 update_event = True
+                self.edited = True
                 self.collection.set_state('deleted', True, indices=[index])
 
         # Edit the notes field of a list entry
@@ -2961,6 +2960,7 @@ class DataList(RecordElement):
             current_note = window[note_key].metadata['value']
             note = mod_win2.add_note_window(current_note)
             if not pd.isna(note):
+                self.edited = True
                 window[note_key].update(value=note)
                 window[note_key].metadata['value'] = note
 
@@ -3221,8 +3221,6 @@ class DataList(RecordElement):
 
         row = self.collection.data(indices=index).squeeze()
         display_row = self.collection.format_display(indices=index).squeeze()
-        print(row)
-        print(display_row)
 
         # Update visibility of flag icons
         for flag_col in flag_cols:
@@ -3335,7 +3333,6 @@ class DataList(RecordElement):
         for index in df.index.tolist():
             entry_deleted = collection.get_state('deleted', indices=[index])
             entry_added = collection.get_state('added', indices=[index])
-            print('index {} has added state {} and deleted state {}'.format(index, entry_added, entry_deleted))
 
             if entry_deleted and not entry_added:  # listbox corresponding to the entry should be hidden when "deleted"
                 entry_key = self.key_lookup('Entry:{}'.format(index))
@@ -3455,16 +3452,10 @@ class DataList(RecordElement):
         if import_df is None:
             import_df = collection.data(current=False, deleted_only=True)
 
-        print('the import data frame is:')
-        print(import_df)
-
         import_table.append(import_df, reindex=False)
 
         # Get table of user selected import records
-        print('opening the import window')
         select_df = mod_win2.import_window(import_table)
-        print('selected entries are:')
-        print(select_df)
 
         return select_df
 

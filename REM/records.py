@@ -427,7 +427,8 @@ class RecordEntry:
 
         # Import reference entries related to record_id
         df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
-                                   'ReferenceNotes', 'IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted'])
+                                   'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
+                                   'IsDeleted'])
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
             sub_vals = ','.join(['?' for _ in sub_ids])

@@ -896,7 +896,7 @@ def add_note_window(note: str = None):
 
         # Save parameter settings
         if event in (save_key, '-HK_ENTER-'):
-            note_text = values[elem_key]
+            note_text = values[elem_key].strip()
             note = note_text if note_text != '' else None
 
             break
