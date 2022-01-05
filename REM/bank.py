@@ -1451,9 +1451,9 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
+        success = user.write_db(sstrings, psets)
         print(statements)
-        success = True
+        #success = True
 
         return success
 

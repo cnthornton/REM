@@ -3197,9 +3197,9 @@ class DataList(RecordElement):
 
         # Create the entry frame
         entry_key = entry_elements['Entry']
-        layout = [[sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
-                            pad=(pad_el, pad_el), background_color=bg_color, relief='raised',
-                            metadata={'visible': True})]]
+        layout = [[sg.pin(sg.Frame('', [[column1, column2, column3, column4]], key=entry_key, size=(frame_w, frame_h),
+                                   pad=(pad_el, pad_el), background_color=bg_color, relief='raised',
+                                   metadata={'visible': True}))]]
 
         # Add the entry frame to the entries column
         window.extend_layout(entries, layout)
