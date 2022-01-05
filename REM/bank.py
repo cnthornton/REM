@@ -283,6 +283,10 @@ class BankRule:
                              .format(NAME=self.name, ACCT=acct.name))
                 ref_df = acct.merge_records()
 
+                # Flip the record and reference values for the external reference dataframe
+                ref_df.rename(columns={'RecordID': 'ReferenceID', 'ReferenceID': 'RecordID',
+                                       'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
+
                 # Update account reference dataframes for currently active panels
                 for panel in self.panels:
                     ref_acct = self.fetch_account(panel, by_key=True)
@@ -1809,38 +1813,44 @@ class BankAccount:
                             else:
                                 table.update_row(index, record_values)
 
+                                # Update the reference entry dataframe to reflect changes made to an entry through the
+                                # record window
+                                ref_values = record.export_associations(association_rule=association_rule)
+                                updated_refs = self.update_references(ref_values)
+
+                                if not updated_refs.empty:
+                                    reference_event = True
+
                                 self.update_display(window)
 
-                            # Update the reference entry dataframe to reflect changes made to an entry through the
-                            # record window
-                            try:
-                                refboxes = record.fetch_element('reference', by_type=True)
-                            except KeyError:
-                                msg = 'no references defined for record type {TYPE}'.format(TYPE=record.name)
-                                logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            #try:
+                            #    refboxes = record.fetch_element('reference', by_type=True)
+                            #except KeyError:
+                            #    msg = 'no references defined for record type {TYPE}'.format(TYPE=record.name)
+                            #    logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                                return {}
+                            #    return {}
 
-                            for refbox in refboxes:
-                                if refbox.association_rule != association_rule:
-                                    continue
+                            #for refbox in refboxes:
+                            #    if refbox.association_rule != association_rule:
+                            #        continue
 
-                                if not refbox.edited:  # only update the references if the refbox was modified
-                                    continue
+                            #    if not refbox.edited:  # only update the references if the refbox was modified
+                            #        continue
 
-                                ref_values = refbox.data()
-                                reference_indices = ref_df.index[ref_df['RecordID'] == record_id]
-                                for ref_index in reference_indices:
-                                    try:
-                                        ref_df.loc[ref_index, ref_values.index.tolist()] = ref_values
-                                    except KeyError as e:
-                                        msg = 'failed to update reference {REF} for record {ID}'\
-                                            .format(REF=refbox.name, ID=record_id)
-                                        logger.error(
-                                            'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                            #    ref_values = refbox.data()
+                            #    reference_indices = ref_df.index[ref_df['RecordID'] == record_id]
+                            #    for ref_index in reference_indices:
+                            #        try:
+                            #            ref_df.loc[ref_index, ref_values.index.tolist()] = ref_values
+                            #        except KeyError as e:
+                            #            msg = 'failed to update reference {REF} for record {ID}'\
+                            #                .format(REF=refbox.name, ID=record_id)
+                            #            logger.error(
+                            #                'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
-                                if not reference_indices.empty:
-                                    reference_event = True
+                            #    if not reference_indices.empty:
+                            #        reference_event = True
                                 #    reference_indices = reference_indices.tolist()
 
             elif event in (approve_key, approve_hkey):
@@ -2117,6 +2127,67 @@ class BankAccount:
         pd.set_option('display.max_columns', None)
         df = self.ref_df.copy()
 
+        #print('external reference dataframe is:')
+        #print(ext_df)
+
+        #print('reference dataframe is:')
+        #print(df)
+
+        # Drop external reference entries when not also found in the reference entry
+        ref_ids = df['ReferenceID'].dropna()
+        #print('remaining reference IDs after removing NA values:')
+        #print(ref_ids.tolist())
+        ref_df = ext_df.loc[ext_df['ReferenceID'].isin(ref_ids)].copy()
+
+        if ref_df.empty:
+            logger.debug('BankAccount {NAME}: no references remaining after filtering references that are not shared'
+                         .format(NAME=self.name))
+
+        # Delete reference entries that were deleted in the external reference dataframe
+        deleted_references = ref_df.loc[ref_df['RecordID'].isna(), 'ReferenceID']
+        if not deleted_references.empty:
+            ids_to_delete = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID'].tolist()
+
+            self.reset_references(ids_to_delete, index=False)
+            self.reset_records(ids_to_delete, index=False)
+
+            ref_df.drop(deleted_references.index, inplace=True)
+
+        # Subset the reference dataframe on the remaining external reference entries
+        ref_df.set_index(['RecordID', 'ReferenceID'], inplace=True)
+        df.set_index(['RecordID', 'ReferenceID'], inplace=True)
+
+        df = df.reindex(index=ref_df.index)
+
+        ref_df.sort_index(axis=1, inplace=True)
+        df.sort_index(axis=1, inplace=True)
+
+        # Compare the reference dataframes and extract the discrepant entries
+        diff_df = ref_df.loc[ref_df.compare(df).index]
+        print('resulting difference between reference dataframes are:')
+        print(diff_df)
+
+        # Update the values of the reference entries that were modified in the external reference dataframe
+        for index, row in diff_df.iterrows():
+            print(index)
+            record_id, ref_id = index
+            print('updating column {} values for entry {} - {}'.format(row.index.tolist(), record_id, ref_id))
+            print(row.values)
+            self.ref_df.loc[(self.ref_df['RecordID'] == record_id) & (self.ref_df['ReferenceID'] == ref_id), row.index] = row.values
+
+        return diff_df
+
+    def update_references_old(self, ext_df):
+        """
+        Update the reference dataframe using an external reference dataframe with overlapping entries.
+
+        Arguments:
+            ext_df (DataFrame): external reference entry dataframe that will be used to update the entries of the
+                account reference dataframe.
+        """
+        pd.set_option('display.max_columns', None)
+        df = self.ref_df.copy()
+
         # Drop external reference entries when not also found in the reference entry
         ref_ids = df['ReferenceID'].dropna()
         ref_df = ext_df.loc[ext_df['RecordID'].isin(ref_ids)].copy()
@@ -2161,50 +2232,7 @@ class BankAccount:
             print(row.values)
             self.ref_df.loc[(self.ref_df['RecordID'] == record_id) & (self.ref_df['ReferenceID'] == ref_id), row.index] = row.values
 
-    def update_references_old(self, ref_df):
-        """
-        Update the reference dataframe using a corresponding reference dataframe.
-        """
-        pd.set_option('display.max_columns', None)
-
-        df = self.ref_df.copy()
-
-        # Drop references records that are not found as corresponding references in the reference dataframe
-        ref_ids = df['ReferenceID'].dropna()
-        ref_df = ref_df[ref_df['RecordID'].isin(ref_ids)]
-
-        if ref_df.empty:
-            logger.debug('BankAccount {NAME}: no references remaining after filtering references that are not shared'
-                         .format(NAME=self.name))
-            return df
-
-        # Delete reference entries that were deleted in the corresponding reference dataframe
-        deleted_references = ref_df.loc[ref_df['ReferenceID'].isna(), 'RecordID']
-        if not deleted_references.empty:
-            ids_to_delete = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID'].tolist()
-
-            logger.debug('BankAccount {NAME}: removing references {REFS}'.format(NAME=self.name, REFS=ids_to_delete))
-            self.reset_references(ids_to_delete, index=False)
-            self.reset_records(ids_to_delete, index=False)
-
-            ref_df.drop(deleted_references.index, inplace=True)
-            df = self.ref_df.copy()
-
-        # Subset reference table on matching reference records
-        if ref_df.empty:
-            logger.debug('BankAccount {NAME}: no references remaining to modify after removing the deleted references'
-                         .format(NAME=self.name))
-            return df
-
-        df.set_index('RecordID', inplace=True)
-        ref_df.set_index('ReferenceID', inplace=True)
-
-        mod_cols = ['ReferenceDate', 'ReferenceNotes', 'ReferenceWarnings', 'IsApproved']
-        df.loc[ref_df.index, mod_cols] = ref_df[mod_cols]
-
-        df.reset_index(inplace=True)
-
-        return df
+        return diff_df
 
     def approve(self, record_ids):
         """

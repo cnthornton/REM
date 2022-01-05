@@ -2173,6 +2173,55 @@ class DatabaseRecord:
 
         return pd.Series(values)
 
+    def export_associations(self, association_rule: str = None):
+        """
+        Export record data as a Series.
+
+        Arguments:
+            association_rule (str): only export associated records under the given association rule
+                [Default: export all].
+
+        Returns:
+            df (DataFrame): reference dataframe of associated records.
+        """
+        ref_df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
+                                       'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
+                                       'IsDeleted'])
+
+        print('exporting record {} associated records'.format(self.name))
+
+        try:
+            refbox_elements = self.fetch_element('reference', by_type=True)
+        except KeyError:
+            refbox_elements = []
+
+        for refbox in refbox_elements:
+            refbox_rule = refbox.association_rule
+            if association_rule and association_rule != refbox_rule:
+                continue
+
+            data = refbox.data()
+            print('adding reference {} entries:'.format(refbox_rule))
+            print(data)
+            ref_df = ref_df.append(data, ignore_index=True)
+
+        try:
+            comp_elements = self.fetch_element('components', by_type=True)
+        except KeyError:
+            comp_elements = []
+
+        for comp_tbl in comp_elements:
+            comp_rule = comp_tbl.association_rule
+            if association_rule and association_rule != comp_rule:
+                continue
+
+            data = comp_tbl.export_references(self.record_id())
+            print('adding component {} entries:'.format(comp_rule))
+            print(data)
+            ref_df = ref_df.append(data, ignore_index=True)
+
+        return ref_df
+
     def prepare_delete_statements(self, statements: dict = None):
         """
         Prepare statements for deleting the record and child records from the database.
