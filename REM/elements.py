@@ -2963,6 +2963,7 @@ class DataList(RecordElement):
                 self.edited = True
                 window[note_key].update(value=note)
                 window[note_key].metadata['value'] = note
+                self.collection.update_field(self._notes_field, note, indices=[index])
 
         # Run a header event
         elif event_type == 'Header':
