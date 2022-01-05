@@ -3086,7 +3086,7 @@ class DataList(RecordElement):
         # List entry layout
         if self._notes_field:
             notes = display_row[self._notes_field]
-            can_edit = True
+            can_edit = True if not is_disabled else False
         else:
             notes = None
             can_edit = False
