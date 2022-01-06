@@ -2376,20 +2376,21 @@ class DatabaseRecord:
         for refbox in refbox_elements:
             association_rule = refbox.association_rule
 
-            if self.new or save_all:  # export all referenced if record is new or otherwise indicated
+            if self.new or save_all:  # export all reference entries if record is new or if indicated to do so
                 logger.debug('Record {ID}: preparing export statements for all "{ASSOC}" references'
                              .format(ID=record_id, ASSOC=association_rule))
                 ref_data = refbox.data()
-            else:  # export only the added references
-                logger.debug('Record {ID}: preparing export statements for added "{ASSOC}" references'
+            else:  # export only the added or edited reference entries
+                logger.debug('Record {ID}: preparing export statements for edited or new "{ASSOC}" references'
                              .format(ID=record_id, ASSOC=association_rule))
-                ref_data = refbox.data(added_rows=True)
+                ref_data = refbox.data(edited_rows=True)
             print(ref_data)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
                          .format(ID=record_id, ASSOC=association_rule))
             deleted_df = refbox.data(deleted_rows=True)
+            print(deleted_df)
             statements = record_entry.delete_database_references(deleted_df, association_rule, statements=statements)
 
         # Prepare to save record components
@@ -2489,6 +2490,7 @@ class DatabaseRecord:
 
         #success = user.write_db(sstrings, psets)
         success = True
+        print('final save statements:')
         print(statements)
 
         return success
