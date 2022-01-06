@@ -2076,46 +2076,6 @@ class BankAccount:
 
             table.update_column(column, new_values)
 
-    def merge_references_old(self, df: pd.DataFrame = None):
-        """
-        Merge the records table and the reference table on configured reference map columns.
-
-        Arguments:
-            df (DataFrame): merge references with the provided records dataframe [Default: use full records dataframe].
-
-        Returns:
-            df (DataFrame): dataframe of records merged with their corresponding reference entries.
-        """
-        pd.set_option('display.max_columns', None)
-
-        ref_map = self.ref_map
-        ref_df = self.ref_df.copy()
-        table = self.get_table()
-
-        df = table.data() if df is None else df
-
-        # Reorder the references dataframe to match the order of the records in the records table
-        ref_df.set_index('RecordID', inplace=True)
-        print(ref_df)
-        print(df['RecordID'])
-        ref_df = ref_df.reindex(index=df['RecordID'].tolist())
-
-        # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
-        if df.shape[0] != ref_df.shape[0]:
-            logger.warning('BankAccount {NAME}: the records dataframe and reference dataframe of of unequal sizes'
-                           .format(NAME=self.name))
-            indices = df[df['Records'].isin(ref_df.index.tolist())].index
-        else:
-            indices = df.index.tolist()
-
-        # Update the configured references columns in the records dataframe to be the same as the columns in references
-        # dataframe
-        for column in ref_map:
-            mapped_col = ref_map[column]
-
-            new_values = ref_df[column].tolist()
-            table.update_column(mapped_col, new_values, indices=indices)
-
     def update_references(self, ext_df):
         """
         Update the reference dataframe using an external reference dataframe with overlapping entries.
@@ -2152,63 +2112,6 @@ class BankAccount:
             self.reset_records(ids_to_delete, index=False)
 
             ref_df.drop(deleted_references.index, inplace=True)
-
-        # Subset the reference dataframe on the remaining external reference entries
-        ref_df.set_index(['RecordID', 'ReferenceID'], inplace=True)
-        df.set_index(['RecordID', 'ReferenceID'], inplace=True)
-
-        df = df.reindex(index=ref_df.index)
-
-        ref_df.sort_index(axis=1, inplace=True)
-        df.sort_index(axis=1, inplace=True)
-
-        # Compare the reference dataframes and extract the discrepant entries
-        diff_df = ref_df.loc[ref_df.compare(df).index]
-        print('resulting difference between reference dataframes are:')
-        print(diff_df)
-
-        # Update the values of the reference entries that were modified in the external reference dataframe
-        for index, row in diff_df.iterrows():
-            print(index)
-            record_id, ref_id = index
-            print('updating column {} values for entry {} - {}'.format(row.index.tolist(), record_id, ref_id))
-            print(row.values)
-            self.ref_df.loc[(self.ref_df['RecordID'] == record_id) & (self.ref_df['ReferenceID'] == ref_id), row.index] = row.values
-
-        return diff_df
-
-    def update_references_old(self, ext_df):
-        """
-        Update the reference dataframe using an external reference dataframe with overlapping entries.
-
-        Arguments:
-            ext_df (DataFrame): external reference entry dataframe that will be used to update the entries of the
-                account reference dataframe.
-        """
-        pd.set_option('display.max_columns', None)
-        df = self.ref_df.copy()
-
-        # Drop external reference entries when not also found in the reference entry
-        ref_ids = df['ReferenceID'].dropna()
-        ref_df = ext_df.loc[ext_df['RecordID'].isin(ref_ids)].copy()
-
-        if ref_df.empty:
-            logger.debug('BankAccount {NAME}: no references remaining after filtering references that are not shared'
-                         .format(NAME=self.name))
-
-        # Delete reference entries that were deleted in the external reference dataframe
-        deleted_references = ref_df.loc[ref_df['ReferenceID'].isna(), 'RecordID']
-        if not deleted_references.empty:
-            ids_to_delete = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID'].tolist()
-
-            self.reset_references(ids_to_delete, index=False)
-            self.reset_records(ids_to_delete, index=False)
-
-            ref_df.drop(deleted_references.index, inplace=True)
-
-        # Flip the record and reference values for the external reference dataframe
-        ref_df = ref_df.rename(columns={'RecordID': 'ReferenceID', 'ReferenceID': 'RecordID',
-                                        'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'})
 
         # Subset the reference dataframe on the remaining external reference entries
         ref_df.set_index(['RecordID', 'ReferenceID'], inplace=True)
@@ -2424,34 +2327,6 @@ class BankAccount:
 
         return indices
 
-    def reset_references_old(self, identifiers, index: bool = False):
-        """
-        Reset record references for the selected records.
-
-        Arguments:
-            identifiers (list): list of record identifiers corresponding to the records to modify.
-
-            index (bool): record identifiers are table indices [Default: False - identifiers are record IDs].
-
-        Returns:
-            indices (list): list of affected references indices.
-        """
-        ref_df = self.ref_df
-
-        if index:
-            indices = identifiers
-        else:
-            indices = ref_df.index[ref_df['RecordID'].isin(identifiers)].tolist()
-
-        # Clear the reference entries corresponding to the selected record
-        logger.info('DataTable {TBL}: removing references for records {IDS}'
-                    .format(TBL=self.name, IDS=identifiers))
-        ref_columns = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'ReferenceWarnings',
-                       'IsApproved']
-        ref_df.loc[indices, ref_columns] = [None, None, None, None, None, False]
-
-        return indices
-
     def add_reference(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None,
                       note: str = None, refdate: datetime.datetime = None):
         """
@@ -2464,17 +2339,6 @@ class BankAccount:
         ref_values = pd.Series([record_id, reference_id, refdate, self.record_type, reftype, note,
                                 warning, approved, False, False, False], index=ref_cols)
         self.ref_df = self.ref_df.append(ref_values, ignore_index=True)
-
-    def add_reference_old(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None, note: str = None):
-        """
-        Add a record reference to the references dataframe.
-        """
-        ref_df = self.ref_df
-        ref_cols = ['ReferenceID', 'ReferenceDate', 'ReferenceType', 'ReferenceNotes', 'ReferenceWarnings',
-                    'IsApproved',  'IsHardLink', 'IsChild', 'IsDeleted']
-
-        ref_values = [reference_id, datetime.datetime.now(), reftype, note, warning, approved, False, False, False]
-        ref_df.loc[ref_df['RecordID'] == record_id, ref_cols] = ref_values
 
     def has_reference(self, record_ids):
         """
@@ -2547,49 +2411,6 @@ class BankAccount:
 
         table.append(df)
 
-    def load_data_old(self, params, records: list = None):
-        """
-        Load record and reference data from the database.
-        """
-        pd.set_option('display.max_columns', None)
-
-        ref_col_map = self.ref_map
-        table = self.get_table()
-        id_column = table.id_column
-
-        # Update the record table dataframe with the data imported from the database
-        df = self.load_records(params, records=records)
-
-        # Load the record references from the reference table connected with the association rule
-        record_ids = df[id_column].tolist()
-        print('loading references for record ids: {}'.format(record_ids))
-        ref_df = self.load_references(record_ids)
-        print(ref_df)
-
-        #self.ref_df = ref_df.copy()
-
-        # Reorder the references dataframe to match the order of the records in the records table
-        ref_df.set_index('RecordID', inplace=True)
-        ref_df = ref_df.reindex(index=df[id_column].tolist())
-
-        # Update the configured references columns in the records dataframe to be the same as the columns in references
-        # dataframe
-        for tbl_column in ref_col_map:
-            ref_col = ref_col_map[tbl_column]
-
-            try:
-                new_values = ref_df[tbl_column].tolist()
-            except KeyError:
-                msg = 'missing reference map column {COL} from reference entry dataframe'.format(COL=tbl_column)
-                logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                new_values = None
-
-            df[ref_col] = new_values
-
-        self.ref_df = ref_df.reset_index()
-        table.append(df)
-
     def load_references(self, record_ids):
         """
         Load record references from the database.
@@ -2600,17 +2421,12 @@ class BankAccount:
 
         # Import reference entries from the database
         try:
-            #import_df = record_entry.import_references(record_ids, rule_name)
-            df = record_entry.import_references(record_ids, rule_name)
+            df = record_entry.import_references(record_ids, rule=rule_name)
         except Exception as e:
             msg = 'failed to import references from association rule {RULE}'.format(RULE=rule_name)
             logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             raise ImportError(msg)
-
-        # Create new reference entries for records with IDs not currently found in the database
-        #ref_df = pd.merge(pd.DataFrame({'RecordID': record_ids}), import_df, how='left', on='RecordID')
-        #ref_df['RecordType'].fillna(record_type, inplace=True)
 
         # Set datatypes of the reference table columns
         bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']

@@ -3518,13 +3518,28 @@ class ReferenceList(DataList):
             type_field = entry['TypeField']
         except KeyError:
             msg = self.format_log('missing required parameter "TypeField"')
-            raise AttributeError(msg)
+            logger.warning(msg)
+            self._type_field = None
         else:
             if type_field in self.columns:
                 self._type_field = type_field
             else:
                 msg = self.format_log('type field "{FIELD}" not found in the set of collection fields'
                                       .format(FIELD=type_field))
+                raise AttributeError(msg)
+
+        try:
+            ref_type_field = entry['RefTypeField']
+        except KeyError:
+            msg = self.format_log('missing required parameter "RefTypeField"')
+            logger.warning(msg)
+            self._ref_type_field = None
+        else:
+            if ref_type_field in self.columns:
+                self._ref_type_field = ref_type_field
+            else:
+                msg = self.format_log('reference type field "{FIELD}" not found in the set of collection fields'
+                                      .format(FIELD=ref_type_field))
                 raise AttributeError(msg)
 
         try:
@@ -3536,15 +3551,68 @@ class ReferenceList(DataList):
             raise AttributeError(msg)
 
     def run_header_event(self, index):
-        logger.debug(self.format_log('running header event at index {INDEX}'.format(INDEX=index)))
-        try:
-            record = self.load_record(index)
-        except Exception as e:
-            msg = 'failed to open record at index {INDEX} - {ERR}'.format(INDEX=index, ERR=e)
-            logger.error(self.format_log(msg))
-        else:
-            # Display the record window
-            mod_win2.record_window(record, view_only=True)
+        if self._ref_type_field:
+            logger.debug(self.format_log('running header event at index {INDEX}'.format(INDEX=index)))
+            try:
+                record = self.load_record(index)
+            except Exception as e:
+                msg = 'failed to open record at index {INDEX} - {ERR}'.format(INDEX=index, ERR=e)
+                logger.error(self.format_log(msg))
+            else:
+                # Display the record window
+                mod_win2.record_window(record, view_only=True)
+
+    def import_entries(self, import_df: pd.DataFrame = None):
+        """
+        Import deleted list entries through the data import window.
+        """
+        # pd.set_option('display.max_columns', None)
+        collection = self.collection
+        display_columns = {**{self._header_field: self.description}, **self.display_columns}
+
+        table_layout = {'Columns': collection.dtypes, 'DisplayColumns': display_columns,
+                        'Aliases': collection.aliases, 'Description': self.description,
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
+                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
+                        }
+        import_table = DataTable(self.name, table_layout)
+
+        # Add entries that were deleted in the record window to the import set
+        if import_df is None:
+            import_df = collection.data(current=False, deleted_only=True)
+
+        import_table.append(import_df, reindex=False)
+
+        # Add entries that were set to deleted in the database to the import set
+        if self._type_field:
+            id_col = self._header_field
+            ref_df = self.collection.data()
+
+            record_type = ref_df[self._type_field].unique().squeeze()
+            print('record type is {}'.format(record_type))
+            record_entry = settings.records.fetch_rule(record_type)
+            db_df = record_entry.import_references(ref_df, rule=self.association_rule, include_deleted=True)
+
+            # Subset on table columns
+            db_df = db_df[[i for i in db_df.columns.values if i in import_df.columns]]
+
+            # Drop records that are already in the import dataframe
+            import_ids = import_df[id_col].tolist()
+            db_df.drop(db_df[db_df[id_col].isin(import_ids)].index, inplace=True)
+
+            # Drop records that are already in the component dataframe
+            current_ids = ref_df[id_col].tolist()
+            db_df.drop(db_df[db_df[id_col].isin(current_ids)].index, inplace=True)
+
+            # Add import dataframe to data table object
+            print('appending deleted entries:')
+            print(db_df)
+            import_table.append(db_df)
+
+        # Get table of user selected import records
+        select_df = mod_win2.import_window(import_table)
+
+        return select_df
 
     def load_record(self, index, level: int = None):
         """
@@ -3559,7 +3627,7 @@ class ReferenceList(DataList):
             record (DatabaseRecord): initialized database record.
         """
         ref_data = self.collection.data(indices=[index]).squeeze()
-        ref_type = ref_data[self._type_field]
+        ref_type = ref_data[self._ref_type_field]
         record_entry = settings.records.fetch_rule(ref_type)
         record_class = mod_records.DatabaseRecord
 

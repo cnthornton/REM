@@ -384,7 +384,92 @@ class RecordEntry:
 
         return import_df
 
-    def import_references(self, records, rule_name, include_deleted: bool = False):
+    def import_references(self, records, rule: str = None, include_deleted: bool = False):
+        """
+        Import a record's association.
+
+        Arguments:
+            records (list): list of record IDs to extract from the reference table.
+
+            rule (str): name of the association rule to use to gather information about the references to extract
+                [Default: import associations for all rules].
+
+            include_deleted (bool): import reference entries that were set to deleted as well.
+        """
+        association_rules = self.association_rules
+
+        if rule and rule in association_rules:
+            import_rules = [rule]
+        else:
+            import_rules = list(association_rules)
+
+        if isinstance(records, str):
+            record_ids = [records]
+        elif isinstance(records, pd.Series):
+            record_ids = records.tolist()
+        elif isinstance(records, pd.DataFrame):
+            try:
+                record_ids = records['RecordID'].tolist()
+            except KeyError:
+                msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"' \
+                    .format(COL='RecordID')
+                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise ImportError(msg)
+        else:
+            record_ids = records
+
+        # Remove duplicate IDs
+        record_ids = list(set(record_ids))
+
+        # Prepare the import data
+        df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
+                                   'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
+                                   'IsDeleted'])
+        for rule_name in import_rules:
+            try:
+                rule = association_rules[rule_name]
+            except KeyError:
+                msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                    .format(RULE=rule_name)
+                logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise ImportError(msg)
+
+            is_primary = rule['Primary']
+            reference_table = rule['ReferenceTable']
+
+            if is_primary:  # input records are the primary record IDs
+                columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate', 'DocType AS RecordType',
+                           'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
+                           'IsChild', 'IsHardLink', 'IsApproved']
+                filter_str = 'DocNo IN ({VALS})'
+            else:  # input records are the reference record ID
+                columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
+                           'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes',
+                           'Warnings AS ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved']
+                filter_str = 'RefNo IN ({VALS})'
+
+            # Import reference entries related to record_id
+            for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+                sub_ids = record_ids[i: i + 1000]
+                sub_vals = ','.join(['?' for _ in sub_ids])
+
+                filters = [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
+                if not include_deleted:
+                    filters.append(('IsDeleted = ?', 0))
+
+                import_df = user.read_db(*user.prepare_query_statement(reference_table, columns=columns,
+                                                                       filter_rules=filters), prog_db=True)
+                df = df.append(import_df, ignore_index=True)
+
+        # Set column data types
+        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
+        df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
+
+        return df
+
+    def import_references_old(self, records, rule_name, include_deleted: bool = False):
         """
         Import a record's association.
 
@@ -857,7 +942,7 @@ class RecordEntry:
 
                     # Get hard-linked references of the existing records
                     current_ids = exist_df['RecordID'].tolist()
-                    exist_ref_df = self.import_references(current_ids, association)
+                    exist_ref_df = self.import_references(current_ids, rule=association)
                     assoc_record_ids = exist_ref_df['RecordID'].tolist()
 
                     # Update hard-linked record element values to match record element values
@@ -1022,7 +1107,7 @@ class RecordEntry:
             assoc_type = rule['AssociationType']
 
             # Import reference entries to be deleted
-            import_df = self.import_references(record_ids, association)
+            import_df = self.import_references(record_ids, rule=association)
 
             # Delete the reference entries and remove already used references from the list - this is necessary for
             # hard-linked records to avoid endless looping
@@ -1697,7 +1782,7 @@ class DatabaseRecord:
                     assoc_refs = references[assoc_rule]
                     ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
                 else:
-                    ref_data = record_entry.import_references(record_id, assoc_rule)
+                    ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
                 if ref_data.empty:
                     logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
@@ -1722,7 +1807,7 @@ class DatabaseRecord:
                     assoc_refs = references[assoc_rule]
                     ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
                 else:
-                    ref_data = record_entry.import_references(record_id, assoc_rule)
+                    ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
                 if ref_data.empty:
                     logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
@@ -2267,7 +2352,7 @@ class DatabaseRecord:
             if assoc_type == 'child':
                 continue
 
-            ref_df = record_entry.import_references(record_id, rule_name)
+            ref_df = record_entry.import_references(record_id, rule=rule_name)
 
             # Subset references to include those that are child records or hard-linked
             if assoc_type == 'parent':  # reference table may contain child records
