@@ -327,7 +327,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
-    record_events = record.record_events()
+    #record_events = record.record_events()
     while True:
         event, values = window.read(timeout=100)
 
@@ -480,7 +480,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
             continue
 
         # Update the record parameters with user-input
-        if event in record_events or event in settings.get_shortcuts():  # selected a record event element or hotkey
+        if event in record.record_events():  # selected a record event element
             try:
                 record.run_event(window, event, values)
             except Exception as e:

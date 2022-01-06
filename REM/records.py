@@ -1814,7 +1814,7 @@ class DatabaseRecord:
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
 
-                record_element.append(ref_data)
+                record_element.append(ref_data, new=False)
 
             #elif etype == 'refbox':  # reference box
             #    assoc_rule = record_element.association_rule
@@ -1993,6 +1993,8 @@ class DatabaseRecord:
         """
         Perform a record action.
         """
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
         # Collapse or expand a section frame
         section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
         if event in section_bttns:
@@ -2010,15 +2012,13 @@ class DatabaseRecord:
                 logger.error('RecordType {NAME}, Record {ID}: unable to find the metadata element associated with '
                              'event key "{KEY}"'.format(NAME=self.name, ID=self.record_id(), KEY=event))
             else:
-                meta_param.run_event(window, event, values)
+                triggers = meta_param.run_event(window, event, values)
 
             return False
 
         # Record element events
         elem_events = self.record_events(components_only=True)
         record_elements = self.modules
-
-        update_event = False
 
         # Get record element that is currently in focus
         try:
@@ -2080,15 +2080,23 @@ class DatabaseRecord:
                         logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                         mod_win2.popup_error(msg)
                     else:
-                        update_event = record_element.add_record(record_data)
-                        if update_event:
+                        record_created = record_element.add_record(record_data)
+                        if record_created:
                             record_element.update_display(window)
                 else:
-                    update_event = record_element.run_event(window, event, values)
+                    triggers = record_element.run_event(window, event, values)
             else:
-                update_event = record_element.run_event(window, event, values)
+                triggers = record_element.run_event(window, event, values)
 
-        if update_event:
+        if triggers['DisplayEvent']:
+            self.update_display(window)
+
+        if triggers['ResizeEvent']:
+            window.visibility_changed()
+            window[self.key_lookup('DetailsCol')].contents_changed()
+            window[self.key_lookup('MetaCol')].contents_changed()
+
+        if triggers['ValueEvent']:
             # Update any element references with new values
             record_values = self.export_values(header=False)
             try:
@@ -2116,14 +2124,8 @@ class DatabaseRecord:
             meta_elem.update_display(window)
 
         # Update the record elements
-        #record_values = self.export_values(header=False)
-
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
         for record_element in self.modules:
-            #if record_element.etype == 'reference':
-            #    record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
-            #else:
-            #    record_element.update_display(window)
             record_element.update_display(window)
 
     def record_events(self, components_only: bool = False):
@@ -2592,8 +2594,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
+        success = user.write_db(sstrings, psets)
+        #success = True
         print('final save statements:')
         print(statements)
 

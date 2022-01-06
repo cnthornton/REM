@@ -694,6 +694,7 @@ class DataTable(RecordElement):
 
         # Table events
         update_event = False
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # Single click to select a table row
         if event == elem_key:
@@ -720,9 +721,7 @@ class DataTable(RecordElement):
 
                 # Get the real index of the selected row
                 index = self.get_index(select_row_index)
-                print('real index is: {}'.format(index))
                 update_event = self.run_table_event(index)
-                print(update_event)
 
         elif event == search_key:
             # Update the search field value
@@ -747,7 +746,7 @@ class DataTable(RecordElement):
                     logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
-                    return False
+                    return triggers
 
             # Update the display table to show the filtered table
             self.update_display(window)
@@ -811,7 +810,7 @@ class DataTable(RecordElement):
                 msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                return False
+                return triggers
 
             # Find the selected column to fill
             display_col = values[fill_key]
@@ -822,7 +821,7 @@ class DataTable(RecordElement):
                     .format(COL=display_col)
                 logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                return False
+                return triggers
 
             # Fill in NA values
             collection.fill(indices, fill_col)
@@ -885,11 +884,12 @@ class DataTable(RecordElement):
 
         if update_event:
             self.edited = True
+            triggers['ValueEvent'] = True
 
             # Update the display table to show the new table values
             self.update_display(window)
 
-        return update_event
+        return triggers
 
     def run_table_event(self, index):
         """
@@ -2057,7 +2057,7 @@ class DataTable(RecordElement):
                          'False'.format(NAME=self.name))
             collection.set_state('deleted', False, indices=select_df.index.tolist())
 
-        return select_df
+        return pd.DataFrame()
 
     def append(self, add_df, inplace: bool = True, new: bool = False, reindex: bool = True):
         """
@@ -2272,7 +2272,10 @@ class RecordTable(DataTable):
         Create a new record and add it to the records table.
 
         Arguments:
-            record_data: initial set of record data.
+            record_data (DataFrame): initial set of record data.
+
+        Returns:
+            record_created (bool): boolean indicating whether a new component record was created.
         """
         collection = self.collection
 
@@ -2901,6 +2904,7 @@ class DataList(RecordElement):
         Run a record element event.
         """
         update_event = False
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # List element events
         bind_keys = self._bindings
@@ -2913,7 +2917,7 @@ class DataList(RecordElement):
         # Set focus to the element and enable edit mode
         if event == focus_event:
             window[elem_key].set_focus()
-            return update_event
+            return triggers
 
         if event == options_key:
             selection = values[options_key]
@@ -2934,12 +2938,9 @@ class DataList(RecordElement):
                 logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
             else:
                 if not import_rows.empty:
-                    import_indices = import_rows.index.tolist()
-                    # Change deleted column of existing selected records to False
-                    logger.debug(self.format_log('changing deleted status of selected entries at indices {INDS} '
-                                                 'to False'.format(INDS=import_indices)))
-                    self.collection.set_state('deleted', False, indices=import_indices)
-                    self.collection.set_state('added', True, indices=import_indices)
+                    print('appending new import entries to the collection:')
+                    print(import_rows)
+                    self.collection.append(import_rows, new=True)
 
                 update_event = True
 
@@ -2963,16 +2964,18 @@ class DataList(RecordElement):
                 self.edited = True
                 window[note_key].update(value=note)
                 window[note_key].metadata['value'] = note
-                self.collection.update_field(self._notes_field, note, indices=[index])
+                self.collection.update_field(self._notes_field, note, indices=[index])  # also updated "edited" state
 
         # Run a header event
         elif event_type == 'Header':
             self.run_header_event(index)
 
         if update_event:
-            self.update_display(window)
+            resize_event = self.update_display(window)
+            triggers['ValueEvent'] = True
+            triggers['ResizeEvent'] = resize_event
 
-        return update_event
+        return triggers
 
     def run_header_event(self, index):
         logger.debug(self.format_log('running header event at index {INDEX}'.format(INDEX=index)))
@@ -3204,9 +3207,6 @@ class DataList(RecordElement):
         # Add the entry frame to the entries column
         window.extend_layout(entries, layout)
 
-        # Reset the added state to False
-        self.collection.set_state('added', False, indices=index)
-
         # Add the index to list of entry indices
         self.indices.append(index)
 
@@ -3262,15 +3262,6 @@ class DataList(RecordElement):
         warning_visible = True if warning_text else False
         window[warnings_key].set_tooltip(warning_text)
         window[warnings_key].update(visible=warning_visible)
-
-        # Set the visibility of the entry frame to visible
-        entry_key = self.key_lookup('Entry:{}'.format(index))
-        window[entry_key].update(visible=True)
-        window[entry_key].metadata['visible'] = True
-
-        # Reset the added and deleted state to False
-        self.collection.set_state('deleted', False, indices=index)
-        self.collection.set_state('added', False, indices=index)
 
     def resize(self, window, size: tuple = None):
         """
@@ -3332,24 +3323,29 @@ class DataList(RecordElement):
         # Create or update index entries
         resize_event = False
         for index in df.index.tolist():
-            entry_deleted = collection.get_state('deleted', indices=[index])
-            entry_added = collection.get_state('added', indices=[index])
-
-            if entry_deleted and not entry_added:  # listbox corresponding to the entry should be hidden when "deleted"
+            if index in entry_indices:
                 entry_key = self.key_lookup('Entry:{}'.format(index))
-                window[entry_key].update(visible=False)
-                window[entry_key].metadata['visible'] = False
+                entry_deleted = collection.get_state('deleted', indices=[index])
+                print('entry {} has been deleted: {}'.format(index, entry_deleted))
+
+                if entry_deleted:  # entry layout should be hidden when entry is set to "deleted"
+                    print('deleting entry {}'.format(index))
+
+                    if window[entry_key].metadata['visible']:  # entry layout is not yet hidden from the display
+                        window[entry_key].update(visible=False)
+                        window[entry_key].metadata['visible'] = False
+                        resize_event = True
+                else:  # these entries should all have visible layouts
+                    if not window[entry_key].metadata['visible']:  # entry layout should be updated and made visible
+                        print('updating entry {}'.format(index))
+                        resize_event = True
+                        self.update_entry(index, window)
+
+                        window[entry_key].update(visible=True)
+                        window[entry_key].metadata['visible'] = True
+            else:  # a layout for the entry has not yet been created
                 resize_event = True
-            elif entry_deleted and entry_added:  # entry data at the given index was replaced with new data
-                resize_event = True
-                self.update_entry(index, window)
-            elif entry_added:
-                resize_event = True
-                if index in entry_indices:  # a listbox has already been created for the given index
-                    self.update_entry(index, window)
-                else:
-                    # Create a new listbox for the entry
-                    self.create_entry(index, window)
+                self.create_entry(index, window)
 
             # Annotate the entry
             annotation_key = self.key_lookup('Annotation:{}'.format(index))
@@ -3368,6 +3364,8 @@ class DataList(RecordElement):
 
         if resize_event:
             self.resize(window)
+
+        return resize_event
 
     def annotate_display(self, df):
         """
@@ -3458,7 +3456,15 @@ class DataList(RecordElement):
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table)
 
-        return select_df
+        # Change deleted column of existing selected records to False
+        if not select_df.empty:
+            selected_indices = select_df.index.tolist()
+            logger.debug(self.format_log('changing deleted status of selected entries at indices {INDS} '
+                                         'to False'.format(INDS=selected_indices)))
+            self.collection.set_state('deleted', False, indices=selected_indices)
+            self.collection.set_state('added', True, indices=selected_indices)
+
+        return pd.DataFrame()
 
     def check_requirements(self):
         """
@@ -3568,6 +3574,8 @@ class ReferenceList(DataList):
         """
         # pd.set_option('display.max_columns', None)
         collection = self.collection
+        id_col = self._header_field
+        ref_df = collection.data(current=False)  # all entries in the collection
         display_columns = {**{self._header_field: self.description}, **self.display_columns}
 
         table_layout = {'Columns': collection.dtypes, 'DisplayColumns': display_columns,
@@ -3579,15 +3587,12 @@ class ReferenceList(DataList):
 
         # Add entries that were deleted in the record window to the import set
         if import_df is None:
-            import_df = collection.data(current=False, deleted_only=True)
+            import_df = collection.data(current=False, deleted_only=True)  # only deleted entries in the collection
 
         import_table.append(import_df, reindex=False)
 
         # Add entries that were set to deleted in the database to the import set
         if self._type_field:
-            id_col = self._header_field
-            ref_df = self.collection.data()
-
             record_type = ref_df[self._type_field].unique().squeeze()
             print('record type is {}'.format(record_type))
             record_entry = settings.records.fetch_rule(record_type)
@@ -3596,21 +3601,37 @@ class ReferenceList(DataList):
             # Subset on table columns
             db_df = db_df[[i for i in db_df.columns.values if i in import_df.columns]]
 
-            # Drop records that are already in the import dataframe
+            # Drop entries that are already in the import dataframe
             import_ids = import_df[id_col].tolist()
             db_df.drop(db_df[db_df[id_col].isin(import_ids)].index, inplace=True)
 
-            # Drop records that are already in the component dataframe
+            # Drop entries that are already in the component dataframe
             current_ids = ref_df[id_col].tolist()
             db_df.drop(db_df[db_df[id_col].isin(current_ids)].index, inplace=True)
 
             # Add import dataframe to data table object
+            db_ids = db_df[id_col].tolist()
             print('appending deleted entries:')
             print(db_df)
             import_table.append(db_df)
+        else:
+            db_ids = []
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table)
+
+        # Verify that selected records are not already in table
+        select_ids = select_df[id_col].tolist()
+        existing_ids = [i for i in select_ids if i not in db_ids]
+        existing_indices = ref_df.loc[ref_df[id_col].isin(existing_ids)].index.tolist()
+
+        logger.debug(self.format_log('removing selected records {IDS} already stored in the table at rows {ROWS}'
+                                     .format(IDS=existing_ids, ROWS=existing_indices)))
+        select_df.drop(select_df.loc[select_df[id_col].isin(existing_ids)].index, inplace=True, axis=0, errors='ignore')
+
+        # Change deleted column of existing selected records to False
+        logger.debug(self.format_log('changing delete status of selected records already stored in the table to False'))
+        collection.set_state('deleted', False, indices=existing_indices)
 
         return select_df
 
@@ -3654,611 +3675,6 @@ class ReferenceList(DataList):
         record.initialize(record_data, new=False)
 
         return record
-
-
-class ReferenceBox(RecordElement):
-    """
-    Record reference box element.
-
-    Attributes:
-
-        name (str): reference box element configuration name.
-
-        id (int): reference box element number.
-
-        parent (str): name of the parent element.
-
-        elements (list): list of reference box element GUI keys.
-
-        etype (str): program element type.
-
-        modifiers (dict): flags that alter the element's behavior.
-
-        association_rule (str): name of the association rule connecting the associated records.
-
-        aliases (dict): layout element aliases.
-
-        edited (bool): reference box was edited [Default: False]
-    """
-
-    def __init__(self, name, entry, parent=None):
-        """
-        Initialize the reference box element attributes.
-
-        Arguments:
-            name (str): reference box element configuration name.
-
-            entry (dict): configuration entry for the element.
-
-            parent (str): name of the parent element.
-        """
-        super().__init__(name, entry, parent)
-        self.etype = 'refbox'
-
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Frame', 'RefDate', 'Unlink', 'ParentFlag', 'HardLinkFlag', 'Approved')])
-        self._event_elements = ['Element', 'Frame', 'Approved', 'Unlink']
-
-        # Element-specific bindings
-        elem_key = self.key_lookup('Element')
-        return_key = '{}+RETURN+'.format(elem_key)
-        frame_key = self.key_lookup('Frame')
-        focus_key = '{}+FOCUS+'.format(frame_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [return_key, focus_key]
-
-        try:
-            modifiers = entry['Modifiers']
-        except KeyError:
-            self.modifiers = {'open': None, 'delete': None, 'approve': None, 'require': False}
-        else:
-            self.modifiers = {'open': modifiers.get('open', None), 'delete': modifiers.get('delete', None),
-                              'approve': modifiers.get('approve', None), 'require': modifiers.get('require', False)}
-            for modifier in self.modifiers:
-                mod_value = self.modifiers[modifier]
-                if pd.isna(mod_value):
-                    continue
-
-                try:
-                    flag = bool(int(mod_value))
-                except ValueError:
-                    logger.warning('ReferenceBox {NAME}: element modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(NAME=self.name, MOD=modifier))
-                    flag = False
-
-                self.modifiers[modifier] = flag
-
-        try:
-            self.association_rule = entry['AssociationRule']
-        except KeyError:
-            msg = 'ReferenceBox {NAME}: missing required parameter "AssociationRule"'.format(NAME=self.name)
-            logger.error(msg)
-
-            raise AttributeError(msg)
-
-        try:
-            self.aliases = entry['Aliases']
-        except KeyError:
-            self.aliases = {}
-
-        try:
-            self.colmap = entry['ColumnMap']
-        except KeyError:
-            self.colmap = {}
-
-        self.level = 0
-
-        # Dynamic values
-        self.record_id = None
-        self.reference_id = None
-        self.reference_type = None
-        self.date = None
-        self.notes = None
-        self.is_hardlink = False
-        self.is_pc = False
-        self.approved = False
-        self.referenced = False
-
-        self._dimensions = (mod_const.LISTBOX_WIDTH, mod_const.LISTBOX_HEIGHT)
-
-    def reset(self, window):
-        """
-        Reset the reference box to default.
-        """
-        self.record_id = None
-        self.reference_id = None
-        self.reference_type = None
-        self.date = None
-        self.notes = None
-        self.is_hardlink = False
-        self.is_pc = False
-        self.approved = False
-        self.referenced = False
-        self.edited = False
-
-        self.update_display(window)
-
-    def bind_keys(self, window):
-        """
-        Add hotkey bindings to the reference box.
-        """
-        level = self.level
-
-        elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('Frame')
-
-        if level < 2:
-            window[elem_key].bind('<Return>', '+RETURN+')
-            window[frame_key].bind('<Enter>', '+FOCUS+')
-
-    def run_event(self, window, event, values):
-        """
-        Run a record reference event.
-        """
-        ref_key = self.key_lookup('Element')
-        return_key = '{}+RETURN+'.format(ref_key)
-        approved_key = self.key_lookup('Approved')
-        del_key = self.key_lookup('Unlink')
-        frame_key = self.key_lookup('Frame')
-        focus_key = '{}+FOCUS+'.format(frame_key)
-
-        update_event = False
-
-        logger.info('ReferenceBox {NAME}: running event {EVENT}'.format(NAME=self.name, EVENT=event))
-
-        if event == focus_key:
-            window[ref_key].set_focus()
-
-        # Delete a reference from the record reference database table
-        if event == del_key:
-            if self.is_hardlink:  # hard-linked records can be deleted, but not the association between them
-                msg = 'failed to remove the association - the association between hard-linked records cannot be deleted'
-                mod_win2.popup_notice(msg)
-                logger.warning('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return False
-
-            msg = 'Are you sure that you would like to disassociate reference {REF} from the record? Disassociating ' \
-                  'records does not delete either record involved.'.format(REF=self.reference_id)
-            user_action = mod_win2.popup_confirm(msg)
-
-            if user_action.upper() == 'OK':
-                # Reset reference attributes
-                self.referenced = False
-                self.edited = True
-
-                self.reference_id = None
-                self.reference_type = None
-                self.date = None
-                self.notes = None
-                self.is_hardlink = False
-                self.is_pc = False
-                self.approved = False
-
-                update_event = True
-                self.update_display(window)
-
-        # Update approved element
-        elif event == approved_key:
-            window[approved_key].set_focus()
-
-            self.approved = bool(values[approved_key])
-            self.edited = True
-            update_event = True
-
-        # Open reference record in a new record window
-        elif event in (ref_key, return_key):
-            window[ref_key].set_focus()
-
-            try:
-                record = self.load_record()
-            except Exception as e:
-                msg = 'failed to open the reference record {ID} - {ERR}'.format(ID=self.reference_id, ERR=e)
-                mod_win2.popup_error(msg)
-                logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            else:
-                # Display the record window
-                mod_win2.record_window(record, view_only=True)
-
-        return update_event
-
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0):
-        """
-        GUI layout for the reference box element.
-        """
-        size = self._dimensions if not size else size
-        self._dimensions = size
-        width, height = size
-
-        is_approved = self.approved
-        aliases = self.aliases
-        modifiers = self.modifiers
-        reference_note = self.notes if self.notes is not None else ''
-
-        self.level = level
-
-        # Layout options
-        pad_el = mod_const.ELEM_PAD
-        pad_v = mod_const.VERT_PAD
-        pad_h = mod_const.HORZ_PAD
-
-        font = mod_const.LARGE_FONT
-        bold_font = mod_const.BOLD_FONT
-
-        text_col = mod_const.TEXT_COL
-        bg_col = self.bg_col
-        tooltip = tooltip if tooltip else ''
-
-        # Allowed actions and visibility of component elements
-        is_disabled = False if (editable is True and level < 1) else True
-        can_approve = True if (modifiers['approve'] is True and not is_disabled) or (overwrite is True) else False
-        can_delete = True if (modifiers['delete'] is True and not is_disabled) or (overwrite is True) else False
-        can_open = True if (modifiers['open'] is True and editable and level < 2) or (overwrite is True) else False
-
-        select_text_col = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
-
-        approved_vis = True if modifiers['approve'] is not None else False
-        hl_vis = True if self.is_hardlink is True else False
-        pc_vis = True if self.is_pc is True else False
-
-        # Element layout
-        ref_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('Frame')
-        discard_key = self.key_lookup('Unlink')
-        link_key = self.key_lookup('HardLinkFlag')
-        parent_key = self.key_lookup('ParentFlag')
-        approved_key = self.key_lookup('Approved')
-        ref_id = self.reference_id if self.reference_id else None
-        approved_title = 'Reference approved' if 'IsApproved' not in aliases else aliases['IsApproved']
-        elem_layout = [[sg.Col([[sg.Text(self.description, auto_size_text=True, pad=((0, pad_el), (0, pad_v)),
-                                         text_color=text_col, font=bold_font, background_color=bg_col,
-                                         tooltip=tooltip)],
-                                [sg.Text(ref_id, key=ref_key, auto_size_text=True, pad=((0, pad_el * 2), 0),
-                                         enable_events=can_open, text_color=select_text_col, font=font,
-                                         background_color=bg_col, tooltip='open reference record'),
-                                 sg.Image(data=mod_const.LINKED_FLAG_ICON, key=link_key, visible=hl_vis,
-                                          pad=(0, 0), background_color=bg_col,
-                                          tooltip=('Reference record is hard-linked' if 'IsHardLink' not in aliases else
-                                                   aliases['IsHardLink'])),
-                                 sg.Image(data=mod_const.PARENT_FLAG_ICON, key=parent_key, visible=pc_vis,
-                                          pad=(0, 0), background_color=bg_col,
-                                          tooltip=('Reference record is a parent' if 'IsParentChild' not in aliases else
-                                                   aliases['IsParentChild']))]],
-                               pad=((pad_h, 0), pad_v), vertical_alignment='t', background_color=bg_col, expand_x=True),
-                        sg.Col([[sg.Text(approved_title, font=font, background_color=bg_col, text_color=text_col,
-                                         visible=approved_vis),
-                                 sg.Checkbox('', default=is_approved, key=approved_key, enable_events=True,
-                                             disabled=(not can_approve), visible=approved_vis,
-                                             background_color=bg_col)],
-                                [sg.Button(image_data=mod_const.DISCARD_ICON, key=discard_key, pad=((0, pad_el * 2), 0),
-                                           disabled=(not can_delete), button_color=(text_col, bg_col), border_width=0,
-                                           tooltip=('Remove link to reference' if 'RemoveLink' not in aliases else
-                                                    aliases['RemoveLink']))]],
-                               pad=((0, pad_h), pad_v), justification='r', element_justification='r',
-                               vertical_alignment='c', background_color=bg_col)
-                        ]]
-
-        layout = sg.Frame('', elem_layout, key=frame_key, size=(width, height), pad=padding, background_color=bg_col,
-                          relief='raised', visible=self.referenced, vertical_alignment='c', element_justification='l',
-                          metadata={'deleted': False, 'name': self.name}, tooltip=reference_note)
-
-        return layout
-
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the reference box element.
-        """
-        current_w, current_h = self.dimensions()
-        border_w = 1
-
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height - border_w * 2
-            new_w = current_w if width is None else width - border_w * 2
-        else:
-            new_w, new_h = (current_w, current_h)
-
-        frame_key = self.key_lookup('Frame')
-        new_size = (new_w, new_h)
-        mod_lo.set_size(window, frame_key, new_size)
-
-        self._dimensions = new_size
-
-        return window[frame_key].get_size()
-
-    def dimensions(self):
-        """
-        Return the current dimensions of the element.
-        """
-        return self._dimensions
-
-    def update_display(self, window):
-        """
-        Update the display element.
-        """
-        link_key = self.key_lookup('HardLinkFlag')
-        parent_key = self.key_lookup('ParentFlag')
-        frame_key = self.key_lookup('Frame')
-        ref_key = self.key_lookup('Element')
-        date_key = self.key_lookup('RefDate')
-        approved_key = self.key_lookup('Approved')
-        discard_key = self.key_lookup('Unlink')
-
-        logger.debug('ReferenceBox {NAME}: updating reference box display'.format(NAME=self.name))
-
-        is_hl = self.is_hardlink
-        is_pc = self.is_pc
-        referenced = self.referenced
-        reference_note = self.notes
-
-        # Update value of approved checkbox
-        window[approved_key].update(value=self.approved)
-
-        # Update the Date and ID elements if no values
-        if not window[ref_key].get():  # current ID and date not set yet
-            ref_id = self.reference_id
-            ref_date = settings.format_display_date(self.date) if self.date else None
-            window[ref_key].update(value=ref_id)
-            window[date_key].update(value=ref_date)
-
-        # Update visibility of the element
-        if referenced:
-            window[frame_key].update(visible=True)
-        else:
-            window[frame_key].update(visible=False)
-
-        # Set flag badges and disable delete button if reference is a child or hard-linked
-        if is_hl:
-            window[link_key].update(visible=True)
-            window[discard_key].update(disabled=True)
-        else:
-            window[link_key].update(visible=False)
-
-        if is_pc:
-            window[parent_key].update(visible=True)
-            window[discard_key].update(disabled=True)
-        else:
-            window[parent_key].update(visible=False)
-
-        # Set notes
-        bg_col = self.bg_col if not reference_note else mod_const.BOX_COL
-        window[frame_key].Widget.config(background=bg_col)
-        # window[frame_key].Widget.config(highlightbackground=bg_col)
-        window[frame_key].Widget.config(highlightcolor=bg_col)
-
-        tooltip = self.format_tooltip()
-        # window.Element(frame_key).SetTooltip(reference_note)
-        window[frame_key].set_tooltip(tooltip)
-
-    def format_tooltip(self):
-        """
-        Set the element tooltip.
-        """
-        aliases = self.aliases
-        custom_tooltip = self.tooltip
-        reference_note = self.notes
-
-        tooltip = []
-        if custom_tooltip:
-            tooltip.append(custom_tooltip)
-            tooltip.append('')
-
-        info = [[aliases.get('ReferenceType', 'Reference Type'), self.description],
-                [aliases.get('ReferenceID', 'Reference ID'), self.reference_id],
-                [aliases.get('ReferenceDate', 'Reference Date'), settings.format_display_date(self.date)]]
-        for row in info:
-            header, data = row
-            if data:
-                tooltip.append('{}: {}'.format(header, data))
-
-        if reference_note:
-            tooltip.append('')
-            tooltip.append(reference_note)
-
-        return '\n'.join(tooltip)
-
-    def import_reference(self, entry, new: bool = False):
-        """
-        Initialize a record reference.
-
-        Arguments:
-            entry (Series): reference information.
-
-            new (bool): reference is newly created instead of already existing [Default: False].
-
-        Returns:
-            success (bool): reference import was successful.
-        """
-        if isinstance(entry, pd.DataFrame):  # take first row and reduce dimensionality
-            entry = entry.iloc[0].squeeze()
-        elif isinstance(entry, dict):
-            entry = pd.Series(entry)
-
-        id_col = 'RecordID'
-        try:
-            self.record_id = entry[id_col]
-        except KeyError:
-            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=id_col)
-            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return False
-        else:
-            if pd.isna(self.record_id):
-                return False
-
-        ref_id_col = 'ReferenceID'
-        try:
-            self.reference_id = entry[ref_id_col]
-        except KeyError:
-            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=ref_id_col)
-            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return False
-        else:
-            if pd.isna(self.reference_id):
-                return False
-
-        logger.info('ReferenceBox {NAME}: loading record {ID} reference {REFID}'
-                    .format(NAME=self.name, ID=self.record_id, REFID=self.reference_id))
-
-        date_col = 'ReferenceDate'
-        try:
-            ref_date = entry[date_col]
-        except KeyError:
-            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=date_col)
-            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return False
-        else:
-            try:
-                self.date = settings.format_as_datetime(ref_date)
-            except ValueError as e:
-                msg = 'unable to set reference date {DATE} - {ERR}'.format(DATE=ref_date, ERR=e)
-                logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return False
-
-        ref_type_col = 'ReferenceType'
-        try:
-            self.reference_type = entry[ref_type_col]
-        except KeyError:
-            msg = 'reference entry is missing values for required parameter "{COL}"'.format(COL=ref_type_col)
-            logger.error('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            return False
-
-        warn_col = 'ReferenceNotes'
-        try:
-            self.notes = entry[warn_col]
-        except KeyError:
-            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=warn_col)
-            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            self.notes = None
-
-        hl_col = 'IsHardLink'
-        try:
-            self.is_hardlink = bool(int(entry[hl_col]))
-        except KeyError:
-            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=hl_col)
-            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            self.is_hardlink = False
-        except ValueError:
-            msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[hl_col], COL=hl_col)
-            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            self.is_hardlink = False
-
-        pc_col = 'IsChild'
-        try:
-            self.is_pc = bool(int(entry[pc_col]))
-        except KeyError:
-            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=pc_col)
-            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            self.is_pc = False
-        except ValueError:
-            msg = 'parameter "{COL}" was provided unknown value type {VAL}'.format(VAL=entry[pc_col], COL=pc_col)
-            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            self.is_pc = False
-
-        approved_col = 'IsApproved'
-        try:
-            self.approved = bool(int(entry[approved_col]))
-        except KeyError:
-            msg = 'reference entry is missing values for configured parameter "{COL}"'.format(COL=approved_col)
-            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            self.approved = False
-        except ValueError:
-            msg = 'parameter "{COL}" was provided unknown value type {VAL}' \
-                .format(VAL=entry[approved_col], COL=approved_col)
-            logger.debug('ReferenceBox {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            self.approved = False
-
-        if new:
-            self.edited = True
-
-        return True
-
-    def export_reference(self):
-        """
-        Export the association as a reference entry.
-
-        Returns:
-            reference (Series): record reference information in the form of a pandas Series.
-        """
-        deleted = (not self.referenced)
-        indices = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'ReferenceNotes',
-                   'IsApproved', 'IsChild', 'IsHardLink', 'IsDeleted']
-        values = [self.record_id, self.reference_id, self.date, self.parent, self.reference_type, self.notes,
-                  self.approved, self.is_pc, self.is_hardlink, deleted]
-
-        reference = pd.Series(values, index=indices)
-
-        return reference
-
-    def load_record(self, level: int = None):
-        """
-        Load the reference record from the database.
-
-        Arguments:
-            level (int): load the referenced record at the given depth [Default: current level + 1].
-
-        Returns:
-            record (DatabaseRecord): initialized database record.
-        """
-        record_entry = settings.records.fetch_rule(self.reference_type)
-        record_class = mod_records.DatabaseRecord
-
-        level = level if level is not None else self.level + 1
-        logger.info('ReferenceBox {NAME}: loading reference record {ID} of type {TYPE} at level {LEVEL}'
-                    .format(NAME=self.name, ID=self.reference_id, TYPE=self.reference_type, LEVEL=level))
-
-        imports = record_entry.load_records(self.reference_id)
-        nrow = imports.shape[0]
-
-        if nrow < 1:
-            logger.warning('ReferenceBox {NAME}: record reference {REF} not found in the database'
-                           .format(NAME=self.name, REF=self.reference_id))
-            record_data = imports
-        elif nrow == 1:
-            record_data = imports.iloc[0]
-        else:
-            logger.warning('ReferenceBox {NAME}: more than one database entry found for record reference {REF}'
-                           .format(NAME=self.name, REF=self.reference_id))
-            record_data = imports.iloc[0]
-
-        record = record_class(record_entry.name, record_entry.record_layout, level=level)
-        record.initialize(record_data, new=False)
-
-        return record
-
-    def check_requirements(self):
-        """
-        Verify that the record element passes requirements.
-        """
-        passed = True if (self.modifiers['require'] and self.has_value()) or not self.modifiers['require'] else False
-
-        return passed
-
-    def has_value(self):
-        """
-        True if the reference box contains a record reference else False.
-        """
-        return self.referenced
-
-    def export_values(self, edited_only: bool = False):
-        """
-        Export reference attributes as a dictionary.
-
-        Arguments:
-            edited_only (bool): only export reference values if the reference had been edited [Default: False].
-        """
-        if edited_only and not self.edited:
-            return {}
-
-        colmap = self.colmap
-        reference = self.export_reference()
-        values = reference[[i for i in colmap if i in reference.index]].rename(colmap)
-
-        return values.to_dict()
 
 
 # Data variable classes
@@ -4572,13 +3988,14 @@ class RecordVariable(DataVariable):
         currently_editing = self.edit_mode
 
         update_event = False
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # Set focus to the element and enable edit mode
         if event in (edit_key, left_click) and not currently_editing:
             window[elem_key].set_focus()
 
             if self.disabled:
-                return False
+                return triggers
 
             # Update element to show any current unformatted data
             value_fmt = self.format_display(editing=True)
@@ -4646,7 +4063,9 @@ class RecordVariable(DataVariable):
 
             self.update_display(window)
 
-        return update_event
+        triggers['ValueEvent'] = update_event
+
+        return triggers
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
@@ -5049,6 +4468,10 @@ class DependentVariable(DataVariable):
                 self.edited = True
                 self.update_display(window)
 
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
+        return triggers
+
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
         """
@@ -5262,6 +4685,10 @@ class MetaVariable(DataVariable):
             input_value = values[elem_key]
             self.update_value(input_value)
             self.update_display(window)
+
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
+        return triggers
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
