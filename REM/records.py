@@ -403,7 +403,7 @@ class RecordEntry:
             record_ids = records.tolist()
         elif isinstance(records, pd.DataFrame):
             try:
-                record_ids = records['RecordID']
+                record_ids = records['RecordID'].tolist()
             except KeyError:
                 msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"'\
                     .format(COL='RecordID')
@@ -412,6 +412,9 @@ class RecordEntry:
                 raise ImportError(msg)
         else:
             record_ids = records
+
+        # Remove duplicate IDs
+        record_ids = list(set(record_ids))
 
         try:
             rule = association_rules[rule_name]
