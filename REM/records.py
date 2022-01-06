@@ -384,7 +384,7 @@ class RecordEntry:
 
         return import_df
 
-    def import_references(self, records, rule_name):
+    def import_references(self, records, rule_name, include_deleted: bool = False):
         """
         Import a record's association.
 
@@ -392,6 +392,8 @@ class RecordEntry:
             records (list): list of record IDs to extract from the reference table.
 
             rule_name (str): name of the association rule to use to gather information about the references to extract.
+
+            include_deleted (bool): import reference entries that were set to deleted as well.
         """
         association_rules = self.association_rules
 
@@ -399,6 +401,15 @@ class RecordEntry:
             record_ids = [records]
         elif isinstance(records, pd.Series):
             record_ids = records.tolist()
+        elif isinstance(records, pd.DataFrame):
+            try:
+                record_ids = records['RecordID']
+            except KeyError:
+                msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"'\
+                    .format(COL='RecordID')
+                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise ImportError(msg)
         else:
             record_ids = records
 
@@ -418,12 +429,14 @@ class RecordEntry:
             columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate', 'DocType AS RecordType',
                        'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
                        'IsChild', 'IsHardLink', 'IsApproved']
-            filter_str = 'DocNo IN ({VALS}) AND IsDeleted = ?'
+            #filter_str = 'DocNo IN ({VALS}) AND IsDeleted = ?'
+            filter_str = 'DocNo IN ({VALS})'
         else:  # input records are the reference record ID
             columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
                        'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes',
                        'Warnings AS ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved']
-            filter_str = 'RefNo IN ({VALS}) AND IsDeleted = ?'
+            #filter_str = 'RefNo IN ({VALS}) AND IsDeleted = ?'
+            filter_str = 'RefNo IN ({VALS})'
 
         # Import reference entries related to record_id
         df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
@@ -433,7 +446,10 @@ class RecordEntry:
             sub_ids = record_ids[i: i + 1000]
             sub_vals = ','.join(['?' for _ in sub_ids])
 
-            filters = (filter_str.format(VALS=sub_vals), tuple(sub_ids + [0]))
+            filters = [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
+            if not include_deleted:
+                filters.append(('IsDeleted = ?', 0))
+
             import_df = user.read_db(*user.prepare_query_statement(reference_table, columns=columns,
                                                                    filter_rules=filters), prog_db=True)
             df = df.append(import_df, ignore_index=True)
