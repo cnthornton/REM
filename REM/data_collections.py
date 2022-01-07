@@ -855,7 +855,7 @@ class DataCollection:
             elif isinstance(fields, pd.Series):
                 fields = fields.tolist()
             else:  # default to all fields in collection
-                fields = df.columns.tolist()
+                fields = [i for i in df.columns.tolist() if i not in self._state_fields]
 
         logger.info('DataCollection {NAME}: filling fields {COL} rows {ROWS} using fill method "{METHOD}"'
                     .format(NAME=self.name, COL=fields, ROWS=len(indices), METHOD=method))

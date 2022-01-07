@@ -3609,50 +3609,63 @@ class ReferenceList(DataList):
         """
         Add new entries through the data import window.
         """
+        rule_name = self.association_rule
         collection = self.collection
         id_col = self._header_field
-        ref_df = collection.data(current=False)  # all entries in the collection
-        display_columns = {**{self._header_field: self.description}, **self.display_columns}
+        df = collection.data(current=False)  # all entries in the collection
+        ref_field = self._ref_type_field
 
-        table_layout = {'Columns': collection.dtypes, 'DisplayColumns': display_columns,
+        if not ref_field:
+            return pd.DataFrame()
+
+        logger.debug(self.format_log('importing unreferenced records on rule "{RULE}"'.format(RULE=rule_name)))
+        display_columns = {self._header_field: self.description,
+                           ref_field: self.display_columns[ref_field]}
+
+        table_layout = {'Columns': {self._header_field: 'varchar', ref_field: 'varchar'},
+                        'DisplayColumns': display_columns,
                         'Aliases': collection.aliases, 'Description': self.description,
-                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
-                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1}
                         }
         import_table = DataTable(self.name, table_layout)
 
         # Search for records without an existing reference to the provided reference type
-        if self._ref_type_field:
-            rule_name = self.association_rule
-            logger.debug(self.format_log('importing unreferenced records on rule "{RULE}"'.format(RULE=rule_name)))
+        ref_types = df[ref_field].unique().tolist()
+        for ref_type in ref_types:
+            print('loading unreferenced records for records of type {}'.format(ref_type))
+            ref_entry = settings.records.fetch_rule(ref_type)
 
-            ref_types = ref_df[self._ref_type_field].unique().tolist()
-            for ref_type in ref_types:
-                print('loading unreferenced records for records of type {}'.format(ref_type))
-                ref_entry = settings.records.fetch_rule(ref_type)
+            # Import the entries from the reference table with record references unset
+            try:
+                import_df = ref_entry.load_unreferenced_records(rule_name)
+            except Exception as e:
+                msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
+                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+            else:
+                print(import_df)
+                if not import_df.empty:
+                    # Subset on table columns
+                    import_df = import_df[[i for i in import_df.columns.values if i in df.columns]]
 
-                # Import the entries from the reference table with record references unset
-                try:
-                    df = ref_entry.load_unreferenced_records(rule_name)
-                except Exception as e:
-                    msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
-                    logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
-                else:
-                    if not df.empty:
-                        # Subset on table columns
-                        df = df[[i for i in df.columns.values if i in ref_df.columns]]
+                    # Drop records that are already in the component dataframe
+                    current_ids = df[id_col].tolist()
+                    import_df.drop(import_df[import_df['RecordID'].isin(current_ids)].index, inplace=True)
 
-                        # Drop records that are already in the component dataframe
-                        current_ids = ref_df[id_col].tolist()
-                        df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
+                    # Add import dataframe to data table object
+                    import_df.rename(columns={'RecordID': self._header_field}, inplace=True)
+                    import_df.loc[:, ref_field] = ref_type
 
-                        # Add import dataframe to data table object
-                        import_table.append(df)
+                    import_table.append(import_df)
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table)
 
-        return select_df
+        added_df = pd.DataFrame(columns=df.columns.tolist())
+        if not select_df.empty:
+            added_df.append(select_df)
+            added_df.fillna(df, inplace=True)
+
+        return added_df
 
     def import_entries(self, import_df: pd.DataFrame = None):
         """

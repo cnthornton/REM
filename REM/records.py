@@ -567,6 +567,51 @@ class RecordEntry:
         is_primary = rule['Primary']
         reference_table = rule['ReferenceTable']
 
+        print('records of type {} are the primary records in association rule {}: {}'.format(self.name, rule_name, is_primary))
+        if is_primary:  # records are the primary in the reference table
+            print('records are primary')
+            import_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo'}
+        else:  # reference record is the primary record ID
+            print('records are secondary')
+            import_col_map = {'RecordID': 'RefNo', 'ReferenceID': 'DocNo'}
+
+        # Import reference entries related to record_id
+        db_id_col = mod_db.get_import_column(import_rules, 'RecordID')
+        columns = mod_db.format_import_columns(import_rules)
+        filters = mod_db.format_import_filters(import_rules)
+        filters_clause = '{TBL}.{COL} IS NULL'.format(TBL=reference_table, COL=import_col_map['ReferenceID'])
+        filters.append(filters_clause)
+
+        join_statement = "{COL} = {TBL}.{REFCOL}".format(COL=db_id_col, TBL=reference_table,
+                                                         REFCOL=import_col_map['RecordID'])
+        import_rules[reference_table] = {'Columns': {import_col_map['RecordID']: import_col_map['RecordID']},
+                                         'Join': ["LEFT JOIN", join_statement]}
+
+        table_statement = mod_db.format_tables(import_rules)
+        import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+                                 prog_db=True)
+
+        return import_df
+
+    def load_unreferenced_records_old(self, rule_name):
+        """
+        Load entry records that do not have a record reference for the given association rule.
+        """
+        association_rules = self.association_rules
+        import_rules = self.import_rules
+
+        try:
+            rule = association_rules[rule_name]
+        except KeyError:
+            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                .format(RULE=rule_name)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        is_primary = rule['Primary']
+        reference_table = rule['ReferenceTable']
+
         if not is_primary:  # records are used as references, not primary records
             msg = 'unable to import unreferenced records - {TYPE} records must be the primary records in reference ' \
                   'table {TBL}'.format(TYPE=self.name, TBL=reference_table)
