@@ -317,9 +317,9 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     record_w = win_w if win_w >= min_w else min_w
     record_h = win_h - bffr_h if win_h >= min_h else min_h
-    record.resize(window, size=(record_w, record_h))
+    #record.resize(window, size=(record_w, record_h))
 
-    record.update_display(window)
+    record.update_display(window, size=(record_w, record_h))
 
     # Center the record window
     window.un_hide()
@@ -1640,7 +1640,8 @@ def database_importer_window(win_size: tuple = None):
             # Modify table row
             row = edit_row_window(req_df.iloc[row_index], edit_columns={'Default Value': {'ElementType': row_dtype}})
             window['-REQCOL-'].update(values=req_df.values.tolist())
-            req_df.iloc[row_index] = row
+            if row is not None:
+                req_df.iloc[row_index] = row
 
             continue
 
@@ -1656,7 +1657,8 @@ def database_importer_window(win_size: tuple = None):
             # Modify table row
             row = edit_row_window(map_df.iloc[row_index], edit_columns={'File Column Name': {'ElementType': row_dtype}})
             window['-MAPCOL-'].update(values=map_df.values.tolist())
-            map_df.iloc[row_index] = row
+            if row is not None:
+                map_df.iloc[row_index] = row
 
             continue
 
@@ -2475,9 +2477,9 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     Display window for user to add or edit a row.
 
     Arguments:
-        row (DataFrame): pandas series containing the row data.
+        row (Series): pandas Series containing the row data.
 
-        edit_columns (dict): dictionary of columns that are editable.
+        edit_columns (dict): dictionary of columns that are editable along with their datatypes.
 
         header_map (dict): dictionary mapping dataframe columns to display columns.
 
@@ -2660,6 +2662,8 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
         event, values = window.read()
 
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
+            row = None
+
             break
 
         if event == '-SAVE-':  # click 'Save' button

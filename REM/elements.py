@@ -824,7 +824,7 @@ class DataTable(RecordElement):
                 return triggers
 
             # Fill in NA values
-            collection.fill(indices, fill_col)
+            collection.fill(indices=indices, fields=fill_col)
             update_event = True
 
         elif event in param_elems:
@@ -901,7 +901,10 @@ class DataTable(RecordElement):
                      .format(NAME=self.name, IND=index))
 
         edited_row = self.edit_row(index)
-        update_event = collection.update_entry(index, edited_row)
+        if edited_row is None:
+            update_event = False
+        else:
+            update_event = collection.update_entry(index, edited_row)
 
         return update_event
 
@@ -2929,6 +2932,21 @@ class DataList(RecordElement):
         else:  # entry events
             event_type, index = self.fetch_entry(event)
 
+        # Add a new entry to the data list
+        if event_type == 'Add':
+            try:
+                import_rows = self.add_entries()
+            except Exception as e:
+                msg = 'failed to run the import entry event'
+                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+            else:
+                if not import_rows.empty:
+                    print('appending new import entries to the collection:')
+                    print(import_rows)
+                    self.collection.append(import_rows, new=True)
+
+                update_event = True
+
         # Import a previously deleted entry
         if event_type == 'Import':
             try:
@@ -3386,7 +3404,7 @@ class DataList(RecordElement):
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
                 logger.exception(self.format_log('failed to annotate list entries using annotation rule {CODE} - {ERR}'
-                                             .format(CODE=annot_code, ERR=e)))
+                                                 .format(CODE=annot_code, ERR=e)))
                 continue
 
             for row_index, result in results.iteritems():
@@ -3432,6 +3450,25 @@ class DataList(RecordElement):
             summary[column] = summary_total
 
         return summary
+
+    def add_entries(self):
+        """
+        Add a new list entry.
+        """
+        df = self.data(all_rows=True)
+        display_columns = {**{self._header_field: self.description}, **self.display_columns}
+        dtypes = self.columns
+        columns = df.columns.tolist()
+
+        entry = pd.Series([None for _ in columns], index=columns)
+        edited_entry = mod_win2.edit_row_window(entry, edit_columns=dtypes, header_map=display_columns)
+
+        if edited_entry is not None:
+            added_df = edited_entry.to_frame().T.fillna(df)
+        else:
+            added_df = pd.DataFrame()
+
+        return added_df
 
     def import_entries(self, import_df: pd.DataFrame = None):
         """
@@ -3567,6 +3604,55 @@ class ReferenceList(DataList):
             else:
                 # Display the record window
                 mod_win2.record_window(record, view_only=True)
+
+    def add_entries(self):
+        """
+        Add new entries through the data import window.
+        """
+        collection = self.collection
+        id_col = self._header_field
+        ref_df = collection.data(current=False)  # all entries in the collection
+        display_columns = {**{self._header_field: self.description}, **self.display_columns}
+
+        table_layout = {'Columns': collection.dtypes, 'DisplayColumns': display_columns,
+                        'Aliases': collection.aliases, 'Description': self.description,
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
+                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
+                        }
+        import_table = DataTable(self.name, table_layout)
+
+        # Search for records without an existing reference to the provided reference type
+        if self._ref_type_field:
+            rule_name = self.association_rule
+            logger.debug(self.format_log('importing unreferenced records on rule "{RULE}"'.format(RULE=rule_name)))
+
+            ref_types = ref_df[self._ref_type_field].unique().tolist()
+            for ref_type in ref_types:
+                print('loading unreferenced records for records of type {}'.format(ref_type))
+                ref_entry = settings.records.fetch_rule(ref_type)
+
+                # Import the entries from the reference table with record references unset
+                try:
+                    df = ref_entry.load_unreferenced_records(rule_name)
+                except Exception as e:
+                    msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
+                    logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+                else:
+                    if not df.empty:
+                        # Subset on table columns
+                        df = df[[i for i in df.columns.values if i in ref_df.columns]]
+
+                        # Drop records that are already in the component dataframe
+                        current_ids = ref_df[id_col].tolist()
+                        df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
+
+                        # Add import dataframe to data table object
+                        import_table.append(df)
+
+        # Get table of user selected import records
+        select_df = mod_win2.import_window(import_table)
+
+        return select_df
 
     def import_entries(self, import_df: pd.DataFrame = None):
         """

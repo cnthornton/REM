@@ -736,19 +736,7 @@ class AuditRule:
 
         records = self.records
         for audit_record in records:
-            audit_record.record.resize(window, (record_w, record_h))
-
-        #window.refresh()
-        #print('desired button height: {}'.format(bttn_h))
-        #print('actual button height: {}'.format(window[self.key_lookup('Buttons')].get_size()[1]))
-        #print('desired title height: {}'.format(title_h))
-        #print('actual title height: {}'.format(window[self.key_lookup('Title')].get_size()[1]))
-        #print('desired header height: {}'.format(header_h))
-        #print('actual header height: {}'.format(window[self.key_lookup('Header')].get_size()[1]))
-        #print('desired frame height: {}'.format(frame_h))
-        #print('actual frame height: {}'.format(window[frame_key].get_size()[1]))
-        #print('desired tab height: {}'.format(tab_h))
-        #print('actual tab height: {}'.format(window[panels_key].get_size()[1]))
+            audit_record.record.resize(window, size=(record_w, record_h))
 
     def reset_rule(self, window, current: bool = False):
         """
@@ -918,8 +906,8 @@ class AuditRule:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
-        #success = True
+        #success = user.write_db(sstrings, psets)
+        success = True
         print(statements)
 
         return success

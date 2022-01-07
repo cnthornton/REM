@@ -1655,6 +1655,7 @@ class DatabaseRecord:
 
         self._minimum_height = 0
         self._padding = (0, 0)
+        self._dimensions = (0, 0)
 
     def key_lookup(self, component):
         """
@@ -2109,7 +2110,7 @@ class DatabaseRecord:
 
         return True
 
-    def update_display(self, window):
+    def update_display(self, window, size: tuple = None):
         """
         Update the record display.
         """
@@ -2127,6 +2128,8 @@ class DatabaseRecord:
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
         for record_element in self.modules:
             record_element.update_display(window)
+
+        self.resize(window, size=size)
 
     def record_events(self, components_only: bool = False):
         """
@@ -2824,8 +2827,8 @@ class DatabaseRecord:
         headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
         #headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
         #headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
-        headers.append(self._record_id.layout(padding=((0, pad_h), 0), editable=False))
-        headers.append(self._record_date.layout(editable=False))
+        headers.append(self._record_id.layout(size=(20, 1), padding=((0, pad_h), 0), editable=False))
+        headers.append(self._record_date.layout(size=(20, 1), editable=False))
         header_key = self.key_lookup('Header')
         header_layout = sg.Col([headers], key=header_key, expand_x=True, background_color=bg_col, justification='l',
                                vertical_alignment='c')
@@ -2903,13 +2906,15 @@ class DatabaseRecord:
         layout = [[sg.Col([[header_layout], [main_layout]], key=record_key, pad=padding,
                           background_color=bg_col, expand_x=True, expand_y=True)]]
 
+        self._dimensions = size
+
         return layout
 
-    def resize(self, window, size):
+    def resize(self, window, size: tuple = None):
         """
         Resize the record elements.
         """
-        width, height = size
+        width, height = size if size is not None else self._dimensions
 
         logger.debug('Record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id(), W=width, H=height))
 
@@ -2961,6 +2966,8 @@ class DatabaseRecord:
 
             elem_size = (elem_w, elem_h)
             record_element.resize(window, size=elem_size)
+
+        self._dimensions = (width, height)
 
     def collapse_expand(self, window, index: int = 0):
         """
