@@ -3825,7 +3825,7 @@ class DataVariable(RecordElement):
 
         # Dynamic variables
         self.value = mod_col.DataVector(name, entry)
-        self._dimensions = (mod_const.DE_WIDTH, mod_const.DE_HEIGHT)
+        self._dimensions = (mod_const.VARIABLE_WIDTH_PX, mod_const.VARIABLE_HEIGHT_PX)
         self.disabled = False
 
     def annotate_display(self):
@@ -4180,7 +4180,7 @@ class RecordVariable(DataVariable):
 
         size = self._dimensions if not size else size
         width, height = size
-        self._dimensions = (width * 10, mod_const.DE_HEIGHT)
+        self._dimensions = (width * 10, mod_const.VARIABLE_HEIGHT_PX)
 
         background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
@@ -4801,9 +4801,11 @@ class MetaVariable(DataVariable):
         is_required = modifiers['require']
         hidden = modifiers['hide']
 
-        size = self._dimensions if not size else size
-        width, height = size
-        self._dimensions = size
+        if size:
+            width, height = size
+            self._dimensions = (width * 9, height * 9)
+        else:   # rough convert to chars if size not set
+            width, height = [int(i / 9) for i in self._dimensions]
 
         background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
@@ -4880,9 +4882,13 @@ class MetaVariable(DataVariable):
             new_h = current_h
 
             font = mod_const.LARGE_FONT
-            desc_w = window[desc_key].get_size()[0]
-            elem_w = window[elem_key].string_width_in_pixels(font, self.format_display())
+            bold_font = mod_const.BOLD_HEADING_FONT
+
+            desc_w = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+            display_value = self.format_display()
+            elem_w = window[elem_key].string_width_in_pixels(font, display_value)
             new_w = desc_w + elem_w + mod_const.HORZ_PAD
+
             window[elem_key].set_size(size=(1, None))
 
         width_key = self.key_lookup('Width')

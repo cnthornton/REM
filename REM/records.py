@@ -469,85 +469,6 @@ class RecordEntry:
 
         return df
 
-    def import_references_old(self, records, rule_name, include_deleted: bool = False):
-        """
-        Import a record's association.
-
-        Arguments:
-            records (list): list of record IDs to extract from the reference table.
-
-            rule_name (str): name of the association rule to use to gather information about the references to extract.
-
-            include_deleted (bool): import reference entries that were set to deleted as well.
-        """
-        association_rules = self.association_rules
-
-        if isinstance(records, str):
-            record_ids = [records]
-        elif isinstance(records, pd.Series):
-            record_ids = records.tolist()
-        elif isinstance(records, pd.DataFrame):
-            try:
-                record_ids = records['RecordID'].tolist()
-            except KeyError:
-                msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"'\
-                    .format(COL='RecordID')
-                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise ImportError(msg)
-        else:
-            record_ids = records
-
-        # Remove duplicate IDs
-        record_ids = list(set(record_ids))
-
-        try:
-            rule = association_rules[rule_name]
-        except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry'\
-                .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ImportError(msg)
-
-        is_primary = rule['Primary']
-        reference_table = rule['ReferenceTable']
-
-        if is_primary:  # input records are the primary record IDs
-            columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate', 'DocType AS RecordType',
-                       'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
-                       'IsChild', 'IsHardLink', 'IsApproved']
-            #filter_str = 'DocNo IN ({VALS}) AND IsDeleted = ?'
-            filter_str = 'DocNo IN ({VALS})'
-        else:  # input records are the reference record ID
-            columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
-                       'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes',
-                       'Warnings AS ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved']
-            #filter_str = 'RefNo IN ({VALS}) AND IsDeleted = ?'
-            filter_str = 'RefNo IN ({VALS})'
-
-        # Import reference entries related to record_id
-        df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
-                                   'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
-                                   'IsDeleted'])
-        for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
-            sub_ids = record_ids[i: i + 1000]
-            sub_vals = ','.join(['?' for _ in sub_ids])
-
-            filters = [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
-            if not include_deleted:
-                filters.append(('IsDeleted = ?', 0))
-
-            import_df = user.read_db(*user.prepare_query_statement(reference_table, columns=columns,
-                                                                   filter_rules=filters), prog_db=True)
-            df = df.append(import_df, ignore_index=True)
-
-        # Set column data types
-        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
-
-        return df
-
     def load_unreferenced_records(self, rule_name):
         """
         Load entry records that do not have a record reference for the given association rule.
@@ -564,15 +485,11 @@ class RecordEntry:
 
             raise ImportError(msg)
 
-        is_primary = rule['Primary']
         reference_table = rule['ReferenceTable']
-
-        print('records of type {} are the primary records in association rule {}: {}'.format(self.name, rule_name, is_primary))
+        is_primary = rule['Primary']
         if is_primary:  # records are the primary in the reference table
-            print('records are primary')
             import_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo'}
         else:  # reference record is the primary record ID
-            print('records are secondary')
             import_col_map = {'RecordID': 'RefNo', 'ReferenceID': 'DocNo'}
 
         # Import reference entries related to record_id
@@ -587,46 +504,6 @@ class RecordEntry:
         import_rules[reference_table] = {'Columns': {import_col_map['RecordID']: import_col_map['RecordID']},
                                          'Join': ["LEFT JOIN", join_statement]}
 
-        table_statement = mod_db.format_tables(import_rules)
-        import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
-                                 prog_db=True)
-
-        return import_df
-
-    def load_unreferenced_records_old(self, rule_name):
-        """
-        Load entry records that do not have a record reference for the given association rule.
-        """
-        association_rules = self.association_rules
-        import_rules = self.import_rules
-
-        try:
-            rule = association_rules[rule_name]
-        except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
-                .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ImportError(msg)
-
-        is_primary = rule['Primary']
-        reference_table = rule['ReferenceTable']
-
-        if not is_primary:  # records are used as references, not primary records
-            msg = 'unable to import unreferenced records - {TYPE} records must be the primary records in reference ' \
-                  'table {TBL}'.format(TYPE=self.name, TBL=reference_table)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ImportError(msg)
-
-        # Import reference entries related to record_id
-        id_col = mod_db.get_import_column(import_rules, 'RecordID')
-        columns = mod_db.format_import_columns(import_rules)
-        filters = mod_db.format_import_filters(import_rules)
-        filters_clause = '{TBL}.RefNo IS NULL'.format(TBL=reference_table)
-        filters.append(filters_clause)
-        import_rules[reference_table] = {'Columns': {'RefNo': 'RefNo'},
-                                         'Join': ["LEFT JOIN", "{} = {}.DocNo".format(id_col, reference_table)]}
         table_statement = mod_db.format_tables(import_rules)
         import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                                  prog_db=True)
@@ -2173,6 +2050,16 @@ class DatabaseRecord:
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
         for record_element in self.modules:
             record_element.update_display(window)
+
+        # Update dependent record elements
+        record_values = self.export_values(header=False)
+        try:
+            element_references = self.fetch_element('dependent', by_type=True)
+        except KeyError:
+            pass
+        else:
+            for record_element in element_references:
+                record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
 
         self.resize(window, size=size)
 

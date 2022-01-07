@@ -1228,8 +1228,6 @@ class AuditTransaction:
                          .format(NAME=self.name, COL=column, RULE=filter_rule))
 
             try:
-                #filter_cond = mod_dm.evaluate_rule(df, filter_rule, as_list=False)
-                #filter_results = mod_dm.evaluate_condition_set(df, {column: filter_rule})
                 filter_results = mod_dm.evaluate_condition(df, filter_rule)
             except Exception as e:
                 logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'
@@ -1237,7 +1235,6 @@ class AuditTransaction:
                 continue
 
             try:
-                #failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_cond)].index.tolist()
                 failed = df[(df.duplicated(subset=[column], keep=False)) & (filter_results)].index.tolist()
             except Exception as e:
                 logger.warning('AuditTransaction {NAME}: filtering table on column {COL} failed - {ERR}'

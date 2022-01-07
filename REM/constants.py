@@ -85,9 +85,9 @@ LISTBOX_HEIGHT = 110  # set listbox height in pixels
 LISTBOX_WIDTH = 120  # default width of the listbox in pixels
 
 # Data Variable Elements
-DE_HEIGHT = 52  # pixels
-DE_WIDTH = 20  # pixels
-MULTI_HEIGHT = 78  # pixels
+VARIABLE_HEIGHT_PX = 52  # pixels
+VARIABLE_WIDTH_PX = 120  # pixels
+MULTILINE_HEIGHT_PX = 78  # pixels
 
 # Images (pixels)
 FLAG_ICON_SIZE = (18, 18)
