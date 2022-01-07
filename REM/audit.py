@@ -1790,6 +1790,10 @@ class AuditRecord:
         mapping_columns = self.summary_mapping
         for column in mapping_columns:
             mapper = mapping_columns[column]
+            print('table summary values:')
+            print(summary_map)
+            print('operation:')
+            print(mapper)
             try:
                 summary_total = mod_dm.evaluate_operation(summary_map, mapper)
             except Exception as e:
@@ -1925,13 +1929,6 @@ class AuditRecord:
                             logger.warning('AuditRecord {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                         else:
                             record_data[column] = ref_val
-                        #try:
-                        #    ref_val = mod_dm.evaluate_rule(row, reference, as_list=True)[0]
-                        #except Exception as e:
-                        #    msg = 'failed to add mapped column {COL} - {ERR}'.format(COL=column, ERR=e)
-                        #    logger.warning('AuditRecord {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                        #else:
-                        #    record_data[column] = ref_val
 
                     # Add record to the components table
                     comp_df = comp_df.append(record_data, ignore_index=True)

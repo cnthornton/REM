@@ -1783,6 +1783,16 @@ class DatabaseRecord:
                         logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
                                      .format(NAME=self.name, PARAM=element_name))
 
+        # Update any dependent record elements
+        record_values = self.export_values(header=False)
+        try:
+            element_references = self.fetch_element('dependent', by_type=True)
+        except KeyError:
+            pass
+        else:
+            for record_element in element_references:
+                record_element.format_value(record_values.to_dict())
+
     def reset(self, window):
         """
         Reset record attributes.
@@ -2038,6 +2048,16 @@ class DatabaseRecord:
         """
         record_id = self.record_id()
 
+        # Update any dependent record elements first
+        record_values = self.export_values(header=False)
+        try:
+            element_references = self.fetch_element('dependent', by_type=True)
+        except KeyError:
+            pass
+        else:
+            for record_element in element_references:
+                record_element.format_value(record_values.to_dict())
+
         # Update the records header
         logger.debug('Record {ID}: updating the display header'.format(ID=record_id))
         self._record_id.update_display(window)
@@ -2050,16 +2070,6 @@ class DatabaseRecord:
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
         for record_element in self.modules:
             record_element.update_display(window)
-
-        # Update dependent record elements
-        record_values = self.export_values(header=False)
-        try:
-            element_references = self.fetch_element('dependent', by_type=True)
-        except KeyError:
-            pass
-        else:
-            for record_element in element_references:
-                record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
 
         self.resize(window, size=size)
 

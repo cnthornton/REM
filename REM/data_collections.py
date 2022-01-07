@@ -445,8 +445,8 @@ class DataCollection:
                 try:
                     df.loc[:, column_name] = column_values
                 except ValueError as e:
-                    logger.exception('DataTable {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
-                                     .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
+                    logger.warning('DataTable {NAME}: unable to set field "{COL}" to data type "{DTYPE}" - {ERR}'
+                                   .format(NAME=self.name, COL=column_name, DTYPE=dtype, ERR=e))
 
         return df
 

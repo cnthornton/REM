@@ -174,6 +174,8 @@ def evaluate_condition(data, expression):
     else:
         raise ValueError('data must be either a pandas DataFrame or Series')
 
+    header = df.columns.tolist()
+
     if isinstance(expression, str):
         components = parse_expression(expression)
     elif isinstance(expression, list):
@@ -181,15 +183,26 @@ def evaluate_condition(data, expression):
     else:
         raise ValueError('expression {} must be provided as either a string or list'.format(expression))
 
-    # Quote non-numeric, static expression variables
-    header = df.columns.tolist()
-    expression = ' '.join([i if (i in header or is_numeric(i) or i in reserved_chars) else '"{}"'.format(i) for i in
-                           components])
+    #expression = ' '.join([i if (i in header or is_numeric(i) or i in reserved_chars) else '"{}"'.format(i) for i in
+    #                       components])
 
-    print('evaluating boolean expression: {}'.format(expression))
     if len(components) > 1:
+        # Quote non-numeric, static expression variables
+        exp_comps = []
+        for component in components:
+            if component in header:
+                exp_comp = '`{}`'.format(component)
+            elif is_numeric(component) or component in reserved_chars:
+                exp_comp = component
+            else:  # component is a string
+                exp_comp = '"{}"'.format(component)
+
+            exp_comps.append(exp_comp)
+
+        expression = ' '.join(exp_comps)
         df_match = df.eval(expression)
     else:  # results are a single static value or the values of a column in the dataframe
+        expression = ' '.join(components)
         if expression in header:
             values = df[expression]
             if is_bool_dtype(values.dtype):
@@ -227,6 +240,8 @@ def evaluate_operation(data, expression):
     else:
         raise ValueError('data must be either a pandas DataFrame, Series, or a dictionary')
 
+    header = df.columns.tolist()
+
     if isinstance(expression, str):
         components = parse_expression(expression)
     elif isinstance(expression, list):
@@ -234,12 +249,20 @@ def evaluate_operation(data, expression):
     else:
         components = parse_expression(str(expression))
 
-    expression = ' '.join(components)
-    header = df.columns.tolist()
-
     if len(components) > 1:
+        exp_comps = []
+        for component in components:
+            if component in header:
+                exp_comp = '`{}`'.format(component)
+            else:
+                exp_comp = component
+
+            exp_comps.append(exp_comp)
+
+        expression = ' '.join(exp_comps)
         results = df.eval(expression).squeeze()
     else:  # results are a single static value or the values of a column in the dataframe
+        expression = ' '.join(components)
         if expression in header:
             results = df[expression].squeeze()
         else:
