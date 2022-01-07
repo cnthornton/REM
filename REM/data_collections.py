@@ -828,14 +828,14 @@ class DataCollection:
 
         return col_summary
 
-    def fill(self, indices, field, method: str = 'ffill'):
+    def fill(self, indices: list = None, fields: list = None, method: str = 'ffill'):
         """
         Fill field NA values in-place using the desired fill method.
 
         Arguments:
             indices (list): list of real indices to fill data on.
 
-            field (str): collection field with NA values to fill.
+            fields (list): collection field with NA values to fill.
 
             method (str): method to use to fill gaps (NA values) in the data 'ffill', 'bfill', 'pad', or 'backfill'
                 [Default: ffill].
@@ -843,10 +843,29 @@ class DataCollection:
         edited = False
         df = self.df
 
-        logger.info('DataCollection {NAME}: filling field "{COL}" rows {ROWS} using fill method "{METHOD}"'
-                    .format(NAME=self.name, COL=field, ROWS=len(indices), METHOD=method))
+        if not isinstance(indices, list):
+            if isinstance(indices, pd.Series):
+                indices = indices.tolist()
+            else:  # default to all entries in the collection
+                indices = df.index.tolist()
 
-        if len(indices) > 1:
+        if not isinstance(fields, list):
+            if isinstance(fields, str):
+                fields = [fields]
+            elif isinstance(fields, pd.Series):
+                fields = fields.tolist()
+            else:  # default to all fields in collection
+                fields = df.columns.tolist()
+
+        logger.info('DataCollection {NAME}: filling fields {COL} rows {ROWS} using fill method "{METHOD}"'
+                    .format(NAME=self.name, COL=fields, ROWS=len(indices), METHOD=method))
+
+        if len(indices) <= 1:
+            logger.warning('DataCollection {NAME}: unable to fill values - too few rows selected for '
+                           'filling'.format(NAME=self.name))
+            return False
+
+        for field in fields:
             column_index = self.df.columns.get_loc(field)
             try:
                 df.loc[indices, column_index] = df.loc[indices, column_index].fillna(method=method)
@@ -859,9 +878,6 @@ class DataCollection:
             else:  # indicate that the specific rows and the table have been edited
                 df.loc[indices, self._edited_column] = True
                 edited = True
-        else:
-            logger.warning('DataCollection {NAME}: unable to fill field "{COL}" values - too few rows selected for '
-                           'filling'.format(NAME=self.name, COL=field))
 
         return edited
 
