@@ -1748,13 +1748,10 @@ class AuditRecord:
                                   .format(NAME=self.name))
                 self.record_data['RecordID'] = record_id
 
-                #record_data = {'RecordID': record_id, 'RecordDate': record_date}
                 for param in params:
                     param_name = param.name
                     if param_name in self.record_data:
                         self.record_data[param_name] = param.value
-
-                #self.record.initialize(record_data, new=False)
 
                 return False
 
@@ -1790,10 +1787,6 @@ class AuditRecord:
         mapping_columns = self.summary_mapping
         for column in mapping_columns:
             mapper = mapping_columns[column]
-            print('table summary values:')
-            print(summary_map)
-            print('operation:')
-            print(mapper)
             try:
                 summary_total = mod_dm.evaluate_operation(summary_map, mapper)
             except Exception as e:
@@ -1803,55 +1796,6 @@ class AuditRecord:
 
             logger.debug('AuditRecord {NAME}: adding {SUMM} to column {COL}'
                          .format(NAME=self.name, SUMM=summary_total, COL=column))
-
-            self.record_data[column] = summary_total
-
-    def map_summary_old(self, summary_map):
-        """
-        Populate the audit record element values with transaction summaries.
-
-        Arguments:
-            summary_map (dict): transaction table summary variables (<table>.<variable>) with their final values.
-        """
-        operators = set('+-*/%')
-
-        name = self.name
-
-        logger.debug('AuditRecord {NAME}: mapping transaction summaries to audit record elements'
-                     .format(NAME=self.name))
-
-        # Map audit totals columns to transaction table summaries
-        mapping_columns = self.summary_mapping
-        for column in mapping_columns:
-            mapper = mapping_columns[column]
-            rule_values = []
-            for component in mod_dm.parse_expression(mapper):
-                if component in operators:
-                    rule_values.append(component)
-                    continue
-
-                try:  # component is numeric
-                    float(component)
-                except ValueError:
-                    if component in summary_map:
-                        rule_values.append(summary_map[component])
-                    else:
-                        logger.error('AuditRecord {NAME}: column {COL} not found in transaction table summaries'
-                                     .format(NAME=name, COL=component))
-                        rule_values.append(0)
-
-                else:
-                    rule_values.append(component)
-
-            try:
-                summary_total = eval(' '.join([str(i) for i in rule_values]))
-            except Exception as e:
-                logger.warning('AuditRecord {NAME}: failed to evaluate summary totals - {ERR}'
-                               .format(NAME=self.name, ERR=e))
-                summary_total = 0
-
-            logger.debug('AuditRecord {NAME}: adding {SUMM} to column {COL}'
-                         .format(NAME=name, SUMM=summary_total, COL=column))
 
             self.record_data[column] = summary_total
 

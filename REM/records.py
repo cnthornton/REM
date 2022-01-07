@@ -2080,10 +2080,9 @@ class DatabaseRecord:
         Arguments:
             components_only (bool):
         """
-        if components_only:
-            events = []
-        else:
-            events = self.elements
+        events = []
+        if not components_only:
+            events.extend(self.elements)
 
         # Add record component events
         events.extend([i for record_element in self.modules for i in record_element.bindings])
@@ -2097,7 +2096,8 @@ class DatabaseRecord:
         """
         Return a list of all record elements.
         """
-        elements = self.modules
+        elements = []
+        elements.extend(self.modules)
         elements.extend(self.metadata)
 
         return elements
@@ -2211,16 +2211,23 @@ class DatabaseRecord:
 
             # Add modifier values
             for meta_elem in self.metadata:
-                mod_value = meta_elem.data()
-                if not pd.isna(mod_value):
-                    values[meta_elem.name] = mod_value
+                param_value = meta_elem.data()
+                if not pd.isna(param_value):
+                    print('exporting record metadata parameter {} with value {} with type {}'.format(meta_elem.name, param_value, type(param_value)))
+                    values[meta_elem.name] = param_value
 
         # Add parameter values
         record_elements = self.modules
         for record_element in record_elements:
             #if record_element.eclass == 'references' and not references:  # reference boxes and component tables
             #    continue
-            values = {**values, **record_element.export_values(edited_only=edited_only)}
+            elem_values = record_element.export_values(edited_only=edited_only)
+            print('export record element {} values:'.format(record_element.name))
+            print(elem_values)
+            values = {**values, **elem_values}
+
+        print('exporting final values:')
+        print(values)
 
         return pd.Series(values)
 
@@ -2409,6 +2416,7 @@ class DatabaseRecord:
             logger.debug('RecordEntry {NAME}, Record {ID}: exporting record values'
                          .format(NAME=self.name, ID=record_id))
             record_data = self.export_values()
+            print(record_data)
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)

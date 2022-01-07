@@ -84,6 +84,7 @@ class DataVector:
         try:
             value = self.value.item()
         except AttributeError:
+            logger.debug('DataVector {NAME}: no value set for the data vector'.format(NAME=self.name))
             value = None
 
         return value
