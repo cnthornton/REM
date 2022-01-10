@@ -1251,6 +1251,20 @@ class DataTable(RecordElement):
         """
         Format the values of a table column for display.
         """
+        try:
+            display_col = self.collection.format_display_field(column, data=df)
+        except KeyError:
+            msg = 'column {COL} not found in the table dataframe'.format(COL=column)
+            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise KeyError(msg)
+
+        return display_col
+
+    def format_display_column_old(self, df, column):
+        """
+        Format the values of a table column for display.
+        """
         is_float_dtype = pd.api.types.is_float_dtype
         is_integer_dtype = pd.api.types.is_integer_dtype
         is_bool_dtype = pd.api.types.is_bool_dtype

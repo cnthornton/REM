@@ -1031,13 +1031,14 @@ class RecordEntry:
             # Import reference entries to be deleted
             import_df = self.import_references(record_ids, rule=association)
 
-            # Delete the reference entries and remove already used references from the list - this is necessary for
-            # hard-linked records to avoid endless looping
-            import_df['IsDeleted'] = True
+            # Delete all reference entries associated with the record IDs and remove already used references from the
+            # list - this is necessary for hard-linked records to avoid endless looping
+            #import_df['IsDeleted'] = True
             export_df = import_df.drop(import_df[import_df['ReferenceID'].isin(ref_ids)].index)
             if export_df.empty:
                 continue
-            statements = self.save_database_references(export_df, association, statements=statements)
+            #statements = self.save_database_references(export_df, association, statements=statements)
+            statements = self.delete_database_references(export_df, association, statements=statements)
 
             # Subset reference entries to include those that are child records or hard-linked
             if assoc_type == 'parent':  # referenced records are child records and should be deleted with parent
@@ -2377,8 +2378,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
+        success = user.write_db(sstrings, psets)
+        #success = True
         print(statements)
 
         return success

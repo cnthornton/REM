@@ -906,8 +906,8 @@ class AuditRule:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
+        success = user.write_db(sstrings, psets)
+        #success = True
         print(statements)
 
         return success
