@@ -1610,7 +1610,7 @@ class AuditRecord:
         record_entry = settings.records.fetch_rule(name)
         self.record = mod_records.DatabaseRecord(name, record_entry.record_layout, level=0)
         #self.record.metadata = []
-        self.elements.extend(self.record.elements)
+        #self.elements.extend(self.record.elements)
         self.bindings = self.record.record_events()
 
         self.record_data = self.record.export_values()

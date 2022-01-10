@@ -18,7 +18,6 @@ import REM.data_manipulation as mod_dm
 import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.layouts as mod_lo
-import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.client import logger, server_conn, settings, user
 
@@ -1428,9 +1427,12 @@ class DatabaseRecord:
         self.name = name
 
         self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        #                 ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
+        #                  'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
-                          'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
+                          'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')}
 
         try:
             permissions = entry['Permissions']
@@ -1509,8 +1511,10 @@ class DatabaseRecord:
         else:
             for i, section in enumerate(sections):
                 section_entry = sections[section]
-                self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
+                #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                #                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
+                self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                                      ('SectionBttn{}'.format(i), 'SectionFrame{}'.format(i))})
 
                 self.sections[section] = {'Title': section_entry.get('Title', section),
                                           'Elements': []}
@@ -1580,7 +1584,27 @@ class DatabaseRecord:
         self._padding = (0, 0)
         self._dimensions = (0, 0)
 
-    def key_lookup(self, component):
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a record element's GUI element key using the name of the component.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the record element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = 'component {COMP} not found in list of record {NAME} components'.format(COMP=component, NAME=self.name))
+            logger.warning(msg)
+
+            raise KeyError(msg)
+
+        return key
+
+    def key_lookup_old(self, component):
         """
         Lookup a component's GUI element key using the component's name.
         """
@@ -1971,7 +1995,8 @@ class DatabaseRecord:
                 if not edit_mode:  # element is not currently being edited
                     continue
 
-            if focus_element not in record_element.elements:  # element is edited but is no longer in focus
+            #if focus_element not in record_element.elements:  # element is edited but is no longer in focus
+            if focus_element not in record_element.bindings:  # element is edited but is no longer in focus
                 logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
                              'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=record_element.name))
 

@@ -62,8 +62,10 @@ class RecordElement:
         self.parent = parent
         self.id = randint(0, 1000000000)
 
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ('Element',)]
+        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        #                 ('Element',)]
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                         ('Element',)}
 
         try:
             self.etype = entry['ElementType']
@@ -124,7 +126,28 @@ class RecordElement:
         # Dynamic variables
         self.edited = False
 
-    def key_lookup(self, component):
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a record element's GUI element key using the name of the component.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the record element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = '{ETYPE} {NAME}: component "{COMP}" not found in list of element components' \
+                .format(ETYPE=self.etype, NAME=self.name, COMP=component)
+            logger.warning(msg)
+
+            raise KeyError(msg)
+
+        return key
+
+    def key_lookup_old(self, component):
         """
         Lookup a record element's GUI element key using the name of the component.
         """
@@ -201,18 +224,24 @@ class DataTable(RecordElement):
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
         self.etype = 'table'
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
-                               'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
-                               'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')])
-        event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options']
+        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                           ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
+                            'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
+                            'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')}
+        self.elements.update(record_elements)
+        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        #                      ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
+        #                       'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
+        #                       'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')])
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         return_key = '{}+RETURN+'.format(elem_key)
         open_key = '{}+LCLICK+'.format(elem_key)
         filter_hkey = '{}+FILTER+'.format(elem_key)
-        self.bindings = [self.key_lookup(i) for i in event_elements] + [open_key, return_key, filter_hkey]
+        #self.bindings = [self.key_lookup(i) for i in event_elements] + [open_key, return_key, filter_hkey]
+        self.bindings = {record_elements[i]: i for i in ('Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options')}
+        self.bindings.update({i: 'Element' for i in (open_key, return_key, filter_hkey)})
 
         # Table data collection
         try:
@@ -263,7 +292,7 @@ class DataTable(RecordElement):
                 continue
             else:
                 self.actions.append(action)
-                self.elements.append(action.element_key)
+                self.elements[action_name] = action.element_key
                 self.bindings.extend(action.bindings)
 
         # Attributes that affect how the table data is displayed
@@ -2662,8 +2691,10 @@ class DataList(RecordElement):
 
         self.etype = 'list'
 
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Element', 'Frame', 'Description', 'Options')])
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                              ('Frame', 'Description', 'Options')})
+        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        #                      ('Frame', 'Description', 'Options')])
         self._event_elements = ['Element', 'Options']
 
         # Element-specific bindings
@@ -3242,8 +3273,9 @@ class DataList(RecordElement):
         # Add the index to list of entry indices
         self.indices.append(index)
 
-        for element in entry_elements:
-            self.elements.append(entry_elements[element])
+        #for element in entry_elements:
+        #    self.elements.append(entry_elements[element])
+        self.elements.update(entry_elements)
 
     def update_entry(self, index, window):
         """
@@ -4006,17 +4038,19 @@ class RecordVariable(DataVariable):
         """
         super().__init__(name, entry, parent)
         self.etype = 'text'
-
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')])
-        self._event_elements = ['Edit', 'Save', 'Cancel']
+        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        #                      ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')])
+        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                           ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')}
+        self.elements.update(record_elements)
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         lclick_event = '{}+LCLICK+'.format(elem_key)
         return_key = '{}+RETURN+'.format(elem_key)
         escape_key = '{}+ESCAPE+'.format(elem_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [lclick_event, return_key, escape_key]
+        self.bindings = {record_elements[i]: i for i in ('Edit', 'Save', 'Cancel')}
+        self.bindings.update({i: 'Element' for i in (lclick_event, return_key, escape_key)})
 
         # Dynamic variables
         self.edit_mode = False
@@ -4333,8 +4367,10 @@ class RecordVariableInput(RecordVariable):
 
         if entry['DataType'] in settings.supported_date_dtypes:
             calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
-            self.elements.append(calendar_key)
-            self.bindings.append(calendar_key)
+            #self.elements.append(calendar_key)
+            #self.bindings.append(calendar_key)
+            self.elements['Calendar'] = calendar_key
+            self.bindings[calendar_key] = 'Calendar'
 
     def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
         """
@@ -4525,12 +4561,15 @@ class DependentVariable(DataVariable):
         super().__init__(name, entry, parent)
 
         self.etype = 'dependent'
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description', 'Frame', 'Width')])
+        #self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        #                     ('Description', 'Frame', 'Width')})
+        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                           ('Description', 'Frame', 'Width')}
+        self.elements.update(record_elements)
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        self.bindings = ['{}+LCLICK+'.format(elem_key)]
+        self.bindings = {'{}+LCLICK+'.format(elem_key): 'Element'}
 
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
@@ -4736,15 +4775,17 @@ class MetaVariable(DataVariable):
             parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description', 'Element', 'Frame', 'Width')])
-        self._event_elements = ['Element']
+        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        #                      ('Description', 'Element', 'Frame', 'Width')])
+        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                           ('Description', 'Frame', 'Width')}
+        self.elements.update(record_elements)
 
         if self.etype != 'checkbox':
             self.etype = 'text'
 
         # Element-specific bindings
-        self.bindings = [self.key_lookup(i) for i in self._event_elements]
+        self.bindings = {self.key_lookup(i): i for i in ('Element',)}
 
     def bind_keys(self, window):
         """
