@@ -164,13 +164,14 @@ class RecordElement:
 
         return key
 
-    def format_log(self, msg):
+    def format_log(self, msg, err: str = None):
         """
         Format the record elements log message.
         """
-        msg = '{TYPE} {NAME}: {MSG}'.format(TYPE=self.etype, NAME=self.name, MSG=msg)
+        msg = '{MSG} - {ERR}'.format(MSG=msg, ERR=err) if err else msg
+        msg_fmt = '{TYPE} {NAME}: {MSG}'.format(TYPE=self.etype, NAME=self.name, MSG=msg)
 
-        return msg
+        return msg_fmt
 
 
 class DataTable(RecordElement):
@@ -268,8 +269,8 @@ class DataTable(RecordElement):
                 try:
                     flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
-                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, MOD=modifier))
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
                     flag = False
 
                 self.modifiers[modifier] = flag
@@ -424,7 +425,8 @@ class DataTable(RecordElement):
             if summary_stat not in self._supported_stats:
                 msg = 'unknown statistic {STAT} set for summary column "{COL}"' \
                     .format(STAT=summary_stat, COL=summary_col)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
+
                 continue
 
             self.summary_rules[summary_col] = summary_stat
@@ -586,8 +588,8 @@ class DataTable(RecordElement):
             try:
                 max_size_per_col = int(tbl_width / ncol)
             except ZeroDivisionError:
-                logger.warning('DataTable {NAME}: division by zero error encountered while attempting to calculate '
-                               'column widths'.format(NAME=self.name))
+                logger.warning(self.format_log('division by zero error encountered while attempting to calculate '
+                                               'column widths'))
                 max_size_per_col = int(tbl_width / 10)
 
             # Each column has size == max characters per column
@@ -609,7 +611,7 @@ class DataTable(RecordElement):
         """
         Enable data table element actions.
         """
-        logger.debug('DataTable {NAME}: enabling actions'.format(NAME=self.name))
+        logger.debug(self.format_log('enabling actions'))
 
         action_bttns = self.actions
         for action_bttn in action_bttns:
@@ -619,7 +621,7 @@ class DataTable(RecordElement):
         """
         Disable data table element actions.
         """
-        logger.debug('DataTable {NAME}: disabling actions'.format(NAME=self.name))
+        logger.debug(self.format_log('disabling actions')
 
         action_bttns = self.actions
         for action_bttn in action_bttns:
@@ -741,12 +743,10 @@ class DataTable(RecordElement):
                 select_row_index = values[elem_key][0]
             except IndexError:  # user double-clicked too quickly
                 msg = 'table row could not be selected'
-                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.debug(self.format_log(msg))
             else:
                 self._selected_rows = [select_row_index]
                 self.update_annotation(window)
-
-                print('selected table row index is: {}'.format(select_row_index))
 
                 # Get the real index of the selected row
                 index = self.get_index(select_row_index)
@@ -770,9 +770,9 @@ class DataTable(RecordElement):
                 try:
                     param.value = param.format_value(values)
                 except ValueError:
-                    msg = 'failed to filter table rows - incorrectly formatted value provided to filter parameter ' \
-                          '{PARAM}'.format(PARAM=param.description)
-                    logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    msg = 'failed to filter table rows'
+                    err = 'incorrectly formatted value provided to filter parameter {}'.format(param.description)
+                    logger.error(self.format_log(msg, err=err))
                     mod_win2.popup_error(msg)
 
                     return triggers
@@ -790,8 +790,8 @@ class DataTable(RecordElement):
                 # Reduce table size
                 frame_w = 220
                 new_width = tbl_width - frame_w - 4 if tbl_width - frame_w - 4 > 0 else 0
-                logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
-                             'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
+                logger.debug(self.format_log('resizing the table from {W} to {NW} to accommodate the options frame '
+                                             'of width {F}'.format(W=tbl_width, NW=new_width, F=frame_w)))
                 self._update_column_widths(window, width=new_width)
 
                 # Reveal the options frame
@@ -813,8 +813,8 @@ class DataTable(RecordElement):
             try:
                 sort_col = display_map[display_col]
             except KeyError:
-                logger.warning('DataTable {NAME}: column "{COL}" must be a display column in order to sort'
-                               .format(NAME=self.name, COL=display_col))
+                logger.warning(self.format_log('column "{COL}" must be a display column in order to sort'
+                                               .format(COL=display_col)))
             else:
                 if sort_col in sort_on:
                     # Remove column from sortby list
@@ -837,7 +837,7 @@ class DataTable(RecordElement):
             indices = self.get_index(select_row_indices)
             if len(indices) < 2:
                 msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
 
                 return triggers
 
@@ -848,7 +848,7 @@ class DataTable(RecordElement):
             except KeyError:
                 msg = 'fill display column {COL} must have a one-to-one mapping with a table display column' \
                     .format(COL=display_col)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
 
                 return triggers
 
@@ -860,8 +860,8 @@ class DataTable(RecordElement):
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
-                logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
-                             .format(TBL=self.name, KEY=event))
+                logger.error(self.format_log('unable to find parameter associated with event key {KEY}'
+                                             .format(KEY=event)))
             else:
                 param.run_event(window, event, values)
 
@@ -871,15 +871,14 @@ class DataTable(RecordElement):
                                         file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
 
             if outfile:
-                logger.info('DataTable {NAME}: exporting the display table to spreadsheet {FILE}'
-                            .format(NAME=self.name, FILE=outfile))
+                logger.info(self.format_log('exporting the display table to spreadsheet {FILE}'.format(FILE=outfile)))
 
                 export_df = self.export_table()
                 try:
                     export_df.to_excel(outfile, engine='openpyxl', header=True, index=False)
                 except Exception as e:
                     msg = 'failed to save table to file to {FILE} - {ERR}'.format(FILE=outfile, ERR=e)
-                    logger.exception(msg)
+                    logger.exception(self.format_log(msg))
                     mod_win2.popup_error(msg)
             else:
                 logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
@@ -904,7 +903,7 @@ class DataTable(RecordElement):
                 import_rows = self.import_rows()
             except Exception as e:
                 msg = 'failed to run table import event'
-                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                logger.exception(self.format_log(msg, err=e))
             else:
                 if not import_rows.empty:
                     collection.append(import_rows, new=True)
@@ -926,8 +925,7 @@ class DataTable(RecordElement):
         """
         collection = self.collection
 
-        logger.debug('DataTable {NAME}: opening row at real index {IND} for editing'
-                     .format(NAME=self.name, IND=index))
+        logger.debug(self.format_log('opening row at real index {IND} for editing'.format(IND=index)))
 
         edited_row = self.edit_row(index)
         if edited_row is None:
@@ -998,7 +996,7 @@ class DataTable(RecordElement):
                 selected_rows = [index_map[i] for i in current_rows]
             except KeyError:
                 msg = 'missing index information for one or more selected rows'.format(NAME=self.name)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
 
                 selected_rows = current_rows
         else:
@@ -1027,7 +1025,7 @@ class DataTable(RecordElement):
                 indices = [index_map[i] for i in selected]
         except KeyError:
             msg = 'missing index information for one or more selected rows'.format(NAME=self.name)
-            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.warning(self.format_log(msg))
             indices = selected
 
         return indices
@@ -1084,21 +1082,20 @@ class DataTable(RecordElement):
                 search_col = search_value = None
 
             if not search_value:  # no search value provided in the search field, try the filter parameters
-                logger.debug('DataTable {NAME}: filtering the display table based on user-supplied parameter values'
-                             .format(NAME=self.name))
+                logger.debug(self.format_log('filtering the display table based on user-supplied parameter values'))
 
                 parameters = self.parameters
                 for param in parameters:
                     df = param.filter_table(df)
             else:
-                logger.debug('DataTable {NAME}: filtering the display table based on search value {VAL}'
-                             .format(NAME=self.name, VAL=search_value))
+                logger.debug(self.format_log('filtering the display table based on search value {VAL}'
+                                             .format(VAL=search_value)))
 
                 try:
                     df = df[df[search_col].str.contains(search_value, case=False, regex=True)]
                 except KeyError:
-                    msg = 'DataTable {NAME}: search field {COL} not found in list of table columns' \
-                        .format(NAME=self.name, COL=search_col)
+                    msg = self.format_log('search field {COL} not found in list of table columns'
+                                          .format(NAME=self.name, COL=search_col))
                     logger.warning(msg)
         else:
             current = (not all_rows) if indices is None or deleted_rows is False else False
@@ -1126,7 +1123,7 @@ class DataTable(RecordElement):
         tbl_key = self.key_lookup('Element')
         annotations = {} if annotations is None else annotations
 
-        logger.debug('DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
+        logger.debug(self.format_log('formatting table for displaying'))
 
         # Sort table and update table sorting information
         self.collection.sort(self.sort_on)
@@ -1182,7 +1179,7 @@ class DataTable(RecordElement):
         try:
             tbl_total = self.calculate_total(df)
         except Exception as e:
-            msg = 'DataTable {NAME}: failed to calculate table totals - {ERR}'.format(NAME=self.name, ERR=e)
+            msg = self.format_log('failed to calculate table totals - {ERR}'.format(ERR=e))
             logger.warning(msg)
             tbl_total = 0
 
@@ -1268,7 +1265,7 @@ class DataTable(RecordElement):
                 col_to_add = self.format_display_column(df, column)
             except Exception as e:
                 msg = 'failed to format column {COL} for display'.format(COL=column)
-                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
 
                 continue
 
@@ -1284,7 +1281,7 @@ class DataTable(RecordElement):
             display_col = self.collection.format_display_field(column, data=df)
         except KeyError:
             msg = 'column {COL} not found in the table dataframe'.format(COL=column)
-            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error(self.format_log(msg))
 
             raise KeyError(msg)
 
@@ -1306,7 +1303,7 @@ class DataTable(RecordElement):
             display_col = df[column]
         except KeyError:
             msg = 'column {COL} not found in the table dataframe'.format(COL=column)
-            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error(self.format_log(msg))
 
             raise KeyError(msg)
 
@@ -1376,21 +1373,21 @@ class DataTable(RecordElement):
         if df.empty or rules is None:
             return {}
 
-        logger.debug('DataTable {NAME}: annotating display table on configured annotation rules'.format(NAME=self.name))
+        logger.debug(self.format_log('annotating display table on configured annotation rules'))
 
         annotations = {}
         rows_annotated = []
         for annot_code in rules:
-            logger.debug('DataTable {NAME}: annotating table based on configured annotation rule "{CODE}"'
-                         .format(NAME=self.name, CODE=annot_code))
+            logger.debug(self.format_log('annotating table based on configured annotation rule "{CODE}"'
+                                         .format(CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
                 # results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
-                logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
-                             .format(NAME=self.name, CODE=annot_code, ERR=e))
+                logger.error(self.format_log('failed to annotate data table using annotation rule {CODE} - {ERR}'
+                                             .format(CODE=annot_code, ERR=e)))
                 continue
 
             for row_index, result in results.iteritems():
@@ -1525,8 +1522,8 @@ class DataTable(RecordElement):
                 elif use_center is False and index_mod == 0:
                     right_cols.append([param_layout])
                 else:
-                    logger.warning('DataTable {NAME}: cannot assign layout for table filter parameter {PARAM}'
-                                   .format(NAME=self.name, PARAM=parameter.name))
+                    logger.warning(self.format_log('cannot assign layout for table filter parameter {PARAM}'
+                                                   .format(PARAM=parameter.name)))
 
         n_filter_rows = ceiling(i / 3) if use_center else ceiling(i / 2)
         frame_h = row_h * n_filter_rows + (ceiling(bttn_h / row_h) * row_h - bttn_h)
@@ -1621,7 +1618,6 @@ class DataTable(RecordElement):
         header = display_df.columns.tolist()
         data = display_df.values.tolist()
         events = True if level < 2 else False
-        logger.debug('DataTable {NAME}: events are enabled: {EVENT}'.format(NAME=self.name, EVENT=events))
         vis_map = []
         for display_column in header:
             if display_column in hidden_columns:
@@ -1749,7 +1745,7 @@ class DataTable(RecordElement):
         else:
             new_w, new_h = (current_w, current_h)
 
-        logger.debug('DataTable {TBL}: resizing display to {W}, {H}'.format(TBL=self.name, W=new_w, H=new_h))
+        logger.debug(self.format_log('resizing display to {W}, {H}'.format(W=new_w, H=new_h)))
         mod_lo.set_size(window, table_key, (new_w, new_h))
         self._dimensions = (new_w, new_h)
 
@@ -1798,7 +1794,7 @@ class DataTable(RecordElement):
         frame_key = self.key_lookup('OptionsFrame')
         width, nrows = self.get_table_dimensions(window)
 
-        logger.debug('DataTable {NAME}: resetting display table dimensions'.format(NAME=self.name))
+        logger.debug(self.format_log('resetting display table dimensions'))
 
         # Close options panel, if open
         if window[frame_key].metadata['visible'] is True:
@@ -1862,14 +1858,14 @@ class DataTable(RecordElement):
         frame_meta = frame.metadata
 
         if frame_meta['visible']:  # already visible, so want to collapse the frame
-            logger.debug('DataTable {NAME}: collapsing the filter frame'.format(NAME=self.name))
+            logger.debug(self.format_log('collapsing the filter frame'))
             bttn.update(image_data=mod_const.UNHIDE_ICON)
             frame.update(visible=False)
 
             frame.metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
             if not frame_meta['disabled']:
-                logger.debug('DataTable {NAME}: expanding the filter frame'.format(NAME=self.name))
+                logger.debug(self.format_log('expanding the filter frame'))
                 bttn.update(image_data=mod_const.HIDE_ICON)
                 frame.update(visible=True)
 
@@ -1882,7 +1878,7 @@ class DataTable(RecordElement):
         Export table to spreadsheet.
         """
         df = self.data(display_rows=display)
-        logger.info('DataTable {NAME}: preparing the table for exporting'.format(NAME=self.name))
+        logger.info(self.format_log('preparing the table for exporting'))
 
         # Annotate the table
         annotations = self.annotate_rows(df)
@@ -1932,48 +1928,9 @@ class DataTable(RecordElement):
             try:
                 total = mod_dm.evaluate_operation(summary_df, tally_rule)
             except Exception as e:
-                msg = 'DataTable {NAME}: unable to calculate table total - {ERR}' \
-                    .format(NAME=self.name, ERR=e)
-                logger.warning(msg)
+                msg = 'unable to calculate table total'
+                logger.warning(self.format_log(msg, err=e))
                 total = 0
-        else:
-            total = df.shape[0]
-
-        return total
-
-    def calculate_total_old(self, df: pd.DataFrame = None):
-        """
-        Calculate the data table total using the configured tally rule.
-        """
-        is_float_dtype = pd.api.types.is_float_dtype
-        is_integer_dtype = pd.api.types.is_integer_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        tally_rule = self.tally_rule
-        df = df if df is not None else self.data(display_rows=True)
-        if df.empty:
-            return 0
-
-        total = 0
-        if tally_rule is not None:
-            try:
-                # result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
-                result = mod_dm.evaluate_operation(df, tally_rule)
-            except Exception as e:
-                msg = 'DataTable {NAME}: unable to calculate table total - {ERR}' \
-                    .format(NAME=self.name, ERR=e)
-                logger.warning(msg)
-            else:
-                dtype = result.dtype
-                if is_float_dtype(dtype) or is_integer_dtype(dtype) or is_bool_dtype(dtype):
-                    total = result.sum()
-                elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                    total = result.nunique()
-                else:  # possibly empty dataframe
-                    total = 0
-                logger.debug('DataTable {NAME}: table totals calculated as {TOTAL}'.format(NAME=self.name, TOTAL=total))
         else:
             total = df.shape[0]
 
@@ -1999,14 +1956,13 @@ class DataTable(RecordElement):
         if df.empty:
             return df
 
-        logger.debug('DataTable {NAME}: sub-setting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
+        logger.debug(self.format_log('sub-setting table on rule {RULE}'.format(RULE=subset_rule)))
         try:
             # results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
             results = mod_dm.evaluate_condition(df, subset_rule)
         except Exception as e:
-            msg = 'DataTable {NAME}: failed to subset table on rule {RULE} - {ERR}' \
-                .format(NAME=self.name, RULE=subset_rule, ERR=e)
-            logger.error(msg)
+            msg = 'failed to subset table on rule {RULE}'.format(RULE=subset_rule)
+            logger.error(self.format_log(msg, err=e))
 
             raise ValueError(msg)
 
@@ -2023,8 +1979,8 @@ class DataTable(RecordElement):
         required_columns = self.required_columns
         for required_column in required_columns:
             has_na = comp_df[required_column].isnull().any()
-            logger.debug('DataTable {NAME}: required column {COL} has NA values: {HAS}'
-                         .format(NAME=self.name, COL=required_column, HAS=has_na))
+            logger.debug(self.format_log('required column {COL} has NA values: {HAS}'
+                                         .format(COL=required_column, HAS=has_na)))
             if has_na:
                 display_map = self.display_columns
                 try:
@@ -2033,7 +1989,7 @@ class DataTable(RecordElement):
                     display_column = required_column
 
                 msg = 'missing values for required column {COL}'.format(COL=display_column)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
 
                 return False
 
@@ -2062,8 +2018,7 @@ class DataTable(RecordElement):
         except IndexError:
             msg = 'no record found at table index "{IND}" to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: failed to edit record at row {IND} - {MSG}'
-                         .format(NAME=self.name, MSG=msg, IND=index + 1))
+            logger.error(self.format_log('failed to edit record at row {IND} - {MSG}'.format(MSG=msg, IND=index + 1)))
 
             return df
 
@@ -2099,8 +2054,7 @@ class DataTable(RecordElement):
 
         if not select_df.empty:
             # Change deleted column of existing selected records to False
-            logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
-                         'False'.format(NAME=self.name))
+            logger.debug(self.format_log('changing deleted status of selected records stored in the table to False'))
             collection.set_state('deleted', False, indices=select_df.index.tolist())
 
         return pd.DataFrame()
@@ -2204,7 +2158,7 @@ class RecordTable(DataTable):
         try:
             self.collection = mod_col.RecordCollection(name, entry)
         except Exception as e:
-            msg = self.format_log('failed to initialize the collection - {ERR}'.format(ERR=e))
+            msg = self.format_log('failed to initialize the collection', err=e)
             raise AttributeError(msg)
 
         self.id_column = self.collection.id_column
@@ -2224,8 +2178,8 @@ class RecordTable(DataTable):
                 try:
                     flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
-                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, MOD=modifier))
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
                     flag = False
 
                 self.modifiers[modifier] = flag
@@ -2246,6 +2200,7 @@ class RecordTable(DataTable):
 
             if 'Columns' not in import_rule:
                 msg = 'missing required "ImportRules" {TBL} parameter "Columns"'.format(TBL=import_table)
+                logger.error(self.format_log(msg))
 
                 raise AttributeError(msg)
             if 'Filters' not in import_rule:
@@ -2270,8 +2225,7 @@ class RecordTable(DataTable):
         Run a table action event.
         """
         collection = self.collection
-        logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
-                     .format(NAME=self.name, IND=index))
+        logger.debug(self.format_log('opening record at real index {IND} for editing'.format(IND=index)))
 
         record = self.load_record(index)
 
@@ -2282,7 +2236,7 @@ class RecordTable(DataTable):
                 record_values = record.export_values()
             except Exception as e:
                 msg = 'unable to update row {IND} values'.format(IND=index)
-                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                logger.exception(self.format_log(msg, err=e))
             else:
                 update_event = collection.update_entry(index, record_values)
 
@@ -2332,9 +2286,10 @@ class RecordTable(DataTable):
         try:
             record = self._translate_row(record_data, level=1, new_record=True)
         except Exception as e:
-            msg = 'failed to add new record to the table - {ERR}'.format(ERR=e)
-            mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            msg = 'failed to add new record to the table'
+            logger.error(self.format_log(msg, err=e))
+            mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
+
             raise
 
         # Display the record window
@@ -2344,8 +2299,7 @@ class RecordTable(DataTable):
         except AttributeError:  # record creation was cancelled
             return False
         else:
-            logger.debug('DataTable {NAME}: appending values {VALS} to the table'
-                         .format(NAME=self.name, VALS=record_values))
+            logger.debug(self.format_log('appending values {VALS} to the table'.format(VALS=record_values)))
             collection.append(record_values, inplace=True, new=True)
 
             self.edited = True
@@ -2376,10 +2330,9 @@ class RecordTable(DataTable):
         try:
             row = df.loc[index]
         except IndexError:
-            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
+            msg = 'no record found at table index "{IND}" to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
-                             .format(NAME=self.name, IND=index + 1, MSG=msg))
+            logger.exception(self.format_log('failed to open record at row {IND}'.format(IND=index + 1), err=msg))
 
             return None
 
@@ -2394,16 +2347,14 @@ class RecordTable(DataTable):
             record = self._translate_row(row, level=level, new_record=False, references=references)
         except Exception as e:
             msg = 'failed to open record at row {IND}'.format(IND=index + 1)
+            logger.exception(self.format_log(msg, err=e))
             mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             return None
         else:
-            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
-                        .format(NAME=self.name, ID=record.record_id(), IND=index))
+            logger.info(self.format_log('opening record {ID} at row {IND}'.format(ID=record.record_id(), IND=index)))
 
         # Display the record window
-        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
         record = mod_win2.record_window(record, view_only=view_only, modify_database=savable)
 
         return record
@@ -2421,13 +2372,9 @@ class RecordTable(DataTable):
 
         if import_df is None:
             import_df = collection.data(current=False, deleted_only=True)
-        print('import data is:')
-        print(import_df)
         current_ids = collection.row_ids(indices=import_df.index, deleted=True)
-        print('records previously deleted are:')
-        print(current_ids)
 
-        logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
+        logger.debug(self.format_log('importing rows'))
 
         table_layout = {'Columns': columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': id_col,
@@ -2459,21 +2406,18 @@ class RecordTable(DataTable):
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, params=search_params)
-        print('selected records are:')
-        print(select_df)
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
         existing_indices = collection.record_index(select_ids)
         existing_ids = collection.row_ids(existing_indices, deleted=True)
 
-        logger.debug('DataTable {NAME}: removing selected records {IDS} already stored in the table at rows {ROWS}'
-                     .format(NAME=self.name, IDS=existing_ids, ROWS=existing_indices))
+        logger.debug(self.format_log('removing selected records {IDS} already stored in the table at rows {ROWS}'
+                                     .format(IDS=existing_ids, ROWS=existing_indices)))
         select_df.drop(select_df.loc[select_df[id_col].isin(existing_ids)].index, inplace=True, axis=0, errors='ignore')
 
         # Change deleted column of existing selected records to False
-        logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
-                     'False'.format(NAME=self.name))
+        logger.debug(self.format_log('changing deleted status of selected records stored in the table to False'))
         collection.set_state('deleted', False, indices=existing_indices)
 
         return select_df
@@ -2485,7 +2429,6 @@ class ComponentTable(RecordTable):
     associated records.
 
     Attributes:
-
         name (str): table element configuration name.
 
         elements (list): list of table element keys.
@@ -2531,7 +2474,7 @@ class ComponentTable(RecordTable):
             self.association_rule = entry['AssociationRule']
         except KeyError:
             msg = 'missing required parameter "AssociationRule"'
-            logger.error(msg)
+            logger.error(self.format_log(msg))
 
             raise AttributeError(msg)
 
@@ -2549,11 +2492,7 @@ class ComponentTable(RecordTable):
 
         if import_df is None:
             import_df = collection.data(current=False, deleted_only=True)
-        print('import data is:')
-        print(import_df)
         current_ids = collection.row_ids()
-        print('records currently in dataframe:')
-        print(current_ids)
 
         logger.debug(self.format_log('importing rows'))
 
@@ -2581,7 +2520,7 @@ class ComponentTable(RecordTable):
                 df = record_entry.load_unreferenced_records(rule_name)
             except Exception as e:
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
-                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+                logger.exception(self.format_log(msg, err=e))
             else:
                 if not df.empty:
                     # Subset on table columns
@@ -2615,8 +2554,6 @@ class ComponentTable(RecordTable):
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, params=search_params)
-        print('selected records are:')
-        print(select_df)
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
@@ -3864,7 +3801,7 @@ class DataVariable(RecordElement):
                     flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
                     logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
-                                                   .format(TBL=self.name, MOD=modifier)))
+                                                   .format(MOD=modifier)))
                     flag = False
 
                 self.modifiers[modifier] = flag
@@ -3886,14 +3823,14 @@ class DataVariable(RecordElement):
         annotation = None
         for annot_code in rules:
             logger.debug(self.format_log('annotating element based on configured annotation rule "{CODE}"'
-                                         .format(NAME=self.name, CODE=annot_code)))
+                                         .format(CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
                 results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
             except Exception as e:
-                logger.error(self.format_log('failed to annotate element using annotation rule {CODE} - {ERR}'
-                                             .format(CODE=annot_code, ERR=e)))
+                logger.error(self.format_log('failed to annotate element using annotation rule {CODE}'
+                                             .format(CODE=annot_code), err=e))
                 continue
 
             result = results.squeeze()
@@ -4173,7 +4110,7 @@ class RecordVariable(DataVariable):
                     edited = self.update_value(value)
                 except Exception as e:
                     msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
-                    logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+                    logger.exception(self.format_log(msg, err=e))
                     mod_win2.popup_error(msg)
 
                 else:
@@ -4737,7 +4674,7 @@ class DependentVariable(DataVariable):
             try:
                 input_value = mod_dm.evaluate_operation(values, self.operation)
             except Exception as e:
-                msg = self.format_log('failed to set the value of the dependent variable - {ERR}'.format(ERR=e))
+                msg = self.format_log('failed to set the value of the dependent variable', err=e)
                 logger.error(msg)
                 input_value = None
 
