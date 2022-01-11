@@ -327,7 +327,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
-    #record_events = record.record_events()
     while True:
         event, values = window.read(timeout=100)
 
@@ -382,10 +381,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
             if not elements_updated:
                 continue
 
-            # Update modifier values
-            #for modifier in record.metadata:
-            #    modifier.format_value(values)
-
             # Verify that required parameters have values
             can_continue = record.check_required_parameters()
 
@@ -413,10 +408,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
             if not elements_updated:
                 continue
-
-            # Update modifier values
-            #for modifier in record.metadata:
-            #    modifier.format_value(values)
 
             # Save the record to the database table
             saved = record.save()

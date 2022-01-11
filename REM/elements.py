@@ -139,8 +139,7 @@ class RecordElement:
         try:
             key = key_map[component]
         except KeyError:
-            msg = '{ETYPE} {NAME}: component "{COMP}" not found in list of element components' \
-                .format(ETYPE=self.etype, NAME=self.name, COMP=component)
+            msg = self.format_log('component "{COMP}" not found in list of element components'.format(COMP=component))
             logger.warning(msg)
 
             raise KeyError(msg)
@@ -241,7 +240,7 @@ class DataTable(RecordElement):
         open_key = '{}+LCLICK+'.format(elem_key)
         filter_hkey = '{}+FILTER+'.format(elem_key)
         #self.bindings = [self.key_lookup(i) for i in event_elements] + [open_key, return_key, filter_hkey]
-        self.bindings = {record_elements[i]: i for i in ('Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options')}
+        self.bindings = {self.elements[i]: i for i in ('Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options')}
         self.bindings.update({i: 'Element' for i in (open_key, return_key, filter_hkey)})
 
         # Table data collection
@@ -294,7 +293,8 @@ class DataTable(RecordElement):
             else:
                 self.actions.append(action)
                 self.elements[action_name] = action.element_key
-                self.bindings.extend(action.bindings)
+                #self.bindings.extend(action.bindings)
+                self.bindings.update(action.bindings)
 
         # Attributes that affect how the table data is displayed
         try:
@@ -359,7 +359,8 @@ class DataTable(RecordElement):
                 continue
 
             self.parameters.append(param)
-            self.bindings.extend(param.bindings)
+            #self.bindings.extend(param.bindings)
+            self.bindings.update(param.bindings)
 
         try:
             edit_columns = entry['EditColumns']
@@ -621,7 +622,7 @@ class DataTable(RecordElement):
         """
         Disable data table element actions.
         """
-        logger.debug(self.format_log('disabling actions')
+        logger.debug(self.format_log('disabling actions'))
 
         action_bttns = self.actions
         for action_bttn in action_bttns:
@@ -702,7 +703,8 @@ class DataTable(RecordElement):
         filter_hkey = '{}+FILTER+'.format(elem_key)
         frame_bttn = self.key_lookup('CollapseBttn')
 
-        param_elems = [i for param in self.parameters for i in param.elements]
+        #param_elems = [i for param in self.parameters for i in param.elements]
+        param_elems = [i for param in self.parameters for i in param.bindings]
         open_key = '{}+LCLICK+'.format(elem_key)
         return_key = '{}+RETURN+'.format(elem_key)
 
@@ -836,7 +838,7 @@ class DataTable(RecordElement):
             # Get the real indices of the selected rows
             indices = self.get_index(select_row_indices)
             if len(indices) < 2:
-                msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
+                msg = 'table fill requires more than one table rows to be selected'
                 logger.warning(self.format_log(msg))
 
                 return triggers
@@ -846,9 +848,9 @@ class DataTable(RecordElement):
             try:
                 fill_col = display_map[display_col]
             except KeyError:
-                msg = 'fill display column {COL} must have a one-to-one mapping with a table display column' \
-                    .format(COL=display_col)
-                logger.warning(self.format_log(msg))
+                msg = self.format_log('fill display column {COL} must have a one-to-one mapping with a table display '
+                                      'column'.format(COL=display_col))
+                logger.warning(msg)
 
                 return triggers
 
@@ -3986,7 +3988,7 @@ class RecordVariable(DataVariable):
         lclick_event = '{}+LCLICK+'.format(elem_key)
         return_key = '{}+RETURN+'.format(elem_key)
         escape_key = '{}+ESCAPE+'.format(elem_key)
-        self.bindings = {record_elements[i]: i for i in ('Edit', 'Save', 'Cancel')}
+        self.bindings = {self.elements[i]: i for i in ('Element', 'Edit', 'Save', 'Cancel')}
         self.bindings.update({i: 'Element' for i in (lclick_event, return_key, escape_key)})
 
         # Dynamic variables
@@ -4923,7 +4925,7 @@ class TableButton:
         self.name = name
         self.element_key = '-{PARENT}_{ID}_{NAME}-'.format(PARENT=parent, NAME=name, ID=parent_id)
         self.parent_key = '-{PARENT}_{ID}_Element-'.format(PARENT=parent, ID=parent_id)
-        self.bindings = [self.element_key]
+        self.bindings = {self.element_key: name}
 
         try:
             self.description = entry['Description']
@@ -4937,7 +4939,7 @@ class TableButton:
             self.shortcut_key = None
         else:
             self.shortcut_key = '+{DESC}+'.format(DESC=self.name.upper())
-            self.bindings.append('{ELEM}{KEY}'.format(ELEM=self.parent_key, KEY=self.shortcut_key))
+            self.bindings['{ELEM}{KEY}'.format(ELEM=self.parent_key, KEY=self.shortcut_key)] = name
 
         # Layout attributes
         try:

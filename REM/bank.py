@@ -93,7 +93,8 @@ class BankRule:
                 raise AttributeError(e)
 
             self.parameters.append(param)
-            self.bindings.extend(param.bindings)
+            #self.bindings.extend(param.bindings)
+            self.bindings.extend(list(param.bindings))
 
         try:
             accts = entry['Entries']

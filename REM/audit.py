@@ -102,7 +102,8 @@ class AuditRule:
                 raise AttributeError(e)
 
             self.parameters.append(param)
-            self.bindings.extend(param.bindings)
+            #self.bindings.extend(param.bindings)
+            self.bindings.extend(list(param.bindings))
 
         self.transactions = []
         try:
@@ -996,7 +997,7 @@ class AuditTransaction:
         try:
             self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required parameter "RecordType"' \
+            msg = 'AuditTransaction {NAME}: missing required parameter "RecordType"' \
                 .format(NAME=name)
             logger.error(msg)
 
@@ -1004,15 +1005,8 @@ class AuditTransaction:
 
         try:
             self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
-        except KeyError:
-            msg = 'Configuration Error: AuditTransactionTab {NAME}: missing required parameter "DisplayTable"' \
-                .format(NAME=name)
-            logger.error(msg)
-
-            raise AttributeError(msg)
-        except AttributeError as e:
-            msg = 'Configuration Error: AuditTransactionTab {NAME}: unable to initialize DisplayTable - {ERR}' \
-                .format(NAME=name, ERR=e)
+        except Exception as e:
+            msg = 'AuditTransaction {NAME}: failed to initialize the transaction table - {ERR}'.format(NAME=name, ERR=e)
             logger.exception(msg)
 
             raise AttributeError(msg)

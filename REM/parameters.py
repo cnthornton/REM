@@ -52,11 +52,10 @@ class DataParameter:
         """
         self.name = name
         self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'Header', 'Value', 'Description', 'Width')]
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ('Element', 'Header', 'Value', 'Description', 'Width')}
 
-        self._event_elements = ['Element']
-        self.bindings = [self.key_lookup(i) for i in self._event_elements]
+        self.bindings = {self.key_lookup(i): i for i in ('Element', )}
 
         try:
             self.description = entry['Description']
@@ -135,7 +134,27 @@ class DataParameter:
 
         self.auto_size = False
 
-    def key_lookup(self, component):
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a record element's GUI element key using the name of the component.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the record element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = 'DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements' \
+                .format(COMP=component, NAME=self.name)
+            logger.warning(msg)
+            key = None
+
+        return key
+
+    def key_lookup_old(self, component):
         """
         Lookup an element's component GUI key using the name of the component element.
         """
@@ -598,7 +617,8 @@ class DataParameterSingle(DataParameter):
         """
         Run a window event associated with the parameter.
         """
-        if event in self.elements:
+        #if event in self.elements:
+        if event in self.bindings:
             display_value = self._enforce_formatting(window, values, event)
             window[event].update(value=display_value)
 
@@ -700,8 +720,10 @@ class DataParameterInput(DataParameterSingle):
         # Add additional calendar element for input with datetime data types to list of editable elements
         if self.dtype in settings.supported_date_dtypes:
             calendar_key = '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar')
-            self.elements.append(calendar_key)
-            self.bindings.append(calendar_key)
+            #self.elements.append(calendar_key)
+            #self.bindings.append(calendar_key)
+            self.elements['Calendar'] = calendar_key
+            self.bindings[calendar_key] = 'Calendar'
 
         # Data type check
         if not self.dtype:

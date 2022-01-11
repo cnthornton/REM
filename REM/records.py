@@ -1431,8 +1431,8 @@ class DatabaseRecord:
         #                 ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
         #                  'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
-                          'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')}
+                         ('Element', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header')}
+        self.bindings = {}
 
         try:
             permissions = entry['Permissions']
@@ -1513,8 +1513,11 @@ class DatabaseRecord:
                 section_entry = sections[section]
                 #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                 #                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
+                section_bttn = 'SectionBttn{}-'.format(i)
+                section_frame = 'SectionFrame{}'.format(i)
                 self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                                      ('SectionBttn{}'.format(i), 'SectionFrame{}'.format(i))})
+                                      (section_bttn, section_frame)})
+                self.bindings[self.key_lookup(section_bttn)] = section_bttn
 
                 self.sections[section] = {'Title': section_entry.get('Title', section),
                                           'Elements': []}
@@ -1597,7 +1600,8 @@ class DatabaseRecord:
         try:
             key = key_map[component]
         except KeyError:
-            msg = 'component {COMP} not found in list of record {NAME} components'.format(COMP=component, NAME=self.name))
+            msg = 'component {COMP} not found in list of record {NAME} components'\
+                .format(COMP=component, NAME=self.name)
             logger.warning(msg)
 
             raise KeyError(msg)
@@ -1764,35 +1768,6 @@ class DatabaseRecord:
 
                 record_element.append(ref_data, new=False)
 
-            #elif etype == 'refbox':  # reference box
-            #    assoc_rule = record_element.association_rule
-
-            #    if assoc_rule in references:  # use provided reference entries instead of importing from reference table
-            #        assoc_refs = references[assoc_rule]
-            #        ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
-            #    else:
-            #        ref_data = record_entry.import_references(record_id, assoc_rule)
-
-            #    if ref_data.empty:
-            #        logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations'
-            #                     .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
-            #        continue
-
-            #    elif ref_data.shape[0] > 1:
-            #        logger.warning('RecordType {NAME}: more than one {TYPE} reference found for record {ID}'
-            #                       .format(NAME=self.name, TYPE=assoc_rule, ID=self.record_id))
-
-            #    logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
-            #                 .format(NAME=self.name, REF=element_name))
-            #    record_element.referenced = record_element.import_reference(ref_data)
-                #record_element.append(ref_data)
-            #    if record_element.referenced:
-            #        logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
-            #                    .format(NAME=self.name, REF=element_name))
-            #    else:
-            #        logger.warning('RecordType {NAME}: failed to load reference information for reference box {REF}'
-            #                       .format(NAME=self.name, REF=element_name))
-
             else:  # record variable element (dependent or record variables)
                 try:
                     value = record_data[element_name]
@@ -1897,19 +1872,23 @@ class DatabaseRecord:
             identifier = match.group(0)  # identifier returned if match
             element_key = match.group(1)  # element key part of the identifier after removing any binding
 
-            element_type = element_key.split('_')[-1]
+            #element_type = element_key.split('_')[-1]
+            #element_names = []
+            #for element in elements:
+            #    try:
+            #        element_name = element.key_lookup(element_type)
+            #    except KeyError:
+            #        element_name = None
             element_names = []
             for element in elements:
                 try:
-                    element_name = element.key_lookup(element_type)
+                    element_name = element.key_lookup(element_key, rev=True)
                 except KeyError:
                     element_name = None
 
                 element_names.append(element_name)
             logger.debug('RecordType {NAME}: searching record elements for record element by element key {KEY}'
                          .format(NAME=self.name, KEY=identifier))
-            logger.debug('RecordType {NAME}: there are {N} record elements with element type {TYPE}'
-                         .format(NAME=self.name, N=len(element_names), TYPE=element_type))
         elif by_type is True:
             logger.debug('RecordType {NAME}: searching record elements for record element by element type {KEY}'
                          .format(NAME=self.name, KEY=identifier))
@@ -1933,8 +1912,8 @@ class DatabaseRecord:
         Fetch a record metadata by name or event key.
         """
         if by_key is True:
-            element_type = element[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.metadata]
+            #element_type = element[1:-1].split('_')[-1]
+            element_names = [i.key_lookup(element, rev=True) for i in self.metadata]
         else:
             element_names = [i.name for i in self.metadata]
 
@@ -2100,6 +2079,27 @@ class DatabaseRecord:
         self.resize(window, size=size)
 
     def record_events(self, components_only: bool = False):
+        """
+        Return a list of available record event bindings.
+
+        Arguments:
+            components_only (bool): only retrieve event bindings for the record elements [Default: False].
+        """
+        events = {}
+        if not components_only:
+            events.update(self.bindings)
+
+        # Add record component event bindings
+        for record_element in self.modules:
+            events.update(record_element.bindings)
+
+        # Add record meta-data event bindings
+        for param in self.metadata:
+            events.update(param.bindings)
+
+        return events
+
+    def record_events_old(self, components_only: bool = False):
         """
         Return a list of available record events.
 
@@ -2801,8 +2801,6 @@ class DatabaseRecord:
 
         # Record header
         headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
-        #headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
-        #headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
         headers.append(self._record_id.layout(size=(20, 1), padding=((0, pad_h), 0), editable=False))
         headers.append(self._record_date.layout(size=(20, 1), editable=False))
         header_key = self.key_lookup('Header')
@@ -2856,9 +2854,7 @@ class DatabaseRecord:
             metadata_visible = True
             annotation_layout = []
             for param in metadata:
-                param_name = param.name
                 can_edit = editable and param.permissions in user_priv
-
                 annotation_layout.append([param.layout(editable=can_edit, level=level)])
         else:  # don't show tab for new records or record w/o configured metadata
             metadata_visible = False
@@ -2878,7 +2874,7 @@ class DatabaseRecord:
                                   title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
 
         # Pane elements must be columns
-        record_key = self.key_lookup('Record')
+        record_key = self.key_lookup('Element')
         layout = [[sg.Col([[header_layout], [main_layout]], key=record_key, pad=padding,
                           background_color=bg_col, expand_x=True, expand_y=True)]]
 
@@ -2906,7 +2902,7 @@ class DatabaseRecord:
         # Set the size of the record container
         record_w = width - pad_w * 2
         record_size = (record_w, record_h)
-        mod_lo.set_size(window, self.key_lookup('Record'), record_size)
+        mod_lo.set_size(window, self.key_lookup('Element'), record_size)
 
         # Set the size of the tab containers
         bffr_h = tab_h + header_h + pad_h * 2
