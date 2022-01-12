@@ -886,13 +886,13 @@ class BankRule:
         # Get selected row(s) of the transaction accounts
         acct = self.fetch_account(acct_name)
         acct_table = acct.get_table()
-        rows = acct_table.selected()
+        rows = acct_table.selected(real=True)  # real indices of selected account records
 
         if assoc_name:
             assoc_acct = self.fetch_account(assoc_name)
             assoc_table = assoc_acct.get_table()
             acct_rows = rows
-            assoc_rows = assoc_table.selected()
+            assoc_rows = assoc_table.selected(real=True)  # real indices of selected association records
         else:
             assoc_acct = acct
             assoc_table = acct_table
