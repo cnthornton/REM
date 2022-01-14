@@ -52,12 +52,17 @@ class BankRule:
         self.name = name
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Panel', 'Account', 'Association', 'Reconcile', 'Parameters', 'Cancel', 'Save',
-                          'Panel1', 'Panel2', 'Warning1', 'Warning2', 'Frame', 'Buttons', 'Title')]
+                          'Panel1', 'Panel2', 'Warning1', 'Warning2', 'Frame', 'Buttons', 'Title')}
+        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        #                 ('Panel', 'Account', 'Association', 'Reconcile', 'Parameters', 'Cancel', 'Save',
+        #                  'Panel1', 'Panel2', 'Warning1', 'Warning2', 'Frame', 'Buttons', 'Title')]
 
-        self.bindings = [self.key_lookup(i) for i in
-                         ('Cancel', 'Save', 'Account', 'Association', 'Parameters', 'Reconcile')]
+        #self.bindings = [self.key_lookup(i) for i in
+        #                 ('Cancel', 'Save', 'Account', 'Association', 'Parameters', 'Reconcile')]
+        self.bindings = {self.elements[i]: i for i in
+                         ('Cancel', 'Save', 'Account', 'Association', 'Parameters', 'Reconcile')}
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -94,7 +99,7 @@ class BankRule:
 
             self.parameters.append(param)
             #self.bindings.extend(param.bindings)
-            self.bindings.extend(list(param.bindings))
+            self.bindings.update(param.bindings)
 
         try:
             accts = entry['Entries']
@@ -113,7 +118,7 @@ class BankRule:
             self.accts.append(acct)
 
             self.panel_keys[acct_id] = acct.key_lookup('Panel')
-            self.bindings.extend(acct.events())
+            self.bindings.update(acct.bindings)
 
         # Dynamic Attributes
         self.in_progress = False
@@ -231,23 +236,23 @@ class BankRule:
         current_acct = self.current_account
         current_assoc = self.current_association
 
-        entry_key = self.key_lookup('Account')
-        assoc_key = self.key_lookup('Association')
-        param_key = self.key_lookup('Parameters')
-        reconcile_key = self.key_lookup('Reconcile')
-        warn1_key = self.key_lookup('Warning1')
-        warn2_key = self.key_lookup('Warning2')
-        cancel_key = self.key_lookup('Cancel')
-        save_key = self.key_lookup('Save')
+        #entry_key = self.key_lookup('Account')
+        #assoc_key = self.key_lookup('Association')
+        #param_key = self.key_lookup('Parameters')
+        #reconcile_key = self.key_lookup('Reconcile')
+        #warn1_key = self.key_lookup('Warning1')
+        #warn2_key = self.key_lookup('Warning2')
+        #cancel_key = self.key_lookup('Cancel')
+        #save_key = self.key_lookup('Save')
 
         if current_acct:
             acct = self.fetch_account(current_acct)
             acct_keys = acct.bindings
-            link_bttn = acct.table.fetch_parameter('Link', filters=False)
-            link_key, link_hkey = link_bttn.key_lookup()
+            #link_bttn = acct.table.fetch_parameter('Link', filters=False)
+            #link_key, link_hkey = link_bttn.key_lookup()
         else:
             acct_keys = []
-            link_key = link_hkey = None
+            #link_key = link_hkey = None
 
         if current_assoc:
             assoc_acct = self.fetch_account(current_assoc)
@@ -255,29 +260,28 @@ class BankRule:
         else:
             assoc_keys = []
 
-        can_save = not window[save_key].metadata['disabled']
-
         # Run an account entry event
-        if event in (link_key, link_hkey):
-            try:
-                self.link_records(current_acct, current_assoc)
-            except Exception as e:
-                msg = 'failed to link records - {ERR}'.format(ERR=e)
-                logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
-            else:
-                self.update_display(window)
-
-        elif event in acct_keys:
+        if event in acct_keys:
             acct = self.fetch_account(self.current_account)
             print('event {} is an primary account event'.format(event))
 
-            results = acct.run_event(window, event, values)
+            triggers = acct.run_event(window, event, values)
+
+            link_event = triggers.get('Link')
+            if link_event:
+                try:
+                    self.link_records(current_acct, current_assoc)
+                except Exception as e:
+                    msg = 'failed to link records - {ERR}'.format(ERR=e)
+                    logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
+                else:
+                    self.update_display(window)
 
             # Update reference dataframes when an account entry event is a reference event. A reference event is any
             # event that may modify one side of a reference, which requires an update to the other side of the
             # reference.
-            ref_event = results.get('ReferenceEvent')
+            ref_event = triggers.get('ReferenceEvent')
             print('will update references for records: {}'.format(ref_event))
             if ref_event:
                 logger.debug('BankRule {NAME}: references for some records were modified from account table {ACCT}'
@@ -299,8 +303,10 @@ class BankRule:
                 self.update_display(window)
 
             # Update warning element with the reference notes of the selected record, if any.
-            selected_record_indices = results.get('RecordIndex')
+            selected_record_indices = triggers.get('RecordIndex')
             if selected_record_indices:
+                warn1_key = self.key_lookup('Warning1')
+
                 logger.debug('BankRule {NAME}: record indices {INDS} were selected from account table {ACCT}'
                              .format(NAME=self.name, INDS=selected_record_indices, ACCT=acct.name))
                 selected_record_ids = acct.get_table().row_ids(indices=selected_record_indices)
@@ -339,11 +345,13 @@ class BankRule:
         if event in assoc_keys:
             assoc_acct = self.fetch_account(current_assoc)
             print('running event {} from association account {}'.format(event, current_assoc))
-            results = assoc_acct.run_event(window, event, values)
+            triggers = assoc_acct.run_event(window, event, values)
 
             # Store indices of the selected row(s)
-            selected_record_indices = results.get('RecordIndex')
+            selected_record_indices = triggers.get('RecordIndex')
             if selected_record_indices:
+                warn2_key = self.key_lookup('Warning2')
+
                 logger.debug('BankRule {NAME}: record indices {INDS} were selected from account table {ACCT}'
                              .format(NAME=self.name, INDS=selected_record_indices, ACCT=assoc_acct.name))
                 selected_record_ids = assoc_acct.get_table().row_ids(indices=selected_record_indices)
@@ -362,11 +370,15 @@ class BankRule:
 
             return current_rule
 
-        # Run a rule panel event
+        # Run a bank rule panel event
+        try:
+            rule_event = self.bindings[event]
+        except KeyError:
+            rule_event = None
 
         # The cancel button or cancel hotkey was pressed. If a reconciliation is in progress, reset the rule but stay
         # in the rule panel. If reconciliation is not in progress, return to home screen.
-        if event == cancel_key:
+        if rule_event == 'Cancel':
             # Check if reconciliation is currently in progress
             if self.in_progress is True:
                 msg = 'Reconciliation is currently in progress. Are you sure you would like to quit without saving?'
@@ -384,7 +396,10 @@ class BankRule:
 
         # The save button or enter hotkey was pressed. Save the account records and associated account records and
         # generate a summary report.
-        elif event == save_key and can_save:
+        elif rule_event == 'Save':
+            if window[self.key_lookup('Save')].metadata['disabled']:
+                return current_rule
+
             # Get output file from user
             acct = self.fetch_account(current_acct)
             default_title = acct.title + '.xlsx'
@@ -428,7 +443,9 @@ class BankRule:
 
         # An account was selected from the account entry dropdown. Selecting an account will display the associated
         # sub-panel.
-        elif event == entry_key:
+        elif rule_event == 'Account':
+            param_key = self.key_lookup('Parameters')
+
             acct_title = values[event]
             if not acct_title:
                 self.current_account = None
@@ -459,7 +476,7 @@ class BankRule:
 
         # An associated account was selected from the associated accounts dropdown. Selecting an associated account will
         # display the relevant sub-panel.
-        elif event == assoc_key:
+        elif rule_event == 'Association':
             acct_title = values[event]
             if not acct_title:
                 self.current_account = None
@@ -469,6 +486,7 @@ class BankRule:
 
             # Hide the current association panel
             if self.current_assoc_panel:
+                warn2_key = self.key_lookup('Warning2')
                 window[self.current_assoc_panel].update(visible=False)
 
                 # Clear current table selections
@@ -486,7 +504,13 @@ class BankRule:
 
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
-        elif event == param_key:
+        elif rule_event == 'Parameters':
+            acct_key = self.key_lookup('Account')
+            assoc_key = self.key_lookup('Association')
+            param_key = self.key_lookup('Parameters')
+            reconcile_key = self.key_lookup('Reconcile')
+            save_key = self.key_lookup('Save')
+
             # Get the parameter settings
             params = mod_win2.parameter_window(self.fetch_account(current_acct))
 
@@ -561,7 +585,7 @@ class BankRule:
                 self.update_display(window)
 
                 # Disable the account entry selection dropdown
-                window[entry_key].update(disabled=True)
+                window[acct_key].update(disabled=True)
                 window[assoc_key].update(disabled=False)
                 window[param_key].update(disabled=True)
 
@@ -578,7 +602,7 @@ class BankRule:
 
         # Reconcile button was pressed. Will run the reconcile method to find associations with the current primary
         # account and any associated accounts with data.
-        elif event == reconcile_key:
+        elif rule_event == 'Reconcile':
             expand_param = self.fetch_parameter('ExpandSearch')
             failed_param = self.fetch_parameter('SearchFailed')
             expand_search = values[expand_param.key_lookup('Element')]
@@ -887,13 +911,13 @@ class BankRule:
         # Get selected row(s) of the transaction accounts
         acct = self.fetch_account(acct_name)
         acct_table = acct.get_table()
-        rows = acct_table.selected()
+        rows = acct_table.selected(real=True)
 
         if assoc_name:
             assoc_acct = self.fetch_account(assoc_name)
             assoc_table = assoc_acct.get_table()
             acct_rows = rows
-            assoc_rows = assoc_table.selected()
+            assoc_rows = assoc_table.selected(real=True)
         else:
             assoc_acct = acct
             assoc_table = acct_table
@@ -1539,10 +1563,9 @@ class BankAccount:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel', 'AssocPanel', 'Approve', 'Reset', 'Link')]
-
-        self.bindings = [self.key_lookup(i) for i in ('Approve', 'Reset', 'Link')]
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ('Panel', 'AssocPanel', 'Approve', 'Reset', 'Link')}
+        self.bindings = {self.elements[i]: i for i in ('Approve', 'Reset', 'Link')}
 
         try:
             self.title = entry['Title']
@@ -1573,11 +1596,11 @@ class BankAccount:
             table_entry = record_entry.import_table
 
         self.table = mod_elem.RecordTable(name, table_entry)
-        self.bindings.extend(self.table.bindings)
+        self.bindings.update(self.table.bindings)
 
         table_entry['ActionButtons'] = {}
         self.assoc_table = mod_elem.RecordTable(name, table_entry)
-        self.bindings.extend(self.assoc_table.bindings)
+        self.bindings.update(self.assoc_table.bindings)
 
         try:
             self.parameters = entry['ImportParameters']
@@ -1740,35 +1763,38 @@ class BankAccount:
         colmap = self._col_map
         table = self.get_table()
         table_keys = table.bindings
-        tbl_key = table.key_lookup('Element')
+        #tbl_key = table.key_lookup('Element')
 
-        try:
-            approve_bttn = table.fetch_parameter('Approve', filters=False)
-            approve_key, approve_hkey = approve_bttn.key_lookup()
-        except KeyError:
-            approve_key = approve_hkey = None
+        #try:
+        #    approve_bttn = table.fetch_parameter('Approve', filters=False)
+        #    approve_key, approve_hkey = approve_bttn.key_lookup()
+        #except KeyError:
+        #    approve_key = approve_hkey = None
 
-        try:
-            reset_bttn = table.fetch_parameter('Reset', filters=False)
-            reset_key, reset_hkey = reset_bttn.key_lookup()
-        except KeyError:
-            reset_key = reset_hkey = None
+        #try:
+        #    reset_bttn = table.fetch_parameter('Reset', filters=False)
+        #    reset_key, reset_hkey = reset_bttn.key_lookup()
+        #except KeyError:
+        #    reset_key = reset_hkey = None
 
         # Return values
         #reference_indices = None
         record_indices = None
         reference_event = False
+        link_event = False
 
         # Run a record table event.
         if event in table_keys:
-            open_key = '{}+LCLICK+'.format(tbl_key)
-            return_key = '{}+RETURN+'.format(tbl_key)
+            tbl_key = table.key_lookup('Element')
+            tbl_event = table_keys[event]
+            #open_key = '{}+LCLICK+'.format(tbl_key)
+            #return_key = '{}+RETURN+'.format(tbl_key)
 
             can_open = table.modifiers['open']
             can_edit = table.modifiers['edit']
 
             # Record was selected for opening
-            if event in (open_key, return_key) and can_open:
+            if tbl_event == 'Load' and can_open:
                 association_rule = self.association_rule
 
                 # Close options panel, if open
@@ -1802,7 +1828,7 @@ class BankAccount:
 
                         # Update reference entry values
                         if can_edit:  # only update reference entries if the table is editable
-                            record_id = record.record_id()
+                            #record_id = record.record_id()
 
                             # Update record values
                             try:
@@ -1854,7 +1880,7 @@ class BankAccount:
                             #        reference_event = True
                                 #    reference_indices = reference_indices.tolist()
 
-            elif event in (approve_key, approve_hkey):
+            elif tbl_event == 'Approve':
                 # Find rows selected by user for approval
                 select_row_indices = values[tbl_key]
 
@@ -1876,15 +1902,15 @@ class BankAccount:
                         reference_event = True
 
                 # Update the status in the records table. This will also update the "is edited" column of the table to
-                # indicate that the records at the given indices were edited wherever the new values do not match the old
-                # values.
+                # indicate that the records at the given indices were edited wherever the new values do not match the
+                # old values.
                 if 'Approved' in colmap:
                     table.update_column(colmap['Approved'], True, indices=indices)
 
                 # Deselect selected rows
                 table.deselect(window)
 
-            elif event in (reset_key, reset_hkey):
+            elif tbl_event == 'Reset':
                 # Find rows selected by user for deletion
                 select_row_indices = values[tbl_key]
 
@@ -1912,8 +1938,11 @@ class BankAccount:
                 # Reset void transaction status
                 self.reset_records(indices, index=True)
 
+            elif tbl_event == 'Link':
+                link_event = True
+
             # Single-clicked table row(s)
-            elif event == tbl_key:
+            elif tbl_event == 'Element':
                 table.run_event(window, event, values)
 
                 # Get index of the selected rows
@@ -1923,7 +1952,7 @@ class BankAccount:
             else:
                 table.run_event(window, event, values)
 
-        return {'ReferenceEvent': reference_event, 'RecordIndex': record_indices}
+        return {'ReferenceEvent': reference_event, 'Link': link_event, 'RecordIndex': record_indices}
 
     def layout(self, size, primary: bool = True):
         """
