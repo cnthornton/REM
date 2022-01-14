@@ -136,10 +136,10 @@ class DataParameter:
 
     def key_lookup(self, component, rev: bool = False):
         """
-        Lookup a record element's GUI element key using the name of the component.
+        Lookup a parameter element's component GUI key using the name of the component element.
 
         Arguments:
-            component (str): GUI component name (or key if rev is True) of the record element.
+            component (str): GUI component name (or key if rev is True) of the parameter element.
 
             rev (bool): reverse the element lookup map so that element keys are dictionary keys.
         """
@@ -617,8 +617,13 @@ class DataParameterSingle(DataParameter):
         """
         Run a window event associated with the parameter.
         """
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
         #if event in self.elements:
-        if event in self.bindings:
+        if param_event == 'Element':
             display_value = self._enforce_formatting(window, values, event)
             window[event].update(value=display_value)
 
@@ -1368,8 +1373,15 @@ class DataParameterRange(DataParameterMulti):
         """
         Run a window event associated with the parameter.
         """
-        element_key = self.key_lookup('Element')
-        if event == element_key:
+        #element_key = self.key_lookup('Element')
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
+        # if event in self.elements:
+        #if event == element_key:
+        if param_event == 'Element':
             self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
                                                      date_format='YYYY-MM-DD')
 
@@ -1587,8 +1599,14 @@ class DataParameterCondition(DataParameterMulti):
         """
         Run a window event associated with the parameter.
         """
-        element_key = self.key_lookup('Element')
-        if event == element_key:
+        #element_key = self.key_lookup('Element')
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
+        #if event == element_key:
+        if param_event == 'Element':
             self.value = mod_win2.conditional_value_window(self.dtype, current=self.value, title=self.description)
 
             display_value = self.format_display()
@@ -1812,9 +1830,14 @@ class DataParameterSelection(DataParameter):
         """
         Run a window event associated with the parameter.
         """
-        element_key = self.key_lookup('Element')
+        #element_key = self.key_lookup('Element')
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
 
-        if event == element_key:
+        #if event == element_key:
+        if param_event == 'Element':
             self.format_value(values)
             self.update_display(window)
 
