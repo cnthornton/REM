@@ -1933,8 +1933,15 @@ class DatabaseRecord:
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # Collapse or expand a section frame
-        section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
-        if event in section_bttns:
+        #section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
+        #if event in section_bttns:
+        #    section_index = section_bttns.index(event)
+        #    self.collapse_expand(window, index=section_index)
+
+        #    return False
+
+        if event in self.bindings:
+            section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
             section_index = section_bttns.index(event)
             self.collapse_expand(window, index=section_index)
 
