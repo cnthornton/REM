@@ -537,7 +537,7 @@ def parameter_window(account, win_size: tuple = None):
     # Parameters layout
     params_layout = []
     params = {}
-    param_keys = {}
+    bindings = {}
 
     # Primary account acct_params
     acct_param_entry = account.parameters
@@ -575,8 +575,8 @@ def parameter_window(account, win_size: tuple = None):
         param = param_class(param_name, param_entry)
         primary_layout.append(
             param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left', auto_size_desc=False))
-        for element in param.elements:
-            param_keys[element] = primary_acct_name
+        for element in param.bindings:
+            bindings[element] = primary_acct_name
 
         try:
             params[primary_acct_name].append(param)
@@ -634,7 +634,7 @@ def parameter_window(account, win_size: tuple = None):
                 params[pgroup_name] = [param]
 
             for element in param.bindings:
-                param_keys[element] = pgroup_name
+                bindings[element] = pgroup_name
 
         params_layout.append([sg.Col(pgroup_layout, key='-{}-'.format(pgroup_name), pad=(pad_h, pad_v),
                                      background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
@@ -754,9 +754,9 @@ def parameter_window(account, win_size: tuple = None):
                 continue
 
         # Associated account parameter events
-        if event in param_keys:
+        if event in bindings:
             # Fetch the parameter corresponding to the window event element
-            event_pgroup = param_keys[event]
+            event_pgroup = bindings[event]
             pgroup_params = params[event_pgroup]
             event_param = mod_param.fetch_parameter(pgroup_params, event, by_key=True)
 

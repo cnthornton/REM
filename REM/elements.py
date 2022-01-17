@@ -141,6 +141,7 @@ class RecordElement:
         except KeyError:
             msg = self.format_log('component "{COMP}" not found in list of element components'.format(COMP=component))
             logger.warning(msg)
+            print(key_map)
 
             raise KeyError(msg)
 
@@ -2458,12 +2459,13 @@ class RecordTable(DataTable):
         Run a table action event.
         """
         collection = self.collection
+        update_event = False
+
         logger.debug(self.format_log('opening record at real index {IND} for editing'.format(IND=index)))
 
         record = self.load_record(index)
 
         # Update record table values
-        update_event = False
         if record and self.modifiers['edit']:
             try:
                 record_values = record.export_values()
@@ -2553,7 +2555,6 @@ class RecordTable(DataTable):
             savable (bool): database entry of the record can be updated through the record window [Default: True].
         """
         collection = self.collection
-        # df = collection.data(current=False)
         df = collection.data(current=False)
         modifiers = self.modifiers
 
@@ -2832,6 +2833,148 @@ class ComponentTable(RecordTable):
         return ref_df
 
 
+class ReferenceTable(RecordTable):
+    """
+    Subclass of the records table, but for record references. Allows additional actions such as creating
+    associated records.
+
+    Attributes:
+        name (str): table element configuration name.
+
+        elements (list): list of table element keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize reference table attributes.
+
+        Arguments:
+            name (str): name of the configured table element.
+
+            entry (dict): configuration entry for the table element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+        self.etype = 'reference_table'
+
+        self.reference = mod_col.ReferenceCollection(name, entry)
+
+        # Control flags that modify the table's behaviour
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
+                              'export': False, 'fill': False, 'sort': False}
+        else:
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': 0,
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
+                              'fill': 0, 'sort': modifiers.get('sort', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
+                    flag = False
+
+                self.modifiers[modifier] = flag
+
+        try:
+            self.association_rule = entry['AssociationRule']
+        except KeyError:
+            msg = 'missing required parameter "AssociationRule"'
+            logger.error(self.format_log(msg))
+
+            raise AttributeError(msg)
+
+    def _aggregate_references(self):
+        """
+        Prepare the reference entry dataframe for merging with the records.
+        """
+        is_numeric_dtype = pd.api.types.is_numeric_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+
+        ref_df = self.reference.data()
+        ref_col_map = self.ref_map
+
+        ref_df.set_index('RecordID', inplace=True)
+
+        # Subset reference table columns by the reference map
+        ref_df = ref_df[[i for i in ref_col_map]].rename(columns=ref_col_map)
+        aggby = {}
+        for colname, dtype in ref_df.dtypes.iteritems():
+            if is_bool_dtype(dtype) or is_datetime_dtype(dtype):
+                aggfunc = 'first'
+            elif is_numeric_dtype(dtype):
+                aggfunc = 'sum'
+            elif is_string_dtype(dtype):
+                aggfunc = '; '.join
+                ref_df[colname].fillna('', inplace=True)
+            else:
+                aggfunc = 'sum'
+
+            aggby[colname] = aggfunc
+
+        # Group reference entries with the same record ID
+        print('aggregating columns using mapper:')
+        print(aggby)
+        ref_df = ref_df.groupby(ref_df.index).aggregate(aggby)
+
+        return ref_df
+
+    def merge_references(self, df: pd.DataFrame = None):
+        """
+        Merge the records table and the reference table on configured reference map columns.
+
+        Arguments:
+            df (DataFrame): merge references with the provided records dataframe [Default: use full records dataframe].
+
+        Returns:
+            df (DataFrame): dataframe of records merged with their corresponding reference entries.
+        """
+        pd.set_option('display.max_columns', None)
+
+        df = self.data() if df is None else df
+        ref_df = self._aggregate_references()
+
+        # Reorder the references dataframe to match the order of the records in the records table
+        ref_df = ref_df.reindex(index=df['RecordID'].tolist())
+
+        # Update the configured references columns in the records dataframe to be the same as the columns in references
+        # dataframe
+        for column in ref_df.columns:
+            try:
+                new_values = ref_df[column].tolist()
+            except KeyError:
+                new_values = None
+
+            self.update_column(column, new_values)
+
+    def has_reference(self, record_ids):
+        """
+        Confirm whether a set of records in the table has one or more corresponding reference entries.
+
+        Arguments:
+            record_ids (list): list of record IDs to check for references.
+        """
+        ref_df = self.reference.data(current=True)
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+
+        references = ref_df.loc[ref_df['RecordID'].isin(record_ids)]
+
+        if references.empty:
+            return False
+        elif references['ReferenceID'].isna().any():
+            return False
+        else:
+            return True
+
+
 class DataList(RecordElement):
     """
     Record element that displays a data set in the form of a category list.
@@ -2860,7 +3003,6 @@ class DataList(RecordElement):
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
         self.etype = 'list'
-
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Frame', 'Description', 'Options')})
         #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
@@ -3443,7 +3585,8 @@ class DataList(RecordElement):
         # Listbox header and options button
         header = display_row[self._header_field]
         header_key = entry_elements['Header']
-        self.bindings.append(header_key)
+        #self.bindings.append(header_key)
+        self.bindings[header_key] = 'Header:{INDEX}'.format(INDEX=index)
         header_layout = [sg.Text(header, key=header_key, enable_events=True, font=font, text_color=select_text_color,
                                  background_color=bg_color)]
 
@@ -3511,7 +3654,9 @@ class DataList(RecordElement):
         # Listbox actions
         delete_key = entry_elements['Delete']
         edit_key = entry_elements['Edit']
-        self.bindings.extend([edit_key, delete_key])
+        #self.bindings.extend([edit_key, delete_key])
+        self.bindings.update({edit_key: 'Edit:{INDEX}'.format(INDEX=index),
+                              delete_key: 'Delete:{INDEX}'.format(INDEX=index)})
 
         action_layout = [sg.Button('', key=edit_key, image_data=mod_const.TAKE_NOTE_ICON, pad=(pad_action, 0),
                                    border_width=0, button_color=(text_color, bg_color), visible=can_edit),
@@ -3535,7 +3680,7 @@ class DataList(RecordElement):
 
         #for element in entry_elements:
         #    self.elements.append(entry_elements[element])
-        self.elements.update(entry_elements)
+        self.elements.update({'{NAME}:{INDEX}'.format(NAME=i, INDEX=index): j for i, j in entry_elements.items()})
 
     def update_entry(self, index, window):
         """
@@ -4221,16 +4366,18 @@ class DataVariable(RecordElement):
         """
         Resize the element display.
         """
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
         current_w, current_h = self.dimensions()
+
         if size:
             width, height = size
             new_h = current_h if height is None else height
             new_w = current_w if width is None else width
+            window[elem_key].set_size(size=(1, None))
         else:
             new_w, new_h = (current_w, current_h)
 
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)
 
@@ -4309,7 +4456,7 @@ class RecordVariable(DataVariable):
         lclick_event = '{}+LCLICK+'.format(elem_key)
         return_key = '{}+RETURN+'.format(elem_key)
         escape_key = '{}+ESCAPE+'.format(elem_key)
-        self.bindings = {self.elements[i]: i for i in ('Edit', 'Save', 'Cancel')}
+        self.bindings = {self.elements[i]: i for i in ('Element', 'Edit', 'Save', 'Cancel')}
         self.bindings.update({lclick_event: 'Edit', return_key: 'Save', escape_key: 'Cancel'})
 
         # Dynamic variables
@@ -4396,6 +4543,8 @@ class RecordVariable(DataVariable):
         except KeyError:
             element_event = None
 
+        print('running {} event {} in edit mode ({})'.format(self.name, element_event, currently_editing))
+
         # Set focus to the element and enable edit mode
         if element_event == 'Edit' and not currently_editing:
             window[elem_key].set_focus()
@@ -4455,6 +4604,8 @@ class RecordVariable(DataVariable):
             self.edit_mode = False
 
         elif element_event == 'Cancel' and currently_editing:
+            print('cancelling changes')
+            print('returning from from {} to old value {}'.format(values[elem_key], self.data()))
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
@@ -4466,7 +4617,6 @@ class RecordVariable(DataVariable):
                 window[calendar_key].update(disabled=False)
 
             self.edit_mode = False
-
             self.update_display(window)
 
         triggers['ValueEvent'] = update_event
@@ -5074,16 +5224,18 @@ class DependentVariable(DataVariable):
         """
         Resize the record element display.
         """
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
         current_w, current_h = self.dimensions()
+
         if size:
             width, height = size
             new_h = current_h if height is None else height
             new_w = current_w if width is None else width
+            window[elem_key].set_size(size=(1, None))
         else:
             new_w, new_h = (current_w, current_h)
 
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)
 
@@ -5312,9 +5464,9 @@ class MetaVariable(DataVariable):
 
             size (tuple): new width and height of the element [Default: set to size of the value + description].
         """
-        current_w, current_h = self.dimensions()
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
+        current_w, current_h = self.dimensions()
 
         if size:
             width, height = size
@@ -5331,8 +5483,9 @@ class MetaVariable(DataVariable):
             elem_w = window[elem_key].string_width_in_pixels(font, display_value)
             new_w = desc_w + elem_w + mod_const.HORZ_PAD
 
-            window[elem_key].set_size(size=(1, None))
+            #window[elem_key].set_size(size=(1, None))
 
+        window[elem_key].set_size(size=(1, None))
         width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)

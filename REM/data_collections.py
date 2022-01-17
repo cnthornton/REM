@@ -273,7 +273,7 @@ class DataCollection:
         self.default = {}
         for field in default:
             if field not in dtypes:
-                logger.warning('DataTable {NAME}: no data type set for default field "{COL}"'
+                logger.warning('DataCollection {NAME}: no data type set for default field "{COL}"'
                                .format(NAME=self.name, COL=field))
                 continue
 
@@ -1107,7 +1107,7 @@ class RecordCollection(DataCollection):
         return row_ids
 
 
-class ReferenceCollection(RecordCollection):
+class ReferenceCollection(DataCollection):
     """
     Collections of record reference data.
     """
@@ -1126,51 +1126,66 @@ class ReferenceCollection(RecordCollection):
                               'added': self._added_column, 'approved': 'IsApproved', 'child': 'IsChild',
                               'link': 'IsHardLink'}
 
-        self.ref_dtypes = {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
-                           'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool',
-                           'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool'}
+        self.dtypes = {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
+                       'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool',
+                       'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool', 'ReferenceWarnings': 'varchar',
+                       'ReferenceNotes': 'varchar'}
 
-        self.ref_df = pd.DataFrame(columns=list(self.ref_dtypes))
+        self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
 
-#    def merge(self, df: pd.DataFrame = None, ref_df: pd.DataFrame = None):
-#        """
-#        Merge the records table and the reference table on configured reference map columns.
-#
-#        Arguments:
-#            df (DataFrame): records data [Default: use full records dataframe].
-#
-#            ref_df (DataFrame): record reference data [Default: use full reference dataframe].
-#
-#        Returns:
-#            df (DataFrame): dataframe of records merged with their corresponding reference entries.
-#        """
-#        pd.set_option('display.max_columns', None)
-#
-#        ref_map = self.reference_columns
-#        id_col = self.id_column
-#
-#        df = self.data() if df is None else df
-#        ref_df = self.ref_df.copy() if ref_df is None else ref_df
-#
-#        # Reorder the references dataframe to match the order of the records in the records table
-#        ref_df.set_index(id_col, inplace=True)
-#        ref_df = ref_df.reindex(index=df[id_col])
-#
-#        # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
-#        if df.shape[0] != ref_df.shape[0]:
-#            logger.warning('BankAccount {NAME}: the records dataframe and reference dataframe of of unequal sizes'
-#                           .format(NAME=self.name))
-#            indices = df[df[id_col].isin(ref_df.index.tolist())].index
-#        else:
-#            indices = df.index.tolist()
-#
-#        # Update the configured references columns in the records dataframe to be the same as the columns in references
-#        # dataframe
-#        for column in ref_map:
-#            mapped_col = ref_map[column]
-#
-#            new_values = ref_df[column].tolist()
-#            self.update_field(mapped_col, new_values, indices=indices)
+    def record_index(self, record_ids, ref: bool = False):
+        """
+        Return a list of collection indices corresponding to the supplied record IDs.
+
+        Arguments:
+            record_ids: list of record IDs contained in the collection.
+
+            ref (bool): record IDs are reference IDs [Default: False].
+        """
+        df = self.df
+        id_field = 'RecordID' if not ref else 'ReferenceID'
+
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+        elif isinstance(record_ids, pd.Series):
+            record_ids = record_ids.tolist()
+
+        indices = df.loc[df[id_field].isin(record_ids)].index.tolist()
+
+        return indices
+
+    def row_ids(self, indices: list = None, deleted: bool = False, ref: bool = False):
+        """
+        Return a list of the current record IDs stored in the collection.
+
+        Arguments:
+            indices (list): optional list of indices to subset collection on [Default: get all record IDs in the
+                table].
+
+            deleted (bool): include deleted rows [Default: False].
+
+            ref (bool): record IDs are reference IDs [Default: False].
+        """
+        id_field = 'RecordID' if not ref else 'ReferenceID'
+        if isinstance(indices, int):
+            indices = [indices]
+
+        if deleted or (indices is not None and len(indices) > 0):
+            df = self.data(current=False)  # all rows, not just current
+        else:
+            df = self.data()
+
+        if indices is None:
+            indices = df.index
+
+        try:
+            row_ids = df.loc[indices, id_field].tolist()
+        except KeyError as e:
+            logger.exception('DataCollection {NAME}: unable to return a list of row IDs - {ERR}'
+                             .format(NAME=self.name, COL=id_field, ERR=e))
+            row_ids = []
+
+        return row_ids
 
 
 def format_value(value, dtype):

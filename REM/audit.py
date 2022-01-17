@@ -4,7 +4,6 @@ REM transaction audit configuration classes and functions. Includes audit rules,
 import datetime
 import os
 import re
-import sys
 from random import randint
 
 import PySimpleGUI as sg
@@ -28,14 +27,15 @@ class AuditRule:
     Class to store and manage a configured audit rule.
 
     Attributes:
-
         name (str): audit rule name.
 
-        id (int): rule element number.
+        id (int): GUI element number.
 
-        element_key (str): GUI element key.
+        element_key (str): panel element key.
 
-        elements (list): list of rule GUI element keys.
+        elements (dict): GUI element keys.
+
+        bindings (dict): GUI event bindings.
 
         menu_title (str): menu title for the audit rule.
 
@@ -43,11 +43,11 @@ class AuditRule:
 
         permissions (str): permissions required to view the audit. Default: user.
 
-        parameters (list): list of filter parameters.
+        parameters (list): list of rule parameters.
 
-        transactions (list): list of audit transaction tabs.
+        transactions (list): list of audit transactions.
 
-        records (list): list of audit record tabs.
+        records (list): list of audit records.
     """
 
     def __init__(self, name, entry):
@@ -163,9 +163,8 @@ class AuditRule:
         try:
             key = key_map[component]
         except KeyError:
-            msg = 'AuditTransaction {NAME}: component {COMP} not found in list of audit rule elements' \
-                .format(NAME=self.name, COMP=component)
-            logger.warning(msg)
+            msg = 'component {COMP} not found in list of audit rule elements'.format(COMP=component)
+            logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             key = None
 
         return key
@@ -184,6 +183,12 @@ class AuditRule:
             key = None
 
         return key
+
+    def events(self):
+        """
+        Return a list of the rule's GUI events.
+        """
+        return self.bindings
 
     def bind_keys(self, window):
         """
@@ -235,12 +240,6 @@ class AuditRule:
 
         return parameter
 
-    def events(self):
-        """
-        Return a list of all events allowed under the rule.
-        """
-        return self.bindings
-
     def run_event(self, window, event, values):
         """
         Run a transaction audit event.
@@ -282,10 +281,16 @@ class AuditRule:
                              .format(NAME=self.name, KEY=tab_key))
             else:
                 # Run the tab event
-                success = tab.run_event(window, event, values)
+                event_results = tab.run_event(window, event, values)
 
                 # Enable the next tab if an audit event was successful
-                if event == tab.key_lookup('Audit') and success is True:
+                if event_results['AuditEvent']:
+                    if not event_results['Success']:
+                        msg = 'auditing of transaction {TITLE} failed - see log for details'.format(TITLE=tab.title)
+                        mod_win2.popup_error(msg)
+
+                        return current_rule
+
                     logger.info('AuditRule {NAME}: auditing of transaction {TITLE} was successful'
                                 .format(NAME=self.name, TITLE=tab.title))
                     tab_key = window[tg_key].Get()
@@ -316,7 +321,7 @@ class AuditRule:
             return current_rule
 
         # Run parameter events
-        param_keys = [i for j in self.parameters for i in j.elements]
+        param_keys = [i for param in self.parameters for i in param.bindings]
         if event in param_keys:
             try:
                 param = self.fetch_parameter(event, by_key=True)
@@ -455,8 +460,8 @@ class AuditRule:
                     param_desc = param.description
                     msg = 'Parameter {} requires correctly formatted input'.format(param_desc)
                     mod_win2.popup_notice(msg)
-                    logger.warning('failed to start audit - parameter {} requires correctly formatted input'
-                                   .format(param_desc))
+                    logger.warning('AuditRule {NAME}: failed to start audit - parameter {PARAM} requires correctly '
+                                   'formatted input'.format(NAME=self.name, PARAM=param_desc))
                     inputs.append(False)
                 else:
                     inputs.append(True)
@@ -471,8 +476,8 @@ class AuditRule:
                 if audit_exists is True:
                     msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
                           'audit records through the records menu'
-                    logger.warning('audit initialization failed - an audit has already been performed with the '
-                                   'provided parameters')
+                    logger.warning('AuditRule {NAME}: audit initialization failed - an audit has already been '
+                                   'performed with the provided parameters'.format(NAME=self.name))
                     mod_win2.popup_error(msg)
                     current_rule = self.reset_rule(window, current=True)
 
@@ -490,9 +495,9 @@ class AuditRule:
                     try:
                         transaction_tab.load_data()
                     except ImportError as e:
-                        msg = 'audit initialization failed - {ERR}'.format(ERR=e)
-                        logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                        mod_win2.popup_error(msg)
+                        msg = 'failed to initialize the audit transactions'
+                        logger.error('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                        mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
                         current_rule = self.reset_rule(window, current=True)
 
                         return current_rule
@@ -515,7 +520,7 @@ class AuditRule:
                     transaction_tab.update_id_components()
 
                     # Enable the tab audit button
-                    window[transaction_tab.key_lookup('Audit')].update(disabled=False)
+                    #window[transaction_tab.key_lookup('Audit')].update(disabled=False)
 
         # Save results of the audit
         elif rule_event == 'Save':
@@ -1313,24 +1318,31 @@ class AuditRule:
 
 class AuditTransaction:
     """
-    Transaction Audit component.
+    Transaction records to audit.
 
-        name (str): rule name.
+    Attributes:
+        name (str): transaction name.
 
-        id (int): rule element number.
+        parent (str): parent element, if applicable.
 
-        title (str): rule title.
+        id (int): GUI element number.
 
-        element_key (str): rule element key.
+        elements (dict): GUI element keys.
 
-        elements (list): list of rule GUI element keys.
+        bindings (dict): GUI event bindings.
+
+        title (str): title of the transaction.
+
+        record_type (str): record type of the transaction.
+
+        table (RecordTable): table storing transaction record data.
     """
 
     def __init__(self, name, entry, parent=None):
         """
         Arguments:
 
-            name (str): configuration entry name for the transaction tab.
+            name (str): configuration entry name for the transactions.
 
             entry (dict): dictionary of optional and required entry arguments.
 
@@ -1342,10 +1354,10 @@ class AuditTransaction:
         #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
         #                 ('Tab', 'Audit', 'Panel')]
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Tab', 'Audit', 'Panel')}
+                         ('Tab', 'Panel')}
+        self.bindings = {}
 
         #self.bindings = [self.key_lookup(i) for i in ('Audit',)]
-        self.bindings = {self.elements['Audit']: 'Audit'}
 
         try:
             self.title = entry['Title']
@@ -1355,17 +1367,16 @@ class AuditTransaction:
         try:
             self.record_type = entry['RecordType']
         except KeyError:
-            msg = 'AuditTransaction {NAME}: missing required parameter "RecordType"' \
-                .format(NAME=name)
-            logger.error(msg)
+            msg = 'missing required parameter "RecordType"'
+            logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
 
         try:
             self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
         except Exception as e:
-            msg = 'AuditTransaction {NAME}: failed to initialize the transaction table - {ERR}'.format(NAME=name, ERR=e)
-            logger.exception(msg)
+            msg = 'failed to initialize the transaction table - {ERR}'.format(ERR=e)
+            logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
         else:
@@ -1382,18 +1393,17 @@ class AuditTransaction:
             if filter_key in table_columns:
                 self.filter_rules[filter_key] = filter_rules[filter_key]
             else:
-                logger.warning('DataTable {NAME}: filter rule key {KEY} not found in table columns'
+                logger.warning('AuditTransaction {NAME}: filter rule key {KEY} not found in table columns'
                                .format(NAME=self.name, KEY=filter_key))
 
         try:
             self.id_format = re.findall(r'\{(.*?)\}', entry['IDFormat'])
         except KeyError:
-            msg = 'Configuration Error: AuditTransaction {NAME}: missing required field "IDFormat".' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'missing required field "IDFormat".'
+            logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-        self.in_progress = False
+            raise AttributeError(msg)
+
         self.parameters = None
         self.id_components = []
 
@@ -1410,9 +1420,8 @@ class AuditTransaction:
         try:
             key = key_map[component]
         except KeyError:
-            msg = 'AuditTransaction {NAME}: component {COMP} not found in list of audit rule elements'\
-                .format(NAME=self.name, COMP=component)
-            logger.warning(msg)
+            msg = 'component {COMP} not found in list of audit rule elements'.format(COMP=component)
+            logger.warning('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             key = None
 
         return key
@@ -1467,7 +1476,7 @@ class AuditTransaction:
         self.table.disable(window)
 
         # Disable the audit button
-        window[self.key_lookup('Audit')].update(disabled=True)
+        #window[self.key_lookup('Audit')].update(disabled=True)
 
         # Reset dynamic attributes
         self.parameters = None
@@ -1475,7 +1484,7 @@ class AuditTransaction:
 
         # Reset visible tabs
         visible = True if first is True else False
-        logger.debug('AuditTransactionTab {NAME}: re-setting visibility to {STATUS}'
+        logger.debug('AuditTransaction {NAME}: re-setting visibility to {STATUS}'
                      .format(NAME=self.name, STATUS=visible))
 
         window[self.key_lookup('Tab')].update(visible=visible)
@@ -1488,29 +1497,31 @@ class AuditTransaction:
 
         # Element parameters
         bg_col = mod_const.ACTION_COL
-        bttn_text_col = mod_const.WHITE_TEXT_COL
-        bttn_bg_col = mod_const.BUTTON_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-        disabled_bg_col = mod_const.DISABLED_BUTTON_COL
+        #bttn_text_col = mod_const.WHITE_TEXT_COL
+        #bttn_bg_col = mod_const.BUTTON_COL
+        #disabled_text_col = mod_const.DISABLED_TEXT_COL
+        #disabled_bg_col = mod_const.DISABLED_BUTTON_COL
 
         pad_frame = mod_const.FRAME_PAD
 
         font = mod_const.MAIN_FONT
 
         # Element sizes
-        bffr_h = (18 + 4) + pad_frame * 3 + 30  # height of the tabs, padding, and button
+        #bffr_h = (18 + 4) + pad_frame * 3 + 30  # height of the tabs, padding, and button
+        bffr_h = (18 + 4) + pad_frame * 2  # height of the tabs, padding, and button
         tbl_width = width - pad_frame * 2
         tbl_height = height - bffr_h
 
         # Layout
-        audit_key = self.key_lookup('Audit')
-        main_layout = [[self.table.layout(size=(tbl_width, tbl_height), padding=(0, 0))],
-                       [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, pad=(0, (pad_frame, 0 )), disabled=True,
-                                           font=font, button_color=(bttn_text_col, bttn_bg_col),
-                                           disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                           tooltip='Run audit on the transaction records', use_ttk_buttons=True)]],
-                               pad=(0, 0), background_color=bg_col, element_justification='c',
-                               expand_x=True, expand_y=True, vertical_alignment='c')]]
+        #audit_key = self.key_lookup('Audit')
+        #main_layout = [[self.table.layout(size=(tbl_width, tbl_height), padding=(0, 0))],
+        #               [sg.Col([[mod_lo.B1('Run Audit', key=audit_key, pad=(0, (pad_frame, 0 )), disabled=True,
+        #                                   font=font, button_color=(bttn_text_col, bttn_bg_col),
+        #                                   disabled_button_color=(disabled_text_col, disabled_bg_col),
+        #                                   tooltip='Run audit on the transaction records', use_ttk_buttons=True)]],
+        #                       pad=(0, 0), background_color=bg_col, element_justification='c',
+        #                       expand_x=True, expand_y=True, vertical_alignment='c')]]
+        main_layout = [[self.table.layout(size=(tbl_width, tbl_height), padding=(0, 0))]]
 
         panel_key = self.key_lookup('Panel')
         layout = [[sg.Col(main_layout, key=panel_key, pad=((pad_frame, 0), pad_frame), justification='c',
@@ -1549,15 +1560,45 @@ class AuditTransaction:
         """
         Run an audit rule transaction event.
         """
-        #audit_key = self.key_lookup('Audit')
+        table = self.table
+        results = {'AuditEvent': False, 'Success': True}
 
+        # Run component table events
+        table_keys = table.bindings
+        if event in table_keys:
+            tbl_event = table_keys[event]
+
+            if tbl_event == 'Audit':
+                results['AuditEvent'] = True
+
+                try:
+                    self.audit_transactions()
+                except Exception as e:
+                    msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
+                    logger.exception('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    results['Success'] = False
+                else:
+                    delete_rows = self.filter_table()
+                    if len(delete_rows) > 0:
+                        table.delete_rows(delete_rows)
+
+                    table.update_display(window)
+            else:
+                table.run_event(window, event, values)
+
+        return results
+
+    def run_event_old(self, window, event, values):
+        """
+        Run an audit rule transaction event.
+        """
         success = True
 
         # Run component table events
-        table_keys = self.table.bindings
+        table = self.table
+        table_keys = table.bindings
         if event in table_keys:
-            table = self.table
-
             table.run_event(window, event, values)
 
             return success
@@ -1888,7 +1929,7 @@ class AuditTransaction:
         self.id_components = []
 
         last_index = 0
-        logger.debug('AuditTransactionTab {NAME}: ID is formatted as {FORMAT}'.format(NAME=self.name, FORMAT=id_format))
+        logger.debug('AuditTransaction {NAME}: ID is formatted as {FORMAT}'.format(NAME=self.name, FORMAT=id_format))
         param_fields = [i.name for i in parameters]
         for component in id_format:
             if len(component) > 1 and set(component).issubset(set('YMD-/ ')):  # component is datestr
@@ -1914,7 +1955,7 @@ class AuditTransaction:
 
             last_index += component_len
 
-        logger.debug('AuditTransactionTab {NAME}: ID updated with components {COMP}'
+        logger.debug('AuditTransaction {NAME}: ID updated with components {COMP}'
                      .format(NAME=self.name, COMP=self.id_components))
 
     def format_id(self, number, date=None):
@@ -1928,7 +1969,7 @@ class AuditTransaction:
 
             if comp_name == 'date':  # component is datestr
                 if not date:
-                    logger.warning('AuditTransactionTab {NAME}: no date provided for ID number {NUM} ... reverting to '
+                    logger.warning('AuditTransaction {NAME}: no date provided for ID number {NUM} ... reverting to '
                                    'today\'s date'.format(NAME=self.name, NUM=number))
                     value = datetime.datetime.now().strftime(comp_value)
                 else:
@@ -1954,7 +1995,7 @@ class AuditTransaction:
                 try:
                     comp_value = identifier[comp_index[0]: comp_index[1]]
                 except IndexError:
-                    logger.warning('AuditTransactionTab {NAME}: ID component {COMP} cannot be found in identifier '
+                    logger.warning('AuditTransaction {NAME}: ID component {COMP} cannot be found in identifier '
                                    '{IDENT}'.format(NAME=self.name, COMP=component, IDENT=identifier))
 
                 break
@@ -1976,21 +2017,53 @@ class AuditTransaction:
 class AuditRecord:
     """
     Class to store information about an audit record.
+
+    Attributes:
+        name (str): name of the audit record.
+
+        parent (str): parent element, if applicable.
+
+        id (int): GUI element number.
+
+        elements (dict): GUI element keys.
+
+        bindings (dict): GUI event bindings.
+
+        title (str): title of the audit record.
+
+        record (DatabaseRecord): database record storing the record data.
+
+        merge (bool): transaction records comprising the audit record should be merged into one.
+
+        merge_columns (list): merge transaction records comprising the audit record on the given columns.
+
+        summary_mapping (dict): rules for mapping transaction summaries to audit record elements.
+
+        record_mapping (dict): rules for mapping transaction records to audit component records.
     """
     def __init__(self, name, entry, parent: str = None):
+        """
+        Arguments:
 
+            name (str): configuration entry name for the audit record.
+
+            entry (dict): dictionary of optional and required entry arguments.
+
+            parent (str): name of the object's parent element.
+        """
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
         self.element_key = '{NAME}_{ID}'.format(NAME=name, ID=self.id)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Tab',)}
+        self.bindings = {}
 
         record_entry = settings.records.fetch_rule(name)
         self.record = mod_records.DatabaseRecord(name, record_entry.record_layout, level=0)
         #self.record.metadata = []
         #self.elements.extend(self.record.elements)
-        self.bindings = self.record.record_events()
+        self.bindings.update(self.record.record_events())
 
         self.record_data = self.record.export_values()
 
@@ -2046,9 +2119,8 @@ class AuditRecord:
         try:
             key = key_map[component]
         except KeyError:
-            msg = 'AuditRecord {NAME}: component {COMP} not found in list of audit record elements' \
-                .format(NAME=self.name, COMP=component)
-            logger.warning(msg)
+            msg = 'component {COMP} not found in list of audit record elements'.format(COMP=component)
+            logger.warning('AuditRecord {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
             key = None
 
         return key
@@ -2070,20 +2142,20 @@ class AuditRecord:
 
     def reset(self, window):
         """
-        Reset Summary tab record.
+        Reset the audit record.
         """
         self.record.reset(window)
 
     def reset_record_elements(self, window):
         """
-        Reset summary tab record components.
+        Reset audit record components.
         """
         for record_element in self.record.modules:
             record_element.reset(window)
 
     def run_event(self, window, event, values):
         """
-        Run an audit summary record event.
+        Run an audit record event.
         """
         self.record.run_event(window, event, values)
 

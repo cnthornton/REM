@@ -464,7 +464,10 @@ class RecordEntry:
 
         # Set column data types
         bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
+        #df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
+        #df[bool_columns] = df[bool_columns].fillna(False)
+        df.fillna({i: False for i in bool_columns}, inplace=True)
+        df = df.astype({i: np.bool_ for i in bool_columns})
 
         return df
 
@@ -1513,7 +1516,7 @@ class DatabaseRecord:
                 section_entry = sections[section]
                 #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                 #                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
-                section_bttn = 'SectionBttn{}-'.format(i)
+                section_bttn = 'SectionBttn{}'.format(i)
                 section_frame = 'SectionFrame{}'.format(i)
                 self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                                       (section_bttn, section_frame)})
@@ -1603,6 +1606,7 @@ class DatabaseRecord:
             msg = 'component {COMP} not found in list of record {NAME} components'\
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
+            print(key_map)
 
             raise KeyError(msg)
 
@@ -1872,17 +1876,11 @@ class DatabaseRecord:
             identifier = match.group(0)  # identifier returned if match
             element_key = match.group(1)  # element key part of the identifier after removing any binding
 
-            #element_type = element_key.split('_')[-1]
-            #element_names = []
-            #for element in elements:
-            #    try:
-            #        element_name = element.key_lookup(element_type)
-            #    except KeyError:
-            #        element_name = None
+            element_type = element_key.split('_')[-1]
             element_names = []
             for element in elements:
                 try:
-                    element_name = element.key_lookup(element_key, rev=True)
+                    element_name = element.key_lookup(element_type)
                 except KeyError:
                     element_name = None
 
@@ -1912,8 +1910,9 @@ class DatabaseRecord:
         Fetch a record metadata by name or event key.
         """
         if by_key is True:
-            #element_type = element[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element, rev=True) for i in self.metadata]
+            element_type = element[1:-1].split('_')[-1]
+            element_names = [i.key_lookup(element_type) for i in self.metadata]
+            #element_names = [i.key_lookup(element, rev=True) for i in self.metadata]
         else:
             element_names = [i.name for i in self.metadata]
 
@@ -1983,6 +1982,7 @@ class DatabaseRecord:
 
             #if focus_element not in record_element.elements:  # element is edited but is no longer in focus
             if focus_element not in record_element.bindings:  # element is edited but is no longer in focus
+                print(record_element.bindings)
                 logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
                              'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=record_element.name))
 
@@ -2944,7 +2944,10 @@ class DatabaseRecord:
                 elem_w = int(width * 0.5)
 
             elem_size = (elem_w, elem_h)
+            print('setting the size of record element {} to {}'.format(record_element.name, elem_size))
             record_element.resize(window, size=elem_size)
+
+        print('new size of the record is {}'.format((width, height)))
 
         self._dimensions = (width, height)
 

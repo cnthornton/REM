@@ -25,17 +25,21 @@ class BankRule:
 
         name (str): bank reconciliation rule name.
 
-        id (int): rule element number.
+        id (int): GUI element number.
 
         element_key (str): panel element key.
 
-        elements (list): list of rule GUI element keys.
+        elements (dict): GUI element keys.
+
+        bindings (dict): GUI event bindings.
 
         menu_title (str): rule menu title.
 
         menu_flags (dict): submenu flags that change the initial behavior of the rule.
 
         permissions (str): permissions required to view the accounting method. Default: user.
+
+        parameters (list): list of rule parameters.
 
         accts (list): list of account entry objects composing the rule.
     """
@@ -128,7 +132,27 @@ class BankRule:
         self.current_assoc_panel = None
         self.panels = []
 
-    def key_lookup(self, component):
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a bank rule element's component GUI key using the name of the component element.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the bank rule element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = 'component {COMP} not found in list of bank rule elements'.format(COMP=component)
+            logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            print(key_map)
+            key = None
+
+        return key
+
+    def key_lookup_old(self, component):
         """
         Lookup a component's GUI element key using the component's name.
         """
@@ -143,6 +167,12 @@ class BankRule:
 
         return key
 
+    def events(self):
+        """
+        Return a list of the rule's GUI events.
+        """
+        return self.bindings
+
     def bind_keys(self, window):
         """
         Bind panel-element hotkeys.
@@ -153,12 +183,6 @@ class BankRule:
         # Bind account table hotkeys
         for acct in self.accts:
             acct.bind_keys(window)
-
-    def events(self):
-        """
-        Return a list of all events allowed under the rule.
-        """
-        return self.bindings
 
     def fetch_account(self, account_id, by_title: bool = False, by_key: bool = False):
         """
@@ -174,12 +198,14 @@ class BankRule:
         account = None
         for acct in self.accts:
             if by_key:
-                elements = acct.elements
+                elements = list(acct.elements.values())
+                #elements = acct.elements
             elif by_title:
                 elements = [acct.title]
             else:
                 elements = [acct.name]
 
+            print(elements)
             if account_id in elements:
                 account = acct
                 break
@@ -1520,24 +1546,24 @@ class BankAccount:
 
         name (str): rule name.
 
-        id (int): rule element number.
+        parent (str): parent element, if applicable.
 
-        element_key (str): rule element key.
+        id (int): GUI element number.
 
-        elements (list): list of rule GUI element keys.
+        elements (dict): GUI element keys.
 
-        title (str): account entry title.
+        bindings (dict): GUI event bindings.
 
-        permissions (str): user access permissions.
+        title (str): title of the bank account entry.
 
-        record_type (str): account entry database record type.
+        record_type (str): bank account entry database record type.
 
         association_rule (str): name of the association rule referenced when attempting to find associations between
             account entries.
 
         import_parameters (list): list of entry data parameters used in the import window.
 
-        table (RecordTable): table for storing account data.
+        table (RecordTable): table storing account record data.
 
         ref_df (DataFrame): table for storing record references.
 
@@ -1701,7 +1727,27 @@ class BankAccount:
         self.ref_df = None
         self.primary = False
 
-    def key_lookup(self, component):
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a bank account element's component GUI key using the name of the component element.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the bank account element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = 'component {COMP} not found in list of bank account elements'.format(COMP=component)
+            logger.warning('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            print(key_map)
+            key = None
+
+        return key
+
+    def key_lookup_old(self, component):
         """
         Lookup a component's GUI element key using the component's name.
         """
@@ -2017,12 +2063,15 @@ class BankAccount:
         """
         Prepare the reference entry dataframe for merging with the records.
         """
+        pd.set_option('display.max_columns', None)
+
         is_numeric_dtype = pd.api.types.is_numeric_dtype
         is_bool_dtype = pd.api.types.is_bool_dtype
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         is_string_dtype = pd.api.types.is_string_dtype
 
         ref_df = self.ref_df.copy()
+        print(ref_df.dtypes)
         ref_col_map = self.ref_map
 
         ref_df.set_index('RecordID', inplace=True)
@@ -2030,7 +2079,10 @@ class BankAccount:
         # Subset reference table columns by the reference map
         ref_df = ref_df[[i for i in ref_col_map]].rename(columns=ref_col_map)
         aggby = {}
+        print(ref_df)
+        print(ref_df.dtypes)
         for colname, dtype in ref_df.dtypes.iteritems():
+            print('reference column {} has data type {}'.format(colname, dtype))
             if is_bool_dtype(dtype) or is_datetime_dtype(dtype):
                 aggfunc = 'first'
             elif is_numeric_dtype(dtype):
@@ -2459,9 +2511,9 @@ class BankAccount:
             raise ImportError(msg)
 
         # Set datatypes of the reference table columns
-        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        df[bool_columns] = df[bool_columns].fillna(False)
-        df = df.astype({i: np.bool_ for i in bool_columns})
+        #bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
+        #df[bool_columns] = df[bool_columns].fillna(False)
+        #df = df.astype({i: np.bool_ for i in bool_columns})
 
         self.ref_df = df
 
