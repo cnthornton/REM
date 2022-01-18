@@ -2205,7 +2205,6 @@ class DatabaseRecord:
         if isinstance(record_data, pd.Series):
             record_data = record_data.to_frame().T
 
-        #defaults = self.export_values(header=False, references=False).to_dict()
         defaults = self.export_values(header=False).to_dict()
         for default_col in defaults:
             if default_col in header:
@@ -2252,11 +2251,7 @@ class DatabaseRecord:
         # Add parameter values
         record_elements = self.modules
         for record_element in record_elements:
-            #if record_element.eclass == 'references' and not references:  # reference boxes and component tables
-            #    continue
             elem_values = record_element.export_values(edited_only=edited_only)
-            print('export record element {} values:'.format(record_element.name))
-            print(elem_values)
             values = {**values, **elem_values}
 
         print('exporting final values:')

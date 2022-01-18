@@ -1926,7 +1926,7 @@ class BankAccount:
                             #        reference_event = True
                                 #    reference_indices = reference_indices.tolist()
 
-            elif tbl_event == 'Approve':
+            elif tbl_event == 'Approve' and table.enabled('Approve'):
                 # Find rows selected by user for approval
                 select_row_indices = values[tbl_key]
 
@@ -1956,7 +1956,7 @@ class BankAccount:
                 # Deselect selected rows
                 table.deselect(window)
 
-            elif tbl_event == 'Reset':
+            elif tbl_event == 'Reset' and table.enabled('Reset'):
                 # Find rows selected by user for deletion
                 select_row_indices = values[tbl_key]
 
@@ -1984,7 +1984,7 @@ class BankAccount:
                 # Reset void transaction status
                 self.reset_records(indices, index=True)
 
-            elif tbl_event == 'Link':
+            elif tbl_event == 'Link' and table.enabled('Link'):
                 link_event = True
 
             # Single-clicked table row(s)

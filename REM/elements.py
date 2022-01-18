@@ -230,19 +230,15 @@ class DataTable(RecordElement):
                             'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
                             'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')}
         self.elements.update(record_elements)
-        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-        #                      ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
-        #                       'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
-        #                       'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')])
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         return_key = '{}+RETURN+'.format(elem_key)
         open_key = '{}+LCLICK+'.format(elem_key)
         filter_hkey = '{}+FILTER+'.format(elem_key)
-        #self.bindings = [self.key_lookup(i) for i in event_elements] + [open_key, return_key, filter_hkey]
-        self.bindings = {self.elements[i]: i for i in ('Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn',
-                                                       'Options')}
+        event_elements = ('Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options')
+
+        self.bindings = {self.elements[i]: i for i in event_elements}
         self.bindings.update({open_key: 'Load', return_key: 'Load', filter_hkey: 'Filter'})
 
         # Table data collection
@@ -295,7 +291,6 @@ class DataTable(RecordElement):
             else:
                 self.actions.append(action)
                 self.elements[action_name] = action.element_key
-                #self.bindings.extend(action.bindings)
                 self.bindings.update(action.bindings)
 
         # Attributes that affect how the table data is displayed
@@ -361,7 +356,6 @@ class DataTable(RecordElement):
                 continue
 
             self.parameters.append(param)
-            #self.bindings.extend(param.bindings)
             self.bindings.update(param.bindings)
 
         try:
@@ -610,6 +604,19 @@ class DataTable(RecordElement):
 
         return lengths
 
+    def enabled(self, bttn_name):
+        """
+        Determine if a table action button is disabled or not.
+        """
+        try:
+            bttn = self.fetch_parameter(bttn_name, filters=False)
+        except KeyError:
+            enabled = False
+        else:
+            enabled = not bttn.disabled
+
+        return enabled
+
     def enable(self, window):
         """
         Enable data table element actions.
@@ -702,60 +709,15 @@ class DataTable(RecordElement):
         try:
             element_event = self.bindings[event]
         except KeyError:
-            param_events = [i for param in self.parameters for i in param.bindings]
-            action_events = {i: j for action_bttn in self.actions for i, j in action_bttn.bindings.items()}
+            msg = 'GUI event {EVENT} is not a {NAME} table event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
 
-            # Event is a table filter parameter
-            if event in param_events:
-                try:
-                    param = self.fetch_parameter(event, by_key=True)
-                except KeyError:
-                    logger.error(self.format_log('unable to find parameter associated with event key {KEY}'
-                                                 .format(KEY=event)))
-                else:
-                    param.run_event(window, event, values)
+            return triggers
 
-            # Event is a table action button
-            elif event in action_events:
-                try:
-                    action_event = action_events[event]
-                except KeyError:
-                    msg = self.format_log('')
-                    logger.warning(msg)
-
-                    return triggers
-
-                action_bttn = self.fetch_parameter(event, by_key=True, filters=False)
-                action_key = action_bttn.element_key
-                action_enabled = not window[action_key].metadata['disabled'] and window[action_key].metadata['visible']
-
-                # Delete rows button clicked
-                if action_event == 'Delete' and action_enabled:
-                    # Find rows selected by user for deletion
-                    select_row_indices = values[elem_key]
-
-                    # Get the real indices of the selected rows
-                    indices = self.get_index(select_row_indices)
-                    if len(indices) > 0:
-                        collection.delete(indices)
-                        update_event = True
-
-                # Import rows button clicked
-                elif action_event == 'Import' and action_enabled:
-                    # Close options panel, if open
-                    self.set_table_dimensions(window)
-
-                    try:
-                        import_rows = self.import_rows()
-                    except Exception as e:
-                        msg = 'failed to run table import event'
-                        logger.exception(self.format_log(msg, err=e))
-                    else:
-                        if not import_rows.empty:
-                            collection.append(import_rows, new=True)
-
-                        update_event = True
         else:
+            logger.debug(self.format_log('running table event {EVENT}'.format(EVENT=element_event)))
+            param_events = [i for param in self.parameters for i in param.bindings]
+
             # Single click to select a table row
             if element_event == 'Element':
                 selected_rows = values[elem_key]
@@ -909,240 +871,48 @@ class DataTable(RecordElement):
                 else:
                     logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
 
-        if update_event:
-            self.edited = True
-            triggers['ValueEvent'] = True
-
-            # Update the display table to show the new table values
-            self.update_display(window)
-
-        return triggers
-
-    def run_event_old(self, window, event, values):
-        """
-        Run a table GUI event.
-        """
-        collection = self.collection
-
-        elem_key = self.key_lookup('Element')
-        search_key = self.key_lookup('Search')
-        options_key = self.key_lookup('Options')
-        frame_key = self.key_lookup('OptionsFrame')
-        sort_key = self.key_lookup('Sort')
-        fill_key = self.key_lookup('Fill')
-        export_key = self.key_lookup('Export')
-        filter_key = self.key_lookup('Filter')
-        filter_hkey = '{}+FILTER+'.format(elem_key)
-        frame_bttn = self.key_lookup('CollapseBttn')
-
-        #param_elems = [i for param in self.parameters for i in param.elements]
-        param_elems = [i for param in self.parameters for i in param.bindings]
-        open_key = '{}+LCLICK+'.format(elem_key)
-        return_key = '{}+RETURN+'.format(elem_key)
-
-        try:
-            delete_bttn = self.fetch_parameter('Delete', filters=False)
-        except KeyError:
-            delete_key = delete_hkey = None
-            can_delete = False
-        else:
-            delete_key, delete_hkey = delete_bttn.key_lookup()
-            can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
-        try:
-            import_bttn = self.fetch_parameter('Import', filters=False)
-        except KeyError:
-            import_key = import_hkey = None
-            can_import = False
-        else:
-            import_key, import_hkey = import_bttn.key_lookup()
-            can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
-
-        # Table events
-        update_event = False
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
-
-        # Single click to select a table row
-        if event == elem_key:
-            selected_rows = values[elem_key]
-            self._selected_rows = selected_rows
-            self.update_annotation(window)
-
-        # Double-click or return key pressed to open table row
-        elif event in (open_key, return_key):
-            # Close options panel, if open
-            self.set_table_dimensions(window)
-
-            # Find the row selected by the user
-            try:
-                select_row_index = values[elem_key][0]
-            except IndexError:  # user double-clicked too quickly
-                msg = 'table row could not be selected'
-                logger.debug(self.format_log(msg))
-            else:
-                self._selected_rows = [select_row_index]
-                self.update_annotation(window)
-
-                # Get the real index of the selected row
-                index = self.get_index(select_row_index)
-                update_event = self.run_table_event(index)
-
-        elif event == search_key:
-            # Update the search field value
-            search_col = self.search_field[0]
-            search_value = values[search_key]
-            self.search_field = (search_col, search_value)
-
-            self.update_display(window)
-
-        elif event == frame_bttn:
-            self.collapse_expand(window)
-
-        # Click filter Apply button to apply filtering to table
-        elif event in (filter_key, filter_hkey):
-            # Update parameter values
-            for param in self.parameters:
-                try:
-                    param.value = param.format_value(values)
-                except ValueError:
-                    msg = 'failed to filter table rows'
-                    err = 'incorrectly formatted value provided to filter parameter {}'.format(param.description)
-                    logger.error(self.format_log(msg, err=err))
-                    mod_win2.popup_error(msg)
-
+            # Delete rows button clicked
+            elif element_event == 'Delete':
+                if not self.enabled(element_event):
                     return triggers
 
-            # Update the display table to show the filtered table
-            self.update_display(window)
+                # Find rows selected by user for deletion
+                select_row_indices = values[elem_key]
 
-        # Click to open table options panel
-        elif event == options_key:
-            if window[frame_key].metadata['visible'] is False:
-                window[frame_key].metadata['visible'] = True
+                # Get the real indices of the selected rows
+                indices = self.get_index(select_row_indices)
+                if len(indices) > 0:
+                    collection.delete(indices)
+                    update_event = True
 
-                tbl_width, tbl_height = window[elem_key].get_size()
+            # Import rows button clicked
+            elif element_event == 'Import':
+                if not self.enabled(element_event):
+                    return triggers
 
-                # Reduce table size
-                frame_w = 220
-                new_width = tbl_width - frame_w - 4 if tbl_width - frame_w - 4 > 0 else 0
-                logger.debug(self.format_log('resizing the table from {W} to {NW} to accommodate the options frame '
-                                             'of width {F}'.format(W=tbl_width, NW=new_width, F=frame_w)))
-                self._update_column_widths(window, width=new_width)
-
-                # Reveal the options frame
-                window[frame_key].update(visible=True)
-                window[frame_key].expand(expand_y=True)
-
-                # Update the display table to show annotations properly
-                self.update_display(window)
-            else:
+                # Close options panel, if open
                 self.set_table_dimensions(window)
 
-        # Sort column selected from menu of sort columns
-        elif event == sort_key:
-            sort_on = self.sort_on
-            display_map = {j: i for i, j in self.display_columns.items()}
-
-            # Get sort column
-            display_col = values[sort_key]
-            try:
-                sort_col = display_map[display_col]
-            except KeyError:
-                logger.warning(self.format_log('column "{COL}" must be a display column in order to sort'
-                                               .format(COL=display_col)))
-            else:
-                if sort_col in sort_on:
-                    # Remove column from sortby list
-                    self.sort_on.remove(sort_col)
-                else:
-                    # Add column to sortby list
-                    self.sort_on.append(sort_col)
-
-            # Update the display table to show the sorted values
-            self.update_display(window)
-
-        # NA value fill method selected from menu of fill methods
-        elif event == fill_key:
-            display_map = {j: i for i, j in self.display_columns.items()}
-
-            # Get selected rows, if any
-            select_row_indices = values[elem_key]
-
-            # Get the real indices of the selected rows
-            indices = self.get_index(select_row_indices)
-            if len(indices) < 2:
-                msg = 'table fill requires more than one table rows to be selected'
-                logger.warning(self.format_log(msg))
-
-                return triggers
-
-            # Find the selected column to fill
-            display_col = values[fill_key]
-            try:
-                fill_col = display_map[display_col]
-            except KeyError:
-                msg = self.format_log('fill display column {COL} must have a one-to-one mapping with a table display '
-                                      'column'.format(COL=display_col))
-                logger.warning(msg)
-
-                return triggers
-
-            # Fill in NA values
-            collection.fill(indices=indices, fields=fill_col)
-            update_event = True
-
-        elif event in param_elems:
-            try:
-                param = self.fetch_parameter(event, by_key=True)
-            except KeyError:
-                logger.error(self.format_log('unable to find parameter associated with event key {KEY}'
-                                             .format(KEY=event)))
-            else:
-                param.run_event(window, event, values)
-
-        elif event == export_key:
-            outfile = sg.popup_get_file('', title='Export table display', save_as=True,
-                                        default_extension='xlsx', no_window=True,
-                                        file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
-
-            if outfile:
-                logger.info(self.format_log('exporting the display table to spreadsheet {FILE}'.format(FILE=outfile)))
-
-                export_df = self.export_table()
                 try:
-                    export_df.to_excel(outfile, engine='openpyxl', header=True, index=False)
+                    import_rows = self.import_rows()
                 except Exception as e:
-                    msg = 'failed to save table to file to {FILE} - {ERR}'.format(FILE=outfile, ERR=e)
-                    logger.exception(self.format_log(msg))
-                    mod_win2.popup_error(msg)
-            else:
-                logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
+                    msg = 'failed to run table import event'
+                    logger.exception(self.format_log(msg, err=e))
+                else:
+                    if not import_rows.empty:
+                        collection.append(import_rows, new=True)
 
-        # Delete rows button clicked
-        elif event in (delete_key, delete_hkey) and can_delete:
-            # Find rows selected by user for deletion
-            select_row_indices = values[elem_key]
+                    update_event = True
 
-            # Get the real indices of the selected rows
-            indices = self.get_index(select_row_indices)
-            if len(indices) > 0:
-                collection.delete(indices)
-                update_event = True
-
-        # Import rows button clicked
-        elif event in (import_key, import_hkey) and can_import:
-            # Close options panel, if open
-            self.set_table_dimensions(window)
-
-            try:
-                import_rows = self.import_rows()
-            except Exception as e:
-                msg = 'failed to run table import event'
-                logger.exception(self.format_log(msg, err=e))
-            else:
-                if not import_rows.empty:
-                    collection.append(import_rows, new=True)
-
-                update_event = True
+            # Event is a table filter parameter
+            elif event in param_events:
+                try:
+                    param = self.fetch_parameter(event, by_key=True)
+                except KeyError:
+                    logger.error(self.format_log('unable to find parameter associated with event key {KEY}'
+                                                 .format(KEY=event)))
+                else:
+                    param.run_event(window, event, values)
 
         if update_event:
             self.edited = True
@@ -3005,14 +2775,11 @@ class DataList(RecordElement):
         self.etype = 'list'
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                               ('Frame', 'Description', 'Options')})
-        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-        #                      ('Frame', 'Description', 'Options')])
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
         focus_key = '{}+FOCUS+'.format(frame_key)
-        #self.bindings = [self.key_lookup(i) for i in self._event_elements] + [focus_key]
         self.bindings = {self.elements[i]: i for i in ('Element', 'Options')}
         self.bindings[focus_key] = 'Frame'
 
@@ -3032,7 +2799,6 @@ class DataList(RecordElement):
 
         self.actions = {}
         self._actions = {}
-        #self._bindings = {}
         for action_name in actions:
             action_entry = actions[action_name]
 
@@ -3041,9 +2807,7 @@ class DataList(RecordElement):
 
             if 'Shortcut' in action_entry:
                 bind_key = '{ELEM}+{DESC}+'.format(ELEM=elem_key, DESC=action_name.upper())
-                #self.bindings.append(bind_key)
                 self.bindings[bind_key] = action_name
-                #self._bindings[bind_key] = action_name
 
             self.actions[action_name] = action_entry
             self._actions[action_entry['Description']] = action_name
@@ -3336,104 +3100,11 @@ class DataList(RecordElement):
                     self.edited = True
                     window[note_key].update(value=note)
                     window[note_key].metadata['value'] = note
-                    self.collection.update_field(self._notes_field, note, indices=[index])  # also updated "edited" state
+                    self.collection.update_field(self._notes_field, note, indices=[index])  # also update "edited" state
 
             # Run a header event
             elif event_type == 'Header':
                 self.run_header_event(index)
-
-        if update_event:
-            resize_event = self.update_display(window)
-            triggers['ValueEvent'] = True
-            triggers['ResizeEvent'] = resize_event
-
-        return triggers
-
-    def run_event_old(self, window, event, values):
-        """
-        Run a record element event.
-        """
-        update_event = False
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
-
-        # List element events
-        bind_keys = self._bindings
-        elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('Frame')
-        options_key = self.key_lookup('Options')
-
-        focus_event = '{}+FOCUS+'.format(frame_key)
-
-        # Set focus to the element and enable edit mode
-        if event == focus_event:
-            window[elem_key].set_focus()
-            return triggers
-
-        if event == options_key:
-            selection = values[options_key]
-            event_type = self._actions[selection]
-            index = None
-        elif event in bind_keys:
-            event_type = bind_keys[event]
-            index = None
-        else:  # entry events
-            event_type, index = self.fetch_entry(event)
-
-        # Add a new entry to the data list
-        if event_type == 'Add':
-            try:
-                import_rows = self.add_entries()
-            except Exception as e:
-                msg = 'failed to run the import entry event'
-                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
-            else:
-                if not import_rows.empty:
-                    print('appending new import entries to the collection:')
-                    print(import_rows)
-                    self.collection.append(import_rows, new=True)
-
-                update_event = True
-
-        # Import a previously deleted entry
-        if event_type == 'Import':
-            try:
-                import_rows = self.import_entries()
-            except Exception as e:
-                msg = 'failed to run the import entry event'
-                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
-            else:
-                if not import_rows.empty:
-                    print('appending new import entries to the collection:')
-                    print(import_rows)
-                    self.collection.append(import_rows, new=True)
-
-                update_event = True
-
-        # Delete a list entry
-        elif event_type == 'Delete':
-            msg = 'Are you sure that you would like to disassociate reference from the record? Disassociating ' \
-                  'records does not delete either record involved.'
-            user_action = mod_win2.popup_confirm(msg)
-
-            if user_action.upper() == 'OK':
-                update_event = True
-                self.edited = True
-                self.collection.set_state('deleted', True, indices=[index])
-
-        # Edit the notes field of a list entry
-        elif event_type == 'Edit':
-            note_key = self.key_lookup('Notes:{}'.format(index))
-            current_note = window[note_key].metadata['value']
-            note = mod_win2.add_note_window(current_note)
-            if not pd.isna(note):
-                self.edited = True
-                window[note_key].update(value=note)
-                window[note_key].metadata['value'] = note
-                self.collection.update_field(self._notes_field, note, indices=[index])  # also updated "edited" state
-
-        # Run a header event
-        elif event_type == 'Header':
-            self.run_header_event(index)
 
         if update_event:
             resize_event = self.update_display(window)
@@ -3585,7 +3256,6 @@ class DataList(RecordElement):
         # Listbox header and options button
         header = display_row[self._header_field]
         header_key = entry_elements['Header']
-        #self.bindings.append(header_key)
         self.bindings[header_key] = 'Header:{INDEX}'.format(INDEX=index)
         header_layout = [sg.Text(header, key=header_key, enable_events=True, font=font, text_color=select_text_color,
                                  background_color=bg_color)]
@@ -3654,7 +3324,6 @@ class DataList(RecordElement):
         # Listbox actions
         delete_key = entry_elements['Delete']
         edit_key = entry_elements['Edit']
-        #self.bindings.extend([edit_key, delete_key])
         self.bindings.update({edit_key: 'Edit:{INDEX}'.format(INDEX=index),
                               delete_key: 'Delete:{INDEX}'.format(INDEX=index)})
 
@@ -3679,7 +3348,6 @@ class DataList(RecordElement):
         self.indices.append(index)
 
         #for element in entry_elements:
-        #    self.elements.append(entry_elements[element])
         self.elements.update({'{NAME}:{INDEX}'.format(NAME=i, INDEX=index): j for i, j in entry_elements.items()})
 
     def update_entry(self, index, window):
@@ -4445,8 +4113,6 @@ class RecordVariable(DataVariable):
         """
         super().__init__(name, entry, parent)
         self.etype = 'text'
-        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-        #                      ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')])
         record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                            ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')}
         self.elements.update(record_elements)
@@ -4456,7 +4122,9 @@ class RecordVariable(DataVariable):
         lclick_event = '{}+LCLICK+'.format(elem_key)
         return_key = '{}+RETURN+'.format(elem_key)
         escape_key = '{}+ESCAPE+'.format(elem_key)
-        self.bindings = {self.elements[i]: i for i in ('Element', 'Edit', 'Save', 'Cancel')}
+        event_elements = ('Element', 'Edit', 'Save', 'Cancel')
+
+        self.bindings = {self.elements[i]: i for i in event_elements}
         self.bindings.update({lclick_event: 'Edit', return_key: 'Save', escape_key: 'Cancel'})
 
         # Dynamic variables
@@ -4623,109 +4291,6 @@ class RecordVariable(DataVariable):
 
         return triggers
 
-    def run_event_old(self, window, event, values):
-        """
-        Run a record element event.
-        """
-        text_col = mod_const.TEXT_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-
-        elem_key = self.key_lookup('Element')
-        edit_key = self.key_lookup('Edit')
-        update_key = self.key_lookup('Update')
-        save_key = self.key_lookup('Save')
-        save_hkey = '{}+RETURN+'.format(elem_key)
-        cancel_key = self.key_lookup('Cancel')
-        cancel_hkey = '{}+ESCAPE+'.format(elem_key)
-        aux_key = self.key_lookup('Auxiliary')
-        left_click = '{}+LCLICK+'.format(elem_key)
-        try:
-            calendar_key = self.key_lookup('Calendar')
-        except KeyError:
-            calendar_key = None
-
-        currently_editing = self.edit_mode
-
-        update_event = False
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
-
-        # Set focus to the element and enable edit mode
-        if event in (edit_key, left_click) and not currently_editing:
-            window[elem_key].set_focus()
-
-            if self.disabled:
-                return triggers
-
-            # Update element to show any current unformatted data
-            value_fmt = self.format_display(editing=True)
-
-            # Enable element editing and update colors
-            window[edit_key].update(disabled=True)
-            window[elem_key].update(disabled=False, value=value_fmt)
-            window[update_key].update(visible=True)
-            window[aux_key].update(visible=True)
-
-            if self.etype in ('input', 'multiline', 'text'):
-                window[elem_key].update(text_color=text_col)
-            if calendar_key:
-                window[calendar_key].update(disabled=False)
-
-            self.edit_mode = True
-
-        # Set element to inactive mode and update the element value
-        elif event in (save_key, save_hkey) and currently_editing:
-            # Update value of the data element
-            try:
-                value = values[elem_key]
-            except KeyError:
-                logger.warning(self.format_log('unable to locate values for element key "{KEY}"'
-                                               .format(NAME=self.name, KEY=elem_key)))
-            else:
-                try:
-                    edited = self.update_value(value)
-                except Exception as e:
-                    msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
-                    logger.exception(self.format_log(msg, err=e))
-                    mod_win2.popup_error(msg)
-
-                else:
-                    if edited:
-                        self.edited = True
-                        update_event = True
-
-                self.update_display(window)
-
-            # Disable element editing and update colors
-            window[edit_key].update(disabled=False)
-            window[elem_key].update(disabled=True)
-            window[update_key].update(visible=False)
-            window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text'):
-                window[elem_key].update(text_color=disabled_text_col)
-            if calendar_key:
-                window[calendar_key].update(disabled=True)
-
-            self.edit_mode = False
-
-        elif event in (cancel_key, cancel_hkey) and currently_editing:
-            # Disable element editing and update colors
-            window[edit_key].update(disabled=False)
-            window[elem_key].update(disabled=True)
-            window[update_key].update(visible=False)
-            window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text'):
-                window[elem_key].update(text_color=disabled_text_col)
-            if calendar_key:
-                window[calendar_key].update(disabled=False)
-
-            self.edit_mode = False
-
-            self.update_display(window)
-
-        triggers['ValueEvent'] = update_event
-
-        return triggers
-
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0):
         """
@@ -4821,7 +4386,7 @@ class RecordVariable(DataVariable):
 
         # Element layout
         width_key = self.key_lookup('Width')
-        layout_attrs = self.layout_attributes(size=(width, 1), bg_col=bg_col, disabled=is_disabled)
+        layout_attrs = self.layout_attributes(size=(width, 1), bg_col=bg_col)
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout(self.etype, layout_attrs)],
                                  background_color=bg_col)]
@@ -4835,7 +4400,7 @@ class RecordVariable(DataVariable):
 
         return layout
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -4884,7 +4449,7 @@ class RecordVariableInput(RecordVariable):
             self.elements['Calendar'] = calendar_key
             self.bindings[calendar_key] = 'Calendar'
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -4954,7 +4519,7 @@ class RecordVariableCombo(RecordVariable):
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning(self.format_log(msg))
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -5026,7 +4591,7 @@ class RecordVariableMultiline(RecordVariable):
         except (KeyError, ValueError):
             self.nrow = 1
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -5039,7 +4604,7 @@ class RecordVariableMultiline(RecordVariable):
         nrow = self.nrow
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'NRow': nrow}
 
         return layout_attrs
@@ -5553,6 +5118,8 @@ class TableButton:
         except KeyError:
             self.bg_col = mod_const.ACTION_COL
 
+        self.disabled = False
+
     def key_lookup(self):
         """
         Lookup an element's component GUI key using the name of the component element.
@@ -5575,6 +5142,7 @@ class TableButton:
         """
         bg_col = bg_col if bg_col else self.bg_col
         self.bg_col = bg_col
+        self.disabled = disabled
 
         size = size if size else mod_const.PARAM_SIZE_CHAR
 
@@ -5604,3 +5172,4 @@ class TableButton:
         """
         element_key = self.element_key
         window[element_key].update(disabled=off)
+        self.disabled = off
