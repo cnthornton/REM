@@ -2939,10 +2939,7 @@ class DatabaseRecord:
                 elem_w = int(width * 0.5)
 
             elem_size = (elem_w, elem_h)
-            print('setting the size of record element {} to {}'.format(record_element.name, elem_size))
             record_element.resize(window, size=elem_size)
-
-        print('new size of the record is {}'.format((width, height)))
 
         self._dimensions = (width, height)
 

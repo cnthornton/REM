@@ -720,7 +720,7 @@ class DataTable(RecordElement):
         try:
             element_event = self.bindings[event]
         except KeyError:
-            msg = 'GUI event {EVENT} is not a {NAME} table event'.format(EVENT=event, NAME=self.name)
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
             logger.warning(self.format_log(msg))
 
             return triggers
@@ -2779,7 +2779,9 @@ class DataList(RecordElement):
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
         focus_key = '{}+FOCUS+'.format(frame_key)
-        self.bindings = {self.elements[i]: i for i in ('Element', 'Options')}
+        element_events = ('Element', 'Options')
+
+        self.bindings = {self.elements[i]: i for i in element_events}
         self.bindings[focus_key] = 'Frame'
 
         try:
@@ -2898,13 +2900,17 @@ class DataList(RecordElement):
         self.flags = {}
         for flag_column in display_flags:
             if flag_column in columns:
-                flag_entry = display_flags[flag_column]
-                if 'Description' not in flag_entry:
+                _flag_entry = display_flags[flag_column]
+                flag_entry = {}
+                try:
+                    flag_entry['Description'] = _flag_entry['Description']
+                except KeyError:
                     flag_entry['Description'] = flag_column
-                if 'Icon' not in flag_entry:
+                try:
+                    flag_entry['Icon'] = settings.get_icon_path(_flag_entry['Icon'])
+                except KeyError:
+                    logger.warning(self.format_log('no icon specified for flag {FLAG}'.format(FLAG=flag_column)))
                     flag_entry['Icon'] = settings.get_icon_path()  # defaults to a blank icon
-                else:
-                    flag_entry['Icon'] = settings.get_icon_path(flag_entry['Icon'])
 
                 self.flags[flag_column] = flag_entry
             else:
@@ -3035,7 +3041,7 @@ class DataList(RecordElement):
         try:
             element_event = self.bindings[event]
         except KeyError:
-            msg = 'GUI event {EVENT} is not a {NAME} list event'.format(EVENT=event, NAME=self.name)
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
             logger.warning(self.format_log(msg))
 
             return triggers
@@ -3059,12 +3065,10 @@ class DataList(RecordElement):
             try:
                 import_rows = self.add_entries()
             except Exception as e:
-                msg = 'failed to run the import entry event'
+                msg = 'failed to add entries to the list'
                 logger.exception(self.format_log(msg, err=e))
             else:
                 if not import_rows.empty:
-                    print('appending new import entries to the collection:')
-                    print(import_rows)
                     self.collection.append(import_rows, new=True)
 
                 update_event = True
@@ -3074,12 +3078,10 @@ class DataList(RecordElement):
             try:
                 import_rows = self.import_entries()
             except Exception as e:
-                msg = 'failed to run the import entry event'
+                msg = 'failed to import entries into the list'
                 logger.exception(self.format_log(msg, err=e))
             else:
                 if not import_rows.empty:
-                    print('appending new import entries to the collection:')
-                    print(import_rows)
                     self.collection.append(import_rows, new=True)
 
                 update_event = True
@@ -3286,6 +3288,8 @@ class DataList(RecordElement):
                 logger.warning(msg)
                 flag_visible = False
 
+            print('list {} entry {} flag {} is visible: {}'.format(self.name, index, flag_name, flag_visible))
+            print(flag_icon)
             flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((pad_el, 0), 0),
                                    visible=flag_visible, background_color=bg_color, tooltip=flag_name)
 
@@ -4215,9 +4219,12 @@ class RecordVariable(DataVariable):
         try:
             element_event = self.bindings[event]
         except KeyError:
-            element_event = None
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
 
-        print('running {} event {} in edit mode ({})'.format(self.name, element_event, currently_editing))
+            return triggers
+        else:
+            logger.debug(self.format_log('running variable event {EVENT}'.format(EVENT=element_event)))
 
         # Set focus to the element and enable edit mode
         if element_event == 'Edit' and not currently_editing:
@@ -4278,8 +4285,6 @@ class RecordVariable(DataVariable):
             self.edit_mode = False
 
         elif element_event == 'Cancel' and currently_editing:
-            print('cancelling changes')
-            print('returning from from {} to old value {}'.format(values[elem_key], self.data()))
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
@@ -4695,20 +4700,23 @@ class DependentVariable(DataVariable):
         """
         Run a record element event.
         """
-        #elem_key = self.key_lookup('Element')
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
         try:
             element_event = self.bindings[event]
         except KeyError:
-            element_event = None
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
 
-        #if event == elem_key:
+            return triggers
+        else:
+            logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
+
         if element_event == 'Element':
             edited = self.format_value(values)
             if edited:
                 self.edited = True
                 self.update_display(window)
-
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         return triggers
 
@@ -4924,10 +4932,17 @@ class MetaVariable(DataVariable):
         """
         Run a record element event.
         """
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
         try:
             element_event = self.bindings[event]
         except KeyError:
-            element_event = None
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
+
+            return triggers
+        else:
+            logger.debug(self.format_log('running meta-element event {EVENT}'.format(EVENT=element_event)))
 
         if element_event == 'Element':
             elem_key = self.key_lookup('Element')
@@ -4935,22 +4950,6 @@ class MetaVariable(DataVariable):
             input_value = values[elem_key]
             self.update_value(input_value)
             self.update_display(window)
-
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
-
-        return triggers
-
-    def run_event_old(self, window, event, values):
-        """
-        Run a record element event.
-        """
-        elem_key = self.key_lookup('Element')
-        if event == elem_key:
-            input_value = values[elem_key]
-            self.update_value(input_value)
-            self.update_display(window)
-
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         return triggers
 
