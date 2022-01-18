@@ -67,7 +67,7 @@ class AuditRule:
                           'Buttons', 'Title', 'Frame', 'Header')}
 
         #self.bindings = [self.key_lookup(i) for i in ('Cancel', 'Start', 'Back', 'Next', 'Save')]
-        self.bindings = {self.elements[i]: i for i in ('Cancel', 'Start', 'Back', 'Next', 'Save')}
+        self.bindings = {self.elements[i]: i for i in ('Cancel', 'Start', 'Back', 'Next', 'Save', 'TransactionTG')}
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -246,13 +246,19 @@ class AuditRule:
         """
         current_rule = self.name
 
-        #cancel_key = self.key_lookup('Cancel')
         next_key = self.key_lookup('Next')
         back_key = self.key_lookup('Back')
         start_key = self.key_lookup('Start')
         save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TransactionTG')
         summary_tg_key = self.key_lookup('SummaryTG')
+
+        print('running event {}'.format(event))
+
+        if event == tg_key:
+            self.set_tab_focus(window)
+
+            return current_rule
 
         # Run an audit record event
         summary_keys = [i for j in self.records for i in j.bindings]
@@ -433,6 +439,7 @@ class AuditRule:
 
             # Switch to first transaction tab
             window[tg_key].Widget.select(0)
+            self.set_tab_focus(window)
 
             # Reset current panel attribute
             self.current_panel = prev_subpanel
@@ -519,8 +526,7 @@ class AuditRule:
                     # Update tab ID components
                     transaction_tab.update_id_components()
 
-                    # Enable the tab audit button
-                    #window[transaction_tab.key_lookup('Audit')].update(disabled=False)
+                self.set_tab_focus(window)
 
         # Save results of the audit
         elif rule_event == 'Save':
@@ -579,332 +585,20 @@ class AuditRule:
 
         return current_rule
 
-    def run_event_old(self, window, event, values):
+    def set_tab_focus(self, window):
         """
-        Run a transaction audit event.
+        Set the window focus on the current transaction table.
         """
-        current_rule = self.name
-
-        cancel_key = self.key_lookup('Cancel')
-        next_key = self.key_lookup('Next')
-        back_key = self.key_lookup('Back')
-        start_key = self.key_lookup('Start')
-        save_key = self.key_lookup('Save')
         tg_key = self.key_lookup('TransactionTG')
-        summary_tg_key = self.key_lookup('SummaryTG')
 
-        # Run an audit record event
-        summary_keys = [i for j in self.records for i in j.bindings]
-        if event in summary_keys:
-            # Fetch the current audit record tab
-            tab_key = window[summary_tg_key].Get()
-            try:
-                tab = self.fetch_tab(tab_key)
-            except KeyError:
-                logger.error('AuditRule {NAME}: unable to find the audit record associated with tab key "{KEY}"'
-                             .format(NAME=self.name, KEY=tab_key))
-            else:
-                tab.run_event(window, event, values)
-
-            return current_rule
-
-        # Run a transaction event
-        tab_keys = [i for j in self.transactions for i in j.bindings]
-        if event in tab_keys:
-            # Fetch the current transaction tab
-            tab_key = window[tg_key].Get()
-            try:
-                tab = self.fetch_tab(tab_key)
-            except KeyError:
-                logger.error('AuditRule {NAME}: unable to find the transaction associated with tab key "{KEY}"'
-                             .format(NAME=self.name, KEY=tab_key))
-            else:
-                # Run the tab event
-                success = tab.run_event(window, event, values)
-
-                # Enable the next tab if an audit event was successful
-                if event == tab.key_lookup('Audit') and success is True:
-                    logger.info('AuditRule {NAME}: auditing of transaction {TITLE} was successful'
-                                .format(NAME=self.name, TITLE=tab.title))
-                    tab_key = window[tg_key].Get()
-                    tabs = [i.key_lookup('Tab') for i in self.transactions]
-                    final_index = len(tabs)
-                    current_index = tabs.index(tab_key)
-
-                    # Enable movement to the next tab
-                    next_index = current_index + 1
-                    if next_index < final_index:
-                        next_tab_key = [i.key_lookup('Tab') for i in self.transactions][next_index]
-                        next_tab = self.fetch_tab(next_tab_key)
-                        logger.debug('AuditRule {NAME}: enabling next tab {TITLE} with index {IND}'
-                                     .format(NAME=self.name, TITLE=next_tab.title, IND=next_index))
-
-                        # Enable next tab
-                        window[next_tab_key].update(disabled=False, visible=True)
-                        window[next_tab_key].metadata['disabled'] = False
-                        window[next_tab_key].metadata['visible'] = True
-
-                    # Enable the finalize button when an audit has been run on all tabs.
-                    if next_index == final_index:
-                        logger.info('AuditRule {NAME}: all audits have been performed - preparing audit summary'
-                                    .format(NAME=self.name))
-                        window[next_key].update(disabled=False)
-                        window[next_key].metadata['disabled'] = False
-
-            return current_rule
-
-        # Run a rule panel event
-        param_keys = [i for j in self.parameters for i in j.elements]
-
-        # Cancel button pressed
-        if event == cancel_key:
-            # Check if reconciliation is currently in progress
-            if self.in_progress is True:
-                msg = 'Transaction audit is currently in progress. Are you sure you would like to quit without saving?'
-                selection = mod_win2.popup_confirm(msg)
-
-                if selection == 'OK':
-                    # Reset the rule and update the panel
-                    remain_in_panel = True if not values['-AMENU-'] else False
-                    if remain_in_panel is True:
-                        current_rule = self.reset_rule(window, current=True)
-                    else:
-                        current_rule = self.reset_rule(window, current=False)
-            else:
-                current_rule = self.reset_rule(window, current=False)
-
-        # Next button pressed - display summary panel
-        elif event == next_key and not window[next_key].metadata['disabled']:
-            next_subpanel = self.current_panel + 1
-
-            # Prepare audit records
-            if next_subpanel == self.last_panel:
-                # Store transaction table summaries for mapping
-                transaction_summ = {}
-                for tab in self.transactions:
-                    tab_name = tab.name
-                    summary = tab.table.summarize()
-                    for summary_column in summary:
-                        summary_value = summary[summary_column]
-                        transaction_summ['{TBL}.{COL}'.format(TBL=tab_name, COL=summary_column)] = summary_value
-
-                # Create audit records using data from the transaction audits
-                for record_tab in self.records:
-
-                    # Update audit record totals
-                    record_tab.map_summary(transaction_summ)
-
-                    # Initialize the new record
-                    record_tab.record.initialize(record_tab.record_data, new=False, as_new=True)
-
-                    # Map transactions to transaction records
-                    record_tab.map_transactions(self.transactions)
-
-                    # Update the audit record's display
-                    record_tab.update_display(window)
-
-                # Disable / enable action buttons
-                window[next_key].update(disabled=True)
-                window[next_key].metadata['disabled'] = True
-
-                window[back_key].update(disabled=False)
-                window[back_key].metadata['disabled'] = False
-
-                window[save_key].update(disabled=False)
-                window[save_key].metadata['disabled'] = False
-
-                # Switch to the first audit record tab
-                window[summary_tg_key].Widget.select(0)
-
-            # Reset transaction panel table sizes
-            for transaction_tab in self.transactions:
-                transaction_tab.table.set_table_dimensions(window)
-
-            # Hide the current sub-panel and display the following sub-panel
-            window[self.panel_keys[self.current_panel]].update(visible=False)
-            window[self.panel_keys[next_subpanel]].update(visible=True)
-
-            # Reset the current panel attribute
-            self.current_panel = next_subpanel
-
-        # Back button pressed
-        elif event == back_key and not window[back_key].metadata['disabled']:
-            current_panel = self.current_panel
-
-            # Delete unsaved keys if returning from summary panel
-            if current_panel == self.last_panel:
-                for record_tab in self.records:
-                    # Reset audit record components
-                    record_tab.reset_record_elements(window)
-
-            # Return to previous display
-            prev_subpanel = current_panel - 1
-            window[self.panel_keys[current_panel]].update(visible=False)
-            window[self.panel_keys[prev_subpanel]].update(visible=True)
-
-            window[next_key].update(disabled=False)
-            window[next_key].metadata['disabled'] = False
-
-            window[back_key].update(disabled=True)
-            window[back_key].metadata['disabled'] = True
-
-            # Switch to first transaction tab
-            window[tg_key].Widget.select(0)
-
-            # Reset current panel attribute
-            self.current_panel = prev_subpanel
-
-            # Enable / disable action buttons
-            if prev_subpanel == self.first_panel:
-                window[next_key].update(disabled=False)
-                window[next_key].metadata['disabled'] = False
-
-                window[back_key].update(disabled=True)
-                window[back_key].metadata['disabled'] = True
-
-                window[save_key].update(disabled=True)
-                window[save_key].metadata['disabled'] = True
-
-        # Start button pressed
-        elif event == start_key and not window[start_key].metadata['disabled']:
-            # Check for valid parameter values
-            params = self.parameters
-            inputs = []
-            for param in params:
-                param.format_value(values)
-
-                if not param.has_value():
-                    param_desc = param.description
-                    msg = 'Parameter {} requires correctly formatted input'.format(param_desc)
-                    mod_win2.popup_notice(msg)
-                    logger.warning('failed to start audit - parameter {} requires correctly formatted input'
-                                   .format(param_desc))
-                    inputs.append(False)
-                else:
-                    inputs.append(True)
-
-            # Load data from the database
-            if all(inputs):  # all rule parameters have input
-                window[start_key].update(disabled=True)
-                window[start_key].metadata['disabled'] = True
-
-                # Verify that the audit has not already been performed with these parameters
-                audit_exists = self.load_records()
-                if audit_exists is True:
-                    msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
-                          'audit records through the records menu'
-                    logger.warning('audit initialization failed - an audit has already been performed with the '
-                                   'provided parameters')
-                    mod_win2.popup_error(msg)
-                    current_rule = self.reset_rule(window, current=True)
-
-                    return current_rule
-
-                # Initialize audit
-                for transaction_tab in self.transactions:
-                    tab_key = transaction_tab.key_lookup('Tab')
-                    tab_keys.append(tab_key)
-
-                    # Set tab parameters
-                    transaction_tab.parameters = self.parameters
-
-                    # Import tab data from the database
-                    try:
-                        transaction_tab.load_data()
-                    except ImportError as e:
-                        msg = 'audit initialization failed - {ERR}'.format(ERR=e)
-                        logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                        mod_win2.popup_error(msg)
-                        current_rule = self.reset_rule(window, current=True)
-
-                        return current_rule
-
-                logger.info('AuditRule {NAME}: transaction audit in progress with parameters {PARAMS}'
-                            .format(NAME=self.name,PARAMS=', '.join(['{}={}'.format(i.name, i.value) for i in params])))
-                self.in_progress = True
-
-                # Enable/Disable control buttons and parameter elements
-                self.toggle_parameters(window, 'disable')
-
-                for transaction_tab in self.transactions:
-                    # Enable table element events
-                    transaction_tab.table.enable(window)
-
-                    # Update the tab table display
-                    transaction_tab.table.update_display(window)
-
-                    # Update tab ID components
-                    transaction_tab.update_id_components()
-
-                    # Enable the tab audit button
-                    window[transaction_tab.key_lookup('Audit')].update(disabled=False)
-
-        # Run parameter events
-        elif event in param_keys:
-            try:
-                param = self.fetch_parameter(event, by_key=True)
-            except KeyError:
-                logger.error('AuditRule {NAME}: unable to find parameter associated with event key {KEY}'
-                             .format(NAME=self.name, KEY=event))
-            else:
-                param.run_event(window, event, values)
-
-        # Save results of the audit
-        elif event == save_key:
-            # Check if any data elements are in edit mode before saving. Attempt to save if so.
-            for audit_record in self.records:
-                for record_element in audit_record.record.modules:
-                    try:
-                        edit_mode = record_element.edit_mode
-                    except AttributeError:
-                        continue
-                    else:
-                        if edit_mode:  # element is being edited
-                            # Attempt to save the data element value
-                            success = record_element.run_event(window, record_element.key_lookup('Save'), values)
-                            if not success:
-                                return current_rule
-
-            # Get output file from user
-            report_title = self.update_title()
-
-            title = report_title.replace(' ', '_')
-            outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
-                                        default_extension='pdf', no_window=True,
-                                        file_types=(('PDF - Portable Document Format', '*.pdf'),))
-
-            if not outfile:
-                msg = 'Please select an output file before continuing'
-                mod_win2.popup_error(msg)
-            else:
-                # Save summary to the program database
-                try:
-                    save_status = self.save_records()
-                except Exception as e:
-                    msg = 'database save failed - {ERR}'.format(ERR=e)
-                    mod_win2.popup_error(msg)
-
-                    raise
-                else:
-                    if save_status is False:
-                        msg = 'Database save failed'
-                        mod_win2.popup_error(msg)
-                    else:
-                        msg = 'audit records were successfully saved to the database'
-                        mod_win2.popup_notice(msg)
-                        logger.info('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                        # Save summary to excel or csv file
-                        try:
-                            self.save_report(outfile, title=report_title)
-                        except Exception as e:
-                            msg = 'Save to file {FILE} failed - {ERR}'.format(FILE=outfile, ERR=e)
-                            mod_win2.popup_error(msg)
-                            raise
-
-                        # Reset rule elements
-                        current_rule = self.reset_rule(window, current=True)
-
-        return current_rule
+        tab_key = window[tg_key].Get()
+        try:
+            tab = self.fetch_tab(tab_key)
+        except KeyError:
+            logger.error('AuditRule {NAME}: unable to find the audit record associated with tab key "{KEY}"'
+                         .format(NAME=self.name, KEY=tab_key))
+        else:
+            window[tab.table.key_lookup('Element')].set_focus()
 
     def layout(self, size):
         """
@@ -1351,13 +1045,10 @@ class AuditTransaction:
         self.name = name
         self.parent = parent
         self.id = randint(0, 1000000000)
-        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-        #                 ('Tab', 'Audit', 'Panel')]
+
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Tab', 'Panel')}
         self.bindings = {}
-
-        #self.bindings = [self.key_lookup(i) for i in ('Audit',)]
 
         try:
             self.title = entry['Title']
@@ -1551,7 +1242,8 @@ class AuditTransaction:
         mod_lo.set_size(window, panel_key, (panel_w, panel_h))
 
         # Reset the tab table element size
-        bffr_h = (18 + 8) + pad_frame + 30  # height of the tabs, padding, and button
+        #bffr_h = (18 + 8) + pad_frame + 30  # height of the tabs, padding, and button
+        bffr_h = 18 + pad_frame  # height of the tabs and padding
         tbl_width = panel_w - tbl_pad  # minus padding
         tbl_height = panel_h - bffr_h
         self.table.resize(window, size=(tbl_width, tbl_height))
@@ -1568,7 +1260,7 @@ class AuditTransaction:
         if event in table_keys:
             tbl_event = table_keys[event]
 
-            if tbl_event == 'Audit':
+            if tbl_event == 'Audit' and table.enabled('Audit'):
                 results['AuditEvent'] = True
 
                 try:
@@ -1588,44 +1280,6 @@ class AuditTransaction:
                 table.run_event(window, event, values)
 
         return results
-
-    def run_event_old(self, window, event, values):
-        """
-        Run an audit rule transaction event.
-        """
-        success = True
-
-        # Run component table events
-        table = self.table
-        table_keys = table.bindings
-        if event in table_keys:
-            table.run_event(window, event, values)
-
-            return success
-
-        # Run a transaction audit
-        try:
-            transaction_event = self.bindings[event]
-        except KeyError:
-            transaction_event = None
-
-        if transaction_event == 'Audit':
-            try:
-                self.audit_transactions()
-            except Exception as e:
-                msg = 'audit failed on transaction {NAME} - {ERR}'.format(NAME=self.title, ERR=e)
-                logger.exception('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                mod_win2.popup_error(msg)
-
-                success = False
-            else:
-                delete_rows = self.filter_table()
-                if len(delete_rows) > 0:
-                    self.table.delete_rows(delete_rows)
-
-                self.table.update_display(window)
-
-        return success
 
     def filter_table(self):
         """
