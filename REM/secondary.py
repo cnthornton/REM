@@ -1858,12 +1858,6 @@ def record_import_window(table, enable_new: bool = False):
     if not frame.metadata['visible']:  # frame is collapsed
         table.collapse_expand(window)
 
-    #frames = [table.key_lookup('Frame{}'.format(i)) for i in range(2)]
-    #for i, frame_key in enumerate(frames):
-    #    frame = window[frame_key]
-    #    if not frame.metadata['visible']:  # frame is collapsed
-    #        table.collapse_expand(window, index=i)
-
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
     win_w = int(screen_w * 0.8)
@@ -1880,10 +1874,6 @@ def record_import_window(table, enable_new: bool = False):
 
     # Main loop
     elem_key = table.key_lookup('Element')
-    open_key = '{}+LCLICK+'.format(elem_key)
-    return_key = '{}+RETURN+'.format(elem_key)
-    filter_key = table.key_lookup('Filter')
-    filter_hkey = '{}+FILTER+'.format(elem_key)
     while True:
         event, values = window.read(timeout=500)
 
@@ -1944,56 +1934,52 @@ def record_import_window(table, enable_new: bool = False):
 
             continue
 
-        if event in (open_key, return_key):  # click to open record
-            # Close options panel, if open
-            table.set_table_dimensions(window)
-
-            # retrieve selected row
-            try:
-                row_index = values[elem_key][0]
-            except IndexError:
-                continue
-            else:
-                table._selected_rows = [row_index]
-                table.update_annotation(window)
-
-                print('selected table row index is: {}'.format(row_index))
-
-                # Get the real index of the selected row
-                index = table.get_index(row_index)
-                record = table.load_record(index, level=0)
-                if record:
-                    import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
-
-                    table.reset(window, reset_filters=False, collapse=False)
-                    table.append(import_df)
-                    table.update_display(window)
-
-                continue
-
-        # Run table filter event
-        elif event in (filter_key, filter_hkey):
-            print(values)
-            for param in table.parameters:
-                # Set parameter values from window elements
-                param.format_value(values)
-                if param.has_value:
-                    print('parameter {} has value {}'.format(param.name, param.value))
-
-            # Load the display records
-            import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
-            print('appending data to the table:')
-            print(import_df)
-
-            table.reset(window, reset_filters=False, collapse=False)
-            table.append(import_df)
-            table.update_display(window)
-
-        # Run table events
-        else:
-            table.run_event(window, event, values)
-
+        # Import table events
+        try:
+            element_event = table.bindings[event]
+        except KeyError:
             continue
+        else:
+            reload = False
+
+            # Load record event
+            if element_event == 'Load':  # click to open record
+                # Close options panel, if open
+                table.set_table_dimensions(window)
+
+                # retrieve selected row
+                try:
+                    row_index = values[elem_key][0]
+                except IndexError:
+                    continue
+                else:
+                    table._selected_rows = [row_index]
+                    table.update_annotation(window)
+
+                    # Get the real index of the selected row
+                    index = table.get_index(row_index)
+                    record = table.load_record(index, level=0)
+                    if record:
+                        reload = True
+
+            # Table filter event
+            elif element_event == 'Filter':
+                for param in table.parameters:
+                    # Set parameter values from window elements
+                    param.format_value(values)
+
+                # Load the display records
+                reload = True
+
+            else:
+                table.run_event(window, event, values)
+
+            if reload:  # should reload the import records
+                table.reset(window, reset_filters=False, collapse=False)
+
+                import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
+                table.append(import_df)
+                table.update_display(window)
 
     window.close()
     layout = None
