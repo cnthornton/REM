@@ -706,6 +706,17 @@ class DataTable(RecordElement):
         update_event = False
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
+        # Event is a table filter parameter
+        param_events = [i for param in self.parameters for i in param.bindings]
+        if event in param_events:
+            try:
+                param = self.fetch_parameter(event, by_key=True)
+            except KeyError:
+                logger.error(self.format_log('unable to find parameter associated with event key {KEY}'
+                                             .format(KEY=event)))
+            else:
+                param.run_event(window, event, values)
+
         try:
             element_event = self.bindings[event]
         except KeyError:
@@ -713,10 +724,8 @@ class DataTable(RecordElement):
             logger.warning(self.format_log(msg))
 
             return triggers
-
         else:
             logger.debug(self.format_log('running table event {EVENT}'.format(EVENT=element_event)))
-            param_events = [i for param in self.parameters for i in param.bindings]
 
             # Single click to select a table row
             if element_event == 'Element':
@@ -869,7 +878,7 @@ class DataTable(RecordElement):
                         logger.exception(self.format_log(msg))
                         mod_win2.popup_error(msg)
                 else:
-                    logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
+                    logger.warning(self.format_log('no output file selected'))
 
             # Delete rows button clicked
             elif element_event == 'Delete':
@@ -903,16 +912,6 @@ class DataTable(RecordElement):
                         collection.append(import_rows, new=True)
 
                     update_event = True
-
-            # Event is a table filter parameter
-            elif event in param_events:
-                try:
-                    param = self.fetch_parameter(event, by_key=True)
-                except KeyError:
-                    logger.error(self.format_log('unable to find parameter associated with event key {KEY}'
-                                                 .format(KEY=event)))
-                else:
-                    param.run_event(window, event, values)
 
         if update_event:
             self.edited = True
@@ -3036,47 +3035,54 @@ class DataList(RecordElement):
         try:
             element_event = self.bindings[event]
         except KeyError:
-            element_event = None
+            msg = 'GUI event {EVENT} is not a {NAME} list event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
+
+            return triggers
+        else:
+            logger.debug(self.format_log('running list event {EVENT}'.format(EVENT=element_event)))
 
         # Set focus to the element and enable edit mode
         if element_event == 'Frame':
             elem_key = self.key_lookup('Element')
             window[elem_key].set_focus()
 
-        elif element_event == 'Options':  # event is a list event
+            return triggers
+
+        if element_event == 'Options':
             options_key = self.key_lookup('Options')
             selection = values[options_key]
-            event_type = self._actions[selection]
+            element_event = self._actions[selection]
 
-            # Add a new entry to the data list
-            if event_type == 'Add':
-                try:
-                    import_rows = self.add_entries()
-                except Exception as e:
-                    msg = 'failed to run the import entry event'
-                    logger.exception(self.format_log(msg, err=e))
-                else:
-                    if not import_rows.empty:
-                        print('appending new import entries to the collection:')
-                        print(import_rows)
-                        self.collection.append(import_rows, new=True)
+        # Add a new entry to the data list
+        if element_event == 'Add':
+            try:
+                import_rows = self.add_entries()
+            except Exception as e:
+                msg = 'failed to run the import entry event'
+                logger.exception(self.format_log(msg, err=e))
+            else:
+                if not import_rows.empty:
+                    print('appending new import entries to the collection:')
+                    print(import_rows)
+                    self.collection.append(import_rows, new=True)
 
-                    update_event = True
+                update_event = True
 
-            # Import a previously deleted entry
-            elif element_event == 'Import':
-                try:
-                    import_rows = self.import_entries()
-                except Exception as e:
-                    msg = 'failed to run the import entry event'
-                    logger.exception(self.format_log(msg, err=e))
-                else:
-                    if not import_rows.empty:
-                        print('appending new import entries to the collection:')
-                        print(import_rows)
-                        self.collection.append(import_rows, new=True)
+        # Import a previously deleted entry
+        elif element_event == 'Import':
+            try:
+                import_rows = self.import_entries()
+            except Exception as e:
+                msg = 'failed to run the import entry event'
+                logger.exception(self.format_log(msg, err=e))
+            else:
+                if not import_rows.empty:
+                    print('appending new import entries to the collection:')
+                    print(import_rows)
+                    self.collection.append(import_rows, new=True)
 
-                    update_event = True
+                update_event = True
 
         else:  # event is an entry event
             event_type, index = self.fetch_entry(event)
