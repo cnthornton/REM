@@ -490,19 +490,20 @@ class RecordEntry:
         reference_table = rule['ReferenceTable']
         is_primary = rule['Primary']
         if is_primary:  # records are the primary in the reference table
-            import_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo'}
+            import_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'Deleted': 'IsDeleted'}
         else:  # reference record is the primary record ID
-            import_col_map = {'RecordID': 'RefNo', 'ReferenceID': 'DocNo'}
+            import_col_map = {'RecordID': 'RefNo', 'ReferenceID': 'DocNo', 'Deleted': 'IsDeleted'}
 
         # Import reference entries related to record_id
         db_id_col = mod_db.get_import_column(import_rules, 'RecordID')
         columns = mod_db.format_import_columns(import_rules)
         filters = mod_db.format_import_filters(import_rules)
+        #filters.append(('{TBL}.{COL} = ?'.format(TBL=reference_table, COL=import_col_map['Deleted']), 0))
         filters_clause = '{TBL}.{COL} IS NULL'.format(TBL=reference_table, COL=import_col_map['ReferenceID'])
         filters.append(filters_clause)
 
-        join_statement = "{COL} = {TBL}.{REFCOL}".format(COL=db_id_col, TBL=reference_table,
-                                                         REFCOL=import_col_map['RecordID'])
+        join_statement = "{COL} = {TBL}.{REFCOL} AND {TBL}.{DELCOL} = '0'"\
+            .format(COL=db_id_col, TBL=reference_table, REFCOL=import_col_map['RecordID'], DELCOL=import_col_map['Deleted'])
         import_rules[reference_table] = {'Columns': {import_col_map['RecordID']: import_col_map['RecordID']},
                                          'Join': ["LEFT JOIN", join_statement]}
 

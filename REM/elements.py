@@ -225,11 +225,10 @@ class DataTable(RecordElement):
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
         self.etype = 'table'
-        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                           ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
-                            'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
-                            'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')}
-        self.elements.update(record_elements)
+        record_elements = ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
+                           'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
+                           'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -2770,10 +2769,10 @@ class DataList(RecordElement):
         """
         super().__init__(name, entry, parent)
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
-
         self.etype = 'list'
-        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Frame', 'Description', 'Options')})
+
+        record_elements = ('Frame', 'Description', 'Options')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -4123,9 +4122,8 @@ class RecordVariable(DataVariable):
         """
         super().__init__(name, entry, parent)
         self.etype = 'text'
-        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                           ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')}
-        self.elements.update(record_elements)
+        record_elements = ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
@@ -4455,8 +4453,6 @@ class RecordVariableInput(RecordVariable):
 
         if entry['DataType'] in settings.supported_date_dtypes:
             calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
-            #self.elements.append(calendar_key)
-            #self.bindings.append(calendar_key)
             self.elements['Calendar'] = calendar_key
             self.bindings[calendar_key] = 'Calendar'
 
@@ -4649,15 +4645,13 @@ class DependentVariable(DataVariable):
         super().__init__(name, entry, parent)
 
         self.etype = 'dependent'
-        #self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-        #                     ('Description', 'Frame', 'Width')})
-        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                           ('Description', 'Frame', 'Width')}
-        self.elements.update(record_elements)
+        record_elements = ('Description', 'Frame', 'Width')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
-        elem_key = self.key_lookup('Element')
-        self.bindings = {'{}+LCLICK+'.format(elem_key): 'Element'}
+        self.bindings = {self.elements['Element']: 'Element'}
+        #elem_key = self.key_lookup('Element')
+        #self.bindings = {'{}+LCLICK+'.format(elem_key): 'Element'}
 
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
@@ -4693,8 +4687,9 @@ class DependentVariable(DataVariable):
         """
         Add hotkey bindings to the element.
         """
-        elem_key = self.key_lookup('Element')
-        window[elem_key].bind('<Button-1>', '+LCLICK+')
+        #elem_key = self.key_lookup('Element')
+        #window[elem_key].bind('<Button-1>', '+LCLICK+')
+        pass
 
     def run_event(self, window, event, values):
         """
@@ -4836,6 +4831,7 @@ class DependentVariable(DataVariable):
                 input_value = mod_dm.evaluate_operation(values, self.operation)
             except Exception as e:
                 msg = self.format_log('failed to set the value of the dependent variable', err=e)
+                print(values)
                 logger.error(msg)
                 input_value = None
 
@@ -4873,11 +4869,8 @@ class MetaVariable(DataVariable):
             parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
-        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-        #                      ('Description', 'Element', 'Frame', 'Width')])
-        record_elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                           ('Description', 'Frame', 'Width')}
-        self.elements.update(record_elements)
+        record_elements = ('Description', 'Frame', 'Width')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         if self.etype != 'checkbox':
             self.etype = 'text'
