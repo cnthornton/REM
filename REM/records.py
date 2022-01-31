@@ -1785,18 +1785,20 @@ class DatabaseRecord:
                                      .format(NAME=self.name, PARAM=element_name, VAL=value))
                         record_element.update_value(value)
                     else:
-                        logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
-                                     .format(NAME=self.name, PARAM=element_name))
+                        logger.debug('RecordType {NAME}: no value set for record element "{ELEM}"'
+                                     .format(NAME=self.name, ELEM=element_name))
+                        logger.debug('RecordType {NAME}: record element {ELEM} has default value "{VAL}"'
+                                     .format(NAME=self.name, ELEM=element_name, VAL=record_element.data()))
 
         # Update any dependent record elements
-        record_values = self.export_values(header=False)
+        record_values = self.export_values(header=False).to_dict()
         try:
             element_references = self.fetch_element('dependent', by_type=True)
         except KeyError:
             pass
         else:
             for record_element in element_references:
-                record_element.format_value(record_values.to_dict())
+                record_element.format_value(record_values)
 
     def reset(self, window):
         """
@@ -1983,7 +1985,6 @@ class DatabaseRecord:
 
             #if focus_element not in record_element.elements:  # element is edited but is no longer in focus
             if focus_element not in record_element.bindings:  # element is edited but is no longer in focus
-                print(record_element.bindings)
                 logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
                              'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=record_element.name))
 
@@ -2028,6 +2029,7 @@ class DatabaseRecord:
                     else:
                         record_created = record_element.add_record(record_data)
                         if record_created:
+                            triggers['ValueEvent'] = True
                             record_element.update_display(window)
                 else:
                     triggers = record_element.run_event(window, event, values)
@@ -2107,25 +2109,6 @@ class DatabaseRecord:
 
         return events
 
-    def record_events_old(self, components_only: bool = False):
-        """
-        Return a list of available record events.
-
-        Arguments:
-            components_only (bool):
-        """
-        events = []
-        if not components_only:
-            events.extend(self.elements)
-
-        # Add record component events
-        events.extend([i for record_element in self.modules for i in record_element.bindings])
-
-        # Add record metadata events
-        events.extend([i for param in self.metadata for i in param.bindings])
-
-        return events
-
     def record_elements(self):
         """
         Return a list of all record elements.
@@ -2191,7 +2174,6 @@ class DatabaseRecord:
                 record_data = pd.Series(index=header)
                 creation_date = record_date
 
-        print('creating record IDs for list of dates : {}'.format(creation_date))
         record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
         if not record_id:
             msg = 'unable to create an ID for the new record'
@@ -2246,7 +2228,6 @@ class DatabaseRecord:
             for meta_elem in self.metadata:
                 param_value = meta_elem.data()
                 if not pd.isna(param_value):
-                    print('exporting record metadata parameter {} with value {} with type {}'.format(meta_elem.name, param_value, type(param_value)))
                     values[meta_elem.name] = param_value
 
         # Add parameter values
@@ -2254,9 +2235,6 @@ class DatabaseRecord:
         for record_element in record_elements:
             elem_values = record_element.export_values(edited_only=edited_only)
             values = {**values, **elem_values}
-
-        print('exporting final values:')
-        print(values)
 
         return pd.Series(values)
 
@@ -2275,8 +2253,6 @@ class DatabaseRecord:
                                        'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
                                        'IsDeleted'])
 
-        print('exporting record {} associated records'.format(self.name))
-
         try:
             refbox_elements = self.fetch_element('reference', by_type=True)
         except KeyError:
@@ -2288,8 +2264,6 @@ class DatabaseRecord:
                 continue
 
             data = refbox.data()
-            print('adding reference {} entries:'.format(refbox_rule))
-            print(data)
             ref_df = ref_df.append(data, ignore_index=True)
 
         try:
@@ -2303,8 +2277,6 @@ class DatabaseRecord:
                 continue
 
             data = comp_tbl.export_references(self.record_id())
-            print('adding component {} entries:'.format(comp_rule))
-            print(data)
             ref_df = ref_df.append(data, ignore_index=True)
 
         return ref_df
@@ -2445,7 +2417,6 @@ class DatabaseRecord:
             logger.debug('RecordEntry {NAME}, Record {ID}: exporting record values'
                          .format(NAME=self.name, ID=record_id))
             record_data = self.export_values()
-            print(record_data)
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
@@ -2472,14 +2443,11 @@ class DatabaseRecord:
                 logger.debug('Record {ID}: preparing export statements for edited or new "{ASSOC}" references'
                              .format(ID=record_id, ASSOC=association_rule))
                 ref_data = refbox.data(edited_rows=True)
-            print(ref_data)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
                          .format(ID=record_id, ASSOC=association_rule))
             deleted_df = refbox.data(deleted_rows=True)
-            print(deleted_df)
-            statements = record_entry.delete_database_references(deleted_df, association_rule, statements=statements)
 
         # Prepare to save record components
         try:

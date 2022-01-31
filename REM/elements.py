@@ -2688,8 +2688,6 @@ class ReferenceTable(RecordTable):
             aggby[colname] = aggfunc
 
         # Group reference entries with the same record ID
-        print('aggregating columns using mapper:')
-        print(aggby)
         ref_df = ref_df.groupby(ref_df.index).aggregate(aggby)
 
         return ref_df
@@ -3287,8 +3285,6 @@ class DataList(RecordElement):
                 logger.warning(msg)
                 flag_visible = False
 
-            print('list {} entry {} flag {} is visible: {}'.format(self.name, index, flag_name, flag_visible))
-            print(flag_icon)
             flag_layout = sg.Image(filename=flag_icon, key=flag_key, size=flag_size, pad=((pad_el, 0), 0),
                                    visible=flag_visible, background_color=bg_color, tooltip=flag_name)
 
@@ -3472,10 +3468,8 @@ class DataList(RecordElement):
             if index in entry_indices:
                 entry_key = self.key_lookup('Entry:{}'.format(index))
                 entry_deleted = collection.get_state('deleted', indices=[index])
-                print('entry {} has been deleted: {}'.format(index, entry_deleted))
 
                 if entry_deleted:  # entry layout should be hidden when entry is set to "deleted"
-                    print('deleting entry {}'.format(index))
 
                     if window[entry_key].metadata['visible']:  # entry layout is not yet hidden from the display
                         window[entry_key].update(visible=False)
@@ -3483,7 +3477,6 @@ class DataList(RecordElement):
                         resize_event = True
                 else:  # these entries should all have visible layouts
                     if not window[entry_key].metadata['visible']:  # entry layout should be updated and made visible
-                        print('updating entry {}'.format(index))
                         resize_event = True
                         self.update_entry(index, window)
 
@@ -3760,7 +3753,6 @@ class ReferenceList(DataList):
         # Search for records without an existing reference to the provided reference type
         ref_types = df[ref_field].unique().tolist()
         for ref_type in ref_types:
-            print('loading unreferenced records for records of type {}'.format(ref_type))
             ref_entry = settings.records.fetch_rule(ref_type)
 
             # Import the entries from the reference table with record references unset
@@ -3770,7 +3762,6 @@ class ReferenceList(DataList):
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
                 logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
             else:
-                print(import_df)
                 if not import_df.empty:
                     # Subset on table columns
                     import_df = import_df[[i for i in import_df.columns.values if i in df.columns]]
@@ -3821,7 +3812,6 @@ class ReferenceList(DataList):
         # Add entries that were set to deleted in the database to the import set
         if self._type_field:
             record_type = ref_df[self._type_field].unique().squeeze()
-            print('record type is {}'.format(record_type))
             record_entry = settings.records.fetch_rule(record_type)
             db_df = record_entry.import_references(ref_df, rule=self.association_rule, include_deleted=True)
 
@@ -3838,8 +3828,6 @@ class ReferenceList(DataList):
 
             # Add import dataframe to data table object
             db_ids = db_df[id_col].tolist()
-            print('appending deleted entries:')
-            print(db_df)
             import_table.append(db_df)
         else:
             db_ids = []
@@ -4831,7 +4819,6 @@ class DependentVariable(DataVariable):
                 input_value = mod_dm.evaluate_operation(values, self.operation)
             except Exception as e:
                 msg = self.format_log('failed to set the value of the dependent variable', err=e)
-                print(values)
                 logger.error(msg)
                 input_value = None
 
@@ -5131,7 +5118,6 @@ class TableButton:
         shortcut = '<{}>'.format(self.shortcut)
         if shortcut:
             bind_key = self.shortcut_key
-            print('binding shortcut {} to element {} with binding {}'.format(shortcut, element_key, bind_key))
             window[element_key].bind(shortcut, bind_key)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = None, disabled: bool = False):

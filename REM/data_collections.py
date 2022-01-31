@@ -41,7 +41,7 @@ class DataVector:
 
         # Starting value
         try:
-            self.default = mod_dm.format_value(entry['Default'], self.dtype)
+            self.default = mod_dm.format_value(entry['DefaultValue'], self.dtype)
         except KeyError:
             self.default = None
         except TypeError as e:
@@ -84,7 +84,7 @@ class DataVector:
         try:
             value = self.value.item()
         except AttributeError:
-            logger.debug('DataVector {NAME}: no value set for the data vector'.format(NAME=self.name))
+            #logger.debug('DataVector {NAME}: no value set for the data vector'.format(NAME=self.name))
             value = None
 
         return value
@@ -97,6 +97,8 @@ class DataVector:
             input_value: value input into the GUI element.
         """
         current_value = self.value
+        logger.debug('DataVector {NAME}: updating the value of the data vector with existing value {VAL}'
+                     .format(NAME=self.name, VAL=current_value))
 
         if input_value == '' or pd.isna(input_value):
             new_value = None
@@ -116,8 +118,7 @@ class DataVector:
         """
         value = value if value is not None else self.data()
 
-        logger.debug('DataVector {NAME}: formatting display for element value {VAL} of type {TYPE}'
-                     .format(NAME=self.name, VAL=value, TYPE=type(value)))
+        logger.debug('DataVector {NAME}: formatting the display for value "{VAL}"'.format(NAME=self.name, VAL=value))
 
         dtype = self.dtype
         if dtype == 'money':
@@ -177,8 +178,7 @@ class DataVector:
         if display_value in aliases:
             display_value = aliases[display_value]
 
-        logger.debug('DataVector {NAME}: setting display value to {VAL}'
-                     .format(NAME=self.name, VAL=display_value))
+        logger.debug('DataVector {NAME}: setting display value to {VAL}'.format(NAME=self.name, VAL=display_value))
 
         return display_value
 
@@ -1186,97 +1186,3 @@ class ReferenceCollection(DataCollection):
             row_ids = []
 
         return row_ids
-
-
-def format_value(value, dtype):
-    """
-    Set the datatype for a single value.
-
-    Arguments:
-        value (Series): non-iterable value to set.
-
-        dtype (str): scalar data type.
-    """
-    if dtype in ('date', 'datetime', 'timestamp', 'time'):
-        value = np.datetime64(value)
-    elif dtype in ('int', 'integer', 'bigint'):
-        value = np.int_(value)
-    elif dtype == 'mediumint':
-        value = np.intc(value)
-    elif dtype == 'smallint':
-        value = np.short(value)
-    elif dtype in ('tinyint', 'bit'):
-        value = np.byte(value)
-    elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-        value = np.single(value)
-    elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-        value = np.double(value)
-    elif dtype in ('bool', 'boolean'):
-        value = np.bool_(value)
-    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        value = np.str_(value)
-    else:
-        value = np.str_(value)
-
-    return value
-
-
-def format_values(values, dtype):
-    """
-    Set the datatype for an array of values.
-
-    Arguments:
-        values (Series): pandas Series containing array values.
-
-        dtype (str): array data type.
-    """
-    if not isinstance(values, pd.Series):
-        values = pd.Series(values)
-
-    if dtype in ('date', 'datetime', 'timestamp', 'time'):
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        if not is_datetime_dtype(values.dtype):
-            try:
-                values = pd.to_datetime(values.fillna(pd.NaT), errors='coerce', format=settings.date_format,
-                                        utc=False)
-            except Exception as e:
-                msg = 'failed to set column values to datatype {DTYPE} - {ERR}'.format(DTYPE=dtype, ERR=e)
-
-                raise ValueError(msg)
-        else:  # is datetime dtype
-            values = values.dt.tz_localize(None)
-            # values = column_values.apply(lambda x: x.replace(tzinfo=None))
-
-    elif dtype in ('int', 'integer', 'bigint'):
-        try:
-            values = values.astype('Int64')
-        except TypeError:
-            values = values.astype(float).astype('Int64')
-    elif dtype == 'mediumint':
-        try:
-            values = values.astype('Int32')
-        except TypeError:
-            values = values.astype(float).astype('Int32')
-    elif dtype == 'smallint':
-        try:
-            values = values.astype('Int16')
-        except TypeError:
-            values = values.astype(float).astype('Int16')
-    elif dtype in ('tinyint', 'bit'):
-        try:
-            values = values.astype('Int8')
-        except TypeError:
-            values = values.astype(float).astype('Int8')
-    elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-        values = pd.to_numeric(values, errors='coerce', downcast='float')
-    elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-        values = pd.to_numeric(values, errors='coerce')
-    elif dtype in ('bool', 'boolean'):
-        values = values.fillna(False).astype(np.bool_, errors='raise')
-    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        values = values.astype(np.object_, errors='raise')
-    else:
-        values = values.astype(np.object_, errors='raise')
-
-    return values
