@@ -16,7 +16,7 @@ class SQLStatementError(Exception):
         Exception.__init__(self, *args)
 
 
-# Database statement preparation functions
+# Database transaction functions
 def construct_where_clause(filter_rules):
     """
     Construct an SQL statement where clause for querying and updating database tables.
@@ -99,7 +99,7 @@ def convert_datatypes(value):
     return converted_value
 
 
-def prepare_query_statement(tables, columns='*', filter_rules=None, order=None, distinct: bool = False):
+def prepare_sql_query(tables, columns='*', filter_rules=None, order=None, distinct: bool = False):
     """
     Prepare a statement and parameters for querying an ODBC database.
 
@@ -151,7 +151,7 @@ def prepare_query_statement(tables, columns='*', filter_rules=None, order=None, 
     return (query_str, params)
 
 
-def prepare_insert_statement(table, columns, values, statements: dict = None):
+def prepare_sql_insert(table, columns, values, statements: dict = None):
     """
     Prepare a statement and parameters for inserting a new entry into an ODBC database.
     """
@@ -221,7 +221,7 @@ def prepare_insert_statement(table, columns, values, statements: dict = None):
     return statements
 
 
-def prepare_update_statement(table, columns, values, where_clause, filter_values, statements: dict = None):
+def prepare_sql_update(table, columns, values, where_clause, filter_values, statements: dict = None):
     """
     Prepare a statement and parameters for updating an existing entry in an ODBC database.
     """
@@ -311,7 +311,7 @@ def prepare_update_statement(table, columns, values, where_clause, filter_values
     return statements
 
 
-def prepare_upsert_statement(table, columns, values, conditionals, statements: dict = None):
+def prepare_sql_upsert(table, columns, values, conditionals, statements: dict = None):
     """
     Prepare a statement and parameters for inserting or updating an existing entry in an ODBC database, depending
     on whether it currently exists in the database or not.
@@ -417,7 +417,7 @@ def prepare_upsert_statement(table, columns, values, conditionals, statements: d
     return statements
 
 
-def prepare_delete_statement(table, columns, values, statements: dict = None):
+def prepare_sql_delete(table, columns, values, statements: dict = None):
     """
     Prepare a statement and parameters for deleting an existing entry from an ODBC database.
     """
@@ -505,7 +505,7 @@ def prepare_delete_statement(table, columns, values, statements: dict = None):
     return statements
 
 
-# Formatting functions
+# DB formatting functions
 def format_import_filters(import_rules):
     """
     Format filter parameters for querying.

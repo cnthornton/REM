@@ -1294,6 +1294,7 @@ class AccountManager:
         self.uid = None
         self.pwd = None
         self.group = None
+        self.roles = None
         self.logged_in = False
         self.admin = False
 
@@ -1303,7 +1304,8 @@ class AccountManager:
         """
         db = database if database is not None else settings.prog_db
 
-        return {'UID': self.uid, 'PWD': self.pwd, 'Database': db}
+        #return {'UID': self.uid, 'PWD': self.pwd, 'Database': db}
+        return {'UID': self.uid, 'PWD': cipher.decrypt(self.pwd).decode('utf-8'), 'Database': db}
 
     def login_new(self, uid, pwd, timeout: int = 10):
         """
@@ -1316,9 +1318,6 @@ class AccountManager:
 
             timeout (int): server connection timeout.
         """
-        self.uid = uid
-        self.pwd = pwd
-
         # Prepare the server request
         value = {'connection_string': self._prepare_conn_str()}
         content = {'action': 'db_login', 'value': value}
@@ -1330,49 +1329,12 @@ class AccountManager:
             msg = response['value']
             logger.error(msg)
 
-            results = []
-        else:
-            results = response['value']
-
-
-        # Prepare query statement and parameters
-        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
-        params = (uid,)
-
-        # Prepare the server request
-        value = {'connection_string': self._prepare_conn_str(), 'transaction_type': 'read', 'statement': query_str,
-                 'parameters': params}
-        content = {'action': 'db_transact', 'value': value}
-        request = {'content': content, 'encoding': "utf-8"}
-
-        # Send the request for data to the server
-        response = server_conn.process_request(request, timeout=timeout)
-        if response['success'] is False:
-            msg = 'login failure for user {USER} - {ERR}'.format(USER=uid, ERR=response['value'])
-            logger.error(msg)
-            raise IOError(msg)
-        else:
-            try:
-                series = pd.DataFrame(response['value']).iloc[0]
-            except Exception as e:
-                msg = 'failed to read the results of the database query - {ERR}'.format(ERR=e)
-                logger.error(msg)
-                raise IOError(msg)
-            else:
-                ugroup = series['UserGroup']
-
-        if not ugroup:
-            self.uid = None
-            self.pwd = None
             return False
 
         self.uid = uid
-        self.pwd = pwd
-        self.group = ugroup
+        self.pwd = cipher.encrypt(pwd.encode('utf-8'))
+        self.roles = response['value']
         self.logged_in = True
-
-        if ugroup == 'admin':
-            self.admin = True
 
         return True
 
@@ -1443,6 +1405,17 @@ class AccountManager:
         success = True
 
         return success
+
+    def access_permissions_new(self):
+        """
+        Return escalated privileges for a given user group.
+        """
+        ugroup = self.group
+
+        if ugroup == 'admin':
+            return ['admin', 'user']
+        else:
+            return ['user']
 
     def access_permissions(self):
         """
