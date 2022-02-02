@@ -1418,8 +1418,8 @@ class AuditTransaction:
 
                 import_filters = filters + [('{} = ?'.format(date_db_col),
                                              (prev_date.strftime(settings.date_format),))]
-                last_df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
-                                                                     filter_rules=import_filters))
+                last_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=import_columns,
+                                                                       filter_rules=import_filters))
                 last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
                 last_id = None
@@ -1525,8 +1525,8 @@ class AuditTransaction:
 
             import_filters = filters + [('{} = ?'.format(date_db_col),
                                          (audit_date.strftime(settings.date_format),))]
-            current_df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
-                                                                    filter_rules=import_filters))
+            current_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=import_columns,
+                                                                      filter_rules=import_filters))
 
             current_ids = sorted(current_df[pkey].tolist(), reverse=True)
             for current_id in current_ids:
@@ -1560,7 +1560,7 @@ class AuditTransaction:
             filters = [(filter_str, tuple(missing_transactions))]
 
             # Drop missing transactions if they don't meet the import parameter requirements
-            missing_df.append(user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
+            missing_df.append(user.read_db(*mod_db.prepare_query_statement(table_statement, columns=import_columns,
                               filter_rules=filters, order=pkey_db)), ignore_index=True)
 
         # Display import window with potentially missing data
@@ -1839,8 +1839,8 @@ class AuditRecord:
 
         # Import record from database
         try:
-            import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
-                                                                   filter_rules=filters), prog_db=program_records)
+            import_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=columns,
+                                                                     filter_rules=filters), prog_db=program_records)
         except Exception as e:
             mod_win2.popup_error('Attempt to import data from the database failed. Use the debug window for more '
                                  'information')

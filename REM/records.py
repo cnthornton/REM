@@ -338,12 +338,13 @@ class RecordEntry:
             filters.append((filter_clause, tuple(sub_ids)))
 
             if import_df.empty:
-                import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns,
-                                                                       filter_rules=filters), prog_db=self.program_record)
+                import_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=columns,
+                                                                         filter_rules=filters),
+                                         prog_db=self.program_record)
             else:
-                import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
-                                                                                        columns=columns,
-                                                                                        filter_rules=filters),
+                import_df = import_df.append(user.read_db(*mod_db.prepare_query_statement(table_statement,
+                                                                                          columns=columns,
+                                                                                          filter_rules=filters),
                                                           prog_db=self.program_record), ignore_index=True)
 
         logger.debug('{NLOADED} records passed the query filters out of {NTOTAL} requested records'
@@ -378,7 +379,7 @@ class RecordEntry:
                     filters.append(param_filter)
 
         # Query existing database entries
-        import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+        import_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                                  prog_db=self.program_record)
 
         return import_df
@@ -458,8 +459,8 @@ class RecordEntry:
                 if not include_deleted:
                     filters.append(('IsDeleted = ?', 0))
 
-                import_df = user.read_db(*user.prepare_query_statement(reference_table, columns=columns,
-                                                                       filter_rules=filters), prog_db=True)
+                import_df = user.read_db(*mod_db.prepare_query_statement(reference_table, columns=columns,
+                                                                         filter_rules=filters), prog_db=True)
                 df = df.append(import_df, ignore_index=True)
 
         # Set column data types
@@ -508,7 +509,7 @@ class RecordEntry:
                                          'Join': ["LEFT JOIN", join_statement]}
 
         table_statement = mod_db.format_tables(import_rules)
-        import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
+        import_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=columns, filter_rules=filters),
                                  prog_db=True)
 
         return import_df
@@ -561,12 +562,12 @@ class RecordEntry:
             filters = (filter_clause, tuple(sub_ids))
 
             if import_df.empty:
-                import_df = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col,
-                                                                       filter_rules=filters), prog_db=prog_db)
+                import_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=id_col,
+                                                                         filter_rules=filters), prog_db=prog_db)
             else:
-                import_df = import_df.append(user.read_db(*user.prepare_query_statement(table_statement,
-                                                                                        columns=id_col,
-                                                                                        filter_rules=filters),
+                import_df = import_df.append(user.read_db(*mod_db.prepare_query_statement(table_statement,
+                                                                                          columns=id_col,
+                                                                                          filter_rules=filters),
                                                           prog_db=prog_db), ignore_index=True)
 
         try:
@@ -654,8 +655,8 @@ class RecordEntry:
         export_columns = export_df.columns.tolist()
         export_values = [tuple(i) for i in export_df.values.tolist()]
 
-        statements = user.prepare_upsert_statement(reference_table, export_columns, export_values, ['DocNo', 'RefNo'],
-                                                   statements=statements)
+        statements = mod_db.prepare_upsert_statement(reference_table, export_columns, export_values, ['DocNo', 'RefNo'],
+                                                     statements=statements)
 
         return statements
 
@@ -718,8 +719,8 @@ class RecordEntry:
                                                             REFCOL=export_col_map['ReferenceID'])
         filter_params = [(row[export_col_map['RecordID']], row[export_col_map['ReferenceID']]) for _, row in export_df.iterrows()]
 
-        statements = user.prepare_update_statement(reference_table, export_columns, export_values, filter_clause,
-                                                   filter_params, statements=statements)
+        statements = mod_db.prepare_update_statement(reference_table, export_columns, export_values, filter_clause,
+                                                     filter_params, statements=statements)
 
         return statements
 
@@ -814,8 +815,8 @@ class RecordEntry:
                     record_ids = record_ids.values.tolist()
                 filter_params = [(i,) for i in record_ids]
                 filter_clause = '{COL} = ?'.format(COL=id_col)
-                statements = user.prepare_update_statement(table, export_columns, export_values, filter_clause,
-                                                           filter_params, statements=statements)
+                statements = mod_db.prepare_update_statement(table, export_columns, export_values, filter_clause,
+                                                             filter_params, statements=statements)
 
             # Extract all new records from the table
             new_df = export_df[export_df[id_field].isin(new_ids)]
@@ -832,7 +833,7 @@ class RecordEntry:
 
                 export_columns = new_df.rename(columns=export_col_map).columns.tolist()
                 export_values = [tuple(i) for i in new_df.values.tolist()]
-                statements = user.prepare_insert_statement(table, export_columns, export_values, statements=statements)
+                statements = mod_db.prepare_insert_statement(table, export_columns, export_values, statements=statements)
 
         # If relevant, create or edit hard-linked reference records for new database records
         new_df = df[df[id_field].isin(new_ids)].rename(columns={id_field: 'RecordID'})
@@ -1021,8 +1022,8 @@ class RecordEntry:
             filter_clause = '{COL} = ?'.format(COL=id_col)
 
             # Remove records from the export table
-            statements = user.prepare_update_statement(export_table, export_columns, export_values, filter_clause,
-                                                       filter_params, statements=statements)
+            statements = mod_db.prepare_update_statement(export_table, export_columns, export_values, filter_clause,
+                                                         filter_params, statements=statements)
 
         # Remove record associations and potentially delete associated records if associated records are child records
         # or hard-linked to the deleted records
@@ -1102,8 +1103,9 @@ class RecordEntry:
         # Connect to database
         params = (first_day, last_day)
         filters = ('{DATE} BETWEEN ? AND ?'.format(DATE=settings.date_field), params)
-        import_rows = user.read_db(*user.prepare_query_statement(table_statement, columns=id_col, filter_rules=filters,
-                                                                 order=id_col), prog_db=self.program_record)
+        import_rows = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=id_col,
+                                                                   filter_rules=filters, order=id_col),
+                                   prog_db=self.program_record)
 
         try:
             id_list = import_rows.iloc[:, 0]

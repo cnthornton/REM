@@ -2114,8 +2114,8 @@ def import_window(table, params: list = None):
                     query_filters.append(query_statement)
 
             try:
-                record_df = user.read_db(*user.prepare_query_statement(table_statement, columns=import_columns,
-                                                                       filter_rules=query_filters),
+                record_df = user.read_db(*mod_db.prepare_query_statement(table_statement, columns=import_columns,
+                                                                         filter_rules=query_filters),
                                          prog_db=program_database)
             except Exception as e:
                 popup_error('failed to import records matching the defined search parameters from the database - {ERR}'
