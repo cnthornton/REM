@@ -2726,9 +2726,16 @@ class DatabaseRecord:
 
         return report_dict
 
-    def layout(self, size, padding: tuple = None, view_only: bool = False, ugroup: list = None):
+    def layout(self, size, padding: tuple = None, view_only: bool = False):
         """
         Generate a GUI layout for the database record.
+
+        Arguments:
+            size (tuple): size (width, height) of the record layout.
+
+            padding (tuple): padding around the record layout in pixels.
+
+            view_only (bool): disallow editing of record components [Default: False].
         """
         width, height = size
 
@@ -2740,7 +2747,7 @@ class DatabaseRecord:
                      .format(NAME=self.name, NEW=('new ' if is_new else ''), LEVEL=level))
 
         editable = False if (view_only is True and is_new is False) or (level > 1) else True
-        user_priv = ugroup if ugroup else user.access_permissions()
+        user_priv = user.access_permissions()
 
         # Element parameters
         bg_col = mod_const.ACTION_COL

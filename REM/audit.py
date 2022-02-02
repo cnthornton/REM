@@ -702,8 +702,7 @@ class AuditRule:
         for tab in self.records:
             tab_key = tab.key_lookup('Tab')
             tab_title = tab.title
-            tab_layout = tab.record.layout((record_w, record_h), padding=(pad_frame, pad_frame),
-                                           ugroup=user.access_permissions())
+            tab_layout = tab.record.layout((record_w, record_h), padding=(pad_frame, pad_frame))
             record_tabs.append(sg.Tab(tab_title, tab_layout, key=tab_key, background_color=bg_col,
                                       metadata={'visible': True, 'disabled': False}))
 
