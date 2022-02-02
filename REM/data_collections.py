@@ -41,7 +41,7 @@ class DataVector:
 
         # Starting value
         try:
-            self.default = mod_dm.format_value(entry['Default'], self.dtype)
+            self.default = mod_dm.format_value(entry['DefaultValue'], self.dtype)
         except KeyError:
             self.default = None
         except TypeError as e:
@@ -84,7 +84,7 @@ class DataVector:
         try:
             value = self.value.item()
         except AttributeError:
-            logger.debug('DataVector {NAME}: no value set for the data vector'.format(NAME=self.name))
+            #logger.debug('DataVector {NAME}: no value set for the data vector'.format(NAME=self.name))
             value = None
 
         return value
@@ -97,6 +97,8 @@ class DataVector:
             input_value: value input into the GUI element.
         """
         current_value = self.value
+        logger.debug('DataVector {NAME}: updating the value of the data vector with existing value {VAL}'
+                     .format(NAME=self.name, VAL=current_value))
 
         if input_value == '' or pd.isna(input_value):
             new_value = None
@@ -116,8 +118,7 @@ class DataVector:
         """
         value = value if value is not None else self.data()
 
-        logger.debug('DataVector {NAME}: formatting display for element value {VAL} of type {TYPE}'
-                     .format(NAME=self.name, VAL=value, TYPE=type(value)))
+        logger.debug('DataVector {NAME}: formatting the display for value "{VAL}"'.format(NAME=self.name, VAL=value))
 
         dtype = self.dtype
         if dtype == 'money':
@@ -177,8 +178,7 @@ class DataVector:
         if display_value in aliases:
             display_value = aliases[display_value]
 
-        logger.debug('DataVector {NAME}: setting display value to {VAL}'
-                     .format(NAME=self.name, VAL=display_value))
+        logger.debug('DataVector {NAME}: setting display value to {VAL}'.format(NAME=self.name, VAL=display_value))
 
         return display_value
 
@@ -273,7 +273,7 @@ class DataCollection:
         self.default = {}
         for field in default:
             if field not in dtypes:
-                logger.warning('DataTable {NAME}: no data type set for default field "{COL}"'
+                logger.warning('DataCollection {NAME}: no data type set for default field "{COL}"'
                                .format(NAME=self.name, COL=field))
                 continue
 
@@ -1107,7 +1107,7 @@ class RecordCollection(DataCollection):
         return row_ids
 
 
-class ReferenceCollection(RecordCollection):
+class ReferenceCollection(DataCollection):
     """
     Collections of record reference data.
     """
@@ -1126,142 +1126,63 @@ class ReferenceCollection(RecordCollection):
                               'added': self._added_column, 'approved': 'IsApproved', 'child': 'IsChild',
                               'link': 'IsHardLink'}
 
-        self.ref_dtypes = {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
-                           'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool',
-                           'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool'}
+        self.dtypes = {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
+                       'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool',
+                       'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool', 'ReferenceWarnings': 'varchar',
+                       'ReferenceNotes': 'varchar'}
 
-        self.ref_df = pd.DataFrame(columns=list(self.ref_dtypes))
+        self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
 
-#    def merge(self, df: pd.DataFrame = None, ref_df: pd.DataFrame = None):
-#        """
-#        Merge the records table and the reference table on configured reference map columns.
-#
-#        Arguments:
-#            df (DataFrame): records data [Default: use full records dataframe].
-#
-#            ref_df (DataFrame): record reference data [Default: use full reference dataframe].
-#
-#        Returns:
-#            df (DataFrame): dataframe of records merged with their corresponding reference entries.
-#        """
-#        pd.set_option('display.max_columns', None)
-#
-#        ref_map = self.reference_columns
-#        id_col = self.id_column
-#
-#        df = self.data() if df is None else df
-#        ref_df = self.ref_df.copy() if ref_df is None else ref_df
-#
-#        # Reorder the references dataframe to match the order of the records in the records table
-#        ref_df.set_index(id_col, inplace=True)
-#        ref_df = ref_df.reindex(index=df[id_col])
-#
-#        # Get shared indices in case the references dataframe does not contain all of the data of the records dataframe
-#        if df.shape[0] != ref_df.shape[0]:
-#            logger.warning('BankAccount {NAME}: the records dataframe and reference dataframe of of unequal sizes'
-#                           .format(NAME=self.name))
-#            indices = df[df[id_col].isin(ref_df.index.tolist())].index
-#        else:
-#            indices = df.index.tolist()
-#
-#        # Update the configured references columns in the records dataframe to be the same as the columns in references
-#        # dataframe
-#        for column in ref_map:
-#            mapped_col = ref_map[column]
-#
-#            new_values = ref_df[column].tolist()
-#            self.update_field(mapped_col, new_values, indices=indices)
+    def record_index(self, record_ids, ref: bool = False):
+        """
+        Return a list of collection indices corresponding to the supplied record IDs.
 
+        Arguments:
+            record_ids: list of record IDs contained in the collection.
 
-def format_value(value, dtype):
-    """
-    Set the datatype for a single value.
+            ref (bool): record IDs are reference IDs [Default: False].
+        """
+        df = self.df
+        id_field = 'RecordID' if not ref else 'ReferenceID'
 
-    Arguments:
-        value (Series): non-iterable value to set.
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+        elif isinstance(record_ids, pd.Series):
+            record_ids = record_ids.tolist()
 
-        dtype (str): scalar data type.
-    """
-    if dtype in ('date', 'datetime', 'timestamp', 'time'):
-        value = np.datetime64(value)
-    elif dtype in ('int', 'integer', 'bigint'):
-        value = np.int_(value)
-    elif dtype == 'mediumint':
-        value = np.intc(value)
-    elif dtype == 'smallint':
-        value = np.short(value)
-    elif dtype in ('tinyint', 'bit'):
-        value = np.byte(value)
-    elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-        value = np.single(value)
-    elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-        value = np.double(value)
-    elif dtype in ('bool', 'boolean'):
-        value = np.bool_(value)
-    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        value = np.str_(value)
-    else:
-        value = np.str_(value)
+        indices = df.loc[df[id_field].isin(record_ids)].index.tolist()
 
-    return value
+        return indices
 
+    def row_ids(self, indices: list = None, deleted: bool = False, ref: bool = False):
+        """
+        Return a list of the current record IDs stored in the collection.
 
-def format_values(values, dtype):
-    """
-    Set the datatype for an array of values.
+        Arguments:
+            indices (list): optional list of indices to subset collection on [Default: get all record IDs in the
+                table].
 
-    Arguments:
-        values (Series): pandas Series containing array values.
+            deleted (bool): include deleted rows [Default: False].
 
-        dtype (str): array data type.
-    """
-    if not isinstance(values, pd.Series):
-        values = pd.Series(values)
+            ref (bool): record IDs are reference IDs [Default: False].
+        """
+        id_field = 'RecordID' if not ref else 'ReferenceID'
+        if isinstance(indices, int):
+            indices = [indices]
 
-    if dtype in ('date', 'datetime', 'timestamp', 'time'):
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        if deleted or (indices is not None and len(indices) > 0):
+            df = self.data(current=False)  # all rows, not just current
+        else:
+            df = self.data()
 
-        if not is_datetime_dtype(values.dtype):
-            try:
-                values = pd.to_datetime(values.fillna(pd.NaT), errors='coerce', format=settings.date_format,
-                                        utc=False)
-            except Exception as e:
-                msg = 'failed to set column values to datatype {DTYPE} - {ERR}'.format(DTYPE=dtype, ERR=e)
+        if indices is None:
+            indices = df.index
 
-                raise ValueError(msg)
-        else:  # is datetime dtype
-            values = values.dt.tz_localize(None)
-            # values = column_values.apply(lambda x: x.replace(tzinfo=None))
-
-    elif dtype in ('int', 'integer', 'bigint'):
         try:
-            values = values.astype('Int64')
-        except TypeError:
-            values = values.astype(float).astype('Int64')
-    elif dtype == 'mediumint':
-        try:
-            values = values.astype('Int32')
-        except TypeError:
-            values = values.astype(float).astype('Int32')
-    elif dtype == 'smallint':
-        try:
-            values = values.astype('Int16')
-        except TypeError:
-            values = values.astype(float).astype('Int16')
-    elif dtype in ('tinyint', 'bit'):
-        try:
-            values = values.astype('Int8')
-        except TypeError:
-            values = values.astype(float).astype('Int8')
-    elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
-        values = pd.to_numeric(values, errors='coerce', downcast='float')
-    elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
-        values = pd.to_numeric(values, errors='coerce')
-    elif dtype in ('bool', 'boolean'):
-        values = values.fillna(False).astype(np.bool_, errors='raise')
-    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        values = values.astype(np.object_, errors='raise')
-    else:
-        values = values.astype(np.object_, errors='raise')
+            row_ids = df.loc[indices, id_field].tolist()
+        except KeyError as e:
+            logger.exception('DataCollection {NAME}: unable to return a list of row IDs - {ERR}'
+                             .format(NAME=self.name, COL=id_field, ERR=e))
+            row_ids = []
 
-    return values
+        return row_ids

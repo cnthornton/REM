@@ -327,7 +327,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
-    #record_events = record.record_events()
     while True:
         event, values = window.read(timeout=100)
 
@@ -382,10 +381,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
             if not elements_updated:
                 continue
 
-            # Update modifier values
-            #for modifier in record.metadata:
-            #    modifier.format_value(values)
-
             # Verify that required parameters have values
             can_continue = record.check_required_parameters()
 
@@ -413,10 +408,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
             if not elements_updated:
                 continue
-
-            # Update modifier values
-            #for modifier in record.metadata:
-            #    modifier.format_value(values)
 
             # Save the record to the database table
             saved = record.save()
@@ -546,7 +537,7 @@ def parameter_window(account, win_size: tuple = None):
     # Parameters layout
     params_layout = []
     params = {}
-    param_keys = {}
+    bindings = {}
 
     # Primary account acct_params
     acct_param_entry = account.parameters
@@ -584,8 +575,8 @@ def parameter_window(account, win_size: tuple = None):
         param = param_class(param_name, param_entry)
         primary_layout.append(
             param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left', auto_size_desc=False))
-        for element in param.elements:
-            param_keys[element] = primary_acct_name
+        for element in param.bindings:
+            bindings[element] = primary_acct_name
 
         try:
             params[primary_acct_name].append(param)
@@ -643,7 +634,7 @@ def parameter_window(account, win_size: tuple = None):
                 params[pgroup_name] = [param]
 
             for element in param.bindings:
-                param_keys[element] = pgroup_name
+                bindings[element] = pgroup_name
 
         params_layout.append([sg.Col(pgroup_layout, key='-{}-'.format(pgroup_name), pad=(pad_h, pad_v),
                                      background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
@@ -763,9 +754,9 @@ def parameter_window(account, win_size: tuple = None):
                 continue
 
         # Associated account parameter events
-        if event in param_keys:
+        if event in bindings:
             # Fetch the parameter corresponding to the window event element
-            event_pgroup = param_keys[event]
+            event_pgroup = bindings[event]
             pgroup_params = params[event_pgroup]
             event_param = mod_param.fetch_parameter(pgroup_params, event, by_key=True)
 
@@ -1867,12 +1858,6 @@ def record_import_window(table, enable_new: bool = False):
     if not frame.metadata['visible']:  # frame is collapsed
         table.collapse_expand(window)
 
-    #frames = [table.key_lookup('Frame{}'.format(i)) for i in range(2)]
-    #for i, frame_key in enumerate(frames):
-    #    frame = window[frame_key]
-    #    if not frame.metadata['visible']:  # frame is collapsed
-    #        table.collapse_expand(window, index=i)
-
     # Adjust window size
     screen_w, screen_h = window.get_screen_dimensions()
     win_w = int(screen_w * 0.8)
@@ -1889,10 +1874,6 @@ def record_import_window(table, enable_new: bool = False):
 
     # Main loop
     elem_key = table.key_lookup('Element')
-    open_key = '{}+LCLICK+'.format(elem_key)
-    return_key = '{}+RETURN+'.format(elem_key)
-    filter_key = table.key_lookup('Filter')
-    filter_hkey = '{}+FILTER+'.format(elem_key)
     while True:
         event, values = window.read(timeout=500)
 
@@ -1953,56 +1934,52 @@ def record_import_window(table, enable_new: bool = False):
 
             continue
 
-        if event in (open_key, return_key):  # click to open record
-            # Close options panel, if open
-            table.set_table_dimensions(window)
-
-            # retrieve selected row
-            try:
-                row_index = values[elem_key][0]
-            except IndexError:
-                continue
-            else:
-                table._selected_rows = [row_index]
-                table.update_annotation(window)
-
-                print('selected table row index is: {}'.format(row_index))
-
-                # Get the real index of the selected row
-                index = table.get_index(row_index)
-                record = table.load_record(index, level=0)
-                if record:
-                    import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
-
-                    table.reset(window, reset_filters=False, collapse=False)
-                    table.append(import_df)
-                    table.update_display(window)
-
-                continue
-
-        # Run table filter event
-        elif event in (filter_key, filter_hkey):
-            print(values)
-            for param in table.parameters:
-                # Set parameter values from window elements
-                param.format_value(values)
-                if param.has_value:
-                    print('parameter {} has value {}'.format(param.name, param.value))
-
-            # Load the display records
-            import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
-            print('appending data to the table:')
-            print(import_df)
-
-            table.reset(window, reset_filters=False, collapse=False)
-            table.append(import_df)
-            table.update_display(window)
-
-        # Run table events
-        else:
-            table.run_event(window, event, values)
-
+        # Import table events
+        try:
+            element_event = table.bindings[event]
+        except KeyError:
             continue
+        else:
+            reload = False
+
+            # Load record event
+            if element_event == 'Load':  # click to open record
+                # Close options panel, if open
+                table.set_table_dimensions(window)
+
+                # retrieve selected row
+                try:
+                    row_index = values[elem_key][0]
+                except IndexError:
+                    continue
+                else:
+                    table._selected_rows = [row_index]
+                    table.update_annotation(window)
+
+                    # Get the real index of the selected row
+                    index = table.get_index(row_index)
+                    record = table.load_record(index, level=0)
+                    if record:
+                        reload = True
+
+            # Table filter event
+            elif element_event == 'Filter':
+                for param in table.parameters:
+                    # Set parameter values from window elements
+                    param.format_value(values)
+
+                # Load the display records
+                reload = True
+
+            else:
+                table.run_event(window, event, values)
+
+            if reload:  # should reload the import records
+                table.reset(window, reset_filters=False, collapse=False)
+
+                import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
+                table.append(import_df)
+                table.update_display(window)
 
     window.close()
     layout = None

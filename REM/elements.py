@@ -62,8 +62,10 @@ class RecordElement:
         self.parent = parent
         self.id = randint(0, 1000000000)
 
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                         ('Element',)]
+        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        #                 ('Element',)]
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                         ('Element',)}
 
         try:
             self.etype = entry['ElementType']
@@ -124,7 +126,28 @@ class RecordElement:
         # Dynamic variables
         self.edited = False
 
-    def key_lookup(self, component):
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a record element's GUI element key using the name of the component.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the record element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = self.format_log('component "{COMP}" not found in list of element components'.format(COMP=component))
+            logger.warning(msg)
+            print(key_map)
+
+            raise KeyError(msg)
+
+        return key
+
+    def key_lookup_old(self, component):
         """
         Lookup a record element's GUI element key using the name of the component.
         """
@@ -141,13 +164,14 @@ class RecordElement:
 
         return key
 
-    def format_log(self, msg):
+    def format_log(self, msg, err: str = None):
         """
         Format the record elements log message.
         """
-        msg = '{TYPE} {NAME}: {MSG}'.format(TYPE=self.etype, NAME=self.name, MSG=msg)
+        msg = '{MSG} - {ERR}'.format(MSG=msg, ERR=err) if err else msg
+        msg_fmt = '{TYPE} {NAME}: {MSG}'.format(TYPE=self.etype, NAME=self.name, MSG=msg)
 
-        return msg
+        return msg_fmt
 
 
 class DataTable(RecordElement):
@@ -201,18 +225,20 @@ class DataTable(RecordElement):
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
 
         self.etype = 'table'
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
-                               'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
-                               'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')])
-        event_elements = ['Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options']
+        record_elements = ('Table', 'Export', 'Total', 'Search', 'Filter', 'Fill', 'FilterFrame', 'CollapseBttn',
+                           'Sort', 'Options', 'OptionsFrame', 'OptionsWidth', 'WidthCol1', 'WidthCol2', 'WidthCol3',
+                           'TitleBar', 'FilterBar', 'ActionsBar', 'Notes')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         return_key = '{}+RETURN+'.format(elem_key)
         open_key = '{}+LCLICK+'.format(elem_key)
         filter_hkey = '{}+FILTER+'.format(elem_key)
-        self.bindings = [self.key_lookup(i) for i in event_elements] + [open_key, return_key, filter_hkey]
+        event_elements = ('Element', 'Filter', 'Fill', 'Sort', 'Export', 'CollapseBttn', 'Options')
+
+        self.bindings = {self.elements[i]: i for i in event_elements}
+        self.bindings.update({open_key: 'Load', return_key: 'Load', filter_hkey: 'Filter'})
 
         # Table data collection
         try:
@@ -239,8 +265,8 @@ class DataTable(RecordElement):
                 try:
                     flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
-                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, MOD=modifier))
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
                     flag = False
 
                 self.modifiers[modifier] = flag
@@ -263,8 +289,8 @@ class DataTable(RecordElement):
                 continue
             else:
                 self.actions.append(action)
-                self.elements.append(action.element_key)
-                self.bindings.extend(action.bindings)
+                self.elements[action_name] = action.element_key
+                self.bindings.update(action.bindings)
 
         # Attributes that affect how the table data is displayed
         try:
@@ -329,7 +355,7 @@ class DataTable(RecordElement):
                 continue
 
             self.parameters.append(param)
-            self.bindings.extend(param.bindings)
+            self.bindings.update(param.bindings)
 
         try:
             edit_columns = entry['EditColumns']
@@ -395,7 +421,8 @@ class DataTable(RecordElement):
             if summary_stat not in self._supported_stats:
                 msg = 'unknown statistic {STAT} set for summary column "{COL}"' \
                     .format(STAT=summary_stat, COL=summary_col)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
+
                 continue
 
             self.summary_rules[summary_col] = summary_stat
@@ -557,8 +584,8 @@ class DataTable(RecordElement):
             try:
                 max_size_per_col = int(tbl_width / ncol)
             except ZeroDivisionError:
-                logger.warning('DataTable {NAME}: division by zero error encountered while attempting to calculate '
-                               'column widths'.format(NAME=self.name))
+                logger.warning(self.format_log('division by zero error encountered while attempting to calculate '
+                                               'column widths'))
                 max_size_per_col = int(tbl_width / 10)
 
             # Each column has size == max characters per column
@@ -576,11 +603,24 @@ class DataTable(RecordElement):
 
         return lengths
 
+    def enabled(self, bttn_name):
+        """
+        Determine if a table action button is disabled or not.
+        """
+        try:
+            bttn = self.fetch_parameter(bttn_name, filters=False)
+        except KeyError:
+            enabled = False
+        else:
+            enabled = not bttn.disabled
+
+        return enabled
+
     def enable(self, window):
         """
         Enable data table element actions.
         """
-        logger.debug('DataTable {NAME}: enabling actions'.format(NAME=self.name))
+        logger.debug(self.format_log('enabling actions'))
 
         action_bttns = self.actions
         for action_bttn in action_bttns:
@@ -590,7 +630,7 @@ class DataTable(RecordElement):
         """
         Disable data table element actions.
         """
-        logger.debug('DataTable {NAME}: disabling actions'.format(NAME=self.name))
+        logger.debug(self.format_log('disabling actions'))
 
         action_bttns = self.actions
         for action_bttn in action_bttns:
@@ -659,228 +699,218 @@ class DataTable(RecordElement):
         Run a table GUI event.
         """
         collection = self.collection
-
         elem_key = self.key_lookup('Element')
-        search_key = self.key_lookup('Search')
-        options_key = self.key_lookup('Options')
-        frame_key = self.key_lookup('OptionsFrame')
-        sort_key = self.key_lookup('Sort')
-        fill_key = self.key_lookup('Fill')
-        export_key = self.key_lookup('Export')
-        filter_key = self.key_lookup('Filter')
-        filter_hkey = '{}+FILTER+'.format(elem_key)
-        frame_bttn = self.key_lookup('CollapseBttn')
-
-        param_elems = [i for param in self.parameters for i in param.elements]
-        open_key = '{}+LCLICK+'.format(elem_key)
-        return_key = '{}+RETURN+'.format(elem_key)
-
-        try:
-            delete_bttn = self.fetch_parameter('Delete', filters=False)
-        except KeyError:
-            delete_key = delete_hkey = None
-            can_delete = False
-        else:
-            delete_key, delete_hkey = delete_bttn.key_lookup()
-            can_delete = not window[delete_key].metadata['disabled'] and window[delete_key].metadata['visible']
-        try:
-            import_bttn = self.fetch_parameter('Import', filters=False)
-        except KeyError:
-            import_key = import_hkey = None
-            can_import = False
-        else:
-            import_key, import_hkey = import_bttn.key_lookup()
-            can_import = not window[import_key].metadata['disabled'] and window[import_key].metadata['visible']
 
         # Table events
         update_event = False
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
-        # Single click to select a table row
-        if event == elem_key:
-            selected_rows = values[elem_key]
-            self._selected_rows = selected_rows
-            self.update_annotation(window)
-
-        # Double-click or return key pressed to open table row
-        elif event in (open_key, return_key):
-            # Close options panel, if open
-            self.set_table_dimensions(window)
-
-            # Find the row selected by the user
-            try:
-                select_row_index = values[elem_key][0]
-            except IndexError:  # user double-clicked too quickly
-                msg = 'table row could not be selected'
-                logger.debug('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            else:
-                self._selected_rows = [select_row_index]
-                self.update_annotation(window)
-
-                print('selected table row index is: {}'.format(select_row_index))
-
-                # Get the real index of the selected row
-                index = self.get_index(select_row_index)
-                update_event = self.run_table_event(index)
-
-        elif event == search_key:
-            # Update the search field value
-            search_col = self.search_field[0]
-            search_value = values[search_key]
-            self.search_field = (search_col, search_value)
-
-            self.update_display(window)
-
-        elif event == frame_bttn:
-            self.collapse_expand(window)
-
-        # Click filter Apply button to apply filtering to table
-        elif event in (filter_key, filter_hkey):
-            # Update parameter values
-            for param in self.parameters:
-                try:
-                    param.value = param.format_value(values)
-                except ValueError:
-                    msg = 'failed to filter table rows - incorrectly formatted value provided to filter parameter ' \
-                          '{PARAM}'.format(PARAM=param.description)
-                    logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_error(msg)
-
-                    return triggers
-
-            # Update the display table to show the filtered table
-            self.update_display(window)
-
-        # Click to open table options panel
-        elif event == options_key:
-            if window[frame_key].metadata['visible'] is False:
-                window[frame_key].metadata['visible'] = True
-
-                tbl_width, tbl_height = window[elem_key].get_size()
-
-                # Reduce table size
-                frame_w = 220
-                new_width = tbl_width - frame_w - 4 if tbl_width - frame_w - 4 > 0 else 0
-                logger.debug('DataTable {NAME}: resizing the table from {W} to {NW} to accommodate the options frame '
-                             'of width {F}'.format(NAME=self.name, W=tbl_width, NW=new_width, F=frame_w))
-                self._update_column_widths(window, width=new_width)
-
-                # Reveal the options frame
-                window[frame_key].update(visible=True)
-                window[frame_key].expand(expand_y=True)
-
-                # Update the display table to show annotations properly
-                self.update_display(window)
-            else:
-                self.set_table_dimensions(window)
-
-        # Sort column selected from menu of sort columns
-        elif event == sort_key:
-            sort_on = self.sort_on
-            display_map = {j: i for i, j in self.display_columns.items()}
-
-            # Get sort column
-            display_col = values[sort_key]
-            try:
-                sort_col = display_map[display_col]
-            except KeyError:
-                logger.warning('DataTable {NAME}: column "{COL}" must be a display column in order to sort'
-                               .format(NAME=self.name, COL=display_col))
-            else:
-                if sort_col in sort_on:
-                    # Remove column from sortby list
-                    self.sort_on.remove(sort_col)
-                else:
-                    # Add column to sortby list
-                    self.sort_on.append(sort_col)
-
-            # Update the display table to show the sorted values
-            self.update_display(window)
-
-        # NA value fill method selected from menu of fill methods
-        elif event == fill_key:
-            display_map = {j: i for i, j in self.display_columns.items()}
-
-            # Get selected rows, if any
-            select_row_indices = values[elem_key]
-
-            # Get the real indices of the selected rows
-            indices = self.get_index(select_row_indices)
-            if len(indices) < 2:
-                msg = 'table fill requires more than one table rows to be selected'.format(NAME=self.name)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return triggers
-
-            # Find the selected column to fill
-            display_col = values[fill_key]
-            try:
-                fill_col = display_map[display_col]
-            except KeyError:
-                msg = 'fill display column {COL} must have a one-to-one mapping with a table display column' \
-                    .format(COL=display_col)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                return triggers
-
-            # Fill in NA values
-            collection.fill(indices=indices, fields=fill_col)
-            update_event = True
-
-        elif event in param_elems:
+        # Event is a table filter parameter
+        param_events = [i for param in self.parameters for i in param.bindings]
+        if event in param_events:
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
-                logger.error('DataTable {TBL}: unable to find parameter associated with event key {KEY}'
-                             .format(TBL=self.name, KEY=event))
+                logger.error(self.format_log('unable to find parameter associated with event key {KEY}'
+                                             .format(KEY=event)))
             else:
                 param.run_event(window, event, values)
 
-        elif event == export_key:
-            outfile = sg.popup_get_file('', title='Export table display', save_as=True,
-                                        default_extension='xlsx', no_window=True,
-                                        file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
+        try:
+            element_event = self.bindings[event]
+        except KeyError:
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
 
-            if outfile:
-                logger.info('DataTable {NAME}: exporting the display table to spreadsheet {FILE}'
-                            .format(NAME=self.name, FILE=outfile))
+            return triggers
+        else:
+            logger.debug(self.format_log('running table event {EVENT}'.format(EVENT=element_event)))
 
-                export_df = self.export_table()
+            # Single click to select a table row
+            if element_event == 'Element':
+                selected_rows = values[elem_key]
+                self._selected_rows = selected_rows
+                self.update_annotation(window)
+
+            # Double-click or return key pressed to open table row
+            elif element_event == 'Load':
+                # Close options panel, if open
+                self.set_table_dimensions(window)
+
+                # Find the row selected by the user
                 try:
-                    export_df.to_excel(outfile, engine='openpyxl', header=True, index=False)
+                    select_row_index = values[elem_key][0]
+                except IndexError:  # user double-clicked too quickly
+                    msg = 'table row could not be selected'
+                    logger.debug(self.format_log(msg))
+                else:
+                    self._selected_rows = [select_row_index]
+                    self.update_annotation(window)
+
+                    # Get the real index of the selected row
+                    index = self.get_index(select_row_index)
+                    update_event = self.run_table_event(index)
+
+            elif element_event == 'Search':
+                search_key = self.key_lookup('Search')
+
+                # Update the search field value
+                search_col = self.search_field[0]
+                search_value = values[search_key]
+                self.search_field = (search_col, search_value)
+
+                self.update_display(window)
+
+            elif element_event == 'CollapseBttn':
+                self.collapse_expand(window)
+
+            # Click filter Apply button to apply filtering to table
+            elif element_event == 'Filter':
+                # Update parameter values
+                for param in self.parameters:
+                    try:
+                        param.value = param.format_value(values)
+                    except ValueError:
+                        msg = 'failed to filter table rows'
+                        err = 'incorrectly formatted value provided to filter parameter {}'.format(param.description)
+                        logger.error(self.format_log(msg, err=err))
+                        mod_win2.popup_error(msg)
+
+                        return triggers
+
+                # Update the display table to show the filtered table
+                self.update_display(window)
+
+            # Click to open table options panel
+            elif element_event == 'Options':
+                frame_key = self.key_lookup('OptionsFrame')
+
+                if window[frame_key].metadata['visible'] is False:
+                    window[frame_key].metadata['visible'] = True
+
+                    tbl_width, tbl_height = window[elem_key].get_size()
+
+                    # Reduce table size
+                    frame_w = 220
+                    new_width = tbl_width - frame_w - 4 if tbl_width - frame_w - 4 > 0 else 0
+                    logger.debug(self.format_log('resizing the table from {W} to {NW} to accommodate the options frame '
+                                                 'of width {F}'.format(W=tbl_width, NW=new_width, F=frame_w)))
+                    self._update_column_widths(window, width=new_width)
+
+                    # Reveal the options frame
+                    window[frame_key].update(visible=True)
+                    window[frame_key].expand(expand_y=True)
+
+                    # Update the display table to show annotations properly
+                    self.update_display(window)
+                else:
+                    self.set_table_dimensions(window)
+
+            # Sort column selected from menu of sort columns
+            elif element_event == 'Sort':
+                sort_key = self.key_lookup('Sort')
+                sort_on = self.sort_on
+                display_map = {j: i for i, j in self.display_columns.items()}
+
+                # Get sort column
+                display_col = values[sort_key]
+                try:
+                    sort_col = display_map[display_col]
+                except KeyError:
+                    logger.warning(self.format_log('column "{COL}" must be a display column in order to sort'
+                                                   .format(COL=display_col)))
+                else:
+                    if sort_col in sort_on:
+                        # Remove column from sortby list
+                        self.sort_on.remove(sort_col)
+                    else:
+                        # Add column to sortby list
+                        self.sort_on.append(sort_col)
+
+                # Update the display table to show the sorted values
+                self.update_display(window)
+
+            # NA value fill method selected from menu of fill methods
+            elif element_event == 'Fill':
+                fill_key = self.key_lookup('Fill')
+                display_map = {j: i for i, j in self.display_columns.items()}
+
+                # Get selected rows, if any
+                select_row_indices = values[elem_key]
+
+                # Get the real indices of the selected rows
+                indices = self.get_index(select_row_indices)
+                if len(indices) < 2:
+                    msg = 'table fill requires more than one table rows to be selected'
+                    logger.warning(self.format_log(msg))
+
+                    return triggers
+
+                # Find the selected column to fill
+                display_col = values[fill_key]
+                try:
+                    fill_col = display_map[display_col]
+                except KeyError:
+                    msg = self.format_log('fill display column {COL} must have a one-to-one mapping with a table '
+                                          'display column'.format(COL=display_col))
+                    logger.warning(msg)
+
+                    return triggers
+
+                # Fill in NA values
+                collection.fill(indices=indices, fields=fill_col)
+                update_event = True
+
+            elif element_event == 'Export':
+                outfile = sg.popup_get_file('', title='Export table display', save_as=True,
+                                            default_extension='xlsx', no_window=True,
+                                            file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
+
+                if outfile:
+                    logger.info(self.format_log('exporting the display table to spreadsheet {FILE}'.format(FILE=outfile)))
+
+                    export_df = self.export_table()
+                    try:
+                        export_df.to_excel(outfile, engine='openpyxl', header=True, index=False)
+                    except Exception as e:
+                        msg = 'failed to save table to file to {FILE} - {ERR}'.format(FILE=outfile, ERR=e)
+                        logger.exception(self.format_log(msg))
+                        mod_win2.popup_error(msg)
+                else:
+                    logger.warning(self.format_log('no output file selected'))
+
+            # Delete rows button clicked
+            elif element_event == 'Delete':
+                if not self.enabled(element_event):
+                    return triggers
+
+                # Find rows selected by user for deletion
+                select_row_indices = values[elem_key]
+
+                # Get the real indices of the selected rows
+                indices = self.get_index(select_row_indices)
+                if len(indices) > 0:
+                    collection.delete(indices)
+                    update_event = True
+
+            # Import rows button clicked
+            elif element_event == 'Import':
+                if not self.enabled(element_event):
+                    return triggers
+
+                # Close options panel, if open
+                self.set_table_dimensions(window)
+
+                try:
+                    import_rows = self.import_rows()
                 except Exception as e:
-                    msg = 'failed to save table to file to {FILE} - {ERR}'.format(FILE=outfile, ERR=e)
-                    logger.exception(msg)
-                    mod_win2.popup_error(msg)
-            else:
-                logger.warning('DataTable {NAME}: no output file selected'.format(NAME=self.name))
+                    msg = 'failed to run table import event'
+                    logger.exception(self.format_log(msg, err=e))
+                else:
+                    if not import_rows.empty:
+                        collection.append(import_rows, new=True)
 
-        # Delete rows button clicked
-        elif event in (delete_key, delete_hkey) and can_delete:
-            # Find rows selected by user for deletion
-            select_row_indices = values[elem_key]
-
-            # Get the real indices of the selected rows
-            indices = self.get_index(select_row_indices)
-            if len(indices) > 0:
-                collection.delete(indices)
-                update_event = True
-
-        # Import rows button clicked
-        elif event in (import_key, import_hkey) and can_import:
-            # Close options panel, if open
-            self.set_table_dimensions(window)
-
-            try:
-                import_rows = self.import_rows()
-            except Exception as e:
-                msg = 'failed to run table import event'
-                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-            else:
-                if not import_rows.empty:
-                    collection.append(import_rows, new=True)
-
-                update_event = True
+                    update_event = True
 
         if update_event:
             self.edited = True
@@ -897,8 +927,7 @@ class DataTable(RecordElement):
         """
         collection = self.collection
 
-        logger.debug('DataTable {NAME}: opening row at real index {IND} for editing'
-                     .format(NAME=self.name, IND=index))
+        logger.debug(self.format_log('opening row at real index {IND} for editing'.format(IND=index)))
 
         edited_row = self.edit_row(index)
         if edited_row is None:
@@ -969,7 +998,7 @@ class DataTable(RecordElement):
                 selected_rows = [index_map[i] for i in current_rows]
             except KeyError:
                 msg = 'missing index information for one or more selected rows'.format(NAME=self.name)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
 
                 selected_rows = current_rows
         else:
@@ -998,7 +1027,7 @@ class DataTable(RecordElement):
                 indices = [index_map[i] for i in selected]
         except KeyError:
             msg = 'missing index information for one or more selected rows'.format(NAME=self.name)
-            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.warning(self.format_log(msg))
             indices = selected
 
         return indices
@@ -1055,21 +1084,20 @@ class DataTable(RecordElement):
                 search_col = search_value = None
 
             if not search_value:  # no search value provided in the search field, try the filter parameters
-                logger.debug('DataTable {NAME}: filtering the display table based on user-supplied parameter values'
-                             .format(NAME=self.name))
+                logger.debug(self.format_log('filtering the display table based on user-supplied parameter values'))
 
                 parameters = self.parameters
                 for param in parameters:
                     df = param.filter_table(df)
             else:
-                logger.debug('DataTable {NAME}: filtering the display table based on search value {VAL}'
-                             .format(NAME=self.name, VAL=search_value))
+                logger.debug(self.format_log('filtering the display table based on search value {VAL}'
+                                             .format(VAL=search_value)))
 
                 try:
                     df = df[df[search_col].str.contains(search_value, case=False, regex=True)]
                 except KeyError:
-                    msg = 'DataTable {NAME}: search field {COL} not found in list of table columns' \
-                        .format(NAME=self.name, COL=search_col)
+                    msg = self.format_log('search field {COL} not found in list of table columns'
+                                          .format(NAME=self.name, COL=search_col))
                     logger.warning(msg)
         else:
             current = (not all_rows) if indices is None or deleted_rows is False else False
@@ -1097,7 +1125,7 @@ class DataTable(RecordElement):
         tbl_key = self.key_lookup('Element')
         annotations = {} if annotations is None else annotations
 
-        logger.debug('DataTable {TBL}: formatting table for displaying'.format(TBL=self.name))
+        logger.debug(self.format_log('formatting table for displaying'))
 
         # Sort table and update table sorting information
         self.collection.sort(self.sort_on)
@@ -1153,7 +1181,7 @@ class DataTable(RecordElement):
         try:
             tbl_total = self.calculate_total(df)
         except Exception as e:
-            msg = 'DataTable {NAME}: failed to calculate table totals - {ERR}'.format(NAME=self.name, ERR=e)
+            msg = self.format_log('failed to calculate table totals - {ERR}'.format(ERR=e))
             logger.warning(msg)
             tbl_total = 0
 
@@ -1239,7 +1267,7 @@ class DataTable(RecordElement):
                 col_to_add = self.format_display_column(df, column)
             except Exception as e:
                 msg = 'failed to format column {COL} for display'.format(COL=column)
-                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
 
                 continue
 
@@ -1248,6 +1276,20 @@ class DataTable(RecordElement):
         return display_df.astype('object').fillna('')
 
     def format_display_column(self, df, column):
+        """
+        Format the values of a table column for display.
+        """
+        try:
+            display_col = self.collection.format_display_field(column, data=df)
+        except KeyError:
+            msg = 'column {COL} not found in the table dataframe'.format(COL=column)
+            logger.error(self.format_log(msg))
+
+            raise KeyError(msg)
+
+        return display_col
+
+    def format_display_column_old(self, df, column):
         """
         Format the values of a table column for display.
         """
@@ -1263,7 +1305,7 @@ class DataTable(RecordElement):
             display_col = df[column]
         except KeyError:
             msg = 'column {COL} not found in the table dataframe'.format(COL=column)
-            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error(self.format_log(msg))
 
             raise KeyError(msg)
 
@@ -1333,21 +1375,21 @@ class DataTable(RecordElement):
         if df.empty or rules is None:
             return {}
 
-        logger.debug('DataTable {NAME}: annotating display table on configured annotation rules'.format(NAME=self.name))
+        logger.debug(self.format_log('annotating display table on configured annotation rules'))
 
         annotations = {}
         rows_annotated = []
         for annot_code in rules:
-            logger.debug('DataTable {NAME}: annotating table based on configured annotation rule "{CODE}"'
-                         .format(NAME=self.name, CODE=annot_code))
+            logger.debug(self.format_log('annotating table based on configured annotation rule "{CODE}"'
+                                         .format(CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
                 # results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
-                logger.error('DataTable {NAME}: failed to annotate data table using annotation rule {CODE} - {ERR}'
-                             .format(NAME=self.name, CODE=annot_code, ERR=e))
+                logger.error(self.format_log('failed to annotate data table using annotation rule {CODE} - {ERR}'
+                                             .format(CODE=annot_code, ERR=e)))
                 continue
 
             for row_index, result in results.iteritems():
@@ -1482,8 +1524,8 @@ class DataTable(RecordElement):
                 elif use_center is False and index_mod == 0:
                     right_cols.append([param_layout])
                 else:
-                    logger.warning('DataTable {NAME}: cannot assign layout for table filter parameter {PARAM}'
-                                   .format(NAME=self.name, PARAM=parameter.name))
+                    logger.warning(self.format_log('cannot assign layout for table filter parameter {PARAM}'
+                                                   .format(PARAM=parameter.name)))
 
         n_filter_rows = ceiling(i / 3) if use_center else ceiling(i / 2)
         frame_h = row_h * n_filter_rows + (ceiling(bttn_h / row_h) * row_h - bttn_h)
@@ -1578,7 +1620,6 @@ class DataTable(RecordElement):
         header = display_df.columns.tolist()
         data = display_df.values.tolist()
         events = True if level < 2 else False
-        logger.debug('DataTable {NAME}: events are enabled: {EVENT}'.format(NAME=self.name, EVENT=events))
         vis_map = []
         for display_column in header:
             if display_column in hidden_columns:
@@ -1706,7 +1747,7 @@ class DataTable(RecordElement):
         else:
             new_w, new_h = (current_w, current_h)
 
-        logger.debug('DataTable {TBL}: resizing display to {W}, {H}'.format(TBL=self.name, W=new_w, H=new_h))
+        logger.debug(self.format_log('resizing display to {W}, {H}'.format(W=new_w, H=new_h)))
         mod_lo.set_size(window, table_key, (new_w, new_h))
         self._dimensions = (new_w, new_h)
 
@@ -1755,7 +1796,7 @@ class DataTable(RecordElement):
         frame_key = self.key_lookup('OptionsFrame')
         width, nrows = self.get_table_dimensions(window)
 
-        logger.debug('DataTable {NAME}: resetting display table dimensions'.format(NAME=self.name))
+        logger.debug(self.format_log('resetting display table dimensions'))
 
         # Close options panel, if open
         if window[frame_key].metadata['visible'] is True:
@@ -1819,14 +1860,14 @@ class DataTable(RecordElement):
         frame_meta = frame.metadata
 
         if frame_meta['visible']:  # already visible, so want to collapse the frame
-            logger.debug('DataTable {NAME}: collapsing the filter frame'.format(NAME=self.name))
+            logger.debug(self.format_log('collapsing the filter frame'))
             bttn.update(image_data=mod_const.UNHIDE_ICON)
             frame.update(visible=False)
 
             frame.metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
             if not frame_meta['disabled']:
-                logger.debug('DataTable {NAME}: expanding the filter frame'.format(NAME=self.name))
+                logger.debug(self.format_log('expanding the filter frame'))
                 bttn.update(image_data=mod_const.HIDE_ICON)
                 frame.update(visible=True)
 
@@ -1839,7 +1880,7 @@ class DataTable(RecordElement):
         Export table to spreadsheet.
         """
         df = self.data(display_rows=display)
-        logger.info('DataTable {NAME}: preparing the table for exporting'.format(NAME=self.name))
+        logger.info(self.format_log('preparing the table for exporting'))
 
         # Annotate the table
         annotations = self.annotate_rows(df)
@@ -1889,48 +1930,9 @@ class DataTable(RecordElement):
             try:
                 total = mod_dm.evaluate_operation(summary_df, tally_rule)
             except Exception as e:
-                msg = 'DataTable {NAME}: unable to calculate table total - {ERR}' \
-                    .format(NAME=self.name, ERR=e)
-                logger.warning(msg)
+                msg = 'unable to calculate table total'
+                logger.warning(self.format_log(msg, err=e))
                 total = 0
-        else:
-            total = df.shape[0]
-
-        return total
-
-    def calculate_total_old(self, df: pd.DataFrame = None):
-        """
-        Calculate the data table total using the configured tally rule.
-        """
-        is_float_dtype = pd.api.types.is_float_dtype
-        is_integer_dtype = pd.api.types.is_integer_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-
-        tally_rule = self.tally_rule
-        df = df if df is not None else self.data(display_rows=True)
-        if df.empty:
-            return 0
-
-        total = 0
-        if tally_rule is not None:
-            try:
-                # result = mod_dm.evaluate_rule(df, tally_rule, as_list=False)
-                result = mod_dm.evaluate_operation(df, tally_rule)
-            except Exception as e:
-                msg = 'DataTable {NAME}: unable to calculate table total - {ERR}' \
-                    .format(NAME=self.name, ERR=e)
-                logger.warning(msg)
-            else:
-                dtype = result.dtype
-                if is_float_dtype(dtype) or is_integer_dtype(dtype) or is_bool_dtype(dtype):
-                    total = result.sum()
-                elif is_string_dtype(dtype) or is_datetime_dtype(dtype):
-                    total = result.nunique()
-                else:  # possibly empty dataframe
-                    total = 0
-                logger.debug('DataTable {NAME}: table totals calculated as {TOTAL}'.format(NAME=self.name, TOTAL=total))
         else:
             total = df.shape[0]
 
@@ -1956,14 +1958,13 @@ class DataTable(RecordElement):
         if df.empty:
             return df
 
-        logger.debug('DataTable {NAME}: sub-setting table on rule {RULE}'.format(NAME=self.name, RULE=subset_rule))
+        logger.debug(self.format_log('sub-setting table on rule {RULE}'.format(RULE=subset_rule)))
         try:
             # results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
             results = mod_dm.evaluate_condition(df, subset_rule)
         except Exception as e:
-            msg = 'DataTable {NAME}: failed to subset table on rule {RULE} - {ERR}' \
-                .format(NAME=self.name, RULE=subset_rule, ERR=e)
-            logger.error(msg)
+            msg = 'failed to subset table on rule {RULE}'.format(RULE=subset_rule)
+            logger.error(self.format_log(msg, err=e))
 
             raise ValueError(msg)
 
@@ -1980,8 +1981,8 @@ class DataTable(RecordElement):
         required_columns = self.required_columns
         for required_column in required_columns:
             has_na = comp_df[required_column].isnull().any()
-            logger.debug('DataTable {NAME}: required column {COL} has NA values: {HAS}'
-                         .format(NAME=self.name, COL=required_column, HAS=has_na))
+            logger.debug(self.format_log('required column {COL} has NA values: {HAS}'
+                                         .format(COL=required_column, HAS=has_na)))
             if has_na:
                 display_map = self.display_columns
                 try:
@@ -1990,7 +1991,7 @@ class DataTable(RecordElement):
                     display_column = required_column
 
                 msg = 'missing values for required column {COL}'.format(COL=display_column)
-                logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
 
                 return False
 
@@ -2019,8 +2020,7 @@ class DataTable(RecordElement):
         except IndexError:
             msg = 'no record found at table index "{IND}" to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: failed to edit record at row {IND} - {MSG}'
-                         .format(NAME=self.name, MSG=msg, IND=index + 1))
+            logger.error(self.format_log('failed to edit record at row {IND} - {MSG}'.format(MSG=msg, IND=index + 1)))
 
             return df
 
@@ -2056,8 +2056,7 @@ class DataTable(RecordElement):
 
         if not select_df.empty:
             # Change deleted column of existing selected records to False
-            logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
-                         'False'.format(NAME=self.name))
+            logger.debug(self.format_log('changing deleted status of selected records stored in the table to False'))
             collection.set_state('deleted', False, indices=select_df.index.tolist())
 
         return pd.DataFrame()
@@ -2161,7 +2160,7 @@ class RecordTable(DataTable):
         try:
             self.collection = mod_col.RecordCollection(name, entry)
         except Exception as e:
-            msg = self.format_log('failed to initialize the collection - {ERR}'.format(ERR=e))
+            msg = self.format_log('failed to initialize the collection', err=e)
             raise AttributeError(msg)
 
         self.id_column = self.collection.id_column
@@ -2181,8 +2180,8 @@ class RecordTable(DataTable):
                 try:
                     flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
-                    logger.warning('DataTable {TBL}: modifier {MOD} must be either 0 (False) or 1 (True)'
-                                   .format(TBL=self.name, MOD=modifier))
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
                     flag = False
 
                 self.modifiers[modifier] = flag
@@ -2203,6 +2202,7 @@ class RecordTable(DataTable):
 
             if 'Columns' not in import_rule:
                 msg = 'missing required "ImportRules" {TBL} parameter "Columns"'.format(TBL=import_table)
+                logger.error(self.format_log(msg))
 
                 raise AttributeError(msg)
             if 'Filters' not in import_rule:
@@ -2227,19 +2227,19 @@ class RecordTable(DataTable):
         Run a table action event.
         """
         collection = self.collection
-        logger.debug('DataTable {NAME}: opening record at real index {IND} for editing'
-                     .format(NAME=self.name, IND=index))
+        update_event = False
+
+        logger.debug(self.format_log('opening record at real index {IND} for editing'.format(IND=index)))
 
         record = self.load_record(index)
 
         # Update record table values
-        update_event = False
         if record and self.modifiers['edit']:
             try:
                 record_values = record.export_values()
             except Exception as e:
                 msg = 'unable to update row {IND} values'.format(IND=index)
-                logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                logger.exception(self.format_log(msg, err=e))
             else:
                 update_event = collection.update_entry(index, record_values)
 
@@ -2289,9 +2289,10 @@ class RecordTable(DataTable):
         try:
             record = self._translate_row(record_data, level=1, new_record=True)
         except Exception as e:
-            msg = 'failed to add new record to the table - {ERR}'.format(ERR=e)
-            mod_win2.popup_error(msg)
-            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            msg = 'failed to add new record to the table'
+            logger.error(self.format_log(msg, err=e))
+            mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
+
             raise
 
         # Display the record window
@@ -2301,8 +2302,7 @@ class RecordTable(DataTable):
         except AttributeError:  # record creation was cancelled
             return False
         else:
-            logger.debug('DataTable {NAME}: appending values {VALS} to the table'
-                         .format(NAME=self.name, VALS=record_values))
+            logger.debug(self.format_log('appending values {VALS} to the table'.format(VALS=record_values)))
             collection.append(record_values, inplace=True, new=True)
 
             self.edited = True
@@ -2323,7 +2323,6 @@ class RecordTable(DataTable):
             savable (bool): database entry of the record can be updated through the record window [Default: True].
         """
         collection = self.collection
-        # df = collection.data(current=False)
         df = collection.data(current=False)
         modifiers = self.modifiers
 
@@ -2333,10 +2332,9 @@ class RecordTable(DataTable):
         try:
             row = df.loc[index]
         except IndexError:
-            msg = 'no record found at table index {IND} to edit'.format(IND=index + 1)
+            msg = 'no record found at table index "{IND}" to edit'.format(IND=index + 1)
             mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: failed to open record at row {IND} - {MSG}'
-                             .format(NAME=self.name, IND=index + 1, MSG=msg))
+            logger.exception(self.format_log('failed to open record at row {IND}'.format(IND=index + 1), err=msg))
 
             return None
 
@@ -2351,16 +2349,14 @@ class RecordTable(DataTable):
             record = self._translate_row(row, level=level, new_record=False, references=references)
         except Exception as e:
             msg = 'failed to open record at row {IND}'.format(IND=index + 1)
+            logger.exception(self.format_log(msg, err=e))
             mod_win2.popup_error(msg)
-            logger.exception('DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             return None
         else:
-            logger.info('DataTable {NAME}: opening record {ID} at row {IND}'
-                        .format(NAME=self.name, ID=record.record_id(), IND=index))
+            logger.info(self.format_log('opening record {ID} at row {IND}'.format(ID=record.record_id(), IND=index)))
 
         # Display the record window
-        logger.debug('DataTable {NAME}: record is set to view only: {VAL}'.format(NAME=self.name, VAL=view_only))
         record = mod_win2.record_window(record, view_only=view_only, modify_database=savable)
 
         return record
@@ -2378,13 +2374,9 @@ class RecordTable(DataTable):
 
         if import_df is None:
             import_df = collection.data(current=False, deleted_only=True)
-        print('import data is:')
-        print(import_df)
         current_ids = collection.row_ids(indices=import_df.index, deleted=True)
-        print('records previously deleted are:')
-        print(current_ids)
 
-        logger.debug('DataTable {NAME}: importing rows'.format(NAME=self.name))
+        logger.debug(self.format_log('importing rows'))
 
         table_layout = {'Columns': columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
                         'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': id_col,
@@ -2416,21 +2408,18 @@ class RecordTable(DataTable):
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, params=search_params)
-        print('selected records are:')
-        print(select_df)
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
         existing_indices = collection.record_index(select_ids)
         existing_ids = collection.row_ids(existing_indices, deleted=True)
 
-        logger.debug('DataTable {NAME}: removing selected records {IDS} already stored in the table at rows {ROWS}'
-                     .format(NAME=self.name, IDS=existing_ids, ROWS=existing_indices))
+        logger.debug(self.format_log('removing selected records {IDS} already stored in the table at rows {ROWS}'
+                                     .format(IDS=existing_ids, ROWS=existing_indices)))
         select_df.drop(select_df.loc[select_df[id_col].isin(existing_ids)].index, inplace=True, axis=0, errors='ignore')
 
         # Change deleted column of existing selected records to False
-        logger.debug('DataTable {NAME}: changing deleted status of selected records already stored in the table to '
-                     'False'.format(NAME=self.name))
+        logger.debug(self.format_log('changing deleted status of selected records stored in the table to False'))
         collection.set_state('deleted', False, indices=existing_indices)
 
         return select_df
@@ -2442,7 +2431,6 @@ class ComponentTable(RecordTable):
     associated records.
 
     Attributes:
-
         name (str): table element configuration name.
 
         elements (list): list of table element keys.
@@ -2488,7 +2476,7 @@ class ComponentTable(RecordTable):
             self.association_rule = entry['AssociationRule']
         except KeyError:
             msg = 'missing required parameter "AssociationRule"'
-            logger.error(msg)
+            logger.error(self.format_log(msg))
 
             raise AttributeError(msg)
 
@@ -2506,11 +2494,7 @@ class ComponentTable(RecordTable):
 
         if import_df is None:
             import_df = collection.data(current=False, deleted_only=True)
-        print('import data is:')
-        print(import_df)
         current_ids = collection.row_ids()
-        print('records currently in dataframe:')
-        print(current_ids)
 
         logger.debug(self.format_log('importing rows'))
 
@@ -2538,7 +2522,7 @@ class ComponentTable(RecordTable):
                 df = record_entry.load_unreferenced_records(rule_name)
             except Exception as e:
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
-                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+                logger.exception(self.format_log(msg, err=e))
             else:
                 if not df.empty:
                     # Subset on table columns
@@ -2572,8 +2556,6 @@ class ComponentTable(RecordTable):
 
         # Get table of user selected import records
         select_df = mod_win2.import_window(import_table, params=search_params)
-        print('selected records are:')
-        print(select_df)
 
         # Verify that selected records are not already in table
         select_ids = select_df[id_col]
@@ -2619,6 +2601,146 @@ class ComponentTable(RecordTable):
         return ref_df
 
 
+class ReferenceTable(RecordTable):
+    """
+    Subclass of the records table, but for record references. Allows additional actions such as creating
+    associated records.
+
+    Attributes:
+        name (str): table element configuration name.
+
+        elements (list): list of table element keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize reference table attributes.
+
+        Arguments:
+            name (str): name of the configured table element.
+
+            entry (dict): configuration entry for the table element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+        self.etype = 'reference_table'
+
+        self.reference = mod_col.ReferenceCollection(name, entry)
+
+        # Control flags that modify the table's behaviour
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
+                              'export': False, 'fill': False, 'sort': False}
+        else:
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': 0,
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
+                              'fill': 0, 'sort': modifiers.get('sort', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
+                    flag = False
+
+                self.modifiers[modifier] = flag
+
+        try:
+            self.association_rule = entry['AssociationRule']
+        except KeyError:
+            msg = 'missing required parameter "AssociationRule"'
+            logger.error(self.format_log(msg))
+
+            raise AttributeError(msg)
+
+    def _aggregate_references(self):
+        """
+        Prepare the reference entry dataframe for merging with the records.
+        """
+        is_numeric_dtype = pd.api.types.is_numeric_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+
+        ref_df = self.reference.data()
+        ref_col_map = self.ref_map
+
+        ref_df.set_index('RecordID', inplace=True)
+
+        # Subset reference table columns by the reference map
+        ref_df = ref_df[[i for i in ref_col_map]].rename(columns=ref_col_map)
+        aggby = {}
+        for colname, dtype in ref_df.dtypes.iteritems():
+            if is_bool_dtype(dtype) or is_datetime_dtype(dtype):
+                aggfunc = 'first'
+            elif is_numeric_dtype(dtype):
+                aggfunc = 'sum'
+            elif is_string_dtype(dtype):
+                aggfunc = '; '.join
+                ref_df[colname].fillna('', inplace=True)
+            else:
+                aggfunc = 'sum'
+
+            aggby[colname] = aggfunc
+
+        # Group reference entries with the same record ID
+        ref_df = ref_df.groupby(ref_df.index).aggregate(aggby)
+
+        return ref_df
+
+    def merge_references(self, df: pd.DataFrame = None):
+        """
+        Merge the records table and the reference table on configured reference map columns.
+
+        Arguments:
+            df (DataFrame): merge references with the provided records dataframe [Default: use full records dataframe].
+
+        Returns:
+            df (DataFrame): dataframe of records merged with their corresponding reference entries.
+        """
+        pd.set_option('display.max_columns', None)
+
+        df = self.data() if df is None else df
+        ref_df = self._aggregate_references()
+
+        # Reorder the references dataframe to match the order of the records in the records table
+        ref_df = ref_df.reindex(index=df['RecordID'].tolist())
+
+        # Update the configured references columns in the records dataframe to be the same as the columns in references
+        # dataframe
+        for column in ref_df.columns:
+            try:
+                new_values = ref_df[column].tolist()
+            except KeyError:
+                new_values = None
+
+            self.update_column(column, new_values)
+
+    def has_reference(self, record_ids):
+        """
+        Confirm whether a set of records in the table has one or more corresponding reference entries.
+
+        Arguments:
+            record_ids (list): list of record IDs to check for references.
+        """
+        ref_df = self.reference.data(current=True)
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+
+        references = ref_df.loc[ref_df['RecordID'].isin(record_ids)]
+
+        if references.empty:
+            return False
+        elif references['ReferenceID'].isna().any():
+            return False
+        else:
+            return True
+
+
 class DataList(RecordElement):
     """
     Record element that displays a data set in the form of a category list.
@@ -2645,18 +2767,19 @@ class DataList(RecordElement):
         """
         super().__init__(name, entry, parent)
         self._supported_stats = ['sum', 'count', 'product', 'mean', 'median', 'mode', 'min', 'max', 'std', 'unique']
-
         self.etype = 'list'
 
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Element', 'Frame', 'Description', 'Options')])
-        self._event_elements = ['Element', 'Options']
+        record_elements = ('Frame', 'Description', 'Options')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
         focus_key = '{}+FOCUS+'.format(frame_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [focus_key]
+        element_events = ('Element', 'Options')
+
+        self.bindings = {self.elements[i]: i for i in element_events}
+        self.bindings[focus_key] = 'Frame'
 
         try:
             self.collection = mod_col.DataCollection(name, entry)
@@ -2674,7 +2797,6 @@ class DataList(RecordElement):
 
         self.actions = {}
         self._actions = {}
-        self._bindings = {}
         for action_name in actions:
             action_entry = actions[action_name]
 
@@ -2683,8 +2805,7 @@ class DataList(RecordElement):
 
             if 'Shortcut' in action_entry:
                 bind_key = '{ELEM}+{DESC}+'.format(ELEM=elem_key, DESC=action_name.upper())
-                self.bindings.append(bind_key)
-                self._bindings[bind_key] = action_name
+                self.bindings[bind_key] = action_name
 
             self.actions[action_name] = action_entry
             self._actions[action_entry['Description']] = action_name
@@ -2776,13 +2897,17 @@ class DataList(RecordElement):
         self.flags = {}
         for flag_column in display_flags:
             if flag_column in columns:
-                flag_entry = display_flags[flag_column]
-                if 'Description' not in flag_entry:
+                _flag_entry = display_flags[flag_column]
+                flag_entry = {}
+                try:
+                    flag_entry['Description'] = _flag_entry['Description']
+                except KeyError:
                     flag_entry['Description'] = flag_column
-                if 'Icon' not in flag_entry:
+                try:
+                    flag_entry['Icon'] = settings.get_icon_path(_flag_entry['Icon'])
+                except KeyError:
+                    logger.warning(self.format_log('no icon specified for flag {FLAG}'.format(FLAG=flag_column)))
                     flag_entry['Icon'] = settings.get_icon_path()  # defaults to a blank icon
-                else:
-                    flag_entry['Icon'] = settings.get_icon_path(flag_entry['Icon'])
 
                 self.flags[flag_column] = flag_entry
             else:
@@ -2910,83 +3035,81 @@ class DataList(RecordElement):
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # List element events
-        bind_keys = self._bindings
-        elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('Frame')
-        options_key = self.key_lookup('Options')
+        try:
+            element_event = self.bindings[event]
+        except KeyError:
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
 
-        focus_event = '{}+FOCUS+'.format(frame_key)
+            return triggers
+        else:
+            logger.debug(self.format_log('running list event {EVENT}'.format(EVENT=element_event)))
 
         # Set focus to the element and enable edit mode
-        if event == focus_event:
+        if element_event == 'Frame':
+            elem_key = self.key_lookup('Element')
             window[elem_key].set_focus()
+
             return triggers
 
-        if event == options_key:
+        if element_event == 'Options':
+            options_key = self.key_lookup('Options')
             selection = values[options_key]
-            event_type = self._actions[selection]
-            index = None
-        elif event in bind_keys:
-            event_type = bind_keys[event]
-            index = None
-        else:  # entry events
-            event_type, index = self.fetch_entry(event)
+            element_event = self._actions[selection]
 
         # Add a new entry to the data list
-        if event_type == 'Add':
+        if element_event == 'Add':
             try:
                 import_rows = self.add_entries()
             except Exception as e:
-                msg = 'failed to run the import entry event'
-                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+                msg = 'failed to add entries to the list'
+                logger.exception(self.format_log(msg, err=e))
             else:
                 if not import_rows.empty:
-                    print('appending new import entries to the collection:')
-                    print(import_rows)
                     self.collection.append(import_rows, new=True)
 
                 update_event = True
 
         # Import a previously deleted entry
-        if event_type == 'Import':
+        elif element_event == 'Import':
             try:
                 import_rows = self.import_entries()
             except Exception as e:
-                msg = 'failed to run the import entry event'
-                logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+                msg = 'failed to import entries into the list'
+                logger.exception(self.format_log(msg, err=e))
             else:
                 if not import_rows.empty:
-                    print('appending new import entries to the collection:')
-                    print(import_rows)
                     self.collection.append(import_rows, new=True)
 
                 update_event = True
 
-        # Delete a list entry
-        elif event_type == 'Delete':
-            msg = 'Are you sure that you would like to disassociate reference from the record? Disassociating ' \
-                  'records does not delete either record involved.'
-            user_action = mod_win2.popup_confirm(msg)
+        else:  # event is an entry event
+            event_type, index = self.fetch_entry(event)
 
-            if user_action.upper() == 'OK':
-                update_event = True
-                self.edited = True
-                self.collection.set_state('deleted', True, indices=[index])
+            if event_type == 'Delete':
+                msg = 'Are you sure that you would like to disassociate reference from the record? Disassociating ' \
+                      'records does not delete either record involved.'
+                user_action = mod_win2.popup_confirm(msg)
 
-        # Edit the notes field of a list entry
-        elif event_type == 'Edit':
-            note_key = self.key_lookup('Notes:{}'.format(index))
-            current_note = window[note_key].metadata['value']
-            note = mod_win2.add_note_window(current_note)
-            if not pd.isna(note):
-                self.edited = True
-                window[note_key].update(value=note)
-                window[note_key].metadata['value'] = note
-                self.collection.update_field(self._notes_field, note, indices=[index])  # also updated "edited" state
+                if user_action.upper() == 'OK':
+                    update_event = True
+                    self.edited = True
+                    self.collection.set_state('deleted', True, indices=[index])
 
-        # Run a header event
-        elif event_type == 'Header':
-            self.run_header_event(index)
+            # Edit the notes field of a list entry
+            elif event_type == 'Edit':
+                note_key = self.key_lookup('Notes:{}'.format(index))
+                current_note = window[note_key].metadata['value']
+                note = mod_win2.add_note_window(current_note)
+                if not pd.isna(note):
+                    self.edited = True
+                    window[note_key].update(value=note)
+                    window[note_key].metadata['value'] = note
+                    self.collection.update_field(self._notes_field, note, indices=[index])  # also update "edited" state
+
+            # Run a header event
+            elif event_type == 'Header':
+                self.run_header_event(index)
 
         if update_event:
             resize_event = self.update_display(window)
@@ -3138,7 +3261,7 @@ class DataList(RecordElement):
         # Listbox header and options button
         header = display_row[self._header_field]
         header_key = entry_elements['Header']
-        self.bindings.append(header_key)
+        self.bindings[header_key] = 'Header:{INDEX}'.format(INDEX=index)
         header_layout = [sg.Text(header, key=header_key, enable_events=True, font=font, text_color=select_text_color,
                                  background_color=bg_color)]
 
@@ -3206,7 +3329,8 @@ class DataList(RecordElement):
         # Listbox actions
         delete_key = entry_elements['Delete']
         edit_key = entry_elements['Edit']
-        self.bindings.extend([edit_key, delete_key])
+        self.bindings.update({edit_key: 'Edit:{INDEX}'.format(INDEX=index),
+                              delete_key: 'Delete:{INDEX}'.format(INDEX=index)})
 
         action_layout = [sg.Button('', key=edit_key, image_data=mod_const.TAKE_NOTE_ICON, pad=(pad_action, 0),
                                    border_width=0, button_color=(text_color, bg_color), visible=can_edit),
@@ -3228,8 +3352,8 @@ class DataList(RecordElement):
         # Add the index to list of entry indices
         self.indices.append(index)
 
-        for element in entry_elements:
-            self.elements.append(entry_elements[element])
+        #for element in entry_elements:
+        self.elements.update({'{NAME}:{INDEX}'.format(NAME=i, INDEX=index): j for i, j in entry_elements.items()})
 
     def update_entry(self, index, window):
         """
@@ -3344,10 +3468,8 @@ class DataList(RecordElement):
             if index in entry_indices:
                 entry_key = self.key_lookup('Entry:{}'.format(index))
                 entry_deleted = collection.get_state('deleted', indices=[index])
-                print('entry {} has been deleted: {}'.format(index, entry_deleted))
 
                 if entry_deleted:  # entry layout should be hidden when entry is set to "deleted"
-                    print('deleting entry {}'.format(index))
 
                     if window[entry_key].metadata['visible']:  # entry layout is not yet hidden from the display
                         window[entry_key].update(visible=False)
@@ -3355,7 +3477,6 @@ class DataList(RecordElement):
                         resize_event = True
                 else:  # these entries should all have visible layouts
                     if not window[entry_key].metadata['visible']:  # entry layout should be updated and made visible
-                        print('updating entry {}'.format(index))
                         resize_event = True
                         self.update_entry(index, window)
 
@@ -3632,7 +3753,6 @@ class ReferenceList(DataList):
         # Search for records without an existing reference to the provided reference type
         ref_types = df[ref_field].unique().tolist()
         for ref_type in ref_types:
-            print('loading unreferenced records for records of type {}'.format(ref_type))
             ref_entry = settings.records.fetch_rule(ref_type)
 
             # Import the entries from the reference table with record references unset
@@ -3642,7 +3762,6 @@ class ReferenceList(DataList):
                 msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=rule_name)
                 logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
             else:
-                print(import_df)
                 if not import_df.empty:
                     # Subset on table columns
                     import_df = import_df[[i for i in import_df.columns.values if i in df.columns]]
@@ -3693,7 +3812,6 @@ class ReferenceList(DataList):
         # Add entries that were set to deleted in the database to the import set
         if self._type_field:
             record_type = ref_df[self._type_field].unique().squeeze()
-            print('record type is {}'.format(record_type))
             record_entry = settings.records.fetch_rule(record_type)
             db_df = record_entry.import_references(ref_df, rule=self.association_rule, include_deleted=True)
 
@@ -3710,8 +3828,6 @@ class ReferenceList(DataList):
 
             # Add import dataframe to data table object
             db_ids = db_df[id_col].tolist()
-            print('appending deleted entries:')
-            print(db_df)
             import_table.append(db_df)
         else:
             db_ids = []
@@ -3818,7 +3934,7 @@ class DataVariable(RecordElement):
                     flag = bool(int(self.modifiers[modifier]))
                 except ValueError:
                     logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
-                                                   .format(TBL=self.name, MOD=modifier)))
+                                                   .format(MOD=modifier)))
                     flag = False
 
                 self.modifiers[modifier] = flag
@@ -3840,14 +3956,14 @@ class DataVariable(RecordElement):
         annotation = None
         for annot_code in rules:
             logger.debug(self.format_log('annotating element based on configured annotation rule "{CODE}"'
-                                         .format(NAME=self.name, CODE=annot_code)))
+                                         .format(CODE=annot_code)))
             rule = rules[annot_code]
             annot_condition = rule['Condition']
             try:
                 results = mod_dm.evaluate_condition({self.name: current_value}, annot_condition)
             except Exception as e:
-                logger.error(self.format_log('failed to annotate element using annotation rule {CODE} - {ERR}'
-                                             .format(CODE=annot_code, ERR=e)))
+                logger.error(self.format_log('failed to annotate element using annotation rule {CODE}'
+                                             .format(CODE=annot_code), err=e))
                 continue
 
             result = results.squeeze()
@@ -3915,16 +4031,18 @@ class DataVariable(RecordElement):
         """
         Resize the element display.
         """
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
         current_w, current_h = self.dimensions()
+
         if size:
             width, height = size
             new_h = current_h if height is None else height
             new_w = current_w if width is None else width
+            window[elem_key].set_size(size=(1, None))
         else:
             new_w, new_h = (current_w, current_h)
 
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)
 
@@ -3992,17 +4110,18 @@ class RecordVariable(DataVariable):
         """
         super().__init__(name, entry, parent)
         self.etype = 'text'
-
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')])
-        self._event_elements = ['Edit', 'Save', 'Cancel']
+        record_elements = ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
         lclick_event = '{}+LCLICK+'.format(elem_key)
         return_key = '{}+RETURN+'.format(elem_key)
         escape_key = '{}+ESCAPE+'.format(elem_key)
-        self.bindings = [self.key_lookup(i) for i in self._event_elements] + [lclick_event, return_key, escape_key]
+        event_elements = ('Element', 'Edit', 'Save', 'Cancel')
+
+        self.bindings = {self.elements[i]: i for i in event_elements}
+        self.bindings.update({lclick_event: 'Edit', return_key: 'Save', escape_key: 'Cancel'})
 
         # Dynamic variables
         self.edit_mode = False
@@ -4011,9 +4130,9 @@ class RecordVariable(DataVariable):
         """
         Add hotkey bindings to the record element.
         """
-        elem_key = self.key_lookup('Element')
-
         if not self.disabled:
+            elem_key = self.key_lookup('Element')
+
             window[elem_key].bind('<Button-1>', '+LCLICK+')
             window[elem_key].bind('<Return>', '+RETURN+')
             window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
@@ -4073,24 +4192,28 @@ class RecordVariable(DataVariable):
         elem_key = self.key_lookup('Element')
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
-        save_key = self.key_lookup('Save')
-        save_hkey = '{}+RETURN+'.format(elem_key)
-        cancel_key = self.key_lookup('Cancel')
-        cancel_hkey = '{}+ESCAPE+'.format(elem_key)
         aux_key = self.key_lookup('Auxiliary')
-        left_click = '{}+LCLICK+'.format(elem_key)
         try:
             calendar_key = self.key_lookup('Calendar')
         except KeyError:
             calendar_key = None
 
         currently_editing = self.edit_mode
-
         update_event = False
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
+        try:
+            element_event = self.bindings[event]
+        except KeyError:
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
+
+            return triggers
+        else:
+            logger.debug(self.format_log('running variable event {EVENT}'.format(EVENT=element_event)))
+
         # Set focus to the element and enable edit mode
-        if event in (edit_key, left_click) and not currently_editing:
+        if element_event == 'Edit' and not currently_editing:
             window[elem_key].set_focus()
 
             if self.disabled:
@@ -4113,7 +4236,7 @@ class RecordVariable(DataVariable):
             self.edit_mode = True
 
         # Set element to inactive mode and update the element value
-        elif event in (save_key, save_hkey) and currently_editing:
+        elif element_event == 'Save' and currently_editing:
             # Update value of the data element
             try:
                 value = values[elem_key]
@@ -4125,7 +4248,7 @@ class RecordVariable(DataVariable):
                     edited = self.update_value(value)
                 except Exception as e:
                     msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
-                    logger.exception(self.format_log('{MSG} - {ERR}'.format(MSG=msg, ERR=e)))
+                    logger.exception(self.format_log(msg, err=e))
                     mod_win2.popup_error(msg)
 
                 else:
@@ -4147,7 +4270,7 @@ class RecordVariable(DataVariable):
 
             self.edit_mode = False
 
-        elif event in (cancel_key, cancel_hkey) and currently_editing:
+        elif element_event == 'Cancel' and currently_editing:
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
@@ -4159,7 +4282,6 @@ class RecordVariable(DataVariable):
                 window[calendar_key].update(disabled=False)
 
             self.edit_mode = False
-
             self.update_display(window)
 
         triggers['ValueEvent'] = update_event
@@ -4261,7 +4383,7 @@ class RecordVariable(DataVariable):
 
         # Element layout
         width_key = self.key_lookup('Width')
-        layout_attrs = self.layout_attributes(size=(width, 1), bg_col=bg_col, disabled=is_disabled)
+        layout_attrs = self.layout_attributes(size=(width, 1), bg_col=bg_col)
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout(self.etype, layout_attrs)],
                                  background_color=bg_col)]
@@ -4275,7 +4397,7 @@ class RecordVariable(DataVariable):
 
         return layout
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -4319,10 +4441,10 @@ class RecordVariableInput(RecordVariable):
 
         if entry['DataType'] in settings.supported_date_dtypes:
             calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
-            self.elements.append(calendar_key)
-            self.bindings.append(calendar_key)
+            self.elements['Calendar'] = calendar_key
+            self.bindings[calendar_key] = 'Calendar'
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -4392,7 +4514,7 @@ class RecordVariableCombo(RecordVariable):
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning(self.format_log(msg))
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -4464,7 +4586,7 @@ class RecordVariableMultiline(RecordVariable):
         except (KeyError, ValueError):
             self.nrow = 1
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None, disabled: bool = True):
+    def layout_attributes(self, size: tuple = None, bg_col: str = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
@@ -4477,7 +4599,7 @@ class RecordVariableMultiline(RecordVariable):
         nrow = self.nrow
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': disabled, 'Tooltip': tooltip,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'NRow': nrow}
 
         return layout_attrs
@@ -4511,12 +4633,13 @@ class DependentVariable(DataVariable):
         super().__init__(name, entry, parent)
 
         self.etype = 'dependent'
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description', 'Frame', 'Width')])
+        record_elements = ('Description', 'Frame', 'Width')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
-        elem_key = self.key_lookup('Element')
-        self.bindings = ['{}+LCLICK+'.format(elem_key)]
+        self.bindings = {self.elements['Element']: 'Element'}
+        #elem_key = self.key_lookup('Element')
+        #self.bindings = {'{}+LCLICK+'.format(elem_key): 'Element'}
 
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
@@ -4552,22 +4675,31 @@ class DependentVariable(DataVariable):
         """
         Add hotkey bindings to the element.
         """
-        elem_key = self.key_lookup('Element')
-        window[elem_key].bind('<Button-1>', '+LCLICK+')
+        #elem_key = self.key_lookup('Element')
+        #window[elem_key].bind('<Button-1>', '+LCLICK+')
+        pass
 
     def run_event(self, window, event, values):
         """
         Run a record element event.
         """
-        elem_key = self.key_lookup('Element')
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
-        if event == elem_key:
+        try:
+            element_event = self.bindings[event]
+        except KeyError:
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
+
+            return triggers
+        else:
+            logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
+
+        if element_event == 'Element':
             edited = self.format_value(values)
             if edited:
                 self.edited = True
                 self.update_display(window)
-
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         return triggers
 
@@ -4654,16 +4786,18 @@ class DependentVariable(DataVariable):
         """
         Resize the record element display.
         """
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
         current_w, current_h = self.dimensions()
+
         if size:
             width, height = size
             new_h = current_h if height is None else height
             new_w = current_w if width is None else width
+            window[elem_key].set_size(size=(1, None))
         else:
             new_w, new_h = (current_w, current_h)
 
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)
 
@@ -4684,7 +4818,7 @@ class DependentVariable(DataVariable):
             try:
                 input_value = mod_dm.evaluate_operation(values, self.operation)
             except Exception as e:
-                msg = self.format_log('failed to set the value of the dependent variable - {ERR}'.format(ERR=e))
+                msg = self.format_log('failed to set the value of the dependent variable', err=e)
                 logger.error(msg)
                 input_value = None
 
@@ -4722,15 +4856,14 @@ class MetaVariable(DataVariable):
             parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
-        self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-                              ('Description', 'Element', 'Frame', 'Width')])
-        self._event_elements = ['Element']
+        record_elements = ('Description', 'Frame', 'Width')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         if self.etype != 'checkbox':
             self.etype = 'text'
 
         # Element-specific bindings
-        self.bindings = [self.key_lookup(i) for i in self._event_elements]
+        self.bindings = {self.elements['Element']: 'Element'}
 
     def bind_keys(self, window):
         """
@@ -4779,13 +4912,24 @@ class MetaVariable(DataVariable):
         """
         Run a record element event.
         """
-        elem_key = self.key_lookup('Element')
-        if event == elem_key:
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
+        try:
+            element_event = self.bindings[event]
+        except KeyError:
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
+
+            return triggers
+        else:
+            logger.debug(self.format_log('running meta-element event {EVENT}'.format(EVENT=element_event)))
+
+        if element_event == 'Element':
+            elem_key = self.key_lookup('Element')
+
             input_value = values[elem_key]
             self.update_value(input_value)
             self.update_display(window)
-
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         return triggers
 
@@ -4870,9 +5014,9 @@ class MetaVariable(DataVariable):
 
             size (tuple): new width and height of the element [Default: set to size of the value + description].
         """
-        current_w, current_h = self.dimensions()
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
+        current_w, current_h = self.dimensions()
 
         if size:
             width, height = size
@@ -4889,8 +5033,9 @@ class MetaVariable(DataVariable):
             elem_w = window[elem_key].string_width_in_pixels(font, display_value)
             new_w = desc_w + elem_w + mod_const.HORZ_PAD
 
-            window[elem_key].set_size(size=(1, None))
+            #window[elem_key].set_size(size=(1, None))
 
+        window[elem_key].set_size(size=(1, None))
         width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)
@@ -4931,7 +5076,7 @@ class TableButton:
         self.name = name
         self.element_key = '-{PARENT}_{ID}_{NAME}-'.format(PARENT=parent, NAME=name, ID=parent_id)
         self.parent_key = '-{PARENT}_{ID}_Element-'.format(PARENT=parent, ID=parent_id)
-        self.bindings = [self.element_key]
+        self.bindings = {self.element_key: name}
 
         try:
             self.description = entry['Description']
@@ -4945,7 +5090,7 @@ class TableButton:
             self.shortcut_key = None
         else:
             self.shortcut_key = '+{DESC}+'.format(DESC=self.name.upper())
-            self.bindings.append('{ELEM}{KEY}'.format(ELEM=self.parent_key, KEY=self.shortcut_key))
+            self.bindings['{ELEM}{KEY}'.format(ELEM=self.parent_key, KEY=self.shortcut_key)] = name
 
         # Layout attributes
         try:
@@ -4957,6 +5102,8 @@ class TableButton:
             self.bg_col = entry['BackgroundColor']
         except KeyError:
             self.bg_col = mod_const.ACTION_COL
+
+        self.disabled = False
 
     def key_lookup(self):
         """
@@ -4971,7 +5118,6 @@ class TableButton:
         shortcut = '<{}>'.format(self.shortcut)
         if shortcut:
             bind_key = self.shortcut_key
-            print('binding shortcut {} to element {} with binding {}'.format(shortcut, element_key, bind_key))
             window[element_key].bind(shortcut, bind_key)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = None, disabled: bool = False):
@@ -4980,6 +5126,7 @@ class TableButton:
         """
         bg_col = bg_col if bg_col else self.bg_col
         self.bg_col = bg_col
+        self.disabled = disabled
 
         size = size if size else mod_const.PARAM_SIZE_CHAR
 
@@ -5009,3 +5156,4 @@ class TableButton:
         """
         element_key = self.element_key
         window[element_key].update(disabled=off)
+        self.disabled = off

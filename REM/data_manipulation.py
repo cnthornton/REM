@@ -60,7 +60,7 @@ def format_value(value, dtype):
         dtype (str): scalar data type.
     """
     if dtype in ('date', 'datetime', 'timestamp', 'time'):
-        value = np.datetime64(value)
+        value = np.datetime64(pd.to_datetime(value))
     elif dtype in ('int', 'integer', 'bigint'):
         value = np.int_(value)
     elif dtype == 'mediumint':

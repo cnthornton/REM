@@ -18,7 +18,6 @@ import REM.data_manipulation as mod_dm
 import REM.database as mod_db
 import REM.elements as mod_elem
 import REM.layouts as mod_lo
-import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.client import logger, server_conn, settings, user
 
@@ -465,7 +464,10 @@ class RecordEntry:
 
         # Set column data types
         bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
+        #df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
+        #df[bool_columns] = df[bool_columns].fillna(False)
+        df.fillna({i: False for i in bool_columns}, inplace=True)
+        df = df.astype({i: np.bool_ for i in bool_columns})
 
         return df
 
@@ -488,19 +490,20 @@ class RecordEntry:
         reference_table = rule['ReferenceTable']
         is_primary = rule['Primary']
         if is_primary:  # records are the primary in the reference table
-            import_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo'}
+            import_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'Deleted': 'IsDeleted'}
         else:  # reference record is the primary record ID
-            import_col_map = {'RecordID': 'RefNo', 'ReferenceID': 'DocNo'}
+            import_col_map = {'RecordID': 'RefNo', 'ReferenceID': 'DocNo', 'Deleted': 'IsDeleted'}
 
         # Import reference entries related to record_id
         db_id_col = mod_db.get_import_column(import_rules, 'RecordID')
         columns = mod_db.format_import_columns(import_rules)
         filters = mod_db.format_import_filters(import_rules)
+        #filters.append(('{TBL}.{COL} = ?'.format(TBL=reference_table, COL=import_col_map['Deleted']), 0))
         filters_clause = '{TBL}.{COL} IS NULL'.format(TBL=reference_table, COL=import_col_map['ReferenceID'])
         filters.append(filters_clause)
 
-        join_statement = "{COL} = {TBL}.{REFCOL}".format(COL=db_id_col, TBL=reference_table,
-                                                         REFCOL=import_col_map['RecordID'])
+        join_statement = "{COL} = {TBL}.{REFCOL} AND {TBL}.{DELCOL} = '0'"\
+            .format(COL=db_id_col, TBL=reference_table, REFCOL=import_col_map['RecordID'], DELCOL=import_col_map['Deleted'])
         import_rules[reference_table] = {'Columns': {import_col_map['RecordID']: import_col_map['RecordID']},
                                          'Join': ["LEFT JOIN", join_statement]}
 
@@ -1031,13 +1034,14 @@ class RecordEntry:
             # Import reference entries to be deleted
             import_df = self.import_references(record_ids, rule=association)
 
-            # Delete the reference entries and remove already used references from the list - this is necessary for
-            # hard-linked records to avoid endless looping
-            import_df['IsDeleted'] = True
+            # Delete all reference entries associated with the record IDs and remove already used references from the
+            # list - this is necessary for hard-linked records to avoid endless looping
+            #import_df['IsDeleted'] = True
             export_df = import_df.drop(import_df[import_df['ReferenceID'].isin(ref_ids)].index)
             if export_df.empty:
                 continue
-            statements = self.save_database_references(export_df, association, statements=statements)
+            #statements = self.save_database_references(export_df, association, statements=statements)
+            statements = self.delete_database_references(export_df, association, statements=statements)
 
             # Subset reference entries to include those that are child records or hard-linked
             if assoc_type == 'parent':  # referenced records are child records and should be deleted with parent
@@ -1427,9 +1431,12 @@ class DatabaseRecord:
         self.name = name
 
         self.id = randint(0, 1000000000)
-        self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
-                          'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
+        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        #                 ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
+        #                  'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                         ('Element', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header')}
+        self.bindings = {}
 
         try:
             permissions = entry['Permissions']
@@ -1508,8 +1515,13 @@ class DatabaseRecord:
         else:
             for i, section in enumerate(sections):
                 section_entry = sections[section]
-                self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
+                #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                #                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
+                section_bttn = 'SectionBttn{}'.format(i)
+                section_frame = 'SectionFrame{}'.format(i)
+                self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                                      (section_bttn, section_frame)})
+                self.bindings[self.key_lookup(section_bttn)] = section_bttn
 
                 self.sections[section] = {'Title': section_entry.get('Title', section),
                                           'Elements': []}
@@ -1579,7 +1591,29 @@ class DatabaseRecord:
         self._padding = (0, 0)
         self._dimensions = (0, 0)
 
-    def key_lookup(self, component):
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a record element's GUI element key using the name of the component.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the record element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = 'component {COMP} not found in list of record {NAME} components'\
+                .format(COMP=component, NAME=self.name)
+            logger.warning(msg)
+            print(key_map)
+
+            raise KeyError(msg)
+
+        return key
+
+    def key_lookup_old(self, component):
         """
         Lookup a component's GUI element key using the component's name.
         """
@@ -1739,35 +1773,6 @@ class DatabaseRecord:
 
                 record_element.append(ref_data, new=False)
 
-            #elif etype == 'refbox':  # reference box
-            #    assoc_rule = record_element.association_rule
-
-            #    if assoc_rule in references:  # use provided reference entries instead of importing from reference table
-            #        assoc_refs = references[assoc_rule]
-            #        ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
-            #    else:
-            #        ref_data = record_entry.import_references(record_id, assoc_rule)
-
-            #    if ref_data.empty:
-            #        logger.debug('RecordType {NAME}: record {ID} has no {TYPE} associations'
-            #                     .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
-            #        continue
-
-            #    elif ref_data.shape[0] > 1:
-            #        logger.warning('RecordType {NAME}: more than one {TYPE} reference found for record {ID}'
-            #                       .format(NAME=self.name, TYPE=assoc_rule, ID=self.record_id))
-
-            #    logger.debug('RecordType {NAME}: loading reference information for reference box {REF}'
-            #                 .format(NAME=self.name, REF=element_name))
-            #    record_element.referenced = record_element.import_reference(ref_data)
-                #record_element.append(ref_data)
-            #    if record_element.referenced:
-            #        logger.info('RecordType {NAME}: successfully loaded reference information for reference box {REF}'
-            #                    .format(NAME=self.name, REF=element_name))
-            #    else:
-            #        logger.warning('RecordType {NAME}: failed to load reference information for reference box {REF}'
-            #                       .format(NAME=self.name, REF=element_name))
-
             else:  # record variable element (dependent or record variables)
                 try:
                     value = record_data[element_name]
@@ -1780,18 +1785,20 @@ class DatabaseRecord:
                                      .format(NAME=self.name, PARAM=element_name, VAL=value))
                         record_element.update_value(value)
                     else:
-                        logger.debug('RecordType {NAME}: no value set for parameter "{PARAM}"'
-                                     .format(NAME=self.name, PARAM=element_name))
+                        logger.debug('RecordType {NAME}: no value set for record element "{ELEM}"'
+                                     .format(NAME=self.name, ELEM=element_name))
+                        logger.debug('RecordType {NAME}: record element {ELEM} has default value "{VAL}"'
+                                     .format(NAME=self.name, ELEM=element_name, VAL=record_element.data()))
 
         # Update any dependent record elements
-        record_values = self.export_values(header=False)
+        record_values = self.export_values(header=False).to_dict()
         try:
             element_references = self.fetch_element('dependent', by_type=True)
         except KeyError:
             pass
         else:
             for record_element in element_references:
-                record_element.format_value(record_values.to_dict())
+                record_element.format_value(record_values)
 
     def reset(self, window):
         """
@@ -1883,8 +1890,6 @@ class DatabaseRecord:
                 element_names.append(element_name)
             logger.debug('RecordType {NAME}: searching record elements for record element by element key {KEY}'
                          .format(NAME=self.name, KEY=identifier))
-            logger.debug('RecordType {NAME}: there are {N} record elements with element type {TYPE}'
-                         .format(NAME=self.name, N=len(element_names), TYPE=element_type))
         elif by_type is True:
             logger.debug('RecordType {NAME}: searching record elements for record element by element type {KEY}'
                          .format(NAME=self.name, KEY=identifier))
@@ -1910,6 +1915,7 @@ class DatabaseRecord:
         if by_key is True:
             element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.metadata]
+            #element_names = [i.key_lookup(element, rev=True) for i in self.metadata]
         else:
             element_names = [i.name for i in self.metadata]
 
@@ -1929,8 +1935,15 @@ class DatabaseRecord:
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # Collapse or expand a section frame
-        section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
-        if event in section_bttns:
+        #section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
+        #if event in section_bttns:
+        #    section_index = section_bttns.index(event)
+        #    self.collapse_expand(window, index=section_index)
+
+        #    return False
+
+        if event in self.bindings:
+            section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
             section_index = section_bttns.index(event)
             self.collapse_expand(window, index=section_index)
 
@@ -1970,7 +1983,8 @@ class DatabaseRecord:
                 if not edit_mode:  # element is not currently being edited
                     continue
 
-            if focus_element not in record_element.elements:  # element is edited but is no longer in focus
+            #if focus_element not in record_element.elements:  # element is edited but is no longer in focus
+            if focus_element not in record_element.bindings:  # element is edited but is no longer in focus
                 logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
                              'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=record_element.name))
 
@@ -2015,6 +2029,7 @@ class DatabaseRecord:
                     else:
                         record_created = record_element.add_record(record_data)
                         if record_created:
+                            triggers['ValueEvent'] = True
                             record_element.update_display(window)
                 else:
                     triggers = record_element.run_event(window, event, values)
@@ -2075,20 +2090,22 @@ class DatabaseRecord:
 
     def record_events(self, components_only: bool = False):
         """
-        Return a list of available record events.
+        Return a list of available record event bindings.
 
         Arguments:
-            components_only (bool):
+            components_only (bool): only retrieve event bindings for the record elements [Default: False].
         """
-        events = []
+        events = {}
         if not components_only:
-            events.extend(self.elements)
+            events.update(self.bindings)
 
-        # Add record component events
-        events.extend([i for record_element in self.modules for i in record_element.bindings])
+        # Add record component event bindings
+        for record_element in self.modules:
+            events.update(record_element.bindings)
 
-        # Add record metadata events
-        events.extend([i for param in self.metadata for i in param.bindings])
+        # Add record meta-data event bindings
+        for param in self.metadata:
+            events.update(param.bindings)
 
         return events
 
@@ -2157,7 +2174,6 @@ class DatabaseRecord:
                 record_data = pd.Series(index=header)
                 creation_date = record_date
 
-        print('creating record IDs for list of dates : {}'.format(creation_date))
         record_id = record_entry.create_record_ids(creation_date, offset=settings.get_date_offset())
         if not record_id:
             msg = 'unable to create an ID for the new record'
@@ -2172,7 +2188,6 @@ class DatabaseRecord:
         if isinstance(record_data, pd.Series):
             record_data = record_data.to_frame().T
 
-        #defaults = self.export_values(header=False, references=False).to_dict()
         defaults = self.export_values(header=False).to_dict()
         for default_col in defaults:
             if default_col in header:
@@ -2213,21 +2228,13 @@ class DatabaseRecord:
             for meta_elem in self.metadata:
                 param_value = meta_elem.data()
                 if not pd.isna(param_value):
-                    print('exporting record metadata parameter {} with value {} with type {}'.format(meta_elem.name, param_value, type(param_value)))
                     values[meta_elem.name] = param_value
 
         # Add parameter values
         record_elements = self.modules
         for record_element in record_elements:
-            #if record_element.eclass == 'references' and not references:  # reference boxes and component tables
-            #    continue
             elem_values = record_element.export_values(edited_only=edited_only)
-            print('export record element {} values:'.format(record_element.name))
-            print(elem_values)
             values = {**values, **elem_values}
-
-        print('exporting final values:')
-        print(values)
 
         return pd.Series(values)
 
@@ -2246,8 +2253,6 @@ class DatabaseRecord:
                                        'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
                                        'IsDeleted'])
 
-        print('exporting record {} associated records'.format(self.name))
-
         try:
             refbox_elements = self.fetch_element('reference', by_type=True)
         except KeyError:
@@ -2259,8 +2264,6 @@ class DatabaseRecord:
                 continue
 
             data = refbox.data()
-            print('adding reference {} entries:'.format(refbox_rule))
-            print(data)
             ref_df = ref_df.append(data, ignore_index=True)
 
         try:
@@ -2274,8 +2277,6 @@ class DatabaseRecord:
                 continue
 
             data = comp_tbl.export_references(self.record_id())
-            print('adding component {} entries:'.format(comp_rule))
-            print(data)
             ref_df = ref_df.append(data, ignore_index=True)
 
         return ref_df
@@ -2377,8 +2378,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
+        success = user.write_db(sstrings, psets)
+        #success = True
         print(statements)
 
         return success
@@ -2416,7 +2417,6 @@ class DatabaseRecord:
             logger.debug('RecordEntry {NAME}, Record {ID}: exporting record values'
                          .format(NAME=self.name, ID=record_id))
             record_data = self.export_values()
-            print(record_data)
             statements = record_entry.save_database_records(record_data, id_field=self.id_field, statements=statements)
         except Exception as e:
             msg = 'failed to save record "{ID}" - {ERR}'.format(ID=record_id, ERR=e)
@@ -2443,14 +2443,11 @@ class DatabaseRecord:
                 logger.debug('Record {ID}: preparing export statements for edited or new "{ASSOC}" references'
                              .format(ID=record_id, ASSOC=association_rule))
                 ref_data = refbox.data(edited_rows=True)
-            print(ref_data)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
                          .format(ID=record_id, ASSOC=association_rule))
             deleted_df = refbox.data(deleted_rows=True)
-            print(deleted_df)
-            statements = record_entry.delete_database_references(deleted_df, association_rule, statements=statements)
 
         # Prepare to save record components
         try:
@@ -2729,9 +2726,16 @@ class DatabaseRecord:
 
         return report_dict
 
-    def layout(self, size, padding: tuple = None, view_only: bool = False, ugroup: list = None):
+    def layout(self, size, padding: tuple = None, view_only: bool = False):
         """
         Generate a GUI layout for the database record.
+
+        Arguments:
+            size (tuple): size (width, height) of the record layout.
+
+            padding (tuple): padding around the record layout in pixels.
+
+            view_only (bool): disallow editing of record components [Default: False].
         """
         width, height = size
 
@@ -2743,7 +2747,7 @@ class DatabaseRecord:
                      .format(NAME=self.name, NEW=('new ' if is_new else ''), LEVEL=level))
 
         editable = False if (view_only is True and is_new is False) or (level > 1) else True
-        user_priv = ugroup if ugroup else user.access_permissions()
+        user_priv = user.access_permissions()
 
         # Element parameters
         bg_col = mod_const.ACTION_COL
@@ -2775,8 +2779,6 @@ class DatabaseRecord:
 
         # Record header
         headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
-        #headers.extend(self._record_id.layout(padding=((0, pad_el * 2), 0), auto_size_desc=True, size=(20, 1)))
-        #headers.extend(self._record_date.layout(padding=(0, 0), auto_size_desc=True, size=(20, 1)))
         headers.append(self._record_id.layout(size=(20, 1), padding=((0, pad_h), 0), editable=False))
         headers.append(self._record_date.layout(size=(20, 1), editable=False))
         header_key = self.key_lookup('Header')
@@ -2830,9 +2832,7 @@ class DatabaseRecord:
             metadata_visible = True
             annotation_layout = []
             for param in metadata:
-                param_name = param.name
                 can_edit = editable and param.permissions in user_priv
-
                 annotation_layout.append([param.layout(editable=can_edit, level=level)])
         else:  # don't show tab for new records or record w/o configured metadata
             metadata_visible = False
@@ -2852,7 +2852,7 @@ class DatabaseRecord:
                                   title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
 
         # Pane elements must be columns
-        record_key = self.key_lookup('Record')
+        record_key = self.key_lookup('Element')
         layout = [[sg.Col([[header_layout], [main_layout]], key=record_key, pad=padding,
                           background_color=bg_col, expand_x=True, expand_y=True)]]
 
@@ -2880,7 +2880,7 @@ class DatabaseRecord:
         # Set the size of the record container
         record_w = width - pad_w * 2
         record_size = (record_w, record_h)
-        mod_lo.set_size(window, self.key_lookup('Record'), record_size)
+        mod_lo.set_size(window, self.key_lookup('Element'), record_size)
 
         # Set the size of the tab containers
         bffr_h = tab_h + header_h + pad_h * 2
