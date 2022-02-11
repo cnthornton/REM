@@ -3,8 +3,9 @@
 REM server.
 """
 
-__version__ = '0.3.7'
+__version__ = '0.3.8'
 
+import datetime
 import logging
 import logging.handlers as handlers
 import os
@@ -311,6 +312,25 @@ class ClientConnection:
                         content = {'success': False, 'value': msg}
                     db_manager.disconnect()
 
+            elif action == 'db_login':
+                try:
+                    conn_str = value.get('connection_string')
+                except TypeError:
+                    msg = 'request value formatted incorrectly'
+                    logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
+                    content = {'success': False, 'value': msg}
+                else:
+                    conn_str['Server'] = configuration.odbc_server
+                    conn_str['Port'] = configuration.odbc_port
+                    conn_str['Driver'] = configuration.odbc_driver
+                    db_manager = SQLTransactManager(conn_str)
+
+                    content = db_manager.login()
+                    if content['success']:
+                        db_manager.commit()
+
+                    db_manager.disconnect()
+
             elif action == 'db_schema':
                 try:
                     conn_str = value.get('connection_string')
@@ -334,7 +354,6 @@ class ClientConnection:
             elif action == 'permissions':
                 try:
                     conn_str = value.get('connection_string')
-                    uid = value.get('user')
                     object_ids = value.get('object_id')
                     operations = value.get('operation')
                 except TypeError:
@@ -346,7 +365,7 @@ class ClientConnection:
                     conn_str['Port'] = configuration.odbc_port
                     conn_str['Driver'] = configuration.odbc_driver
                     db_manager = SQLTransactManager(conn_str)
-                    content = db_manager.user_permissions(uid, object_ids=object_ids, actions=operations)
+                    content = db_manager.user_permissions(object_ids=object_ids, actions=operations)
                     db_manager.disconnect()
 
             elif action == 'constants':
@@ -941,7 +960,7 @@ class ConfigManager:
 
 class SQLTransactManager:
     """
-    Program account object.
+    Creates and manages a connection to the SQL database.
 
     Attributes:
         conn (Connection): pyodbc Connection.
@@ -950,6 +969,7 @@ class SQLTransactManager:
     """
 
     def __init__(self, conn_obj, timeout: int = 5):
+        self.uid = None
         self.conn = self._connect(conn_obj, timeout=timeout)
         self.cursor = self.conn.cursor()
 
@@ -990,6 +1010,8 @@ class SQLTransactManager:
         else:
             logger.info('successfully established a connection to {DB}'.format(DB=dbname))
 
+        self.uid = uid
+
         return conn
 
     def disconnect(self):
@@ -1005,6 +1027,32 @@ class SQLTransactManager:
         """
         logger.info('committing database transactions')
         self.conn.commit()
+
+    def login(self):
+        """
+        Update the last login time for the user.
+        """
+        cursor = self.cursor
+
+        statement = 'UPDATE Users SET LastLogin = ? WHERE UserID = ?;'
+        params = (datetime.datetime.now(), self.uid)
+
+        logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
+                     .format(TSQL=statement, PARAMS=params))
+        try:
+            cursor.execute(statement, params)
+        except pyodbc.Error as e:  # possible duplicate entries
+            logger.error('failed to write to database - {ERR}'.format(ERR=e))
+            status = False
+            value = str(e)
+        else:
+            logger.info('database successfully written')
+
+            status = True
+            value = None
+
+        # Add return value to the queue
+        return {'success': status, 'value': value}
 
     def database_tables(self, database):
         """
@@ -1100,19 +1148,18 @@ class SQLTransactManager:
         # Add return value to the queue
         return {'success': status, 'value': value}
 
-    def user_permissions(self, uid, object_ids: list = None, actions: list = None):
+    def user_permissions(self, object_ids: list = None, actions: list = None):
         """
         Retrieve user permissions from the database.
 
         Arguments:
-            uid (str): get permissions for the user corresponding to the given user ID.
-
             object_ids (str): get user permissions for the given objects [Default: get permissions for all objects].
 
             actions (list): get user permissions for the given operations [Default: get permissions for all operations].
         """
         # Connect to database
         conn = self.conn
+        uid = self.uid
 
         # Prepare the transaction statement
         where_statements = ['UserRoles.UserID = ?']

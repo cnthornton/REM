@@ -1438,8 +1438,7 @@ class AccountManager:
             actions = [actions]
 
         # Prepare user permissions for a given object
-        value = {'connection_string': self._prepare_conn_str(), 'user': self.uid, 'object_id': object_ids,
-                 'operation': actions}
+        value = {'connection_string': self._prepare_conn_str(), 'object_id': object_ids, 'operation': actions}
         content = {'action': 'permissions', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
 
