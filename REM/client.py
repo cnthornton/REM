@@ -1278,25 +1278,24 @@ class SettingsManager:
 
 class AccountManager:
     """
-    Basic user account manager object.
+    User account manager.
 
     Attributes:
-        uid (str): existing account username.
+        uid (str): user ID.
 
-        pwd (str): hash value for associated account password.
+        pwd (str): encrypted user password.
 
-        admin (bool): existing account is an admin account.
-
-        logged_in (bool): user is logged in
+        logged_in (bool): user is currently logged in [Default: False].
     """
 
     def __init__(self):
         self.uid = None
         self.pwd = None
-        self.group = None
-        self.roles = None
         self.logged_in = False
+
+        # Old
         self.admin = False
+        self.group = None
 
     def _prepare_conn_str(self, database: str = None):
         """
@@ -1318,6 +1317,11 @@ class AccountManager:
 
             timeout (int): server connection timeout.
         """
+        logger.info('signing in as "{}"'.format(self.uid))
+
+        self.uid = uid
+        self.pwd = cipher.encrypt(pwd.encode('utf-8'))
+
         # Prepare the server request
         value = {'connection_string': self._prepare_conn_str()}
         content = {'action': 'db_login', 'value': value}
@@ -1327,14 +1331,15 @@ class AccountManager:
         response = server_conn.process_request(request, timeout=timeout)
         if response['success'] is False:
             msg = response['value']
-            logger.error(msg)
+            logger.error('failed to sign in as "{UID}" - {ERR}'.format(UID=uid, ERR=msg))
+
+            self.uid = None
+            self.pwd = None
 
             return False
 
-        self.uid = uid
-        self.pwd = cipher.encrypt(pwd.encode('utf-8'))
-        self.roles = response['value']
         self.logged_in = True
+        logger.info('successfully signed in as "{}"'.format(user.uid))
 
         return True
 
@@ -1349,8 +1354,10 @@ class AccountManager:
 
             timeout (int): server connection timeout.
         """
+        logger.info('signing in as "{}"'.format(self.uid))
+
         self.uid = uid
-        self.pwd = pwd
+        self.pwd = cipher.encrypt(pwd.encode('utf-8'))
 
         # Prepare query statement and parameters
         query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
@@ -1372,24 +1379,28 @@ class AccountManager:
             try:
                 series = pd.DataFrame(response['value']).iloc[0]
             except Exception as e:
-                msg = 'failed to read the results of the database query - {ERR}'.format(ERR=e)
+                msg = 'login failure for user {USER} - {ERR}'.format(USER=uid, ERR=e)
                 logger.error(msg)
                 raise IOError(msg)
             else:
                 ugroup = series['UserGroup']
 
         if not ugroup:
+            msg = 'login failure for user {USER} - no user group returned from the database'.format(USER=uid)
+            logger.error(msg)
+
             self.uid = None
             self.pwd = None
+
             return False
 
-        self.uid = uid
-        self.pwd = pwd
         self.group = ugroup
         self.logged_in = True
 
         if ugroup == 'admin':
             self.admin = True
+
+        logger.info('successfully signed in as "{}"'.format(user.uid))
 
         return True
 
@@ -1397,25 +1408,52 @@ class AccountManager:
         """
         Reset class attributes.
         """
+        logger.info('signing out as "{}"'.format(self.uid))
+
         self.uid = None
         self.pwd = None
-        self.group = None
         self.logged_in = False
+
+        #Old
         self.admin = False
-        success = True
+        self.group = None
 
-        return success
+        return True
 
-    def access_permissions_new(self):
+    def access_permissions_new(self, object_ids: list = None, actions: list = None, timeout: int = 5):
         """
-        Return escalated privileges for a given user group.
-        """
-        ugroup = self.group
+        Return user permissions for a given program object.
 
-        if ugroup == 'admin':
-            return ['admin', 'user']
-        else:
-            return ['user']
+        Arguments:
+            object_ids (str): get user permissions for the given objects [Default: get permissions for all objects].
+
+            actions (list): get user permissions for the given operations [Default: get permissions for all operations].
+
+            timeout (int): connection timeout [Default: 5 seconds].
+        """
+        if isinstance(object_ids, str):
+            object_ids = [object_ids]
+
+        if isinstance(actions, str):
+            actions = [actions]
+
+        # Prepare user permissions for a given object
+        value = {'connection_string': self._prepare_conn_str(), 'user': self.uid, 'object_id': object_ids,
+                 'operation': actions}
+        content = {'action': 'permissions', 'value': value}
+        request = {'content': content, 'encoding': "utf-8"}
+
+        # Send the request for data to the server
+        response = server_conn.process_request(request, timeout=timeout)
+        if response['success'] is False:
+            msg = response['value']
+            logger.error(msg)
+
+            return []
+
+        df = pd.DataFrame(response['value'])
+
+        return df
 
     def access_permissions(self):
         """

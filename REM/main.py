@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.9.17'
+__version__ = '3.10.1'
 
 import sys
 import tkinter as tk
@@ -751,8 +751,6 @@ def main():
             mod_win2.login_window()
 
             if user.logged_in is True:  # logged on successfully
-                logger.info('user signed in as "{}"'.format(user.uid))
-
                 # Switch user icon
                 window['-UMENU-'].Widget.configure(image=userin_image)
 
@@ -761,8 +759,6 @@ def main():
 
                 # Update user menu items to include the login name
                 toolbar.update_username(window, user.uid)
-            else:
-                logger.warning('failed to login to the program as user {}'.format(user.uid))
 
             continue
 
@@ -804,7 +800,6 @@ def main():
             settings.remove_unsaved_ids()
 
             # Reset User attributes
-            logger.info('signing out as user {}'.format(user.uid))
             user.logout()
 
             # Switch user icon
