@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.6'
+__version__ = '0.3.7'
 
 import logging
 import logging.handlers as handlers
@@ -329,6 +329,24 @@ class ClientConnection:
                         content = db_manager.database_tables(database)
                     else:
                         content = db_manager.table_schema(table)
+                    db_manager.disconnect()
+
+            elif action == 'permissions':
+                try:
+                    conn_str = value.get('connection_string')
+                    uid = value.get('user')
+                    object_ids = value.get('object_id')
+                    operations = value.get('operation')
+                except TypeError:
+                    msg = 'request value formatted incorrectly'
+                    logger.error('{ADDR}: failed to create response - {ERR}'.format(ADDR=self.addr, ERR=msg))
+                    content = {'success': False, 'value': msg}
+                else:
+                    conn_str['Server'] = configuration.odbc_server
+                    conn_str['Port'] = configuration.odbc_port
+                    conn_str['Driver'] = configuration.odbc_driver
+                    db_manager = SQLTransactManager(conn_str)
+                    content = db_manager.user_permissions(uid, object_ids=object_ids, actions=operations)
                     db_manager.disconnect()
 
             elif action == 'constants':
@@ -1078,6 +1096,65 @@ class SQLTransactManager:
 
             status = True
             value = None
+
+        # Add return value to the queue
+        return {'success': status, 'value': value}
+
+    def user_permissions(self, uid, object_ids: list = None, actions: list = None):
+        """
+        Retrieve user permissions from the database.
+
+        Arguments:
+            uid (str): get permissions for the user corresponding to the given user ID.
+
+            object_ids (str): get user permissions for the given objects [Default: get permissions for all objects].
+
+            actions (list): get user permissions for the given operations [Default: get permissions for all operations].
+        """
+        # Connect to database
+        conn = self.conn
+
+        # Prepare the transaction statement
+        where_statements = ['UserRoles.UserID = ?']
+        params = [1, 1, uid]
+        if isinstance(object_ids, list) and len(object_ids) > 0:
+            object_params = ['?' for _ in object_ids]
+            where_statements.append('Permissions.ObjectID IN ({IDS})'.format(IDS=','.join(object_params)))
+            params.extend(object_ids)
+
+        if isinstance(actions, list) and len(actions) > 0:
+            action_params = ['?' for _ in actions]
+            where_statements.append('Permissions.Action IN ({IDS})'.format(IDS=','.join(action_params)))
+            params.extend(object_ids)
+
+        where = ' AND '.join(where_statements)
+        statement = """
+                    SELECT 
+                        UserRoles.UserID, Permissions.ObjectID, Permissions.Action
+                    FROM UserRoles
+                    LEFT JOIN Roles
+                        ON UserRoles.RoleID = Roles.RoleID AND Roles.Active = ?
+                    LEFT JOIN RolePermissions
+                        ON Roles.RoleID = RolePermissions.RoleID
+                    LEFT JOIN Permissions
+                        ON Permissions.PermissionID = RolePermissions.PermissionID AND Permissions.Active = ?
+                    WHERE 
+                        {WHERE}
+                    """.format(WHERE=where)
+        params = tuple(params)
+
+        try:
+            logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
+                         .format(TSQL=statement, PARAMS=params))
+            df = pd.read_sql(statement, conn, params=params)
+            value = df.replace({pd.NaT: None}).to_dict()
+        except sql.DatabaseError as e:
+            logger.error('database read failed - {ERR}'.format(ERR=e))
+            status = False
+            value = str(e)
+        else:
+            status = True
+            logger.info('database successfully read')
 
         # Add return value to the queue
         return {'success': status, 'value': value}
