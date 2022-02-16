@@ -1127,11 +1127,11 @@ def database_importer_window(win_size: tuple = None):
 
                 try:
                     date_format = settings.format_date_str(values['-DATE_FORMAT-'])
-                except TypeError:
+                except TypeError as e:
                     msg = 'unaccepted format "{FMT}" provided to the date format parameter'\
                         .format(FMT=values['-DATE_FORMAT-'])
                     popup_notice(msg)
-                    logger.warning(msg)
+                    logger.warning('{MSG} - {ERR}'.format(MSG=msg, ERR=e))
 
                     continue
 

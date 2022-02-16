@@ -1433,9 +1433,6 @@ class DatabaseRecord:
         self.name = name
 
         self.id = randint(0, 1000000000)
-        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-        #                 ('ReferencesButton', 'ReferencesFrame', 'ComponentsButton', 'ComponentsFrame', 'DetailsButton',
-        #                  'DetailsFrame', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header', 'Record')]
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Element', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header')}
         self.bindings = {}
@@ -1507,74 +1504,161 @@ class DatabaseRecord:
             self.metadata.append(param)
 
         # Record data components
-        self.sections = {}
-        self.modules = []
+        #self.sections = {}
+        #self.modules = []
+        #try:
+        #    sections = entry['Sections']
+        #except KeyError:
+        #    msg = 'missing configuration parameter "Sections"'
+        #    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+        #else:
+        #    for i, section in enumerate(sections):
+        #        section_entry = sections[section]
+        #        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        #        #                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
+        #        section_bttn = 'SectionBttn{}'.format(i)
+        #        section_frame = 'SectionFrame{}'.format(i)
+        #        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        #                              (section_bttn, section_frame)})
+        #        self.bindings[self.key_lookup(section_bttn)] = section_bttn
+
+        #        self.sections[section] = {'Title': section_entry.get('Title', section),
+        #                                  'Elements': []}
+
+        #        try:
+        #            section_elements = section_entry['Elements']
+        #        except KeyError:
+        #            raise AttributeError('Section {} is missing required parameter "Elements"'.format(section))
+        #        for element_name in section_elements:
+        #            self.sections[section]['Elements'].append(element_name)
+        #            elem_entry = section_elements[element_name]
+        #            try:
+        #                etype = elem_entry['ElementType']
+        #            except KeyError:
+        #                raise AttributeError('"Details" element {NAME} is missing the required field "ElementType"'
+        #                                     .format(NAME=element_name))
+
+                    # Set the object type of the record element.
+        #            if etype in ('data_table', 'table'):
+        #                element_class = mod_elem.DataTable
+        #            elif etype in ('component_table', 'components'):
+        #                element_class = mod_elem.ComponentTable
+                    #elif etype in ('refbox', 'reference'):
+                    #    element_class = mod_elem.ReferenceBox
+        #            elif etype in ('data_list', 'list'):
+        #                element_class = mod_elem.DataList
+        #            elif etype in ('reference_list', 'reference'):
+        #                element_class = mod_elem.ReferenceList
+        #            elif etype in ('dependent_variable', 'dependent'):
+        #                element_class = mod_elem.DependentVariable
+        #            elif etype in ('text_variable', 'text'):
+        #                element_class = mod_elem.RecordVariable
+        #            elif etype in ('input_variable', 'date_variable', 'input', 'date'):
+        #                element_class = mod_elem.RecordVariableInput
+        #            elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
+        #                element_class = mod_elem.RecordVariableCombo
+        #            elif etype in ('multiline_variable', 'multiline', 'multi'):
+        #                element_class = mod_elem.RecordVariableMultiline
+        #            else:
+        #                raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
+        #                                     .format(ETYPE=etype, ELEM=element_name))
+
+                    # Initialize the record element
+        #            try:
+        #                elem_obj = element_class(element_name, elem_entry, parent=self.name)
+        #            except Exception as e:
+        #                raise AttributeError('failed to initialize {NAME} element {ELEM} - {ERR}'
+        #                                     .format(NAME=self.name, ELEM=element_name, ERR=e))
+
+                    # Add the element to the set of record components
+        #            self.modules.append(elem_obj)
+
+        self.sections = {'_Default': {'Title': '', 'Elements': []}}
+        all_section_elements = []
         try:
             sections = entry['Sections']
         except KeyError:
             msg = 'missing configuration parameter "Sections"'
+            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            sections = {}
+
+        for i, section in enumerate(sections):
+            section_entry = sections[section]
+
+            if 'Title' not in section_entry:
+                section_entry['Title'] = section
+            if 'Elements' not in section_entry:
+                section_entry['Elements'] = []
+            else:
+                section_elements = section_entry['Elements']
+                if isinstance(section_elements, str):
+                    section_elements = [section_elements]
+
+                all_section_elements.extend(section_elements)
+
+            self.sections[section] = section_entry
+
+        for i, section in enumerate(self.sections):
+            section_bttn = 'SectionBttn{}'.format(i)
+            section_frame = 'SectionFrame{}'.format(i)
+            self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                                  (section_bttn, section_frame)})
+            self.bindings[self.key_lookup(section_bttn)] = section_bttn
+
+        self.modules = []
+        try:
+            record_elements = entry['RecordElements']
+        except KeyError:
+            msg = 'missing configuration parameter "RecordElements"'
             logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
         else:
-            for i, section in enumerate(sections):
-                section_entry = sections[section]
-                #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                #                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
-                section_bttn = 'SectionBttn{}'.format(i)
-                section_frame = 'SectionFrame{}'.format(i)
-                self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                                      (section_bttn, section_frame)})
-                self.bindings[self.key_lookup(section_bttn)] = section_bttn
-
-                self.sections[section] = {'Title': section_entry.get('Title', section),
-                                          'Elements': []}
-
+            for element_name in record_elements:
+                elem_entry = record_elements[element_name]
                 try:
-                    section_elements = section_entry['Elements']
+                    etype = elem_entry['ElementType']
                 except KeyError:
-                    raise AttributeError('Section {} is missing required parameter "Elements"'.format(section))
-                for element_name in section_elements:
-                    self.sections[section]['Elements'].append(element_name)
-                    elem_entry = section_elements[element_name]
+                    raise AttributeError('"Details" element {NAME} is missing the required field "ElementType"'
+                                         .format(NAME=element_name))
+
+                if element_name not in all_section_elements:
                     try:
-                        etype = elem_entry['ElementType']
+                        self.sections['_Default']['Elements'].append(element_name)
                     except KeyError:
-                        raise AttributeError('"Details" element {NAME} is missing the required field "ElementType"'
-                                             .format(NAME=element_name))
+                        self.sections['_Default'] = {'Title': '', 'Elements': [element_name]}
 
-                    # Set the object type of the record element.
-                    if etype in ('data_table', 'table'):
-                        element_class = mod_elem.DataTable
-                    elif etype in ('component_table', 'components'):
-                        element_class = mod_elem.ComponentTable
-                    #elif etype in ('refbox', 'reference'):
-                    #    element_class = mod_elem.ReferenceBox
-                    elif etype in ('data_list', 'list'):
-                        element_class = mod_elem.DataList
-                    elif etype in ('reference_list', 'reference'):
-                        element_class = mod_elem.ReferenceList
-                    elif etype in ('dependent_variable', 'dependent'):
-                        element_class = mod_elem.DependentVariable
-                    elif etype in ('text_variable', 'text'):
-                        element_class = mod_elem.RecordVariable
-                    elif etype in ('input_variable', 'date_variable', 'input', 'date'):
-                        element_class = mod_elem.RecordVariableInput
-                    elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
-                        element_class = mod_elem.RecordVariableCombo
-                    elif etype in ('multiline_variable', 'multiline', 'multi'):
-                        element_class = mod_elem.RecordVariableMultiline
-                    else:
-                        raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
-                                             .format(ETYPE=etype, ELEM=element_name))
+                # Set the object type of the record element.
+                if etype in ('data_table', 'table'):
+                    element_class = mod_elem.DataTable
+                elif etype in ('component_table', 'components'):
+                    element_class = mod_elem.ComponentTable
+                elif etype in ('data_list', 'list'):
+                    element_class = mod_elem.DataList
+                elif etype in ('reference_list', 'reference'):
+                    element_class = mod_elem.ReferenceList
+                elif etype in ('dependent_variable', 'dependent'):
+                    element_class = mod_elem.DependentVariable
+                elif etype in ('text_variable', 'text'):
+                    element_class = mod_elem.RecordVariable
+                elif etype in ('input_variable', 'date_variable', 'input', 'date'):
+                    element_class = mod_elem.RecordVariableInput
+                elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
+                    element_class = mod_elem.RecordVariableCombo
+                elif etype in ('multiline_variable', 'multiline', 'multi'):
+                    element_class = mod_elem.RecordVariableMultiline
+                else:
+                    raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
+                                         .format(ETYPE=etype, ELEM=element_name))
 
-                    # Initialize the record element
-                    try:
-                        elem_obj = element_class(element_name, elem_entry, parent=self.name)
-                    except Exception as e:
-                        raise AttributeError('failed to initialize {NAME} element {ELEM} - {ERR}'
-                                             .format(NAME=self.name, ELEM=element_name, ERR=e))
+                # Initialize the record element
+                try:
+                    elem_obj = element_class(element_name, elem_entry, parent=self.name)
+                except Exception as e:
+                    raise AttributeError('failed to initialize {NAME} element {ELEM} - {ERR}'
+                                         .format(NAME=self.name, ELEM=element_name, ERR=e))
 
-                    # Add the element to the set of record components
-                    self.modules.append(elem_obj)
+                # Add the element to the set of record components
+                self.modules.append(elem_obj)
 
         # Record report layout definition
         try:
@@ -2791,8 +2875,14 @@ class DatabaseRecord:
         sections = self.sections
 
         sections_layout = []
+        print(sections)
         for index, section_name in enumerate(sections):
+            print('creating layout for section {} number {}'.format(index, section_name))
             section_entry = sections[section_name]
+
+            section_elements = section_entry['Elements']
+            if len(section_elements) < 1:
+                continue
 
             section_title = section_entry['Title']
             section_bttn_key = self.key_lookup('SectionBttn{}'.format(index))
@@ -2806,7 +2896,6 @@ class DatabaseRecord:
                                        ]], background_color=frame_col, expand_x=True)]
             sections_layout.append(section_header)
 
-            section_elements = section_entry['Elements']
             section_layout = []
             for element_name in section_elements:
                 element = self.fetch_element(element_name)
