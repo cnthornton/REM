@@ -464,8 +464,6 @@ class RecordEntry:
 
         # Set column data types
         bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        #df.loc[:, bool_columns] = df[bool_columns].fillna(False).astype(np.bool_, errors='ignore')
-        #df[bool_columns] = df[bool_columns].fillna(False)
         df.fillna({i: False for i in bool_columns}, inplace=True)
         df = df.astype({i: np.bool_ for i in bool_columns})
 

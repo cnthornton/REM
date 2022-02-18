@@ -95,7 +95,7 @@ class RecordElement:
 
             if 'Condition' not in rule:
                 msg = 'no condition set for configured annotation rule {RULE}'.format(RULE=code)
-                logger.warning('{TYPE} {NAME}: {MSG}'.format(TYPE=self.etype, NAME=self.name, MSG=msg))
+                logger.warning(self.format_log(msg))
 
                 continue
 
@@ -142,23 +142,6 @@ class RecordElement:
             msg = self.format_log('component "{COMP}" not found in list of element components'.format(COMP=component))
             logger.warning(msg)
             print(key_map)
-
-            raise KeyError(msg)
-
-        return key
-
-    def key_lookup_old(self, component):
-        """
-        Lookup a record element's GUI element key using the name of the component.
-        """
-        element_names = [i[1: -1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            msg = '{ETYPE} {NAME}: component "{COMP}" not found in list of element components' \
-                .format(ETYPE=self.etype, NAME=self.name, COMP=component)
-            logger.warning(msg)
 
             raise KeyError(msg)
 
@@ -1388,7 +1371,7 @@ class DataTable(RecordElement):
                 # results = mod_dm.evaluate_condition_set(df, {annot_code: annot_condition})
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
-                logger.error(self.format_log('failed to annotate data table using annotation rule {CODE} - {ERR}'
+                logger.exception(self.format_log('failed to annotate data table using annotation rule {CODE} - {ERR}'
                                              .format(CODE=annot_code, ERR=e)))
                 continue
 

@@ -83,7 +83,7 @@ def format_value(value, dtype):
     return value
 
 
-def format_values(values, dtype, date_format: str = None):
+def format_values(values, dtype, date_format: str = None, extended: bool = True):
     """
     Set the datatype for an array of values.
 
@@ -91,6 +91,10 @@ def format_values(values, dtype, date_format: str = None):
         values (Series): pandas Series containing array values.
 
         dtype (str): array data type.
+
+        date_format (str): custom format to use when converting values to datetime.
+
+        extended (bool): use Pandas extended data types for integers.
     """
     if not isinstance(values, pd.Series):
         values = pd.Series(values)
@@ -111,25 +115,37 @@ def format_values(values, dtype, date_format: str = None):
             # values = column_values.apply(lambda x: x.replace(tzinfo=None))
 
     elif dtype in ('int', 'integer', 'bigint'):
-        try:
-            values = values.astype('Int64')
-        except TypeError:
-            values = values.astype(float).astype('Int64')
+        if extended:
+            try:
+                values = values.astype('Int64')
+            except TypeError:
+                values = values.astype(float).astype('Int64')
+        else:
+            values = values.fillna(-1).astype(int)
     elif dtype == 'mediumint':
-        try:
-            values = values.astype('Int32')
-        except TypeError:
-            values = values.astype(float).astype('Int32')
+        if extended:
+            try:
+                values = values.astype('Int32')
+            except TypeError:
+                values = values.astype(float).astype('Int32')
+        else:
+            values = values.fillna(-1).astype(int)
     elif dtype == 'smallint':
-        try:
-            values = values.astype('Int16')
-        except TypeError:
-            values = values.astype(float).astype('Int16')
+        if extended:
+            try:
+                values = values.astype('Int16')
+            except TypeError:
+                values = values.astype(float).astype('Int16')
+        else:
+            values = values.fillna(-1).astype(int)
     elif dtype in ('tinyint', 'bit'):
-        try:
-            values = values.astype('Int8')
-        except TypeError:
-            values = values.astype(float).astype('Int8')
+        if extended:
+            try:
+                values = values.astype('Int8')
+            except TypeError:
+                values = values.astype(float).astype('Int8')
+        else:
+            values = values.fillna(-1).astype(int)
     elif dtype in ('float', 'real', 'double'):  # approximate numeric data types for saving memory
         values = pd.to_numeric(values, errors='coerce', downcast='float')
     elif dtype in ('decimal', 'dec', 'numeric', 'money'):  # exact numeric data types
@@ -142,6 +158,33 @@ def format_values(values, dtype, date_format: str = None):
         values = values.astype(np.object_, errors='raise')
 
     return values
+
+
+def downcast_extended(values):
+    """
+    Convert extended Pandas data types to numpy data types.
+    """
+    is_bool_dtype = pd.api.types.is_bool_dtype
+    is_int_dtype = pd.api.types.is_integer_dtype
+    is_float_dtype = pd.api.types.is_float_dtype
+    is_string_dtype = pd.api.types.is_string_dtype
+    is_extension_dtype = pd.api.types.is_extension_array_dtype
+
+    if is_extension_dtype(values):
+        if is_int_dtype(values):
+            downcast_values = values.fillna(-1).astype(int)
+        elif is_bool_dtype(values):
+            downcast_values = values.fillna(False).astype(np.bool_, errors='raise')
+        elif is_float_dtype(values):
+            downcast_values = pd.to_numeric(values, errors='coerce')
+        elif is_string_dtype(values):
+            downcast_values = values.astype(np.object_, errors='raise')
+        else:
+            raise TypeError('unsupported extended datatype {TYPE} provided'.format(TYPE=values.dtype))
+    else:
+        downcast_values = values
+
+    return downcast_values
 
 
 def evaluate_condition(data, expression):
@@ -159,13 +202,15 @@ def evaluate_condition(data, expression):
         results (pd.Series): results of the evaluation for each row of data provided.
     """
     is_bool_dtype = pd.api.types.is_bool_dtype
+    is_extension_dtype = pd.api.types.is_extension_array_dtype
+
     reserved_chars = ('and', 'or', 'in', 'not', '+', '-', '/', '//', '*', '**', '%', '>', '>=', '<', '<=', '==', '!=',
                       '~', ',', '(', ')', '[', ']', '{', '}')
 
     if isinstance(data, pd.Series):  # single data entry
         df = data.to_frame().T
     elif isinstance(data, pd.DataFrame):  # one or more entries
-        df = data
+        df = data.copy()
     elif isinstance(data, dict):  # one or more entries
         try:
             df = pd.DataFrame(data)
@@ -191,6 +236,15 @@ def evaluate_condition(data, expression):
         exp_comps = []
         for component in components:
             if component in header:
+                col_values = df[component]
+                if is_extension_dtype(col_values):
+                    try:
+                        df.loc[:, component] = downcast_extended(col_values)
+                    except TypeError:
+                        logger.exception('failed to downcast component {COMP} values'.format(COMP=component))
+
+                        raise
+
                 exp_comp = '`{}`'.format(component)
             elif is_numeric(component) or component in reserved_chars:
                 exp_comp = component
@@ -200,7 +254,14 @@ def evaluate_condition(data, expression):
             exp_comps.append(exp_comp)
 
         expression = ' '.join(exp_comps)
-        df_match = df.eval(expression)
+        try:
+            df_match = df.eval(expression)
+        except ValueError:
+            print(expression)
+            print(df)
+            print(df.dtypes)
+
+            raise
     else:  # results are a single static value or the values of a column in the dataframe
         expression = ' '.join(components)
         if expression in header:
@@ -228,10 +289,12 @@ def evaluate_operation(data, expression):
     Returns:
         results (pd.Series): results of the evaluation for each row of data provided.
     """
+    is_extension_dtype = pd.api.types.is_extension_array_dtype
+
     if isinstance(data, pd.Series):
         df = data.to_frame().T
     elif isinstance(data, pd.DataFrame):
-        df = data
+        df = data.copy()
     elif isinstance(data, dict):
         try:
             df = pd.DataFrame(data)
@@ -253,6 +316,15 @@ def evaluate_operation(data, expression):
         exp_comps = []
         for component in components:
             if component in header:
+                col_values = df[component]
+                if is_extension_dtype(col_values):
+                    try:
+                        df.loc[:, component] = downcast_extended(col_values)
+                    except TypeError:
+                        logger.exception('failed to downcast component {COMP} values'.format(COMP=component))
+
+                        raise
+
                 exp_comp = '`{}`'.format(component)
             else:
                 exp_comp = component

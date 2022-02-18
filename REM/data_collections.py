@@ -548,7 +548,6 @@ class DataCollection:
         df = self.df.copy()
 
         if current and (indices is not None or deleted_only is True):
-            logger.warning('the current and indices arguments are mutually exclusive - setting current to False')
             current = False
 
         if current:
