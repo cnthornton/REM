@@ -1502,75 +1502,6 @@ class DatabaseRecord:
             self.metadata.append(param)
 
         # Record data components
-        #self.sections = {}
-        #self.modules = []
-        #try:
-        #    sections = entry['Sections']
-        #except KeyError:
-        #    msg = 'missing configuration parameter "Sections"'
-        #    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-        #else:
-        #    for i, section in enumerate(sections):
-        #        section_entry = sections[section]
-        #        #self.elements.extend(['-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-        #        #                      ['SectionBttn{}'.format(i), 'SectionFrame{}'.format(i)]])
-        #        section_bttn = 'SectionBttn{}'.format(i)
-        #        section_frame = 'SectionFrame{}'.format(i)
-        #        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-        #                              (section_bttn, section_frame)})
-        #        self.bindings[self.key_lookup(section_bttn)] = section_bttn
-
-        #        self.sections[section] = {'Title': section_entry.get('Title', section),
-        #                                  'Elements': []}
-
-        #        try:
-        #            section_elements = section_entry['Elements']
-        #        except KeyError:
-        #            raise AttributeError('Section {} is missing required parameter "Elements"'.format(section))
-        #        for element_name in section_elements:
-        #            self.sections[section]['Elements'].append(element_name)
-        #            elem_entry = section_elements[element_name]
-        #            try:
-        #                etype = elem_entry['ElementType']
-        #            except KeyError:
-        #                raise AttributeError('"Details" element {NAME} is missing the required field "ElementType"'
-        #                                     .format(NAME=element_name))
-
-                    # Set the object type of the record element.
-        #            if etype in ('data_table', 'table'):
-        #                element_class = mod_elem.DataTable
-        #            elif etype in ('component_table', 'components'):
-        #                element_class = mod_elem.ComponentTable
-                    #elif etype in ('refbox', 'reference'):
-                    #    element_class = mod_elem.ReferenceBox
-        #            elif etype in ('data_list', 'list'):
-        #                element_class = mod_elem.DataList
-        #            elif etype in ('reference_list', 'reference'):
-        #                element_class = mod_elem.ReferenceList
-        #            elif etype in ('dependent_variable', 'dependent'):
-        #                element_class = mod_elem.DependentVariable
-        #            elif etype in ('text_variable', 'text'):
-        #                element_class = mod_elem.RecordVariable
-        #            elif etype in ('input_variable', 'date_variable', 'input', 'date'):
-        #                element_class = mod_elem.RecordVariableInput
-        #            elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
-        #                element_class = mod_elem.RecordVariableCombo
-        #            elif etype in ('multiline_variable', 'multiline', 'multi'):
-        #                element_class = mod_elem.RecordVariableMultiline
-        #            else:
-        #                raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
-        #                                     .format(ETYPE=etype, ELEM=element_name))
-
-                    # Initialize the record element
-        #            try:
-        #                elem_obj = element_class(element_name, elem_entry, parent=self.name)
-        #            except Exception as e:
-        #                raise AttributeError('failed to initialize {NAME} element {ELEM} - {ERR}'
-        #                                     .format(NAME=self.name, ELEM=element_name, ERR=e))
-
-                    # Add the element to the set of record components
-        #            self.modules.append(elem_obj)
-
         self.sections = {'_Default': {'Title': '', 'Elements': []}}
         all_section_elements = []
         try:
@@ -1586,6 +1517,11 @@ class DatabaseRecord:
 
             if 'Title' not in section_entry:
                 section_entry['Title'] = section
+
+            if 'HeadingElement' in section_entry:
+                heading_element = section_entry['HeadingElement']
+                all_section_elements.append(heading_element)
+
             if 'Elements' not in section_entry:
                 section_entry['Elements'] = []
             else:
@@ -2840,7 +2776,7 @@ class DatabaseRecord:
         select_col = mod_const.SELECT_TEXT_COL
         frame_col = mod_const.FRAME_COL
 
-        bold_font = mod_const.BOLD_HEADING_FONT
+        bold_font = mod_const.HEADING_FONT
         main_font = mod_const.MAIN_FONT
 
         pad_el = mod_const.ELEM_PAD
@@ -2850,8 +2786,8 @@ class DatabaseRecord:
         self._padding = padding
         pad_w, pad_h = padding
 
-        bar_h = 22
-        header_h = 32
+        bar_h = 40
+        header_h = 50
 
         min_h = header_h + bar_h
         self._minimum_height = min_h
@@ -2874,6 +2810,7 @@ class DatabaseRecord:
 
         sections_layout = []
         print(sections)
+        used_elements = []
         for index, section_name in enumerate(sections):
             print('creating layout for section {} number {}'.format(index, section_name))
             section_entry = sections[section_name]
@@ -2883,29 +2820,52 @@ class DatabaseRecord:
                 continue
 
             section_title = section_entry['Title']
+
             section_bttn_key = self.key_lookup('SectionBttn{}'.format(index))
+            header_left = [sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
+            header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
+                                      button_color=(text_col, frame_col), border_width=0, visible=True,
+                                      metadata={'visible': True, 'disabled': False})]
+
+            if 'HeadingElement' in section_entry:
+                heading_element_name = section_entry['HeadingElement']
+                if heading_element_name not in used_elements:
+                    heading_element = self.fetch_element(heading_element_name)
+                    if heading_element.etype in ('dependent_variable', 'dependent'):
+                        heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level)
+                        header_right.insert(0, heading_element_layout)
+
+                        used_elements.append(heading_element_name)
+                else:
+                    logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
+                                   'in the layout'.format(NAME=self.name, ELEM=heading_element_name, SEC=section_name))
+
             section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
-                                       sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col,
-                                               font=bold_font),
-                                       sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key,
-                                                 disabled=False,
-                                                 button_color=(text_col, frame_col), border_width=0, visible=True,
-                                                 metadata={'visible': True, 'disabled': False})
+                                       sg.Col([header_left], justification='l', expand_x=True,
+                                              background_color=frame_col),
+                                       sg.Col([header_right], justification='r', background_color=frame_col)
                                        ]], background_color=frame_col, expand_x=True)]
             sections_layout.append(section_header)
 
             section_layout = []
             for element_name in section_elements:
-                element = self.fetch_element(element_name)
+                if element_name not in used_elements:
+                    element = self.fetch_element(element_name)
 
-                can_edit = editable and element.permissions in user_priv
-                element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
-                                                 level=level)]
-                section_layout.append(element_layout)
+                    can_edit = editable and element.permissions in user_priv
+                    element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
+                                                     level=level)]
+                    section_layout.append(element_layout)
+
+                    used_elements.append(element_name)
+                else:
+                    logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
+                                   'in the layout'.format(NAME=self.name, ELEM=element_name, SEC=section_name))
 
             section_panel_key = self.key_lookup('SectionFrame{}'.format(index))
-            sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key, background_color=bg_col,
-                                                  visible=True, expand_x=True, metadata={'visible': True}))])
+            sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key,
+                                                  background_color=bg_col, visible=True, expand_x=True,
+                                                  metadata={'visible': True}))])
 
         tab_key = self.key_lookup('DetailsTab')
         col_key = self.key_lookup('DetailsCol')

@@ -286,6 +286,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     record_w = min_w
     record_h = min_h - bffr_h
     record_layout = record.layout((record_w, record_h), padding=(pad_frame, pad_el), view_only=view_only)
+    print(record_layout)
 
     # Window layout
     layout = [[sg.Col(title_layout, key='-TITLE-', background_color=header_col, vertical_alignment='c', expand_x=True)],
@@ -296,6 +297,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                       vertical_alignment='c', expand_x=True)]]
 
     window_title = '{TITLE} ({LEVEL})'.format(TITLE=title, LEVEL=record_level)
+    print(layout)
     window = sg.Window(window_title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
     window.hide()
