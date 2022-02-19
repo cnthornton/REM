@@ -1386,7 +1386,7 @@ class DataTable(RecordElement):
         return annotations
 
     def layout(self, size: tuple = (None, None), padding: tuple = None, tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0):
+               overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         Generate a window layout for the table record element.
         """
@@ -1422,8 +1422,8 @@ class DataTable(RecordElement):
         disabled_text_col = mod_const.DISABLED_TEXT_COL  # disabled button text
         disabled_bg_col = mod_const.INACTIVE_COL  # disabled button background
         alt_col = self.row_color  # alternate row color
-        bg_col = self.bg_col  # default primary table color is white
-        header_col = mod_const.TBL_HEADER_COL  # color of the header background
+        row_col = self.bg_col  # default primary table color is white
+        header_col = mod_const.TBL_HEADER_COL if bg_color is None else bg_color  # color of the header background
         frame_col = mod_const.DEFAULT_COL  # background color of the table frames
         border_col = mod_const.BORDER_COL  # background color of the collapsible bars and the table frame
 
@@ -1557,11 +1557,11 @@ class DataTable(RecordElement):
             search_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                              [sg.Canvas(size=(0, bar_h), background_color=header_col),
                               sg.Frame('', [
-                                  [sg.Image(data=mod_const.SEARCH_ICON, background_color=bg_col, pad=((0, pad_h), 0)),
+                                  [sg.Image(data=mod_const.SEARCH_ICON, background_color=row_col, pad=((0, pad_h), 0)),
                                    sg.Input(default_text='', key=search_key, size=(isize - 2, 1),
-                                            border_width=0, do_not_clear=True, background_color=bg_col,
+                                            border_width=0, do_not_clear=True, background_color=row_col,
                                             enable_events=True, tooltip='Search table')]],
-                                       background_color=bg_col, relief='sunken')]]
+                                       background_color=row_col, relief='sunken')]]
         else:
             search_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
                              [sg.Canvas(size=(0, bar_h), background_color=header_col)]]
@@ -1617,7 +1617,7 @@ class DataTable(RecordElement):
         col_widths = self._calc_column_widths(display_header, width=tbl_width, size=font_size, pixels=False,
                                               widths=self.widths)
         row4.append(sg.Table(data, key=keyname, headings=header, visible_column_map=vis_map, pad=(0, 0), num_rows=nrow,
-                             row_height=row_h, alternating_row_color=alt_col, background_color=bg_col,
+                             row_height=row_h, alternating_row_color=alt_col, background_color=row_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
                              header_font=header_font, display_row_numbers=False, auto_size_columns=False,
                              col_widths=col_widths, enable_events=events, bind_return_key=False, tooltip=tooltip,
@@ -1633,19 +1633,19 @@ class DataTable(RecordElement):
             fill_menu = ['&Fill', display_header]
             options.append([sg.ButtonMenu('', fill_menu, key=fill_key, image_data=mod_const.FILL_ICON,
                                           image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
-                                          button_color=(text_col, bg_col), tooltip='Fill NA values')])
+                                          button_color=(text_col, row_col), tooltip='Fill NA values')])
 
         if modifiers['export']:
             options.append([sg.Button('', key=print_key, image_data=mod_const.EXPORT_ICON,
                                       image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
-                                      button_color=(text_col, bg_col), tooltip='Export to spreadsheet')])
+                                      button_color=(text_col, row_col), tooltip='Export to spreadsheet')])
 
         if modifiers['sort']:
             sort_menu = ['&Sort', display_header]
             options.append(
                 [sg.ButtonMenu('', sort_menu, key=sort_key, image_data=mod_const.SORT_ICON,
                                image_size=(200, 40), pad=(pad_h, (0, int(pad_v / 2))), border_width=1,
-                               button_color=(text_col, bg_col), tooltip='Sort table on columns')])
+                               button_color=(text_col, row_col), tooltip='Sort table on columns')])
 
         row4.append(sg.Col(options, key=self.key_lookup('OptionsFrame'), background_color=frame_col,
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
@@ -1661,7 +1661,7 @@ class DataTable(RecordElement):
         annot_key = self.key_lookup('Notes')
         row5 = [sg.Col([[sg.Canvas(size=(0, annot_h), background_color=header_col),
                          sg.Text('(select row)', key=annot_key, size=(10, 1), pad=(pad_el, 0), auto_size_text=False,
-                                 font=annot_font, background_color=bg_col, text_color=disabled_text_col,
+                                 font=annot_font, background_color=row_col, text_color=disabled_text_col,
                                  border_width=1, relief='sunken')]],
                        background_color=header_col, expand_x=True, vertical_alignment='c', element_justification='l',
                        visible=annot_vis, metadata={'visible': annot_vis, 'disabled': True})]
@@ -1688,7 +1688,7 @@ class DataTable(RecordElement):
         actions_bar.append(sg.Col([[sg.Text(total_desc, pad=((0, pad_el), 0), font=bold_font,
                                             background_color=header_col),
                                     sg.Text(init_totals, key=total_key, size=(14, 1), pad=((pad_el, 0), 0),
-                                            font=font, background_color=bg_col, justification='r', relief='sunken',
+                                            font=font, background_color=row_col, justification='r', relief='sunken',
                                             metadata={'name': self.name})]],
                                   pad=(pad_el, 0), justification='r', element_justification='r', vertical_alignment='b',
                                   background_color=header_col, expand_x=True, expand_y=False))
@@ -2357,7 +2357,6 @@ class RecordTable(DataTable):
 
         if import_df is None:
             import_df = collection.data(current=False, deleted_only=True)
-        current_ids = collection.row_ids(indices=import_df.index, deleted=True)
 
         logger.debug(self.format_log('importing rows'))
 
@@ -3111,7 +3110,7 @@ class DataList(RecordElement):
         return self._dimensions
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0):
+               overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
         """
@@ -3129,7 +3128,7 @@ class DataList(RecordElement):
         menu_font = mod_const.MAIN_FONT
 
         text_col = mod_const.TEXT_COL
-        bg_col = mod_const.TBL_HEADER_COL
+        bg_col = mod_const.TBL_HEADER_COL if bg_color is None else bg_color
 
         pad_el = mod_const.ELEM_PAD
 
@@ -4272,7 +4271,7 @@ class RecordVariable(DataVariable):
         return triggers
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0):
+               overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
         """
@@ -4287,7 +4286,7 @@ class RecordVariable(DataVariable):
         width, height = size
         self._dimensions = (width * 10, mod_const.VARIABLE_HEIGHT_PX)
 
-        background = self.bg_col
+        background = self.bg_col if bg_color is None else bg_color
         tooltip = tooltip if tooltip else self.tooltip
 
         elem_key = self.key_lookup('Element')
@@ -4299,6 +4298,7 @@ class RecordVariable(DataVariable):
         bold_font = mod_const.BOLD_HEADING_FONT
 
         bg_col = mod_const.ACTION_COL if background is None else background
+        self.bg_col = background
         text_col = mod_const.TEXT_COL
 
         # Element Icon, if provided
@@ -4366,7 +4366,7 @@ class RecordVariable(DataVariable):
 
         # Element layout
         width_key = self.key_lookup('Width')
-        layout_attrs = self.layout_attributes(size=(width, 1), bg_col=bg_col)
+        layout_attrs = self.layout_attributes(size=(width, 1))
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout(self.etype, layout_attrs)],
                                  background_color=bg_col)]
@@ -4380,19 +4380,18 @@ class RecordVariable(DataVariable):
 
         return layout
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None):
+    def layout_attributes(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         text_col = mod_const.DISABLED_TEXT_COL
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
 
         return layout_attrs
 
@@ -4427,19 +4426,18 @@ class RecordVariableInput(RecordVariable):
             self.elements['Calendar'] = calendar_key
             self.bindings[calendar_key] = 'Calendar'
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None):
+    def layout_attributes(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         text_col = mod_const.TEXT_COL
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
 
         return layout_attrs
 
@@ -4497,12 +4495,11 @@ class RecordVariableCombo(RecordVariable):
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning(self.format_log(msg))
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None):
+    def layout_attributes(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         text_col = mod_const.TEXT_COL
 
         elem_key = self.key_lookup('Element')
@@ -4520,7 +4517,7 @@ class RecordVariableCombo(RecordVariable):
                 display_values.append(self.format_display(value=option))
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'ComboValues': display_values}
 
         return layout_attrs
@@ -4569,12 +4566,11 @@ class RecordVariableMultiline(RecordVariable):
         except (KeyError, ValueError):
             self.nrow = 1
 
-    def layout_attributes(self, size: tuple = None, bg_col: str = None):
+    def layout_attributes(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
         text_col = mod_const.TEXT_COL
 
         elem_key = self.key_lookup('Element')
@@ -4582,7 +4578,7 @@ class RecordVariableMultiline(RecordVariable):
         nrow = self.nrow
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'NRow': nrow}
 
         return layout_attrs
@@ -4621,8 +4617,6 @@ class DependentVariable(DataVariable):
 
         # Element-specific bindings
         self.bindings = {self.elements['Element']: 'Element'}
-        #elem_key = self.key_lookup('Element')
-        #self.bindings = {'{}+LCLICK+'.format(elem_key): 'Element'}
 
         # Data type check
         supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
@@ -4687,7 +4681,7 @@ class DependentVariable(DataVariable):
         return triggers
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0):
+               overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
         """
@@ -4702,7 +4696,6 @@ class DependentVariable(DataVariable):
         width, height = size
         self._dimensions = size
 
-        background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
 
         # Layout options
@@ -4712,7 +4705,8 @@ class DependentVariable(DataVariable):
         font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_HEADING_FONT
 
-        bg_col = background
+        bg_col = self.bg_col if bg_color is None else bg_color
+        self.bg_col = bg_col
         text_col = mod_const.DISABLED_TEXT_COL
 
         # Element Icon, if provided
@@ -4917,7 +4911,7 @@ class MetaVariable(DataVariable):
         return triggers
 
     def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0):
+               overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
         """
@@ -4934,7 +4928,6 @@ class MetaVariable(DataVariable):
         else:   # rough convert to chars if size not set
             width, height = [int(i / 9) for i in self._dimensions]
 
-        background = self.bg_col
         tooltip = tooltip if tooltip else self.tooltip
 
         # Layout options
@@ -4944,7 +4937,8 @@ class MetaVariable(DataVariable):
         font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_HEADING_FONT
 
-        bg_col = background
+        bg_col = self.bg_col if bg_color is None else bg_color
+        self.bg_col = bg_col
         text_col = mod_const.TEXT_COL
 
         # Element Icon, if provided

@@ -2832,7 +2832,8 @@ class DatabaseRecord:
                 if heading_element_name not in used_elements:
                     heading_element = self.fetch_element(heading_element_name)
                     if heading_element.etype in ('dependent_variable', 'dependent'):
-                        heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level)
+                        heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
+                                                                        bg_color=frame_col)
                         header_right.insert(0, heading_element_layout)
 
                         used_elements.append(heading_element_name)

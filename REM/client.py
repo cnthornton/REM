@@ -1317,10 +1317,10 @@ class AccountManager:
 
             timeout (int): server connection timeout.
         """
-        logger.info('signing in as "{}"'.format(self.uid))
-
         self.uid = uid
         self.pwd = cipher.encrypt(pwd.encode('utf-8'))
+
+        logger.info('signing in as "{}"'.format(self.uid))
 
         # Prepare the server request
         value = {'connection_string': self._prepare_conn_str()}
@@ -1354,10 +1354,10 @@ class AccountManager:
 
             timeout (int): server connection timeout.
         """
-        logger.info('signing in as "{}"'.format(self.uid))
-
         self.uid = uid
         self.pwd = cipher.encrypt(pwd.encode('utf-8'))
+
+        logger.info('signing in as "{}"'.format(self.uid))
 
         # Prepare query statement and parameters
         query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
