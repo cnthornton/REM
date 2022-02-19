@@ -156,6 +156,37 @@ class RecordElement:
 
         return msg_fmt
 
+    def is_type(self, etype):
+        """
+        Determine if a record element is of the given element type.
+        """
+        map = {'table': ['table', 'data_table'],
+               'data_table': ['table', 'data_table'],
+               'component': ['table', 'data_table', 'component', 'component_table'],
+               'list': ['list', 'data_list'],
+               'data_list': ['list', 'data_list'],
+               'reference': ['list', 'data_list', 'reference', 'reference_list'],
+               'dependent': ['variable', 'data_variable', 'dependent', 'dependent_variable'],
+               'text': ['variable', 'data_variable', 'record_variable', 'text', 'text_variable'],
+               'input': ['variable', 'data_variable', 'record_variable', 'input', 'input_variable', 'date',
+                         'date_variable'],
+               'dropdown': ['variable', 'data_variable', 'record_variable', 'dropdown', 'combo', 'dropdown_variable',
+                            'combo_variable'],
+               'multiline': ['variable', 'data_variable', 'record_variable', 'multiline', 'multiline_variable',
+                             'multi'],
+               'checkbox': ['variable', 'data_variable', 'record_variable', 'checkbox'],
+               }
+
+        try:
+            element_hierarchy = map[self.etype]
+        except KeyError:
+            return False
+
+        if etype in element_hierarchy:
+            return True
+        else:
+            return False
+
 
 class DataTable(RecordElement):
     """
@@ -3921,10 +3952,86 @@ class DataVariable(RecordElement):
 
                 self.modifiers[modifier] = flag
 
+        # Additional layout modification attributes
+        try:
+            arrange = entry['Arrangement']
+        except KeyError:  # default arrangement of element components is "stacked"
+            arrange = 'v'
+
+        if arrange in ('h', 'horizontal', 'horz', 'long'):
+            self.arrangement = 'h'
+        elif arrange in ('v', 'vertical', 'vert', 'stacked'):
+            self.arrangement = 'v'
+        else:
+            logger.warning(self.format_log('unsupported value "{VAL}" provided to arrangement'.format(VAL=arrange)))
+            self.arrangement = 'v'
+
         # Dynamic variables
         self.value = mod_col.DataVector(name, entry)
         self._dimensions = (mod_const.VARIABLE_WIDTH_PX, mod_const.VARIABLE_HEIGHT_PX)
         self.disabled = False
+
+    def _resize_h(self, window, size: tuple = None):
+        """
+        Resize the record element display when element components are arranged horizontally.
+
+        Arguments:
+            window: GUI window.
+
+            size (tuple): new width and height of the element [Default: set to size of the value + description].
+        """
+        elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
+        width_key = self.key_lookup('Width')
+
+        current_w, current_h = self.dimensions()
+
+        if size:  # set element to a set size
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+        else:  # auto size the element based on content
+            new_h = current_h
+
+            font = mod_const.LARGE_FONT
+            bold_font = mod_const.BOLD_HEADING_FONT
+
+            desc_w = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+            display_value = self.format_display()
+            elem_w = window[elem_key].string_width_in_pixels(font, display_value)
+            new_w = desc_w + elem_w + mod_const.HORZ_PAD
+
+        window[elem_key].set_size(size=(1, None))
+        window[width_key].set_size(size=(new_w, None))
+        window[elem_key].expand(expand_x=True)
+
+        self._dimensions = (new_w, new_h)
+
+        return window[self.key_lookup('Frame')].get_size()
+
+    def _resize_v(self, window, size: tuple = None):
+        """
+        Resize the record element display when element components are arranged vertically.
+        """
+        elem_key = self.key_lookup('Element')
+        width_key = self.key_lookup('Width')
+
+        current_w, current_h = self.dimensions()
+
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+            window[elem_key].set_size(size=(1, None))
+        else:
+            new_w, new_h = (current_w, current_h)
+
+        window[width_key].set_size(size=(new_w, None))
+        window[elem_key].expand(expand_x=True)
+
+        self._dimensions = (new_w, new_h)
+
+        return window[self.key_lookup('Frame')].get_size()
 
     def annotate_display(self):
         """
@@ -4013,24 +4120,12 @@ class DataVariable(RecordElement):
         """
         Resize the element display.
         """
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
-        current_w, current_h = self.dimensions()
-
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
-            window[elem_key].set_size(size=(1, None))
+        if self.arrangement == 'v':
+            new_size = self._resize_v(window, size)
         else:
-            new_w, new_h = (current_w, current_h)
+            new_size = self._resize_h(window, size)
 
-        window[width_key].set_size(size=(new_w, None))
-        window[elem_key].expand(expand_x=True)
-
-        self._dimensions = (new_w, new_h)
-
-        return window[self.key_lookup('Frame')].get_size()
+        return new_size
 
     def update_display(self, window):
         """
@@ -4372,11 +4467,15 @@ class RecordVariable(DataVariable):
                                  background_color=bg_col)]
 
         # Layout
-        row1 = icon_layout + description_layout
-        row2 = element_layout + aux_layout + required_layout
+        if self.arrangement == 'v':
+            row1 = icon_layout + description_layout
+            row2 = element_layout + aux_layout + required_layout
+            components = [row1, row2]
+        else:
+            components = [icon_layout + description_layout + element_layout + aux_layout + required_layout]
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col(components, key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
 
         return layout
 
@@ -4751,11 +4850,15 @@ class DependentVariable(DataVariable):
                                  background_color=bg_col)]
 
         # Layout
-        row1 = icon_layout + description_layout
-        row2 = element_layout + required_layout
+        if self.arrangement == 'v':
+            row1 = icon_layout + description_layout
+            row2 = element_layout + required_layout
+            components = [row1, row2]
+        else:
+            components = [icon_layout + description_layout + element_layout + required_layout]
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col([row1, row2], key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col(components, key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
 
         return layout
 

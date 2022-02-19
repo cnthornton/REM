@@ -2831,12 +2831,16 @@ class DatabaseRecord:
                 heading_element_name = section_entry['HeadingElement']
                 if heading_element_name not in used_elements:
                     heading_element = self.fetch_element(heading_element_name)
-                    if heading_element.etype in ('dependent_variable', 'dependent'):
+                    if heading_element.is_type('data_variable'):
                         heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
-                                                                        bg_color=frame_col)
+                                                                        bg_color=frame_col, editable=False)
                         header_right.insert(0, heading_element_layout)
 
                         used_elements.append(heading_element_name)
+                    else:
+                        logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type {TYPE} '
+                                       'is attempting to be used as a header element'
+                                       .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
                 else:
                     logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
                                    'in the layout'.format(NAME=self.name, ELEM=heading_element_name, SEC=section_name))
@@ -2950,17 +2954,16 @@ class DatabaseRecord:
 
         # Expand the size of the record elements
         for record_element in self.modules:
-            etype = record_element.etype
-            if etype == 'multiline':  # multiline data variable
+            if record_element.is_type('multiline'):  # multiline data variable
                 elem_h = None
                 elem_w = width - (pad_w * 2 + scroll_w)
-            elif etype in ('table', 'component'):  # data table type
+            elif record_element.is_type('table'):  # data table type
                 elem_h = None
                 elem_w = width - (pad_w * 2 + scroll_w)
-            elif etype in ('list', 'reference'):  # data list type
+            elif record_element.is_type('list'):  # data list type
                 elem_h = mod_const.LISTBOX_HEIGHT
                 elem_w = width - (pad_w * 2 + scroll_w)
-            else:  # data variable type
+            else:  # other data variable type
                 elem_h = None
                 elem_w = int(width * 0.5)
 
