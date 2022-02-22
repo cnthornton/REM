@@ -62,7 +62,7 @@ class RecordElement:
         self.parent = parent
         self.id = randint(0, 1000000000)
 
-        #self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+        # self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
         #                 ('Element',)]
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ('Element',)}
@@ -160,12 +160,11 @@ class RecordElement:
         """
         Determine if a record element is of the given element type.
         """
-        map = {'table': ['table', 'data_table'],
-               'data_table': ['table', 'data_table'],
-               'component': ['table', 'data_table', 'component', 'component_table'],
-               'list': ['list', 'data_list'],
-               'data_list': ['list', 'data_list'],
-               'reference': ['list', 'data_list', 'reference', 'reference_list'],
+        map = {'table': ['collection', 'table', 'data_table'],
+               'data_table': ['collection', 'table', 'data_table'],
+               'component': ['collection', 'table', 'association', 'component', 'component_table'],
+               'list': ['collection', 'list', 'data_list'],
+               'reference': ['collection', 'list', 'association', 'reference', 'reference_list'],
                'dependent': ['variable', 'data_variable', 'dependent', 'dependent_variable'],
                'text': ['variable', 'data_variable', 'record_variable', 'text', 'text_variable'],
                'input': ['variable', 'data_variable', 'record_variable', 'input', 'input_variable', 'date',
@@ -881,7 +880,8 @@ class DataTable(RecordElement):
                                             file_types=(('XLS - Microsoft Excel', '*.xlsx'),))
 
                 if outfile:
-                    logger.info(self.format_log('exporting the display table to spreadsheet {FILE}'.format(FILE=outfile)))
+                    logger.info(
+                        self.format_log('exporting the display table to spreadsheet {FILE}'.format(FILE=outfile)))
 
                     export_df = self.export_table()
                     try:
@@ -1403,7 +1403,7 @@ class DataTable(RecordElement):
                 results = mod_dm.evaluate_condition(df, annot_condition)
             except Exception as e:
                 logger.exception(self.format_log('failed to annotate data table using annotation rule {CODE} - {ERR}'
-                                             .format(CODE=annot_code, ERR=e)))
+                                                 .format(CODE=annot_code, ERR=e)))
                 continue
 
             for row_index, result in results.iteritems():
@@ -3365,7 +3365,7 @@ class DataList(RecordElement):
         # Add the index to list of entry indices
         self.indices.append(index)
 
-        #for element in entry_elements:
+        # for element in entry_elements:
         self.elements.update({'{NAME}:{INDEX}'.format(NAME=i, INDEX=index): j for i, j in entry_elements.items()})
 
     def update_entry(self, index, window):
@@ -4429,7 +4429,9 @@ class RecordVariable(DataVariable):
         aux_key = self.key_lookup('Auxiliary')
         aux_layout = [sg.pin(sg.Col([accessory_layout], key=aux_key, background_color=bg_col, visible=False))]
 
-        # Element description and actions
+        # Element description
+        desc_key = self.key_lookup('Description')
+
         annotation = self.annotate_display()
         if annotation:
             rule = self.annotation_rules[annotation]
@@ -4438,41 +4440,43 @@ class RecordVariable(DataVariable):
         else:
             desc_bg_col = bg_col
 
-        desc_key = self.key_lookup('Description')
+        desc_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
+                               font=bold_font, auto_size_text=True, tooltip=tooltip)]
+
+        # Element action buttons
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
         save_key = self.key_lookup('Save')
         cancel_key = self.key_lookup('Cancel')
-        bttn_vis = False if is_disabled is True else True
-        description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
-                                      font=bold_font, auto_size_text=True, tooltip=tooltip),
-                              sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
-                                        button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
-                                        border_width=0, tooltip='Edit value'),
-                              sg.pin(
-                                  sg.Col([[sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
-                                                     pad=((0, pad_el), 0), button_color=(text_col, bg_col),
-                                                     border_width=0, tooltip='Save changes'),
-                                           sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
-                                                     pad=((0, pad_el), 0), button_color=(text_col, bg_col),
-                                                     border_width=0, tooltip='Cancel changes')
-                                           ]],
-                                         key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
 
-        # Element layout
+        bttn_vis = False if is_disabled is True else True
+        bttn_layout = [sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
+                                 button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
+                                 border_width=0, tooltip='Edit value'),
+                       sg.pin(
+                           sg.Col([[sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
+                                              pad=((0, pad_el), 0), button_color=(text_col, bg_col),
+                                              border_width=0, tooltip='Save changes'),
+                                    sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
+                                              pad=((0, pad_el), 0), button_color=(text_col, bg_col),
+                                              border_width=0, tooltip='Cancel changes')
+                                    ]],
+                                  key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
+
+        # Element value layout
         width_key = self.key_lookup('Width')
         layout_attrs = self.layout_attributes(size=(width, 1))
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout(self.etype, layout_attrs)],
                                  background_color=bg_col)]
 
-        # Layout
+        # Element layout
         if self.arrangement == 'v':
-            row1 = icon_layout + description_layout
+            row1 = icon_layout + desc_layout + bttn_layout
             row2 = element_layout + aux_layout + required_layout
             components = [row1, row2]
         else:
-            components = [icon_layout + description_layout + element_layout + aux_layout + required_layout]
+            components = [icon_layout + desc_layout + element_layout + aux_layout + bttn_layout + required_layout]
 
         frame_key = self.key_lookup('Frame')
         layout = sg.Col(components, key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
@@ -4751,8 +4755,8 @@ class DependentVariable(DataVariable):
         """
         Add hotkey bindings to the element.
         """
-        #elem_key = self.key_lookup('Element')
-        #window[elem_key].bind('<Button-1>', '+LCLICK+')
+        # elem_key = self.key_lookup('Element')
+        # window[elem_key].bind('<Button-1>', '+LCLICK+')
         pass
 
     def run_event(self, window, event, values):
@@ -5028,7 +5032,7 @@ class MetaVariable(DataVariable):
         if size:
             width, height = size
             self._dimensions = (width * 9, height * 9)
-        else:   # rough convert to chars if size not set
+        else:  # rough convert to chars if size not set
             width, height = [int(i / 9) for i in self._dimensions]
 
         tooltip = tooltip if tooltip else self.tooltip
@@ -5113,7 +5117,7 @@ class MetaVariable(DataVariable):
             elem_w = window[elem_key].string_width_in_pixels(font, display_value)
             new_w = desc_w + elem_w + mod_const.HORZ_PAD
 
-            #window[elem_key].set_size(size=(1, None))
+            # window[elem_key].set_size(size=(1, None))
 
         window[elem_key].set_size(size=(1, None))
         width_key = self.key_lookup('Width')

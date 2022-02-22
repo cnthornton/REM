@@ -260,7 +260,7 @@ class RecordEntry:
             rule = association_rules[rule_name]
 
             if 'Primary' not in rule:
-                msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "Primary"'\
+                msg = 'RecordEntry {NAME}: AssociationRule {RULE} is missing required parameter "Primary"' \
                     .format(NAME=self.name, RULE=rule_name)
 
                 raise AttributeError(msg)
@@ -439,7 +439,8 @@ class RecordEntry:
             reference_table = rule['ReferenceTable']
 
             if is_primary:  # input records are the primary record IDs
-                columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate', 'DocType AS RecordType',
+                columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate',
+                           'DocType AS RecordType',
                            'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
                            'IsChild', 'IsHardLink', 'IsApproved']
                 filter_str = 'DocNo IN ({VALS})'
@@ -496,12 +497,13 @@ class RecordEntry:
         db_id_col = mod_db.get_import_column(import_rules, 'RecordID')
         columns = mod_db.format_import_columns(import_rules)
         filters = mod_db.format_import_filters(import_rules)
-        #filters.append(('{TBL}.{COL} = ?'.format(TBL=reference_table, COL=import_col_map['Deleted']), 0))
+        # filters.append(('{TBL}.{COL} = ?'.format(TBL=reference_table, COL=import_col_map['Deleted']), 0))
         filters_clause = '{TBL}.{COL} IS NULL'.format(TBL=reference_table, COL=import_col_map['ReferenceID'])
         filters.append(filters_clause)
 
-        join_statement = "{COL} = {TBL}.{REFCOL} AND {TBL}.{DELCOL} = '0'"\
-            .format(COL=db_id_col, TBL=reference_table, REFCOL=import_col_map['RecordID'], DELCOL=import_col_map['Deleted'])
+        join_statement = "{COL} = {TBL}.{REFCOL} AND {TBL}.{DELCOL} = '0'" \
+            .format(COL=db_id_col, TBL=reference_table, REFCOL=import_col_map['RecordID'],
+                    DELCOL=import_col_map['Deleted'])
         import_rules[reference_table] = {'Columns': {import_col_map['RecordID']: import_col_map['RecordID']},
                                          'Join': ["LEFT JOIN", join_statement]}
 
@@ -711,11 +713,12 @@ class RecordEntry:
 
         # Prepare the update statement
         export_columns = [export_col_map['IsDeleted']]
-        export_values = [(1, ) for _ in range(export_df.shape[0])]
+        export_values = [(1,) for _ in range(export_df.shape[0])]
 
         filter_clause = '{COL} = ? AND {REFCOL} = ?'.format(COL=export_col_map['RecordID'],
                                                             REFCOL=export_col_map['ReferenceID'])
-        filter_params = [(row[export_col_map['RecordID']], row[export_col_map['ReferenceID']]) for _, row in export_df.iterrows()]
+        filter_params = [(row[export_col_map['RecordID']], row[export_col_map['ReferenceID']]) for _, row in
+                         export_df.iterrows()]
 
         statements = mod_db.prepare_sql_update(reference_table, export_columns, export_values, filter_clause,
                                                filter_params, statements=statements)
@@ -870,7 +873,8 @@ class RecordEntry:
                     assoc_record_ids = exist_ref_df['RecordID'].tolist()
 
                     # Update hard-linked record element values to match record element values
-                    exist_ref_df = exist_ref_df[(exist_ref_df['IsHardLink']) & (~exist_ref_df['ReferenceID'].isin(ref_ids))]
+                    exist_ref_df = exist_ref_df[
+                        (exist_ref_df['IsHardLink']) & (~exist_ref_df['ReferenceID'].isin(ref_ids))]
                     if not exist_ref_df.empty:
                         # Merge the relevant columns of the records dataframe with the reference dataframe
                         merged_df = pd.merge(exist_df[['RecordID'] + sub_cols], exist_ref_df, on='RecordID')
@@ -880,13 +884,14 @@ class RecordEntry:
                         merged_df.rename(columns={'ReferenceID': 'RecordID'}, inplace=True)
 
                         # Prepare the update statements for the hard-linked records
-                        statements = ref_entry.save_database_records(merged_df, statements=statements, ref_ids=current_ids)
+                        statements = ref_entry.save_database_records(merged_df, statements=statements,
+                                                                     ref_ids=current_ids)
 
                     if not rule['Primary']:  # restricting to primary record types prevents endless recursion
                         continue
 
                     # Allow the user to delete dependent records when dependency conditions are no longer met
-                    #if condition and not exist_df.empty:
+                    # if condition and not exist_df.empty:
                     #    delete_ids = exist_df.loc[~mod_dm.evaluate_condition(exist_df, condition), 'RecordID']
                     #    delete_ref_df = exist_ref_df[exist_ref_df['RecordID'].isin(delete_ids.tolist())]
                     #    to_delete = []
@@ -911,7 +916,7 @@ class RecordEntry:
                         missing_df = missing_df[mod_dm.evaluate_condition(missing_df, condition)]
 
                     for index, row in missing_df.iterrows():
-                        msg = 'Existing {DOCTYPE} record {ID} does not currently have an associated {REFTYPE} record. '\
+                        msg = 'Existing {DOCTYPE} record {ID} does not currently have an associated {REFTYPE} record. ' \
                               'Would you like to create one now?'.format(DOCTYPE=self.menu_title, ID=row['RecordID'],
                                                                          REFTYPE=ref_entry.menu_title)
                         confirm = mod_win2.popup_confirm(msg)
@@ -1035,11 +1040,11 @@ class RecordEntry:
 
             # Delete all reference entries associated with the record IDs and remove already used references from the
             # list - this is necessary for hard-linked records to avoid endless looping
-            #import_df['IsDeleted'] = True
+            # import_df['IsDeleted'] = True
             export_df = import_df.drop(import_df[import_df['ReferenceID'].isin(ref_ids)].index)
             if export_df.empty:
                 continue
-            #statements = self.save_database_references(export_df, association, statements=statements)
+            # statements = self.save_database_references(export_df, association, statements=statements)
             statements = self.delete_database_references(export_df, association, statements=statements)
 
             # Subset reference entries to include those that are child records or hard-linked
@@ -1405,9 +1410,13 @@ class DatabaseRecord:
 
         permissions (dict): dictionary mapping permission rules to permission groups
 
-        modules (list): list of record elements comprising the data component of the record.
+        modules (list): list of all record elements.
 
-        report (dict): report definition
+        tabs (dict): describes how layout sections are divided into tabs.
+
+        sections (dict): describes how record elements are divided into sections.
+
+        report (dict): report definition.
     """
 
     def __init__(self, name, entry, level: int = 0):
@@ -1450,7 +1459,7 @@ class DatabaseRecord:
         except KeyError:
             self.title = self.name
 
-        # Record header
+        # Header elements
         try:
             headers = entry['Header']
         except KeyError:
@@ -1484,61 +1493,22 @@ class DatabaseRecord:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
 
-        # Record metadata elements
+        # Component record elements
         self.metadata = []
-        try:
-            metadata = entry['Metadata']
-        except KeyError:
-            metadata = []
-        for param_name in metadata:
-            param_entry = metadata[param_name]
-            try:
-                param = mod_elem.MetaVariable(param_name, param_entry, parent=self.name)
-            except Exception as e:
-                logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+        # try:
+        #    metadata = entry['Metadata']
+        # except KeyError:
+        #    metadata = []
+        # for param_name in metadata:
+        #    param_entry = metadata[param_name]
+        #    try:
+        #        param = mod_elem.MetaVariable(param_name, param_entry, parent=self.name)
+        #    except Exception as e:
+        #        logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
 
-                raise AttributeError(e)
+        #        raise AttributeError(e)
 
-            self.metadata.append(param)
-
-        # Record data components
-        self.sections = {'_Default': {'Title': '', 'Elements': []}}
-        all_section_elements = []
-        try:
-            sections = entry['Sections']
-        except KeyError:
-            msg = 'missing configuration parameter "Sections"'
-            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            sections = {}
-
-        for i, section in enumerate(sections):
-            section_entry = sections[section]
-
-            if 'Title' not in section_entry:
-                section_entry['Title'] = section
-
-            if 'HeadingElement' in section_entry:
-                heading_element = section_entry['HeadingElement']
-                all_section_elements.append(heading_element)
-
-            if 'Elements' not in section_entry:
-                section_entry['Elements'] = []
-            else:
-                section_elements = section_entry['Elements']
-                if isinstance(section_elements, str):
-                    section_elements = [section_elements]
-
-                all_section_elements.extend(section_elements)
-
-            self.sections[section] = section_entry
-
-        for i, section in enumerate(self.sections):
-            section_bttn = 'SectionBttn{}'.format(i)
-            section_frame = 'SectionFrame{}'.format(i)
-            self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                                  (section_bttn, section_frame)})
-            self.bindings[self.key_lookup(section_bttn)] = section_bttn
+        #    self.metadata.append(param)
 
         self.modules = []
         try:
@@ -1554,12 +1524,6 @@ class DatabaseRecord:
                 except KeyError:
                     raise AttributeError('"Details" element {NAME} is missing the required field "ElementType"'
                                          .format(NAME=element_name))
-
-                if element_name not in all_section_elements:
-                    try:
-                        self.sections['_Default']['Elements'].append(element_name)
-                    except KeyError:
-                        self.sections['_Default'] = {'Title': '', 'Elements': [element_name]}
 
                 # Set the object type of the record element.
                 if etype in ('data_table', 'table'):
@@ -1594,6 +1558,125 @@ class DatabaseRecord:
                 # Add the element to the set of record components
                 self.modules.append(elem_obj)
 
+        # Record layout attributes
+        self.tabs = {'_Default': {'Title': 'Details', 'Sections': []}}
+        all_record_sections = []
+        try:
+            tabs = entry['Tabs']
+        except KeyError:
+            msg = 'missing configuration parameter "Tabs"'
+            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            tabs = {}
+
+        for i, tab_name in enumerate(tabs):
+            _tab_entry = tabs[tab_name]
+            tab_entry = {}
+
+            try:
+                tab_entry['Title'] = _tab_entry['Title']
+            except KeyError:
+                tab_entry['Title'] = tab_name
+
+            tab_sections = []
+            try:
+                _tab_sections = _tab_entry['Sections']
+            except KeyError:
+                msg = 'no sections defined for tab layout {TAB}'.format(TAB=tab_name)
+                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                continue
+            else:
+                for tab_section in _tab_sections:
+                    if tab_section in all_record_sections:
+                        msg = 'unable to add section {SEC} to tab layout {TAB} - section {SEC} is already defined ' \
+                              'for a previous tab'.format(TAB=tab_name, SEC=tab_section)
+                        logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        continue
+
+                    tab_sections.append(tab_section)
+                    all_record_sections.append(tab_section)
+
+            if len(tab_sections) > 0:
+                tab_entry['Sections'] = tab_sections
+                self.tabs[tab_name] = tab_entry
+
+        self.sections = {'_Default': {'Title': 'Record Information', 'Elements': []}}
+        all_record_elements = []
+        try:
+            sections = entry['Sections']
+        except KeyError:
+            msg = 'missing configuration parameter "Sections"'
+            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            sections = {}
+
+        for i, section in enumerate(sections):
+            _section_entry = sections[section]
+            section_entry = {}
+
+            try:
+                section_entry['Title'] = _section_entry['Title']
+            except KeyError:
+                section_entry['Title'] = section
+
+            if 'HeadingElement' in _section_entry:
+                heading_element = _section_entry['HeadingElement']
+                all_record_elements.append(heading_element)
+                section_entry['HeadingElement'] = heading_element
+
+            section_elements = []
+            try:
+                _section_elements = _section_entry['Elements']
+            except KeyError:
+                msg = 'no record elements defined for section layout {SEC}'.format(SEC=section)
+                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                continue
+            else:
+                for section_element in _section_elements:
+                    if section_element in all_record_elements:
+                        msg = 'unable to add record element {ELEM} to section layout {SEC} - element {ELEM} is ' \
+                              'already defined for a previous section'.format(ELEM=section_element, SEC=section)
+                        logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        continue
+
+                    section_elements.append(section_element)
+                    all_record_elements.append(section_element)
+
+            section_entry['Elements'] = section_elements
+
+            self.sections[section] = section_entry
+
+        for record_element in self.modules:
+            element_name = record_element.name
+            if element_name not in all_record_elements:
+                try:
+                    self.sections['_Default']['Elements'].append(element_name)
+                except KeyError:
+                    self.sections['_Default'] = {'Title': '', 'Elements': [element_name]}
+
+        for i, section in enumerate(self.sections):
+            if section not in all_record_sections:
+                try:
+                    self.tabs['_Default']['Sections'].append(section)
+                except KeyError:
+                    self.tabs['_Default'] = {'Title': '', 'Sections': [section]}
+
+            section_bttn = 'SectionBttn{}'.format(i)
+            section_frame = 'SectionFrame{}'.format(i)
+            self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                                  (section_bttn, section_frame)})
+            self.bindings[self.key_lookup(section_bttn)] = section_bttn
+
+        for i, tab_name in enumerate(self.tabs):
+            tab_key = '{}Tab'.format(tab_name)
+            tab_frame = '{}Col'.format(tab_name)
+            self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+                                  (tab_key, tab_frame)})
+
         # Record report layout definition
         try:
             report = entry['Report']
@@ -1624,7 +1707,7 @@ class DatabaseRecord:
         try:
             key = key_map[component]
         except KeyError:
-            msg = 'component {COMP} not found in list of record {NAME} components'\
+            msg = 'component {COMP} not found in list of record {NAME} components' \
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
             print(key_map)
@@ -1675,7 +1758,7 @@ class DatabaseRecord:
                 references for the given association rule but will use the reference entries provided instead.
         """
         # pd.set_option('display.max_columns', None)
-        meta_params = self.metadata
+        # meta_params = self.metadata
         record_elements = self.modules
 
         if not references:
@@ -1716,14 +1799,14 @@ class DatabaseRecord:
             record_data[settings.creation_date] = datetime.datetime.now()
 
         # Set metadata element values
-        for meta_param in meta_params:
-            param_name = meta_param.name
+        # for meta_param in meta_params:
+        #    param_name = meta_param.name
 
-            try:
-                meta_param.format_value(record_data)
-            except KeyError:
-                logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
-                               .format(NAME=self.name, COL=param_name))
+        #    try:
+        #        meta_param.format_value(record_data)
+        #    except KeyError:
+        #        logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
+        #                       .format(NAME=self.name, COL=param_name))
 
         # Populate the record elements with data
         record_id = self.record_id()
@@ -1734,9 +1817,7 @@ class DatabaseRecord:
 
         for record_element in record_elements:
             element_name = record_element.name
-            etype = record_element.etype
-
-            if etype in ('table', 'list'):  # data table or data list
+            if record_element.is_type('data_table') or record_element.is_type('data_list'):  # data table or data list
                 element_fields = record_element.columns
                 element_data = pd.Series(index=element_fields)
                 for element_field in element_fields:
@@ -1747,7 +1828,7 @@ class DatabaseRecord:
 
                 record_element.append(element_data)
 
-            elif etype == 'component':  # component table
+            elif record_element.is_type('component'):  # component table
                 assoc_rule = record_element.association_rule
                 ref_entry = settings.records.fetch_rule(record_element.record_type)
 
@@ -1773,7 +1854,7 @@ class DatabaseRecord:
                 import_df = import_df[[i for i in import_df.columns if i in record_element.columns]]
                 record_element.append(import_df)
 
-            elif etype == 'reference':  # reference list
+            elif record_element.is_type('reference'):  # reference list
                 assoc_rule = record_element.association_rule
 
                 logger.debug('RecordType {NAME}: initializing reference list "{PARAM}" with association "{TYPE}"'
@@ -1831,8 +1912,8 @@ class DatabaseRecord:
         self._record_date.reset(window)
 
         # Reset metadata elements
-        for meta_param in self.metadata:
-            meta_param.reset(window)
+        #for meta_param in self.metadata:
+        #    meta_param.reset(window)
 
         # Reset record data component elements
         for component in self.modules:
@@ -1935,7 +2016,7 @@ class DatabaseRecord:
         if by_key is True:
             element_type = element[1:-1].split('_')[-1]
             element_names = [i.key_lookup(element_type) for i in self.metadata]
-            #element_names = [i.key_lookup(element, rev=True) for i in self.metadata]
+            # element_names = [i.key_lookup(element, rev=True) for i in self.metadata]
         else:
             element_names = [i.name for i in self.metadata]
 
@@ -1955,8 +2036,8 @@ class DatabaseRecord:
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # Collapse or expand a section frame
-        #section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
-        #if event in section_bttns:
+        # section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
+        # if event in section_bttns:
         #    section_index = section_bttns.index(event)
         #    self.collapse_expand(window, index=section_index)
 
@@ -1970,17 +2051,17 @@ class DatabaseRecord:
             return False
 
         # Run a modifier event
-        meta_events = [i for param in self.metadata for i in param.bindings]
-        if event in meta_events:
-            try:
-                meta_param = self.fetch_metadata(event, by_key=True)
-            except KeyError:
-                logger.error('RecordType {NAME}, Record {ID}: unable to find the metadata element associated with '
-                             'event key "{KEY}"'.format(NAME=self.name, ID=self.record_id(), KEY=event))
-            else:
-                triggers = meta_param.run_event(window, event, values)
-
-            return False
+        #meta_events = [i for param in self.metadata for i in param.bindings]
+        #if event in meta_events:
+        #    try:
+        #        meta_param = self.fetch_metadata(event, by_key=True)
+        #    except KeyError:
+        #        logger.error('RecordType {NAME}, Record {ID}: unable to find the metadata element associated with '
+        #                     'event key "{KEY}"'.format(NAME=self.name, ID=self.record_id(), KEY=event))
+        #    else:
+        #        triggers = meta_param.run_event(window, event, values)
+#
+#            return False
 
         # Record element events
         elem_events = self.record_events(components_only=True)
@@ -2003,7 +2084,7 @@ class DatabaseRecord:
                 if not edit_mode:  # element is not currently being edited
                     continue
 
-            #if focus_element not in record_element.elements:  # element is edited but is no longer in focus
+            # if focus_element not in record_element.elements:  # element is edited but is no longer in focus
             if focus_element not in record_element.bindings:  # element is edited but is no longer in focus
                 logger.debug('RecordType {NAME}, Record {ID}: data element {PARAM} is no longer in focus - saving '
                              'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=record_element.name))
@@ -2098,8 +2179,8 @@ class DatabaseRecord:
         self._record_id.update_display(window)
         self._record_date.update_display(window)
 
-        for meta_elem in self.metadata:
-            meta_elem.update_display(window)
+        #for meta_elem in self.metadata:
+        #    meta_elem.update_display(window)
 
         # Update the record elements
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
@@ -2124,8 +2205,8 @@ class DatabaseRecord:
             events.update(record_element.bindings)
 
         # Add record meta-data event bindings
-        for param in self.metadata:
-            events.update(param.bindings)
+        #for param in self.metadata:
+        #    events.update(param.bindings)
 
         return events
 
@@ -2135,7 +2216,7 @@ class DatabaseRecord:
         """
         elements = []
         elements.extend(self.modules)
-        elements.extend(self.metadata)
+        #elements.extend(self.metadata)
 
         return elements
 
@@ -2158,12 +2239,18 @@ class DatabaseRecord:
 
         return all_passed
 
-    def create_components(self, component_table, record_data=None):
+    def create_components(self, element, record_data=None):
         """
         Create new component records.
         """
-        header = component_table.columns
-        record_type = component_table.record_type
+        record_type = element.record_type
+
+        if not element.is_type('component'):
+            msg = 'failed to create component records for record element of type {TYPE} - component records can only ' \
+                  'be created for record elements of type "component"'.format(TYPE=record_type)
+            raise AttributeError(msg)
+
+        header = element.columns
         record_date = self.record_date()
 
         if record_type is None:
@@ -2179,7 +2266,7 @@ class DatabaseRecord:
         else:
             if isinstance(record_data, pd.DataFrame):
                 if record_data.empty:
-                    msg = 'Record {ID}: unable to create record IDs when no components were provided'\
+                    msg = 'Record {ID}: unable to create record IDs when no components were provided' \
                         .format(ID=self.record_id())
                     logger.warning(msg)
 
@@ -2245,10 +2332,10 @@ class DatabaseRecord:
             values[record_date.name] = record_date.data()
 
             # Add modifier values
-            for meta_elem in self.metadata:
-                param_value = meta_elem.data()
-                if not pd.isna(param_value):
-                    values[meta_elem.name] = param_value
+            # for meta_elem in self.metadata:
+            #    param_value = meta_elem.data()
+            #    if not pd.isna(param_value):
+            #        values[meta_elem.name] = param_value
 
         # Add parameter values
         record_elements = self.modules
@@ -2399,7 +2486,7 @@ class DatabaseRecord:
             psets.append(j)
 
         success = user.write_db(sstrings, psets)
-        #success = True
+        # success = True
         print(statements)
 
         return success
@@ -2565,7 +2652,7 @@ class DatabaseRecord:
             psets.append(j)
 
         success = user.write_db(sstrings, psets)
-        #success = True
+        # success = True
         print('final save statements:')
         print(statements)
 
@@ -2806,101 +2893,200 @@ class DatabaseRecord:
                                vertical_alignment='c')
 
         # Create the layout for the record information panel
+        #sections = self.sections
+
+        #sections_layout = []
+        #print(sections)
+        #for index, section_name in enumerate(sections):
+        #    print('creating layout for section {} number {}'.format(index, section_name))
+        #    section_entry = sections[section_name]
+
+        #    section_elements = section_entry['Elements']
+        #    if len(section_elements) < 1:
+        #        continue
+
+        #    section_title = section_entry['Title']
+
+        #    section_bttn_key = self.key_lookup('SectionBttn{}'.format(index))
+        #    header_left = [sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
+        #    header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
+        #                              button_color=(text_col, frame_col), border_width=0, visible=True,
+        #                              metadata={'visible': True, 'disabled': False})]
+
+        #    if 'HeadingElement' in section_entry:
+        #        heading_element_name = section_entry['HeadingElement']
+        #        if heading_element_name not in used_elements:
+        #            heading_element = self.fetch_element(heading_element_name)
+        #            if heading_element.is_type('data_variable'):
+        #                heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
+        #                                                                bg_color=frame_col, editable=False)
+        #                header_right.insert(0, heading_element_layout)
+
+        #                used_elements.append(heading_element_name)
+        #            else:
+        #                logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type {TYPE} '
+        #                               'is attempting to be used as a header element'
+        #                               .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
+        #        else:
+        #            logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
+        #                           'in the layout'.format(NAME=self.name, ELEM=heading_element_name, SEC=section_name))
+
+        #    section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
+        #                               sg.Col([header_left], justification='l', expand_x=True,
+        #                                      background_color=frame_col),
+        #                               sg.Col([header_right], justification='r', background_color=frame_col)
+        #                               ]], background_color=frame_col, expand_x=True)]
+        #    sections_layout.append(section_header)
+
+        #    section_layout = []
+        #    for element_name in section_elements:
+        #        if element_name not in used_elements:
+        #            element = self.fetch_element(element_name)
+
+        #            can_edit = editable and element.permissions in user_priv
+        #            element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
+        #                                             level=level)]
+        #            section_layout.append(element_layout)
+
+        #            used_elements.append(element_name)
+        #        else:
+        #            logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
+        #                           'in the layout'.format(NAME=self.name, ELEM=element_name, SEC=section_name))
+
+        #    section_panel_key = self.key_lookup('SectionFrame{}'.format(index))
+        #    sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key,
+        #                                          background_color=bg_col, visible=True, expand_x=True,
+        #                                          metadata={'visible': True}))])
+
+        #tab_key = self.key_lookup('DetailsTab')
+        #col_key = self.key_lookup('DetailsCol')
+        #details_tab = sg.Tab('{:^40}'.format('Details'),
+        #                     [[sg.Col(sections_layout, key=col_key, size=(tab_w, tab_h), pad=(0, pad_v),
+        #                              background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
+        #                              vertical_scroll_only=True, vertical_alignment='t', element_justification='l')]],
+        #                     key=tab_key, background_color=bg_col)
+
+        #metadata = self.metadata
+        #if len(metadata) > 0:
+        #    metadata_visible = True
+        #    annotation_layout = []
+        #    for param in metadata:
+        #        can_edit = editable and param.permissions in user_priv
+        #        annotation_layout.append([param.layout(editable=can_edit, level=level)])
+        #else:  # don't show tab for new records or record w/o configured metadata
+        #    metadata_visible = False
+        #    annotation_layout = [[]]
+
+        #meta_tab_key = self.key_lookup('MetaTab')
+        #meta_key = self.key_lookup('MetaCol')
+        #info_tab = sg.Tab('{:^40}'.format('Metadata'),
+        #                  [[sg.Col(annotation_layout, key=meta_key, pad=(0, pad_v), size=(tab_w, tab_h),
+        #                           background_color=bg_col, scrollable=True, vertical_scroll_only=True, expand_x=True,
+        #                           expand_y=True, vertical_alignment='t', element_justification='l')]],
+        #                  key=meta_tab_key, background_color=bg_col, visible=metadata_visible)
+
+        #main_layout = sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
+        #                          background_color=inactive_col, tab_background_color=inactive_col,
+        #                          selected_background_color=bg_col, selected_title_color=select_col,
+        #                          title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
+
+        # Create layout for the record tabs
+        tabs = self.tabs
         sections = self.sections
 
-        sections_layout = []
-        print(sections)
         used_elements = []
-        for index, section_name in enumerate(sections):
-            print('creating layout for section {} number {}'.format(index, section_name))
-            section_entry = sections[section_name]
+        tab_group = []
+        section_number = 0
+        for tab_name in tabs:
+            tab_entry = tabs[tab_name]
 
-            section_elements = section_entry['Elements']
-            if len(section_elements) < 1:
+            tab_title = '{:^40}'.format(tab_entry['Title'])
+
+            tab_sections = tab_entry['Sections']
+            if len(tab_sections) < 1:
                 continue
 
-            section_title = section_entry['Title']
+            sections_layout = []
+            for section_name in sections:
+                if section_name not in tab_sections:
+                    continue
 
-            section_bttn_key = self.key_lookup('SectionBttn{}'.format(index))
-            header_left = [sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
-            header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
-                                      button_color=(text_col, frame_col), border_width=0, visible=True,
-                                      metadata={'visible': True, 'disabled': False})]
+                section_number += 1
+                print('creating layout for section {} number {}'.format(section_name, section_number))
+                section_entry = sections[section_name]
 
-            if 'HeadingElement' in section_entry:
-                heading_element_name = section_entry['HeadingElement']
-                if heading_element_name not in used_elements:
-                    heading_element = self.fetch_element(heading_element_name)
-                    if heading_element.is_type('data_variable'):
-                        heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
-                                                                        bg_color=frame_col, editable=False)
-                        header_right.insert(0, heading_element_layout)
+                section_elements = section_entry['Elements']
+                if len(section_elements) < 1:
+                    continue
 
-                        used_elements.append(heading_element_name)
+                section_title = section_entry['Title']
+
+                section_bttn_key = self.key_lookup('SectionBttn{}'.format(section_number))
+                header_left = [
+                    sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
+                header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
+                                          button_color=(text_col, frame_col), border_width=0, visible=True,
+                                          metadata={'visible': True, 'disabled': False})]
+
+                if 'HeadingElement' in section_entry:
+                    heading_element_name = section_entry['HeadingElement']
+                    if heading_element_name not in used_elements:
+                        heading_element = self.fetch_element(heading_element_name)
+                        if heading_element.is_type('data_variable'):
+                            heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
+                                                                            bg_color=frame_col, editable=False)
+                            header_right.insert(0, heading_element_layout)
+
+                            used_elements.append(heading_element_name)
+                        else:
+                            logger.warning(
+                                'RecordType {NAME}: record element {ELEM} with unsupported element type {TYPE} '
+                                'is attempting to be used as a header element'
+                                    .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
                     else:
-                        logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type {TYPE} '
-                                       'is attempting to be used as a header element'
-                                       .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
-                else:
-                    logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
-                                   'in the layout'.format(NAME=self.name, ELEM=heading_element_name, SEC=section_name))
+                        logger.warning(
+                            'RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
+                            'in the layout'.format(NAME=self.name, ELEM=heading_element_name, SEC=section_name))
 
-            section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
-                                       sg.Col([header_left], justification='l', expand_x=True,
-                                              background_color=frame_col),
-                                       sg.Col([header_right], justification='r', background_color=frame_col)
-                                       ]], background_color=frame_col, expand_x=True)]
-            sections_layout.append(section_header)
+                section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
+                                           sg.Col([header_left], justification='l', expand_x=True,
+                                                  background_color=frame_col),
+                                           sg.Col([header_right], justification='r', background_color=frame_col)
+                                           ]], background_color=frame_col, expand_x=True)]
+                sections_layout.append(section_header)
 
-            section_layout = []
-            for element_name in section_elements:
-                if element_name not in used_elements:
-                    element = self.fetch_element(element_name)
+                section_layout = []
+                for element_name in section_elements:
+                    if element_name not in used_elements:
+                        element = self.fetch_element(element_name)
 
-                    can_edit = editable and element.permissions in user_priv
-                    element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
-                                                     level=level)]
-                    section_layout.append(element_layout)
+                        can_edit = editable and element.permissions in user_priv
+                        element_layout = [
+                            element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
+                                           level=level)]
+                        section_layout.append(element_layout)
 
-                    used_elements.append(element_name)
-                else:
-                    logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
-                                   'in the layout'.format(NAME=self.name, ELEM=element_name, SEC=section_name))
+                        used_elements.append(element_name)
+                    else:
+                        logger.warning(
+                            'RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
+                            'in the layout'.format(NAME=self.name, ELEM=element_name, SEC=section_name))
 
-            section_panel_key = self.key_lookup('SectionFrame{}'.format(index))
-            sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key,
-                                                  background_color=bg_col, visible=True, expand_x=True,
-                                                  metadata={'visible': True}))])
+                section_panel_key = self.key_lookup('SectionFrame{}'.format(section_number))
+                sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key,
+                                                      background_color=bg_col, visible=True, expand_x=True,
+                                                      metadata={'visible': True}))])
 
-        tab_key = self.key_lookup('DetailsTab')
-        col_key = self.key_lookup('DetailsCol')
-        details_tab = sg.Tab('{:^40}'.format('Details'),
-                             [[sg.Col(sections_layout, key=col_key, size=(tab_w, tab_h), pad=(0, pad_v),
-                                      background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
-                                      vertical_scroll_only=True, vertical_alignment='t', element_justification='l')]],
-                             key=tab_key, background_color=bg_col)
+            tab_key = self.key_lookup('{}Tab'.format(tab_name))
+            tab_frame_key = self.key_lookup('{}Col'.format(tab_name))
+            tab_layout = sg.Tab(tab_title, [[sg.Col(sections_layout, key=tab_frame_key, size=(tab_w, tab_h),
+                                                    pad=(0, pad_v), background_color=bg_col,
+                                                    scrollable=True, vertical_scroll_only=True, vertical_alignment='t',
+                                                    element_justification='l', expand_x=True, expand_y=True)]],
+                                key=tab_key, background_color=bg_col)
+            tab_group.append(tab_layout)
 
-        # Create layout for record metadata
-        metadata = self.metadata
-        if len(metadata) > 0:
-            metadata_visible = True
-            annotation_layout = []
-            for param in metadata:
-                can_edit = editable and param.permissions in user_priv
-                annotation_layout.append([param.layout(editable=can_edit, level=level)])
-        else:  # don't show tab for new records or record w/o configured metadata
-            metadata_visible = False
-            annotation_layout = [[]]
-
-        meta_tab_key = self.key_lookup('MetaTab')
-        meta_key = self.key_lookup('MetaCol')
-        info_tab = sg.Tab('{:^40}'.format('Metadata'),
-                          [[sg.Col(annotation_layout, key=meta_key, pad=(0, pad_v), size=(tab_w, tab_h),
-                                   background_color=bg_col, scrollable=True, vertical_scroll_only=True, expand_x=True,
-                                   expand_y=True, vertical_alignment='t', element_justification='l')]],
-                          key=meta_tab_key, background_color=bg_col, visible=metadata_visible)
-
-        main_layout = sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
+        main_layout = sg.TabGroup([tab_group], key=self.key_lookup('TG'),
                                   background_color=inactive_col, tab_background_color=inactive_col,
                                   selected_background_color=bg_col, selected_title_color=select_col,
                                   title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
@@ -2947,10 +3133,10 @@ class DatabaseRecord:
             header.resize(window)
 
         # Set the size of the metadata elements
-        meta_h = None
-        meta_w = int(width * 0.5)
-        for meta_param in self.metadata:
-            meta_param.resize(window, size=(meta_w, meta_h))
+        #meta_h = None
+        #meta_w = int(width * 0.5)
+        #for meta_param in self.metadata:
+        #    meta_param.resize(window, size=(meta_w, meta_h))
 
         # Expand the size of the record elements
         for record_element in self.modules:

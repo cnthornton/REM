@@ -154,22 +154,6 @@ class DataParameter:
 
         return key
 
-    def key_lookup_old(self, component):
-        """
-        Lookup an element's component GUI key using the name of the component element.
-        """
-        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            msg = 'DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements' \
-                .format(COMP=component, NAME=self.name)
-            logger.warning(msg)
-            key = None
-
-        return key
-
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
                auto_size_desc: bool = True, hidden: bool = None, justification: str = None, border: bool = False):
         """
