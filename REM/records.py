@@ -1494,7 +1494,7 @@ class DatabaseRecord:
             raise AttributeError(e)
 
         # Component record elements
-        self.metadata = []
+        #self.metadata = []
         # try:
         #    metadata = entry['Metadata']
         # except KeyError:
@@ -1511,6 +1511,7 @@ class DatabaseRecord:
         #    self.metadata.append(param)
 
         self.modules = []
+        used_elements = []
         try:
             record_elements = entry['RecordElements']
         except KeyError:
@@ -1518,6 +1519,11 @@ class DatabaseRecord:
             logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
         else:
             for element_name in record_elements:
+                if element_name not in used_elements:
+                    msg = 'more than one entry configured for record element {ELEM}'.format(ELEM=element_name)
+                    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    continue
+
                 elem_entry = record_elements[element_name]
                 try:
                     etype = elem_entry['ElementType']
@@ -1560,7 +1566,7 @@ class DatabaseRecord:
 
         # Record layout attributes
         self.tabs = {'_Default': {'Title': 'Details', 'Sections': []}}
-        all_record_sections = []
+        used_sections = []
         try:
             tabs = entry['Tabs']
         except KeyError:
@@ -1588,7 +1594,7 @@ class DatabaseRecord:
                 continue
             else:
                 for tab_section in _tab_sections:
-                    if tab_section in all_record_sections:
+                    if tab_section in used_sections:
                         msg = 'unable to add section {SEC} to tab layout {TAB} - section {SEC} is already defined ' \
                               'for a previous tab'.format(TAB=tab_name, SEC=tab_section)
                         logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -1596,14 +1602,15 @@ class DatabaseRecord:
                         continue
 
                     tab_sections.append(tab_section)
-                    all_record_sections.append(tab_section)
+                    used_sections.append(tab_section)
 
             if len(tab_sections) > 0:
                 tab_entry['Sections'] = tab_sections
                 self.tabs[tab_name] = tab_entry
 
         self.sections = {'_Default': {'Title': 'Record Information', 'Elements': []}}
-        all_record_elements = []
+        used_section_elements = []
+        self._heading_elements = []
         try:
             sections = entry['Sections']
         except KeyError:
@@ -1623,7 +1630,8 @@ class DatabaseRecord:
 
             if 'HeadingElement' in _section_entry:
                 heading_element = _section_entry['HeadingElement']
-                all_record_elements.append(heading_element)
+                self._heading_elements.append(heading_element)
+                used_section_elements.append(heading_element)
                 section_entry['HeadingElement'] = heading_element
 
             section_elements = []
@@ -1636,7 +1644,7 @@ class DatabaseRecord:
                 continue
             else:
                 for section_element in _section_elements:
-                    if section_element in all_record_elements:
+                    if section_element in used_section_elements:
                         msg = 'unable to add record element {ELEM} to section layout {SEC} - element {ELEM} is ' \
                               'already defined for a previous section'.format(ELEM=section_element, SEC=section)
                         logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -1644,7 +1652,7 @@ class DatabaseRecord:
                         continue
 
                     section_elements.append(section_element)
-                    all_record_elements.append(section_element)
+                    used_section_elements.append(section_element)
 
             section_entry['Elements'] = section_elements
 
@@ -1652,14 +1660,14 @@ class DatabaseRecord:
 
         for record_element in self.modules:
             element_name = record_element.name
-            if element_name not in all_record_elements:
+            if element_name not in used_section_elements:
                 try:
                     self.sections['_Default']['Elements'].append(element_name)
                 except KeyError:
                     self.sections['_Default'] = {'Title': '', 'Elements': [element_name]}
 
         for i, section in enumerate(self.sections):
-            if section not in all_record_sections:
+            if section not in used_sections:
                 try:
                     self.tabs['_Default']['Sections'].append(section)
                 except KeyError:
@@ -3140,20 +3148,23 @@ class DatabaseRecord:
 
         # Expand the size of the record elements
         for record_element in self.modules:
-            if record_element.is_type('multiline'):  # multiline data variable
-                elem_h = None
-                elem_w = width - (pad_w * 2 + scroll_w)
-            elif record_element.is_type('table'):  # data table type
-                elem_h = None
-                elem_w = width - (pad_w * 2 + scroll_w)
-            elif record_element.is_type('list'):  # data list type
-                elem_h = mod_const.LISTBOX_HEIGHT
-                elem_w = width - (pad_w * 2 + scroll_w)
-            else:  # other data variable type
-                elem_h = None
-                elem_w = int(width * 0.5)
+            if record_element.name in self._heading_elements:
+                elem_size = None
+            else:
+                if record_element.is_type('multiline'):  # multiline data variable
+                    elem_h = None
+                    elem_w = width - (pad_w * 2 + scroll_w)
+                elif record_element.is_type('table'):  # data table type
+                    elem_h = None
+                    elem_w = width - (pad_w * 2 + scroll_w)
+                elif record_element.is_type('list'):  # data list type
+                    elem_h = mod_const.LISTBOX_HEIGHT
+                    elem_w = width - (pad_w * 2 + scroll_w)
+                else:  # other data variable type
+                    elem_h = None
+                    elem_w = int(width * 0.5)
+                elem_size = (elem_w, elem_h)
 
-            elem_size = (elem_w, elem_h)
             record_element.resize(window, size=elem_size)
 
         self._dimensions = (width, height)
