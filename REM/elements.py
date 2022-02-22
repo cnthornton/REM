@@ -4687,6 +4687,61 @@ class RecordVariableMultiline(RecordVariable):
         return layout_attrs
 
 
+class RecordVariableCheckbox(RecordVariable):
+    """
+    Checkbox-style data variable element.
+
+    Attributes:
+
+        name (str): record element configuration name.
+
+        elements (list): list of element GUI keys.
+
+        nrow (int): number of rows in the multiline element.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize the record element attributes.
+
+        Arguments:
+            name (str): data element configuration name.
+
+            entry (dict): configuration entry for the data element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+
+        self.etype = 'checkbox'
+
+        # Enforce supported data types for the dropdown parameter
+        supported_dtypes = settings.supported_bool_dtypes
+        if entry['DataType'] not in supported_dtypes:
+            msg = self.format_log('unsupported data type provided for the "{ETYPE}" parameter. Supported data types '
+                                  'are {DTYPES}'.format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes)))
+            logger.error(msg)
+
+            raise AttributeError(msg)
+
+        self.arrangement = 'h'
+
+    def layout_attributes(self, size: tuple = None):
+        """
+        Configure the attributes for the record element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
+        text_col = mod_const.TEXT_COL
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+
+        return layout_attrs
+
+
 # Element reference variable
 class DependentVariable(DataVariable):
     """
@@ -4915,6 +4970,129 @@ class DependentVariable(DataVariable):
         edited = self.update_value(input_value)
 
         return edited
+
+
+class DataConstant(DataVariable):
+    """
+    Flags or text of static record information.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        elements (list): list of data element GUI keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize the record element attributes.
+
+        Arguments:
+            name (str): record element configuration name.
+
+            entry (dict): configuration entry for the record element.
+
+            parent (str): name of the parent record.
+        """
+        super().__init__(name, entry, parent)
+        record_elements = ('Description', 'Frame', 'Width')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
+
+        if self.etype != 'checkbox':
+            self.etype = 'text'
+
+        self.arrangement = 'h'
+        self.disabled = True
+
+    def format_value(self, values):
+        """
+        Obtain the value of the record element from the set of GUI element values.
+
+        Arguments:
+            values (dict): single value or dictionary of element values.
+        """
+        if isinstance(values, dict):  # dictionary of referenced element values
+            try:
+                value = values[self.name]
+            except KeyError:
+                msg = self.format_log('input data is missing a value for the record element')
+                logger.warning(msg)
+
+                raise KeyError(msg)
+        else:  # single value provided
+            value = values
+
+        if not pd.isna(value):  # should not update when metadata is missing
+            edited = self.update_value(value)
+        else:
+            edited = False
+
+        return edited
+
+    def reset(self, window):
+        """
+        Reset record element to default.
+        """
+        self.value.reset()
+
+        # Update the element display
+        self.update_display(window)
+
+    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, bg_color: str = None):
+        """
+        GUI layout for the record element.
+        """
+        if size:
+            width, height = size
+            self._dimensions = (width * 9, height * 9)
+        else:  # rough convert to chars if size not set
+            width, height = [int(i / 9) for i in self._dimensions]
+
+        tooltip = tooltip if tooltip else self.tooltip
+
+        # Layout options
+        pad_el = mod_const.ELEM_PAD
+        pad_h = mod_const.HORZ_PAD
+
+        font = mod_const.LARGE_FONT
+        bold_font = mod_const.BOLD_HEADING_FONT
+
+        bg_col = self.bg_col if bg_color is None else bg_color
+        self.bg_col = bg_col
+        text_col = mod_const.TEXT_COL
+
+        # Element Icon, if provided
+        icon = self.icon
+        if icon is not None:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_h), 0), background_color=bg_col)]
+            else:
+                icon_layout = []
+        else:
+            icon_layout = []
+
+        # Element description and actions
+        elem_key = self.key_lookup('Element')
+        desc_key = self.key_lookup('Description')
+        display_value = self.format_display()
+        desc_bg_col = bg_col
+
+        desc_layout = [sg.Text('{}:'.format(self.description), key=desc_key, pad=((0, pad_el), 0), font=bold_font,
+                               background_color=desc_bg_col, auto_size_text=True, tooltip=tooltip)]
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        elem_layout = mod_lo.generate_layout(self.etype, layout_attrs)
+
+        # Layout
+        frame_key = self.key_lookup('Frame')
+        width_key = self.key_lookup('Width')
+        row1 = icon_layout + desc_layout + elem_layout
+        layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)], row1],
+                        key=frame_key, pad=padding, background_color=bg_col, vertical_alignment='c')
+
+        return layout
 
 
 class MetaVariable(DataVariable):

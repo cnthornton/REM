@@ -1440,8 +1440,10 @@ class DatabaseRecord:
         self.name = name
 
         self.id = randint(0, 1000000000)
+        #self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
+        #                 ('Element', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header')}
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header')}
+                         ('Element', 'TG', 'Header')}
         self.bindings = {}
 
         try:
@@ -1474,7 +1476,7 @@ class DatabaseRecord:
             id_entry['ElementType'] = 'text'
             id_entry['DataType'] = 'varchar'
         try:
-            self._record_id = mod_elem.MetaVariable(self.id_field, id_entry)
+            self._record_id = mod_elem.DataConstant(self.id_field, id_entry)
         except Exception as e:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
@@ -1488,7 +1490,7 @@ class DatabaseRecord:
             date_entry['ElementType'] = 'text'
             date_entry['DataType'] = 'date'
         try:
-            self._record_date = mod_elem.MetaVariable(self.date_field, date_entry)
+            self._record_date = mod_elem.DataConstant(self.date_field, date_entry)
         except Exception as e:
             logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
             raise AttributeError(e)
@@ -1502,7 +1504,7 @@ class DatabaseRecord:
         # for param_name in metadata:
         #    param_entry = metadata[param_name]
         #    try:
-        #        param = mod_elem.MetaVariable(param_name, param_entry, parent=self.name)
+        #        param = mod_elem.DataConstant(param_name, param_entry, parent=self.name)
         #    except Exception as e:
         #        logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
 
@@ -1519,16 +1521,19 @@ class DatabaseRecord:
             logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
         else:
             for element_name in record_elements:
-                if element_name not in used_elements:
+                if element_name in used_elements:
                     msg = 'more than one entry configured for record element {ELEM}'.format(ELEM=element_name)
                     logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
                     continue
+                else:
+                    used_elements.append(element_name)
 
                 elem_entry = record_elements[element_name]
                 try:
                     etype = elem_entry['ElementType']
                 except KeyError:
-                    raise AttributeError('"Details" element {NAME} is missing the required field "ElementType"'
+                    raise AttributeError('record element "{NAME}" is missing the required field "ElementType"'
                                          .format(NAME=element_name))
 
                 # Set the object type of the record element.
@@ -1550,6 +1555,8 @@ class DatabaseRecord:
                     element_class = mod_elem.RecordVariableCombo
                 elif etype in ('multiline_variable', 'multiline', 'multi'):
                     element_class = mod_elem.RecordVariableMultiline
+                elif etype in ('checkbox', 'check'):
+                    element_class = mod_elem.RecordVariableCheckbox
                 else:
                     raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
                                          .format(ETYPE=etype, ELEM=element_name))
@@ -1565,7 +1572,7 @@ class DatabaseRecord:
                 self.components.append(elem_obj)
 
         # Record layout attributes
-        self.tabs = {'_Default': {'Title': 'Details', 'Sections': []}}
+        self.tabs = {}
         used_sections = []
         try:
             tabs = entry['Tabs']
@@ -1608,7 +1615,7 @@ class DatabaseRecord:
                 tab_entry['Sections'] = tab_sections
                 self.tabs[tab_name] = tab_entry
 
-        self.sections = {'_Default': {'Title': 'Record Information', 'Elements': []}}
+        self.sections = {}
         used_section_elements = []
         self._heading_elements = []
         try:
@@ -1661,20 +1668,24 @@ class DatabaseRecord:
         for record_element in self.components:
             element_name = record_element.name
             if element_name not in used_section_elements:
+                msg = 'no section provided for record element {ELEM}'.format(ELEM=element_name)
+                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 try:
                     self.sections['_Default']['Elements'].append(element_name)
                 except KeyError:
-                    self.sections['_Default'] = {'Title': '', 'Elements': [element_name]}
+                    self.sections['_Default'] = {'Title': 'Record Information', 'Elements': [element_name]}
 
-        for i, section in enumerate(self.sections):
+        for section in self.sections:
             if section not in used_sections:
+                msg = 'no tab provided for section {SEC}'.format(SEC=section)
+                logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 try:
                     self.tabs['_Default']['Sections'].append(section)
                 except KeyError:
-                    self.tabs['_Default'] = {'Title': '', 'Sections': [section]}
+                    self.tabs['_Default'] = {'Title': 'Details', 'Sections': [section]}
 
-            section_bttn = 'SectionBttn{}'.format(i)
-            section_frame = 'SectionFrame{}'.format(i)
+            section_bttn = '{}Bttn'.format(section)
+            section_frame = '{}Frame'.format(section)
             self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                                   (section_bttn, section_frame)})
             self.bindings[self.key_lookup(section_bttn)] = section_bttn
@@ -1721,20 +1732,6 @@ class DatabaseRecord:
             print(key_map)
 
             raise KeyError(msg)
-
-        return key
-
-    def key_lookup_old(self, component):
-        """
-        Lookup a component's GUI element key using the component's name.
-        """
-        element_names = [i[1:-1].split('_')[-1] for i in self.elements]
-        if component in element_names:
-            key_index = element_names.index(component)
-            key = self.elements[key_index]
-        else:
-            raise KeyError('component {COMP} not found in list of record {NAME} components'
-                           .format(COMP=component, NAME=self.name))
 
         return key
 
@@ -1945,7 +1942,7 @@ class DatabaseRecord:
 
         # Remove unsaved components
         for record_element in record_elements:
-            if record_element.etype != 'component':
+            if not record_element.is_type('component'):
                 continue
 
             comp_type = record_element.record_type
@@ -2052,9 +2049,14 @@ class DatabaseRecord:
         #    return False
 
         if event in self.bindings:
-            section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
-            section_index = section_bttns.index(event)
-            self.collapse_expand(window, index=section_index)
+            #section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
+            #section_index = section_bttns.index(event)
+            #self.collapse_expand(window, index=section_index)
+            section_names = list(self.sections.keys())
+            section_bttns = [self.key_lookup('{}Bttn'.format(i)) for i in section_names]
+            if event in section_bttns:
+                section_index = section_bttns.index(event)
+                self.collapse_expand(window, section_names[section_index])
 
             return False
 
@@ -2150,8 +2152,11 @@ class DatabaseRecord:
 
         if triggers['ResizeEvent']:
             window.visibility_changed()
-            window[self.key_lookup('DetailsCol')].contents_changed()
-            window[self.key_lookup('MetaCol')].contents_changed()
+            for section_name in self.sections:
+                section_key = self.key_lookup('{}Col'.format(section_name))
+                window[section_key].contents_changed()
+            #window[self.key_lookup('DetailsCol')].contents_changed()
+            #window[self.key_lookup('MetaCol')].contents_changed()
 
         if triggers['ValueEvent']:
             # Update any element references with new values
@@ -2894,8 +2899,8 @@ class DatabaseRecord:
 
         # Record header
         headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
-        headers.append(self._record_id.layout(size=(20, 1), padding=((0, pad_h), 0), editable=False))
-        headers.append(self._record_date.layout(size=(20, 1), editable=False))
+        headers.append(self._record_id.layout(size=(20, 1), padding=((0, pad_h), 0)))
+        headers.append(self._record_date.layout(size=(20, 1)))
         header_key = self.key_lookup('Header')
         header_layout = sg.Col([headers], key=header_key, expand_x=True, background_color=bg_col, justification='l',
                                vertical_alignment='c')
@@ -3002,15 +3007,14 @@ class DatabaseRecord:
         tabs = self.tabs
         sections = self.sections
 
-        used_elements = []
         tab_group = []
-        section_number = 0
         for tab_name in tabs:
             tab_entry = tabs[tab_name]
 
             tab_title = '{:^40}'.format(tab_entry['Title'])
 
             tab_sections = tab_entry['Sections']
+            print('creating record tab {} layout with sections {}'.format(tab_name, tab_sections))
             if len(tab_sections) < 1:
                 continue
 
@@ -3019,8 +3023,7 @@ class DatabaseRecord:
                 if section_name not in tab_sections:
                     continue
 
-                section_number += 1
-                print('creating layout for section {} number {}'.format(section_name, section_number))
+                print('creating layout for section {}'.format(section_name))
                 section_entry = sections[section_name]
 
                 section_elements = section_entry['Elements']
@@ -3029,7 +3032,7 @@ class DatabaseRecord:
 
                 section_title = section_entry['Title']
 
-                section_bttn_key = self.key_lookup('SectionBttn{}'.format(section_number))
+                section_bttn_key = self.key_lookup('{}Bttn'.format(section_name))
                 header_left = [
                     sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
                 header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
@@ -3038,23 +3041,15 @@ class DatabaseRecord:
 
                 if 'HeadingElement' in section_entry:
                     heading_element_name = section_entry['HeadingElement']
-                    if heading_element_name not in used_elements:
-                        heading_element = self.fetch_element(heading_element_name)
-                        if heading_element.is_type('data_variable'):
-                            heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
-                                                                            bg_color=frame_col, editable=False)
-                            header_right.insert(0, heading_element_layout)
-
-                            used_elements.append(heading_element_name)
-                        else:
-                            logger.warning(
-                                'RecordType {NAME}: record element {ELEM} with unsupported element type {TYPE} '
-                                'is attempting to be used as a header element'
-                                    .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
+                    heading_element = self.fetch_element(heading_element_name)
+                    if heading_element.is_type('data_variable'):
+                        heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
+                                                                        bg_color=frame_col, editable=False)
+                        header_right.insert(0, heading_element_layout)
                     else:
-                        logger.warning(
-                            'RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
-                            'in the layout'.format(NAME=self.name, ELEM=heading_element_name, SEC=section_name))
+                        logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type '
+                                       '{TYPE} is attempting to be used as a header element'
+                                       .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
 
                 section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
                                            sg.Col([header_left], justification='l', expand_x=True,
@@ -3065,22 +3060,15 @@ class DatabaseRecord:
 
                 section_layout = []
                 for element_name in section_elements:
-                    if element_name not in used_elements:
-                        element = self.fetch_element(element_name)
+                    element = self.fetch_element(element_name)
 
-                        can_edit = editable and element.permissions in user_priv
-                        element_layout = [
-                            element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
-                                           level=level)]
-                        section_layout.append(element_layout)
+                    can_edit = editable and element.permissions in user_priv
+                    element_layout = [
+                        element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
+                                       level=level)]
+                    section_layout.append(element_layout)
 
-                        used_elements.append(element_name)
-                    else:
-                        logger.warning(
-                            'RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
-                            'in the layout'.format(NAME=self.name, ELEM=element_name, SEC=section_name))
-
-                section_panel_key = self.key_lookup('SectionFrame{}'.format(section_number))
+                section_panel_key = self.key_lookup('{}Frame'.format(section_name))
                 sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key,
                                                       background_color=bg_col, visible=True, expand_x=True,
                                                       metadata={'visible': True}))])
@@ -3133,8 +3121,12 @@ class DatabaseRecord:
         # Set the size of the tab containers
         bffr_h = tab_h + header_h + pad_h * 2
         tab_size = (record_w, height - bffr_h)
-        mod_lo.set_size(window, self.key_lookup('DetailsCol'), tab_size)
-        mod_lo.set_size(window, self.key_lookup('MetaCol'), tab_size)
+        #mod_lo.set_size(window, self.key_lookup('DetailsCol'), tab_size)
+        #mod_lo.set_size(window, self.key_lookup('MetaCol'), tab_size)
+        for tab_name in self.tabs:
+            tab_key = self.key_lookup('{}Col'.format(tab_name))
+            mod_lo.set_size(window, tab_key, tab_size)
+            window[tab_key].expand(expand_x=True)
 
         # Set the size of the header elements
         for header in (self._record_id, self._record_date):
@@ -3169,23 +3161,23 @@ class DatabaseRecord:
 
         self._dimensions = (width, height)
 
-    def collapse_expand(self, window, index: int = 0):
+    def collapse_expand(self, window, section):
         """
         Collapse record frames.
         """
-        hide_key = self.key_lookup('SectionBttn{}'.format(index))
-        frame_key = self.key_lookup('SectionFrame{}'.format(index))
+        hide_key = self.key_lookup('{}Bttn'.format(section))
+        frame_key = self.key_lookup('{}Frame'.format(section))
 
         if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
-            logger.debug('RecordType {NAME}, Record {ID}: collapsing section frame {FRAME}'
-                         .format(NAME=self.name, ID=self.record_id(), FRAME=index))
+            logger.debug('RecordType {NAME}, Record {ID}: collapsing section {FRAME}'
+                         .format(NAME=self.name, ID=self.record_id(), FRAME=section))
             window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
             window[frame_key].update(visible=False)
 
             window[frame_key].metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
-            logger.debug('RecordType {NAME}, Record {ID}: expanding section frame {FRAME}'
-                         .format(NAME=self.name, ID=self.record_id(), FRAME=index))
+            logger.debug('RecordType {NAME}, Record {ID}: expanding section {FRAME}'
+                         .format(NAME=self.name, ID=self.record_id(), FRAME=section))
             window[hide_key].update(image_data=mod_const.HIDE_ICON)
             window[frame_key].update(visible=True)
 
