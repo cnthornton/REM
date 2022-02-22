@@ -1410,7 +1410,7 @@ class DatabaseRecord:
 
         permissions (dict): dictionary mapping permission rules to permission groups
 
-        modules (list): list of all record elements.
+        components (list): list of all record elements.
 
         tabs (dict): describes how layout sections are divided into tabs.
 
@@ -1510,7 +1510,7 @@ class DatabaseRecord:
 
         #    self.metadata.append(param)
 
-        self.modules = []
+        self.components = []
         used_elements = []
         try:
             record_elements = entry['RecordElements']
@@ -1562,7 +1562,7 @@ class DatabaseRecord:
                                          .format(NAME=self.name, ELEM=element_name, ERR=e))
 
                 # Add the element to the set of record components
-                self.modules.append(elem_obj)
+                self.components.append(elem_obj)
 
         # Record layout attributes
         self.tabs = {'_Default': {'Title': 'Details', 'Sections': []}}
@@ -1658,7 +1658,7 @@ class DatabaseRecord:
 
             self.sections[section] = section_entry
 
-        for record_element in self.modules:
+        for record_element in self.components:
             element_name = record_element.name
             if element_name not in used_section_elements:
                 try:
@@ -1767,7 +1767,7 @@ class DatabaseRecord:
         """
         # pd.set_option('display.max_columns', None)
         # meta_params = self.metadata
-        record_elements = self.modules
+        record_elements = self.components
 
         if not references:
             references = {}
@@ -1924,7 +1924,7 @@ class DatabaseRecord:
         #    meta_param.reset(window)
 
         # Reset record data component elements
-        for component in self.modules:
+        for component in self.components:
             component.reset(window)
 
     def remove_unsaved_ids(self):
@@ -1932,7 +1932,7 @@ class DatabaseRecord:
         Remove any unsaved IDs associated with the record, including the records own ID.
         """
         record_id = self.record_id()
-        record_elements = self.modules
+        record_elements = self.components
 
         record_entry = settings.records.fetch_rule(self.name)
 
@@ -1978,7 +1978,7 @@ class DatabaseRecord:
 
             by_type (bool): fetch record elements by element type [Default: False].
         """
-        elements = self.modules
+        elements = self.components
 
         if by_key is True:
             # Remove any binding strings and get last component of element key
@@ -2073,7 +2073,7 @@ class DatabaseRecord:
 
         # Record element events
         elem_events = self.record_events(components_only=True)
-        record_elements = self.modules
+        record_elements = self.components
 
         # Get record element that is currently in focus
         try:
@@ -2192,7 +2192,7 @@ class DatabaseRecord:
 
         # Update the record elements
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
-        for record_element in self.modules:
+        for record_element in self.components:
             record_element.update_display(window)
 
         self.resize(window, size=size)
@@ -2209,7 +2209,7 @@ class DatabaseRecord:
             events.update(self.bindings)
 
         # Add record component event bindings
-        for record_element in self.modules:
+        for record_element in self.components:
             events.update(record_element.bindings)
 
         # Add record meta-data event bindings
@@ -2223,7 +2223,7 @@ class DatabaseRecord:
         Return a list of all record elements.
         """
         elements = []
-        elements.extend(self.modules)
+        elements.extend(self.components)
         #elements.extend(self.metadata)
 
         return elements
@@ -2235,7 +2235,7 @@ class DatabaseRecord:
         record_id = self.record_id()
 
         all_passed = True
-        for element in self.modules:
+        for element in self.components:
             passed = element.check_requirements()
             if not passed:
                 msg = 'values missing for required element {ELEM}'.format(ELEM=element.description)
@@ -2346,7 +2346,7 @@ class DatabaseRecord:
             #        values[meta_elem.name] = param_value
 
         # Add parameter values
-        record_elements = self.modules
+        record_elements = self.components
         for record_element in record_elements:
             elem_values = record_element.export_values(edited_only=edited_only)
             values = {**values, **elem_values}
@@ -3147,7 +3147,7 @@ class DatabaseRecord:
         #    meta_param.resize(window, size=(meta_w, meta_h))
 
         # Expand the size of the record elements
-        for record_element in self.modules:
+        for record_element in self.components:
             if record_element.name in self._heading_elements:
                 elem_size = None
             else:

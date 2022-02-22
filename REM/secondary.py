@@ -366,7 +366,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
         if event == '-OK-':  # selected to accept record changes
             # Check if any data elements are in edit mode before saving. Attempt to save if so.
             elements_updated = True
-            for record_element in record.modules:
+            for record_element in record.components:
                 try:
                     edit_mode = record_element.edit_mode
                 except AttributeError:
@@ -394,7 +394,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
         if event == '-SAVE-':  # selected to save the record (changes) to the database
             # Check if any data elements are in edit mode before saving. Attempt to save if so.
             elements_updated = True
-            for record_element in record.modules:
+            for record_element in record.components:
                 try:
                     edit_mode = record_element.edit_mode
                 except AttributeError:
