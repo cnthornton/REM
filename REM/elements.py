@@ -123,6 +123,8 @@ class RecordElement:
         except KeyError:
             self.tooltip = self.description
 
+        self.padding = (0, 0)
+
         # Dynamic variables
         self.edited = False
 
@@ -165,7 +167,6 @@ class RecordElement:
                'component': ['collection', 'table', 'association', 'component', 'component_table'],
                'list': ['collection', 'list', 'data_list'],
                'reference': ['collection', 'list', 'association', 'reference', 'reference_list'],
-               'dependent': ['variable', 'data_variable', 'dependent', 'dependent_variable'],
                'text': ['variable', 'data_variable', 'record_variable', 'text', 'text_variable'],
                'input': ['variable', 'data_variable', 'record_variable', 'input', 'input_variable', 'date',
                          'date_variable'],
@@ -174,6 +175,7 @@ class RecordElement:
                'multiline': ['variable', 'data_variable', 'record_variable', 'multiline', 'multiline_variable',
                              'multi'],
                'checkbox': ['variable', 'data_variable', 'record_variable', 'checkbox'],
+               'dependent': ['variable', 'data_variable', 'dependent', 'dependent_variable']
                }
 
         try:
@@ -1458,7 +1460,8 @@ class DataTable(RecordElement):
         frame_col = mod_const.DEFAULT_COL  # background color of the table frames
         border_col = mod_const.BORDER_COL  # background color of the collapsible bars and the table frame
 
-        pad = padding if padding and isinstance(padding, tuple) else (0, 0)
+        pad = padding if padding and isinstance(padding, tuple) else self.padding
+        self.padding = pad
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
         pad_v = mod_const.VERT_PAD
@@ -1753,11 +1756,12 @@ class DataTable(RecordElement):
         current_w, current_h = self.dimensions()
         min_w, min_h = self._min_size
         border_w = 1 * 4
+        pad_w, pad_h = self.padding
 
         if size:
             width, height = size
-            new_h = current_h if height is None or height < min_h else height
-            new_w = current_w if width is None or width < min_w else width
+            new_h = current_h if height is None or height < min_h else height - pad_h * 2
+            new_w = current_w if width is None or width < min_w else width - pad_w * 2
         else:
             new_w, new_h = (current_w, current_h)
 
@@ -3140,7 +3144,7 @@ class DataList(RecordElement):
         """
         return self._dimensions
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), tooltip: str = None, editable: bool = True,
+    def layout(self, size: tuple = None, padding: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
@@ -3162,6 +3166,8 @@ class DataList(RecordElement):
         bg_col = mod_const.TBL_HEADER_COL if bg_color is None else bg_color
 
         pad_el = mod_const.ELEM_PAD
+        pad = padding if padding and isinstance(padding, tuple) else self.padding
+        self.padding = pad
 
         # Element description
         desc_key = self.key_lookup('Description')
@@ -3193,7 +3199,7 @@ class DataList(RecordElement):
         layout = sg.Frame('', [[desc_layout, options_layout],
                                [sg.Col([[sg.HorizontalSeparator()]], background_color=bg_col, expand_x=True)],
                                [sg.Col([[]], key=elem_key, background_color=bg_col, expand_x=True, expand_y=True)]],
-                          key=frame_key, pad=padding, size=size, background_color=bg_col)
+                          key=frame_key, pad=pad, size=size, background_color=bg_col)
 
         return layout
 
@@ -3425,11 +3431,12 @@ class DataList(RecordElement):
         current_w, current_h = self.dimensions()
         border_w = 1
         pad_el = mod_const.ELEM_PAD
+        pad_w, pad_h = self.padding
 
         if size:
             width, height = size
-            new_h = current_h if height is None else height - border_w * 2
-            new_w = current_w if width is None else width - border_w * 2
+            new_h = current_h if height is None else height - border_w * 2 - pad_h * 2
+            new_w = current_w if width is None else width - border_w * 2 - pad_w * 2
         else:
             new_w, new_h = (current_w, current_h)
 
@@ -3906,7 +3913,7 @@ class ReferenceList(DataList):
 
 
 # Data variable classes
-class DataVariable(RecordElement):
+class DataUnit(RecordElement):
     """
     Record element that holds information on a single data variable.
 
@@ -3983,14 +3990,17 @@ class DataVariable(RecordElement):
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
         width_key = self.key_lookup('Width')
+        pad_w, pad_h = self.padding
 
         current_w, current_h = self.dimensions()
 
         if size:  # set element to a set size
             width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
-        else:  # auto size the element based on content
+            new_h = current_h if height is None else height - pad_h * 2
+            new_w = current_w if width is None else width - pad_w * 2
+            desc_w = int(new_w * 0.4 / 9)  # description is 40% of total width
+            window[desc_key].set_size(size=(desc_w, None))
+        else:  # auto size the element based on the content
             new_h = current_h
 
             font = mod_const.LARGE_FONT
@@ -4015,13 +4025,14 @@ class DataVariable(RecordElement):
         """
         elem_key = self.key_lookup('Element')
         width_key = self.key_lookup('Width')
+        pad_w, pad_h = self.padding
 
         current_w, current_h = self.dimensions()
 
         if size:
             width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
+            new_h = current_h if height is None else height - pad_h
+            new_w = current_w if width is None else width - pad_w
             window[elem_key].set_size(size=(1, None))
         else:
             new_w, new_h = (current_w, current_h)
@@ -4161,7 +4172,7 @@ class DataVariable(RecordElement):
         return edited
 
 
-class RecordVariable(DataVariable):
+class DataVariable(DataUnit):
     """
     Record element that holds information on a single data variable.
 
@@ -4365,7 +4376,7 @@ class RecordVariable(DataVariable):
 
         return triggers
 
-    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
+    def layout(self, padding: tuple = None, size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
@@ -4389,6 +4400,8 @@ class RecordVariable(DataVariable):
         # Layout options
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
+        pad = padding if padding and isinstance(padding, tuple) else self.padding
+        self.padding = pad
 
         bold_font = mod_const.BOLD_HEADING_FONT
 
@@ -4409,7 +4422,7 @@ class RecordVariable(DataVariable):
 
         # Required symbol
         if is_required is True:
-            required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
+            required_layout = [sg.Text('*', pad=((0, pad_el), 0), font=bold_font, background_color=bg_col,
                                        text_color=mod_const.NOTE_COL, tooltip='required')]
         else:
             required_layout = []
@@ -4422,7 +4435,7 @@ class RecordVariable(DataVariable):
             pass
         else:
             accessory_layout.append(sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d',
-                                                      pad=(pad_el, 0), image_data=mod_const.CALENDAR_ICON,
+                                                      pad=((0, pad_el), 0), image_data=mod_const.CALENDAR_ICON,
                                                       button_color=(text_col, bg_col), border_width=0,
                                                       tooltip='Select the date from the calendar menu'))
 
@@ -4440,7 +4453,8 @@ class RecordVariable(DataVariable):
         else:
             desc_bg_col = bg_col
 
-        desc_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
+        desc = self.description if self.arrangement == 'v' else '{}:'.format(self.description)
+        desc_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), background_color=desc_bg_col,
                                font=bold_font, auto_size_text=True, tooltip=tooltip)]
 
         # Element action buttons
@@ -4455,10 +4469,10 @@ class RecordVariable(DataVariable):
                                  border_width=0, tooltip='Edit value'),
                        sg.pin(
                            sg.Col([[sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
-                                              pad=((0, pad_el), 0), button_color=(text_col, bg_col),
+                                              pad=(0, 0), button_color=(text_col, bg_col),
                                               border_width=0, tooltip='Save changes'),
                                     sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
-                                              pad=((0, pad_el), 0), button_color=(text_col, bg_col),
+                                              pad=(0, 0), button_color=(text_col, bg_col),
                                               border_width=0, tooltip='Cancel changes')
                                     ]],
                                   key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
@@ -4468,18 +4482,18 @@ class RecordVariable(DataVariable):
         layout_attrs = self.layout_attributes(size=(width, 1))
         element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout(self.etype, layout_attrs)],
-                                 background_color=bg_col)]
+                                 pad=((0, pad_el), 0), background_color=bg_col)]
 
         # Element layout
         if self.arrangement == 'v':
-            row1 = icon_layout + desc_layout + bttn_layout
-            row2 = element_layout + aux_layout + required_layout
+            row1 = icon_layout + desc_layout + required_layout
+            row2 = element_layout + aux_layout + bttn_layout
             components = [row1, row2]
         else:
-            components = [icon_layout + desc_layout + element_layout + aux_layout + bttn_layout + required_layout]
+            components = [required_layout + icon_layout + desc_layout + element_layout + aux_layout + bttn_layout]
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col(components, key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden))
 
         return layout
 
@@ -4499,7 +4513,7 @@ class RecordVariable(DataVariable):
         return layout_attrs
 
 
-class RecordVariableInput(RecordVariable):
+class DataVariableInput(DataVariable):
     """
     Input-style data variable element.
 
@@ -4545,7 +4559,7 @@ class RecordVariableInput(RecordVariable):
         return layout_attrs
 
 
-class RecordVariableCombo(RecordVariable):
+class DataVariableCombo(DataVariable):
     """
     Dropdown-style data variable element.
 
@@ -4626,7 +4640,7 @@ class RecordVariableCombo(RecordVariable):
         return layout_attrs
 
 
-class RecordVariableMultiline(RecordVariable):
+class DataVariableMultiline(DataVariable):
     """
     Multiline-style data variable element.
 
@@ -4687,7 +4701,7 @@ class RecordVariableMultiline(RecordVariable):
         return layout_attrs
 
 
-class RecordVariableCheckbox(RecordVariable):
+class DataVariableCheckbox(DataVariable):
     """
     Checkbox-style data variable element.
 
@@ -4743,7 +4757,7 @@ class RecordVariableCheckbox(RecordVariable):
 
 
 # Element reference variable
-class DependentVariable(DataVariable):
+class DependentVariable(DataUnit):
     """
     Record element that is dependent on the values of other record elements.
 
@@ -4838,7 +4852,7 @@ class DependentVariable(DataVariable):
 
         return triggers
 
-    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
+    def layout(self, padding: tuple = None, size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
@@ -4859,6 +4873,8 @@ class DependentVariable(DataVariable):
         # Layout options
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
+        pad = padding if padding and isinstance(padding, tuple) else self.padding
+        self.padding = pad
 
         font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_HEADING_FONT
@@ -4896,7 +4912,8 @@ class DependentVariable(DataVariable):
         else:
             desc_bg_col = bg_col
 
-        description_layout = [sg.Text(self.description, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
+        desc = self.description if self.arrangement == 'v' else '{}:'.format(self.description)
+        description_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
                                       font=bold_font, auto_size_text=True, tooltip=tooltip)]
 
         # Element layout
@@ -4910,39 +4927,16 @@ class DependentVariable(DataVariable):
 
         # Layout
         if self.arrangement == 'v':
-            row1 = icon_layout + description_layout
-            row2 = element_layout + required_layout
+            row1 = icon_layout + description_layout + required_layout
+            row2 = element_layout
             components = [row1, row2]
         else:
-            components = [icon_layout + description_layout + element_layout + required_layout]
+            components = [required_layout + icon_layout + description_layout + element_layout]
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col(components, key=frame_key, pad=padding, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden))
 
         return layout
-
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the record element display.
-        """
-        elem_key = self.key_lookup('Element')
-        width_key = self.key_lookup('Width')
-        current_w, current_h = self.dimensions()
-
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
-            window[elem_key].set_size(size=(1, None))
-        else:
-            new_w, new_h = (current_w, current_h)
-
-        window[width_key].set_size(size=(new_w, None))
-        window[elem_key].expand(expand_x=True)
-
-        self._dimensions = (new_w, new_h)
-
-        return window[self.key_lookup('Frame')].get_size()
 
     def format_value(self, values):
         """
@@ -4972,7 +4966,7 @@ class DependentVariable(DataVariable):
         return edited
 
 
-class DataConstant(DataVariable):
+class DataConstant(DataUnit):
     """
     Flags or text of static record information.
 
@@ -5038,7 +5032,7 @@ class DataConstant(DataVariable):
         # Update the element display
         self.update_display(window)
 
-    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, bg_color: str = None):
+    def layout(self, padding: tuple = None, size: tuple = None, tooltip: str = None, bg_color: str = None):
         """
         GUI layout for the record element.
         """
@@ -5053,6 +5047,8 @@ class DataConstant(DataVariable):
         # Layout options
         pad_el = mod_const.ELEM_PAD
         pad_h = mod_const.HORZ_PAD
+        pad = padding if padding and isinstance(padding, tuple) else self.padding
+        self.padding = pad
 
         font = mod_const.LARGE_FONT
         bold_font = mod_const.BOLD_HEADING_FONT
@@ -5090,221 +5086,9 @@ class DataConstant(DataVariable):
         width_key = self.key_lookup('Width')
         row1 = icon_layout + desc_layout + elem_layout
         layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)], row1],
-                        key=frame_key, pad=padding, background_color=bg_col, vertical_alignment='c')
+                        key=frame_key, pad=pad, background_color=bg_col, vertical_alignment='c')
 
         return layout
-
-
-class MetaVariable(DataVariable):
-    """
-    Flags or text of record information.
-
-    Attributes:
-
-        name (str): data element configuration name.
-
-        elements (list): list of data element GUI keys.
-    """
-
-    def __init__(self, name, entry, parent=None):
-        """
-        Initialize the record element attributes.
-
-        Arguments:
-            name (str): record element configuration name.
-
-            entry (dict): configuration entry for the record element.
-
-            parent (str): name of the parent record.
-        """
-        super().__init__(name, entry, parent)
-        record_elements = ('Description', 'Frame', 'Width')
-        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
-
-        if self.etype != 'checkbox':
-            self.etype = 'text'
-
-        # Element-specific bindings
-        self.bindings = {self.elements['Element']: 'Element'}
-
-    def bind_keys(self, window):
-        """
-        Add hotkey bindings to the record element.
-        """
-        if not self.disabled:
-            elem_key = self.key_lookup('Element')
-            window[elem_key].bind('<Button-1>', '+LCLICK+')
-
-    def format_value(self, values):
-        """
-        Obtain the value of the record element from the set of GUI element values.
-
-        Arguments:
-            values (dict): single value or dictionary of element values.
-        """
-        if isinstance(values, dict):  # dictionary of referenced element values
-            try:
-                value = values[self.name]
-            except KeyError:
-                msg = self.format_log('input data is missing a value for the record element')
-                logger.warning(msg)
-
-                raise KeyError(msg)
-        else:  # single value provided
-            value = values
-
-        if not pd.isna(value):  # should not update when metadata is missing
-            edited = self.update_value(value)
-        else:
-            edited = False
-
-        return edited
-
-    def reset(self, window):
-        """
-        Reset record element to default.
-        """
-        self.value.reset()
-        self.edited = False
-
-        # Update the element display
-        self.update_display(window)
-
-    def run_event(self, window, event, values):
-        """
-        Run a record element event.
-        """
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
-
-        try:
-            element_event = self.bindings[event]
-        except KeyError:
-            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
-            logger.warning(self.format_log(msg))
-
-            return triggers
-        else:
-            logger.debug(self.format_log('running meta-element event {EVENT}'.format(EVENT=element_event)))
-
-        if element_event == 'Element':
-            elem_key = self.key_lookup('Element')
-
-            input_value = values[elem_key]
-            self.update_value(input_value)
-            self.update_display(window)
-
-        return triggers
-
-    def layout(self, padding: tuple = (0, 0), size: tuple = None, tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0, bg_color: str = None):
-        """
-        GUI layout for the record element.
-        """
-        modifiers = self.modifiers
-
-        is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
-        self.disabled = is_disabled
-        is_required = modifiers['require']
-        hidden = modifiers['hide']
-
-        if size:
-            width, height = size
-            self._dimensions = (width * 9, height * 9)
-        else:  # rough convert to chars if size not set
-            width, height = [int(i / 9) for i in self._dimensions]
-
-        tooltip = tooltip if tooltip else self.tooltip
-
-        # Layout options
-        pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
-
-        font = mod_const.LARGE_FONT
-        bold_font = mod_const.BOLD_HEADING_FONT
-
-        bg_col = self.bg_col if bg_color is None else bg_color
-        self.bg_col = bg_col
-        text_col = mod_const.TEXT_COL
-
-        # Element Icon, if provided
-        icon = self.icon
-        if icon is not None:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_h), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-        else:
-            icon_layout = []
-
-        # Required symbol
-        if is_required is True:
-            required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COL, tooltip='required')]
-        else:
-            required_layout = []
-
-        # Element description and actions
-        elem_key = self.key_lookup('Element')
-        desc_key = self.key_lookup('Description')
-        display_value = self.format_display()
-        desc_bg_col = bg_col
-
-        desc_layout = [sg.Text('{}:'.format(self.description), key=desc_key, pad=((0, pad_el), 0), font=bold_font,
-                               background_color=desc_bg_col, auto_size_text=True, tooltip=tooltip)]
-
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
-        elem_layout = mod_lo.generate_layout(self.etype, layout_attrs)
-
-        # Layout
-        frame_key = self.key_lookup('Frame')
-        width_key = self.key_lookup('Width')
-        row1 = icon_layout + desc_layout + elem_layout + required_layout
-        layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)], row1],
-                        key=frame_key, pad=padding, background_color=bg_col, vertical_alignment='c',
-                        visible=(not hidden))
-
-        return layout
-
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the record element display.
-
-        Arguments:
-            window: GUI window.
-
-            size (tuple): new width and height of the element [Default: set to size of the value + description].
-        """
-        elem_key = self.key_lookup('Element')
-        desc_key = self.key_lookup('Description')
-        current_w, current_h = self.dimensions()
-
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height
-            new_w = current_w if width is None else width
-        else:
-            new_h = current_h
-
-            font = mod_const.LARGE_FONT
-            bold_font = mod_const.BOLD_HEADING_FONT
-
-            desc_w = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
-            display_value = self.format_display()
-            elem_w = window[elem_key].string_width_in_pixels(font, display_value)
-            new_w = desc_w + elem_w + mod_const.HORZ_PAD
-
-            # window[elem_key].set_size(size=(1, None))
-
-        window[elem_key].set_size(size=(1, None))
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(new_w, None))
-        window[elem_key].expand(expand_x=True)
-
-        self._dimensions = (new_w, new_h)
-
-        return window[self.key_lookup('Frame')].get_size()
 
 
 class TableButton:
@@ -5382,7 +5166,7 @@ class TableButton:
             bind_key = self.shortcut_key
             window[element_key].bind(shortcut, bind_key)
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = None, disabled: bool = False):
+    def layout(self, size: tuple = None, padding: tuple = None, bg_col: str = None, disabled: bool = False):
         """
         Create a GUI layout for the parameter.
         """
