@@ -1496,22 +1496,6 @@ class DatabaseRecord:
             raise AttributeError(e)
 
         # Component record elements
-        #self.metadata = []
-        # try:
-        #    metadata = entry['Metadata']
-        # except KeyError:
-        #    metadata = []
-        # for param_name in metadata:
-        #    param_entry = metadata[param_name]
-        #    try:
-        #        param = mod_elem.DataConstant(param_name, param_entry, parent=self.name)
-        #    except Exception as e:
-        #        logger.error('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
-
-        #        raise AttributeError(e)
-
-        #    self.metadata.append(param)
-
         self.components = []
         used_elements = []
         try:
@@ -1548,15 +1532,15 @@ class DatabaseRecord:
                 elif etype in ('dependent_variable', 'dependent'):
                     element_class = mod_elem.DependentVariable
                 elif etype in ('text_variable', 'text'):
-                    element_class = mod_elem.RecordVariable
+                    element_class = mod_elem.DataVariable
                 elif etype in ('input_variable', 'date_variable', 'input', 'date'):
-                    element_class = mod_elem.RecordVariableInput
+                    element_class = mod_elem.DataVariableInput
                 elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
-                    element_class = mod_elem.RecordVariableCombo
+                    element_class = mod_elem.DataVariableCombo
                 elif etype in ('multiline_variable', 'multiline', 'multi'):
-                    element_class = mod_elem.RecordVariableMultiline
+                    element_class = mod_elem.DataVariableMultiline
                 elif etype in ('checkbox', 'check'):
-                    element_class = mod_elem.RecordVariableCheckbox
+                    element_class = mod_elem.DataVariableCheckbox
                 else:
                     raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
                                          .format(ETYPE=etype, ELEM=element_name))
@@ -1686,8 +1670,9 @@ class DatabaseRecord:
 
             section_bttn = '{}Bttn'.format(section)
             section_frame = '{}Frame'.format(section)
+            section_width = '{}Width'.format(section)
             self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                                  (section_bttn, section_frame)})
+                                  (section_bttn, section_frame, section_width)})
             self.bindings[self.key_lookup(section_bttn)] = section_bttn
 
         for i, tab_name in enumerate(self.tabs):
@@ -2886,6 +2871,7 @@ class DatabaseRecord:
         self._padding = padding
         pad_w, pad_h = padding
 
+        scroll_w = mod_const.SCROLL_WIDTH
         bar_h = 40
         header_h = 50
 
@@ -2894,6 +2880,7 @@ class DatabaseRecord:
 
         tab_w = width - pad_w * 2
         tab_h = height - (header_h + bar_h + pad_h * 2)
+        sec_w = tab_w - scroll_w
 
         # Layout elements
 
@@ -2904,104 +2891,6 @@ class DatabaseRecord:
         header_key = self.key_lookup('Header')
         header_layout = sg.Col([headers], key=header_key, expand_x=True, background_color=bg_col, justification='l',
                                vertical_alignment='c')
-
-        # Create the layout for the record information panel
-        #sections = self.sections
-
-        #sections_layout = []
-        #print(sections)
-        #for index, section_name in enumerate(sections):
-        #    print('creating layout for section {} number {}'.format(index, section_name))
-        #    section_entry = sections[section_name]
-
-        #    section_elements = section_entry['Elements']
-        #    if len(section_elements) < 1:
-        #        continue
-
-        #    section_title = section_entry['Title']
-
-        #    section_bttn_key = self.key_lookup('SectionBttn{}'.format(index))
-        #    header_left = [sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
-        #    header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
-        #                              button_color=(text_col, frame_col), border_width=0, visible=True,
-        #                              metadata={'visible': True, 'disabled': False})]
-
-        #    if 'HeadingElement' in section_entry:
-        #        heading_element_name = section_entry['HeadingElement']
-        #        if heading_element_name not in used_elements:
-        #            heading_element = self.fetch_element(heading_element_name)
-        #            if heading_element.is_type('data_variable'):
-        #                heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
-        #                                                                bg_color=frame_col, editable=False)
-        #                header_right.insert(0, heading_element_layout)
-
-        #                used_elements.append(heading_element_name)
-        #            else:
-        #                logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type {TYPE} '
-        #                               'is attempting to be used as a header element'
-        #                               .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
-        #        else:
-        #            logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
-        #                           'in the layout'.format(NAME=self.name, ELEM=heading_element_name, SEC=section_name))
-
-        #    section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
-        #                               sg.Col([header_left], justification='l', expand_x=True,
-        #                                      background_color=frame_col),
-        #                               sg.Col([header_right], justification='r', background_color=frame_col)
-        #                               ]], background_color=frame_col, expand_x=True)]
-        #    sections_layout.append(section_header)
-
-        #    section_layout = []
-        #    for element_name in section_elements:
-        #        if element_name not in used_elements:
-        #            element = self.fetch_element(element_name)
-
-        #            can_edit = editable and element.permissions in user_priv
-        #            element_layout = [element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
-        #                                             level=level)]
-        #            section_layout.append(element_layout)
-
-        #            used_elements.append(element_name)
-        #        else:
-        #            logger.warning('RecordType {NAME}: record element {ELEM} in section {SEC} has already been used '
-        #                           'in the layout'.format(NAME=self.name, ELEM=element_name, SEC=section_name))
-
-        #    section_panel_key = self.key_lookup('SectionFrame{}'.format(index))
-        #    sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key,
-        #                                          background_color=bg_col, visible=True, expand_x=True,
-        #                                          metadata={'visible': True}))])
-
-        #tab_key = self.key_lookup('DetailsTab')
-        #col_key = self.key_lookup('DetailsCol')
-        #details_tab = sg.Tab('{:^40}'.format('Details'),
-        #                     [[sg.Col(sections_layout, key=col_key, size=(tab_w, tab_h), pad=(0, pad_v),
-        #                              background_color=bg_col, expand_y=True, expand_x=True, scrollable=True,
-        #                              vertical_scroll_only=True, vertical_alignment='t', element_justification='l')]],
-        #                     key=tab_key, background_color=bg_col)
-
-        #metadata = self.metadata
-        #if len(metadata) > 0:
-        #    metadata_visible = True
-        #    annotation_layout = []
-        #    for param in metadata:
-        #        can_edit = editable and param.permissions in user_priv
-        #        annotation_layout.append([param.layout(editable=can_edit, level=level)])
-        #else:  # don't show tab for new records or record w/o configured metadata
-        #    metadata_visible = False
-        #    annotation_layout = [[]]
-
-        #meta_tab_key = self.key_lookup('MetaTab')
-        #meta_key = self.key_lookup('MetaCol')
-        #info_tab = sg.Tab('{:^40}'.format('Metadata'),
-        #                  [[sg.Col(annotation_layout, key=meta_key, pad=(0, pad_v), size=(tab_w, tab_h),
-        #                           background_color=bg_col, scrollable=True, vertical_scroll_only=True, expand_x=True,
-        #                           expand_y=True, vertical_alignment='t', element_justification='l')]],
-        #                  key=meta_tab_key, background_color=bg_col, visible=metadata_visible)
-
-        #main_layout = sg.TabGroup([[details_tab, info_tab]], key=self.key_lookup('TG'),
-        #                          background_color=inactive_col, tab_background_color=inactive_col,
-        #                          selected_background_color=bg_col, selected_title_color=select_col,
-        #                          title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
 
         # Create layout for the record tabs
         tabs = self.tabs
@@ -3018,6 +2907,7 @@ class DatabaseRecord:
             if len(tab_sections) < 1:
                 continue
 
+            # Create the layouts for the tab sections
             sections_layout = []
             for section_name in sections:
                 if section_name not in tab_sections:
@@ -3042,7 +2932,8 @@ class DatabaseRecord:
                 if 'HeadingElement' in section_entry:
                     heading_element_name = section_entry['HeadingElement']
                     heading_element = self.fetch_element(heading_element_name)
-                    if heading_element.is_type('data_variable'):
+                    if heading_element.is_type('variable'):
+                        heading_element.arrangement = 'h'  # force horizontal layout
                         heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
                                                                         bg_color=frame_col, editable=False)
                         header_right.insert(0, heading_element_layout)
@@ -3051,7 +2942,9 @@ class DatabaseRecord:
                                        '{TYPE} is attempting to be used as a header element'
                                        .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
 
-                section_header = [sg.Col([[sg.Canvas(size=(0, bar_h), background_color=frame_col),
+                section_w_key = self.key_lookup('{}Width'.format(section_name))
+                section_header = [sg.Col([[sg.Canvas(key=section_w_key, size=(sec_w, 0), background_color=frame_col)],
+                                          [sg.Canvas(size=(0, bar_h), background_color=frame_col),
                                            sg.Col([header_left], justification='l', expand_x=True,
                                                   background_color=frame_col),
                                            sg.Col([header_right], justification='r', background_color=frame_col)
@@ -3083,7 +2976,7 @@ class DatabaseRecord:
             tab_group.append(tab_layout)
 
         main_layout = sg.TabGroup([tab_group], key=self.key_lookup('TG'),
-                                  background_color=inactive_col, tab_background_color=inactive_col,
+                                  background_color=bg_col, tab_background_color=inactive_col,
                                   selected_background_color=bg_col, selected_title_color=select_col,
                                   title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
 
@@ -3118,43 +3011,33 @@ class DatabaseRecord:
         record_size = (record_w, record_h)
         mod_lo.set_size(window, self.key_lookup('Element'), record_size)
 
-        # Set the size of the tab containers
+        # Set the size of the tab containers and sections
         bffr_h = tab_h + header_h + pad_h * 2
         tab_size = (record_w, height - bffr_h)
-        #mod_lo.set_size(window, self.key_lookup('DetailsCol'), tab_size)
-        #mod_lo.set_size(window, self.key_lookup('MetaCol'), tab_size)
         for tab_name in self.tabs:
             tab_key = self.key_lookup('{}Col'.format(tab_name))
             mod_lo.set_size(window, tab_key, tab_size)
             window[tab_key].expand(expand_x=True)
 
+        for section_name in self.sections:
+            section_w_key = self.key_lookup('{}Width'.format(section_name))
+            window[section_w_key].set_size(size=(record_w - scroll_w, None))
+
         # Set the size of the header elements
         for header in (self._record_id, self._record_date):
             header.resize(window)
-
-        # Set the size of the metadata elements
-        #meta_h = None
-        #meta_w = int(width * 0.5)
-        #for meta_param in self.metadata:
-        #    meta_param.resize(window, size=(meta_w, meta_h))
 
         # Expand the size of the record elements
         for record_element in self.components:
             if record_element.name in self._heading_elements:
                 elem_size = None
             else:
-                if record_element.is_type('multiline'):  # multiline data variable
+                if record_element.is_type('collection'):  # table or list
                     elem_h = None
                     elem_w = width - (pad_w * 2 + scroll_w)
-                elif record_element.is_type('table'):  # data table type
+                else:  # data variable
                     elem_h = None
-                    elem_w = width - (pad_w * 2 + scroll_w)
-                elif record_element.is_type('list'):  # data list type
-                    elem_h = mod_const.LISTBOX_HEIGHT
-                    elem_w = width - (pad_w * 2 + scroll_w)
-                else:  # other data variable type
-                    elem_h = None
-                    elem_w = int(width * 0.5)
+                    elem_w = int(width * 0.6)
                 elem_size = (elem_w, elem_h)
 
             record_element.resize(window, size=elem_size)
