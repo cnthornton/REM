@@ -3028,18 +3028,19 @@ class DatabaseRecord:
             header.resize(window)
 
         # Expand the size of the record elements
+        print('setting record {} width to {}'.format(self.name, width))
         for record_element in self.components:
+            elem_h = None
             if record_element.name in self._heading_elements:
-                elem_size = None
+                elem_w = int(width * 0.4)
             else:
                 if record_element.is_type('collection'):  # table or list
-                    elem_h = None
                     elem_w = width - (pad_w * 2 + scroll_w)
                 else:  # data variable
-                    elem_h = None
-                    elem_w = int(width * 0.6)
-                elem_size = (elem_w, elem_h)
+                    elem_w = int(width * 0.7)
+            elem_size = (elem_w, elem_h)
 
+            print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
             record_element.resize(window, size=elem_size)
 
         self._dimensions = (width, height)

@@ -3999,6 +3999,7 @@ class DataUnit(RecordElement):
             new_h = current_h if height is None else height - pad_h * 2
             new_w = current_w if width is None else width - pad_w * 2
             desc_w = int(new_w * 0.4 / 9)  # description is 40% of total width
+            elem_w = int(new_w * 0.6 / 9)  # description is 40% of total width
             window[desc_key].set_size(size=(desc_w, None))
         else:  # auto size the element based on the content
             new_h = current_h
@@ -4014,6 +4015,15 @@ class DataUnit(RecordElement):
         window[elem_key].set_size(size=(1, None))
         window[width_key].set_size(size=(new_w, None))
         window[elem_key].expand(expand_x=True)
+
+        window.refresh()
+        print('resizing record element {}'.format(self.name, new_w))
+        print('desired width of record element {}: {}'.format(self.name, new_w))
+        print('desired width of record element {} description: {}'.format(self.name, desc_w))
+        print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
+        print('desired width of record element {} value: {}'.format(self.name, elem_w))
+        print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         self._dimensions = (new_w, new_h)
 
@@ -4041,6 +4051,12 @@ class DataUnit(RecordElement):
         window[elem_key].expand(expand_x=True)
 
         self._dimensions = (new_w, new_h)
+
+        window.refresh()
+        print('resizing record element {}'.format(self.name, new_w))
+        print('desired width of record element {}: {}'.format(self.name, new_w))
+        print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         return window[self.key_lookup('Frame')].get_size()
 
@@ -4399,7 +4415,6 @@ class DataVariable(DataUnit):
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
         pad = padding if padding and isinstance(padding, tuple) else self.padding
         self.padding = pad
 
@@ -4478,19 +4493,20 @@ class DataVariable(DataUnit):
                                   key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
 
         # Element value layout
-        width_key = self.key_lookup('Width')
         layout_attrs = self.layout_attributes(size=(width, 1))
-        element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
-                                  mod_lo.generate_layout(self.etype, layout_attrs)],
+        element_layout = [sg.Col([mod_lo.generate_layout(self.etype, layout_attrs)],
                                  pad=((0, pad_el), 0), background_color=bg_col)]
 
         # Element layout
+        width_key = self.key_lookup('Width')
+        row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)]
         if self.arrangement == 'v':
-            row1 = icon_layout + desc_layout + required_layout
-            row2 = element_layout + aux_layout + bttn_layout
-            components = [row1, row2]
+            row2 = icon_layout + desc_layout + required_layout
+            row3 = element_layout + aux_layout + bttn_layout
+            components = [row1, row2, row3]
         else:
-            components = [required_layout + icon_layout + desc_layout + element_layout + aux_layout + bttn_layout]
+            row2 = icon_layout + desc_layout + element_layout + aux_layout + bttn_layout + required_layout
+            components = [row1, row2]
 
         frame_key = self.key_lookup('Frame')
         layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden))
