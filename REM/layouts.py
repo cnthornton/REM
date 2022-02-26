@@ -73,6 +73,7 @@ def input_layout(attributes):
     font = attributes.get('Font', mod_const.LARGE_FONT)
     size = attributes.get('Size', None)
     pad = attributes.get('Pad', None)
+    bw = attributes.get('BW', 1)
     bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
     text_col = attributes.get('TextColor', mod_const.TEXT_COL)
 
@@ -86,7 +87,7 @@ def input_layout(attributes):
     elem_key = attributes['Key']
     display_value = attributes.get('DisplayValue', '')
     layout = [sg.Input(display_value, key=elem_key, enable_events=True, disabled=disabled, size=size, pad=pad,
-                       font=font, background_color=bg_col, text_color=text_col,
+                       font=font, background_color=bg_col, text_color=text_col, border_width=bw,
                        disabled_readonly_background_color=disabled_bg_col,
                        disabled_readonly_text_color=disabled_text_col, tooltip=tooltip,
                        metadata={'disabled': disabled})]

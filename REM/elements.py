@@ -128,6 +128,38 @@ class RecordElement:
         # Dynamic variables
         self.edited = False
 
+    def pad_offset(self):
+        """
+        Get the total amount of horizontal and vertical padding around the record element.
+        """
+        padding = self.padding
+
+        try:
+            pad_w, pad_h = padding
+        except ValueError:
+            pad_w = pad_h = padding
+
+        if isinstance(pad_w, tuple) or isinstance(pad_w, list):
+            total_w = sum(pad_w)
+        elif isinstance(pad_w, int) or isinstance(pad_w, float):
+            total_w = int(pad_w) * 2
+        elif isinstance(pad_w, type(None)):
+            total_w = 0
+        else:
+            raise TypeError('unsupported value {VAL} provided as horizontal padding around the element'
+                            .format(VAL=pad_w))
+
+        if isinstance(pad_h, tuple) or isinstance(pad_h, list):
+            total_h = sum(pad_h)
+        elif isinstance(pad_h, int) or isinstance(pad_h, float):
+            total_h = int(pad_h) * 2
+        elif isinstance(pad_h, type(None)):
+            total_h = 0
+        else:
+            raise TypeError('unsupported value {VAL} provided as vertical padding around the element'.format(VAL=pad_h))
+
+        return (total_w, total_h)
+
     def key_lookup(self, component, rev: bool = False):
         """
         Lookup a record element's GUI element key using the name of the component.
@@ -1756,12 +1788,12 @@ class DataTable(RecordElement):
         current_w, current_h = self.dimensions()
         min_w, min_h = self._min_size
         border_w = 1 * 4
-        pad_w, pad_h = self.padding
+        pad_w, pad_h = self.pad_offset()
 
         if size:
             width, height = size
-            new_h = current_h if height is None or height < min_h else height - pad_h * 2
-            new_w = current_w if width is None or width < min_w else width - pad_w * 2
+            new_h = current_h if height is None or height < min_h else height - pad_h
+            new_w = current_w if width is None or width < min_w else width - pad_w
         else:
             new_w, new_h = (current_w, current_h)
 
@@ -3431,12 +3463,12 @@ class DataList(RecordElement):
         current_w, current_h = self.dimensions()
         border_w = 1
         pad_el = mod_const.ELEM_PAD
-        pad_w, pad_h = self.padding
+        pad_w, pad_h = self.pad_offset()
 
         if size:
             width, height = size
-            new_h = current_h if height is None else height - border_w * 2 - pad_h * 2
-            new_w = current_w if width is None else width - border_w * 2 - pad_w * 2
+            new_h = current_h if height is None else height - border_w * 2 - pad_h
+            new_w = current_w if width is None else width - border_w * 2 - pad_w
         else:
             new_w, new_h = (current_w, current_h)
 
@@ -3925,7 +3957,18 @@ class DataUnit(RecordElement):
 
         modifiers (dict): flags that alter the element's behavior.
 
+        arrangement (str): layout arrangement of the element components. Possible values are horizontal
+            (horz, h, long) or vertical (vert, v, stacked) [Default: vertical].
+
+        justification (str): left-right justification of the element components. Possible values are left
+            (left, l), center (center, c), or right (right, r) [Default: left].
+
+        align (bool): align with other record elements by resizing the description as a given percentage of the total
+            width of the element [Default: True].
+
         value: data vector containing the variable's value
+
+        disabled (bool): editing of the record element is disabled [Default: False].
     """
 
     def __init__(self, name, entry, parent=None):
@@ -3940,6 +3983,8 @@ class DataUnit(RecordElement):
             parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
+        record_elements = ('Frame', 'Description', 'Width', 'ContentWidth')
+        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Parameters that modify the record element's behavior
         try:
@@ -3961,7 +4006,7 @@ class DataUnit(RecordElement):
 
         # Additional layout modification attributes
         try:
-            arrange = entry['Arrangement']
+            arrange = entry['Arrangement']  # vertical arrangement of components
         except KeyError:  # default arrangement of element components is "stacked"
             arrange = 'v'
 
@@ -3973,7 +4018,26 @@ class DataUnit(RecordElement):
             logger.warning(self.format_log('unsupported value "{VAL}" provided to arrangement'.format(VAL=arrange)))
             self.arrangement = 'v'
 
+        try:
+            justification = entry['Justification']  # left-right justification of components
+        except KeyError:
+            justification = 'l'
+
+        if justification in ('l', 'left'):
+            self.justification = 'l'
+        elif justification in ('r', 'right'):
+            self.justification = 'r'
+        elif justification in ('c', 'center'):
+            self.justification = 'c'
+        else:
+            logger.warning(self.format_log('unsupported value "{VAL}" provided to justification'
+                                           .format(VAL=justification)))
+            self.justification = 'l'
+
+        self.align = True  # auto-align elements
+
         # Dynamic variables
+        self._offset = 0
         self.value = mod_col.DataVector(name, entry)
         self._dimensions = (mod_const.VARIABLE_WIDTH_PX, mod_const.VARIABLE_HEIGHT_PX)
         self.disabled = False
@@ -3987,41 +4051,49 @@ class DataUnit(RecordElement):
 
             size (tuple): new width and height of the element [Default: set to size of the value + description].
         """
+        bold_font = mod_const.BOLD_HEADING_FONT
+
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
         width_key = self.key_lookup('Width')
-        pad_w, pad_h = self.padding
+        content_width_key = self.key_lookup('ContentWidth')
+        pad_w, pad_h = self.pad_offset()
 
         current_w, current_h = self.dimensions()
 
         if size:  # set element to a set size
             width, height = size
-            new_h = current_h if height is None else height - pad_h * 2
-            new_w = current_w if width is None else width - pad_w * 2
-            desc_w = int(new_w * 0.4 / 9)  # description is 40% of total width
-            elem_w = int(new_w * 0.6 / 9)  # description is 40% of total width
-            window[desc_key].set_size(size=(desc_w, None))
+            new_h = current_h if height is None else height - pad_h
+            new_w = current_w if width is None else width - pad_w
+            if self.align:
+                desc_w_px = int(new_w * 0.4)  # description is 40% of total width
+                desc_w = int(desc_w_px / 9)  # convert to characters for resizing
+                window[desc_key].set_size(size=(desc_w, None))
+            else:
+                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+            elem_w_px = new_w - self._offset - int(desc_w_px)
         else:  # auto size the element based on the content
             new_h = current_h
 
             font = mod_const.LARGE_FONT
-            bold_font = mod_const.BOLD_HEADING_FONT
 
-            desc_w = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+            desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
             display_value = self.format_display()
-            elem_w = window[elem_key].string_width_in_pixels(font, display_value)
-            new_w = desc_w + elem_w + mod_const.HORZ_PAD
+            elem_w_px = window[elem_key].string_width_in_pixels(font, display_value)
+            new_w = desc_w_px + elem_w_px + self._offset
 
         window[elem_key].set_size(size=(1, None))
         window[width_key].set_size(size=(new_w, None))
+
+        window[content_width_key].set_size(size=(elem_w_px, None))
         window[elem_key].expand(expand_x=True)
 
         window.refresh()
         print('resizing record element {}'.format(self.name, new_w))
         print('desired width of record element {}: {}'.format(self.name, new_w))
-        print('desired width of record element {} description: {}'.format(self.name, desc_w))
+        print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
         print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
-        print('desired width of record element {} value: {}'.format(self.name, elem_w))
+        print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
         print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
         print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
@@ -4035,20 +4107,23 @@ class DataUnit(RecordElement):
         """
         elem_key = self.key_lookup('Element')
         width_key = self.key_lookup('Width')
-        pad_w, pad_h = self.padding
+        content_width_key = self.key_lookup('ContentWidth')
+        pad_w, pad_h = self.pad_offset()
 
         current_w, current_h = self.dimensions()
 
-        if size:
+        if size:  # set element to a specific size
             width, height = size
             new_h = current_h if height is None else height - pad_h
             new_w = current_w if width is None else width - pad_w
             window[elem_key].set_size(size=(1, None))
-        else:
+        else:  # don't modify the size
             new_w, new_h = (current_w, current_h)
 
+        content_w = new_w - self._offset
         window[width_key].set_size(size=(new_w, None))
-        window[elem_key].expand(expand_x=True)
+        window[content_width_key].set_size(size=(content_w, None))
+        window[elem_key].expand(expand_x=True, expand_row=True)
 
         self._dimensions = (new_w, new_h)
 
@@ -4214,7 +4289,8 @@ class DataVariable(DataUnit):
         """
         super().__init__(name, entry, parent)
         self.etype = 'text'
-        record_elements = ('Description', 'Edit', 'Save', 'Cancel', 'Frame', 'Update', 'Width', 'Auxiliary')
+
+        record_elements = ('Edit', 'Save', 'Cancel', 'Update', 'Auxiliary')
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Element-specific bindings
@@ -4229,6 +4305,30 @@ class DataVariable(DataUnit):
 
         # Dynamic variables
         self.edit_mode = False
+
+    def _value_layout(self, size: tuple = None):
+        """
+        Configure the attributes for the record element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
+        text_col = mod_const.DISABLED_TEXT_COL
+        bg_col = self.bg_col
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+
+        aux_key = self.key_lookup('Auxiliary')
+        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=self.bg_col, visible=False))]
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
+                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        element_layout = mod_lo.generate_layout('text', layout_attrs)
+
+        content_width_key = self.key_lookup('ContentWidth')
+        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
+                          element_layout + aux_layout], background_color=bg_col)]
+
+        return layout
 
     def bind_keys(self, window):
         """
@@ -4399,8 +4499,12 @@ class DataVariable(DataUnit):
         """
         modifiers = self.modifiers
 
-        is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
-        self.disabled = is_disabled
+        if not self.disabled:  # some variables are intrinsically un-editable (i.e. dependent variables)
+            is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
+            self.disabled = is_disabled
+        else:
+            is_disabled = True
+
         is_required = modifiers['require']
         hidden = modifiers['hide']
 
@@ -4411,7 +4515,7 @@ class DataVariable(DataUnit):
         background = self.bg_col if bg_color is None else bg_color
         tooltip = tooltip if tooltip else self.tooltip
 
-        elem_key = self.key_lookup('Element')
+#        elem_key = self.key_lookup('Element')
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -4426,6 +4530,7 @@ class DataVariable(DataUnit):
 
         # Element Icon, if provided
         icon = self.icon
+        icon_w = 24 + pad_el  # image size (24 pixels) plus padding
         if icon is not None:
             icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
@@ -4436,26 +4541,12 @@ class DataVariable(DataUnit):
             icon_layout = []
 
         # Required symbol
+        req_w = 11 + pad_el  # size of asterisk plus padding
         if is_required is True:
             required_layout = [sg.Text('*', pad=((0, pad_el), 0), font=bold_font, background_color=bg_col,
                                        text_color=mod_const.NOTE_COL, tooltip='required')]
         else:
             required_layout = []
-
-        # Add auxiliary elements to the layout, such as a calendar button for datetime elements.
-        accessory_layout = []
-        try:
-            date_key = self.key_lookup('Calendar')
-        except KeyError:
-            pass
-        else:
-            accessory_layout.append(sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d',
-                                                      pad=((0, pad_el), 0), image_data=mod_const.CALENDAR_ICON,
-                                                      button_color=(text_col, bg_col), border_width=0,
-                                                      tooltip='Select the date from the calendar menu'))
-
-        aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([accessory_layout], key=aux_key, background_color=bg_col, visible=False))]
 
         # Element description
         desc_key = self.key_lookup('Description')
@@ -4478,8 +4569,9 @@ class DataVariable(DataUnit):
         save_key = self.key_lookup('Save')
         cancel_key = self.key_lookup('Cancel')
 
-        bttn_vis = False if is_disabled is True else True
-        bttn_layout = [sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=((0, pad_el), 0),
+        bttn_w = 16 * 3 + pad_el * 2
+        bttn_vis = False if is_disabled else True
+        bttn_layout = [sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=(pad_el, 0),
                                  button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
                                  border_width=0, tooltip='Edit value'),
                        sg.pin(
@@ -4493,40 +4585,28 @@ class DataVariable(DataUnit):
                                   key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
 
         # Element value layout
-        layout_attrs = self.layout_attributes(size=(width, 1))
-        element_layout = [sg.Col([mod_lo.generate_layout(self.etype, layout_attrs)],
-                                 pad=((0, pad_el), 0), background_color=bg_col)]
+        element_layout = self._value_layout(size=(width, 1))
 
         # Element layout
         width_key = self.key_lookup('Width')
         row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)]
         if self.arrangement == 'v':
+            offset = bttn_w + 2  # button width plus width of the value frame
             row2 = icon_layout + desc_layout + required_layout
-            row3 = element_layout + aux_layout + bttn_layout
+            row3 = element_layout + bttn_layout
             components = [row1, row2, row3]
         else:
-            row2 = icon_layout + desc_layout + element_layout + aux_layout + bttn_layout + required_layout
+            offset = icon_w + req_w + bttn_w + 2  # icon, button, and asterisks width plus width of the value frame
+            row2 = icon_layout + desc_layout + element_layout + bttn_layout + required_layout
             components = [row1, row2]
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden),
+                        element_justification=self.justification)
+
+        self._offset += offset
 
         return layout
-
-    def layout_attributes(self, size: tuple = None):
-        """
-        Configure the attributes for the record element's GUI layout.
-        """
-        font = mod_const.LARGE_FONT
-        text_col = mod_const.DISABLED_TEXT_COL
-
-        elem_key = self.key_lookup('Element')
-        tooltip = display_value = self.format_display()
-
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
-                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
-
-        return layout_attrs
 
 
 class DataVariableInput(DataVariable):
@@ -4559,20 +4639,42 @@ class DataVariableInput(DataVariable):
             self.elements['Calendar'] = calendar_key
             self.bindings[calendar_key] = 'Calendar'
 
-    def layout_attributes(self, size: tuple = None):
+    def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
+        pad_el = mod_const.ELEM_PAD
         text_col = mod_const.TEXT_COL
+        bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        # Add auxiliary elements to the layout, such as a calendar button for datetime elements.
+        try:
+            date_key = self.key_lookup('Calendar')
+        except KeyError:
+            date_bttn = []
+        else:
+            date_bttn = [sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d', pad=(pad_el, 0),
+                                           image_data=mod_const.CALENDAR_ICON, disabled=True,
+                                           button_color=(text_col, self.bg_col), border_width=0,
+                                           tooltip='Select the date from the calendar menu')]
 
-        return layout_attrs
+        aux_key = self.key_lookup('Auxiliary')
+        aux_layout = [sg.pin(sg.Col([date_bttn], key=aux_key, background_color=self.bg_col, visible=False))]
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
+                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        element_layout = mod_lo.generate_layout('input', layout_attrs)
+
+        content_width_key = self.key_lookup('ContentWidth')
+        layout = [sg.Frame('', [[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
+                                element_layout + aux_layout],
+                           background_color=bg_col, relief='sunken', border_width=1)]
+
+        return layout
 
 
 class DataVariableCombo(DataVariable):
@@ -4628,12 +4730,13 @@ class DataVariableCombo(DataVariable):
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning(self.format_log(msg))
 
-    def layout_attributes(self, size: tuple = None):
+    def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         text_col = mod_const.TEXT_COL
+        bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
@@ -4649,11 +4752,19 @@ class DataVariableCombo(DataVariable):
             for option in values:
                 display_values.append(self.format_display(value=option))
 
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
-                        'ComboValues': display_values}
+        aux_key = self.key_lookup('Auxiliary')
+        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
 
-        return layout_attrs
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+                        'ComboValues': display_values}
+        element_layout = mod_lo.generate_layout('dropdown', layout_attrs)
+
+        content_width_key = self.key_lookup('ContentWidth')
+        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
+                           element_layout + aux_layout], background_color=bg_col)]
+
+        return layout
 
 
 class DataVariableMultiline(DataVariable):
@@ -4699,22 +4810,31 @@ class DataVariableMultiline(DataVariable):
         except (KeyError, ValueError):
             self.nrow = 1
 
-    def layout_attributes(self, size: tuple = None):
+    def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         text_col = mod_const.TEXT_COL
+        bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
         nrow = self.nrow
 
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
-                        'NRow': nrow}
+        aux_key = self.key_lookup('Auxiliary')
+        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
 
-        return layout_attrs
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+                        'NRow': nrow}
+        element_layout = mod_lo.generate_layout('multiline', layout_attrs)
+
+        content_width_key = self.key_lookup('ContentWidth')
+        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
+                          element_layout + aux_layout], background_color=bg_col)]
+
+        return layout
 
 
 class DataVariableCheckbox(DataVariable):
@@ -4756,24 +4876,155 @@ class DataVariableCheckbox(DataVariable):
 
         self.arrangement = 'h'
 
-    def layout_attributes(self, size: tuple = None):
+    def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         text_col = mod_const.TEXT_COL
+        bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        aux_key = self.key_lookup('Auxiliary')
+        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
 
-        return layout_attrs
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        element_layout = mod_lo.generate_layout('checkbox', layout_attrs)
+
+        content_width_key = self.key_lookup('ContentWidth')
+        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
+                          element_layout + aux_layout], background_color=bg_col)]
+
+        return layout
 
 
 # Element reference variable
-class DependentVariable(DataUnit):
+class DependentVariable(DataVariable):
+    """
+    Record element that is dependent on the values of other record elements.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        elements (list): list of data element GUI keys.
+
+        operation (str): reference operation.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Class attributes.
+
+        Arguments:
+            name (str): name of the configured element.
+
+            entry (dict): configuration entry for the data storage element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+
+        self.etype = 'dependent'
+
+        # Data type check
+        supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
+                           settings.supported_bool_dtypes
+        if entry['DataType'] not in supported_dtypes:
+            msg = self.format_log('unsupported data type provided for the "{ETYPE}" parameter. Supported data types '
+                                  'are {DTYPES}'.format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes)))
+            logger.error(msg)
+
+            raise AttributeError(msg)
+
+        # Reference parameter information
+        try:
+            self.operation = entry['Operation']
+        except KeyError:
+            msg = self.format_log('reference element is missing required parameter "Operation".'.format(NAME=name))
+            logger.error(msg)
+
+            raise AttributeError(msg)
+
+        self.disabled = True
+
+    def _value_layout(self, size: tuple = None):
+        """
+        Configure the attributes for the record element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
+        text_col = mod_const.TEXT_COL
+        bg_col = self.bg_col
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        element_layout = mod_lo.generate_layout('text', layout_attrs)
+
+        content_width_key = self.key_lookup('ContentWidth')
+        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
+                          element_layout], background_color=bg_col)]
+
+        return layout
+
+    def run_event(self, window, event, values):
+        """
+        Run a record element event.
+        """
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
+        try:
+            element_event = self.bindings[event]
+        except KeyError:
+            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
+            logger.warning(self.format_log(msg))
+
+            return triggers
+        else:
+            logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
+
+        if element_event == 'Element':
+            edited = self.format_value(values)
+            if edited:
+                self.edited = True
+                self.update_display(window)
+
+        return triggers
+
+    def format_value(self, values):
+        """
+        Set the value of the element reference from user input.
+
+        Arguments:
+            values (dict): single value or dictionary of element values.
+        """
+        # Update element display value
+        logger.debug(self.format_log('setting the value of the dependent variable'))
+        if isinstance(values, dict):  # dictionary of referenced element values
+            try:
+                input_value = mod_dm.evaluate_operation(values, self.operation)
+            except Exception as e:
+                msg = self.format_log('failed to set the value of the dependent variable', err=e)
+                logger.error(msg)
+                input_value = None
+
+        else:  # single value provided
+            input_value = values
+
+        if input_value == '' or pd.isna(input_value):
+            return None
+
+        edited = self.update_value(input_value)
+
+        return edited
+
+
+class DependentVariableOld(DataUnit):
     """
     Record element that is dependent on the values of other record elements.
 
@@ -4933,24 +5184,28 @@ class DependentVariable(DataUnit):
                                       font=bold_font, auto_size_text=True, tooltip=tooltip)]
 
         # Element layout
-        width_key = self.key_lookup('Width')
+        content_width_key = self.key_lookup('ContentWidth')
         elem_key = self.key_lookup('Element')
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1), 'BW': 1,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
-        element_layout = [sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)],
+        element_layout = [sg.Col([[sg.Canvas(key=content_width_key, size=(1, 0), background_color=bg_col)],
                                   mod_lo.generate_layout('text', layout_attrs)],
                                  background_color=bg_col)]
 
         # Layout
+        width_key = self.key_lookup('Width')
+        row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color='blue')]
         if self.arrangement == 'v':
-            row1 = icon_layout + description_layout + required_layout
-            row2 = element_layout
-            components = [row1, row2]
+            row2 = icon_layout + description_layout + required_layout
+            row3 = element_layout
+            components = [row1, row2, row3]
         else:
-            components = [required_layout + icon_layout + description_layout + element_layout]
+            row2 = required_layout + icon_layout + description_layout + element_layout
+            components = [row1, row2]
 
         frame_key = self.key_lookup('Frame')
-        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden))
+        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden),
+                        element_justification=self.justification)
 
         return layout
 
@@ -5095,14 +5350,18 @@ class DataConstant(DataUnit):
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
-        elem_layout = mod_lo.generate_layout(self.etype, layout_attrs)
+        content_width_key = self.key_lookup('ContentWidth')
+        elem_layout = [sg.Col([[sg.Canvas(key=content_width_key, size=(1, 0), background_color=bg_col)],
+                                mod_lo.generate_layout('text', layout_attrs)],
+                              background_color=bg_col)]
 
         # Layout
         frame_key = self.key_lookup('Frame')
         width_key = self.key_lookup('Width')
         row1 = icon_layout + desc_layout + elem_layout
         layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)], row1],
-                        key=frame_key, pad=pad, background_color=bg_col, vertical_alignment='c')
+                        key=frame_key, pad=pad, background_color=bg_col, vertical_alignment='c',
+                        element_justification=self.justification)
 
         return layout
 
