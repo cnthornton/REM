@@ -2934,6 +2934,8 @@ class DatabaseRecord:
                     heading_element = self.fetch_element(heading_element_name)
                     if heading_element.is_type('variable'):
                         heading_element.arrangement = 'h'  # force horizontal layout
+                        heading_element.align = False  # disable forced alignment with other elements
+                        heading_element.justification = 'r'  # force right justification of element components
                         heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
                                                                         bg_color=frame_col, editable=False)
                         header_right.insert(0, heading_element_layout)
@@ -3037,7 +3039,7 @@ class DatabaseRecord:
                 if record_element.is_type('collection'):  # table or list
                     elem_w = width - (pad_w * 2 + scroll_w)
                 else:  # data variable
-                    elem_w = int(width * 0.7)
+                    elem_w = int(width * 0.6)
             elem_size = (elem_w, elem_h)
 
             print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
