@@ -4,31 +4,30 @@ REM constants and other program settings.
 
 
 # Element Color Constants
-ACTION_COL = WHITE_TEXT_COL = '#FFFFFF'  # white
-DEFAULT_COL = FRAME_COL = DISABLED_BG_COL = '#F5F5F5'  # light grey
-INACTIVE_COL = '#DEDEDE'  # light grey
-DISABLED_TEXT_COL = '#A6A6A6'  # medium-dark grey
-BUTTON_COL = '#64B5F6'  # vibrant blue
-DISABLED_BUTTON_COL = '#C9DDEE'  # grey-blue
+DEFAULT_BG_COLOR = WHITE_TEXT_COLOR = '#FFFFFF'  # white
+FRAME_COLOR = '#F5F5F5'  # light grey
+DISABLED_BG_COLOR = '#DEDEDE'  # light grey
+DISABLED_TEXT_COLOR = '#A6A6A6'  # medium-dark grey
+BUTTON_COLOR = '#64B5F6'  # vibrant blue
+DISABLED_BUTTON_COLOR = '#C9DDEE'  # grey-blue
 LOGIN_BUTTON_COL = '#94FA92'  # green
 CANCEL_BUTTON_COL = '#FF6C5C'  # red
-TEXT_COL = '#000000'  # black
-SELECT_TEXT_COL = '#2A9DF4'  # blue
-SELECT_BG_COL = '#2A9DF4'  # blue
-HELP_TEXT_COL = '#616161'  # light grey
-HIGHLIGHT_COL = '#E5E5E5'  # light grey
-HEADER_COL = INPUT_COL = '#F8FAFC'  # light blue-grey
-BUTTON_TEXT_COL = BORDER_COL = '#767676'  # dark grey
-PASS_COL = '#ACFBAF'  # light-medium green
-APPROVE_COL = '#CCE7CD'  # medium-dark green
-WARNING_COL = '#FFD740'  # medium orange-yellow
-FAIL_COL = NOTE_COL = '#F4B3B3'  # light-medium red
-BOX_COL = '#39FF14'  # neon green
+DEFAULT_TEXT_COLOR = '#000000'  # black
+SELECTED_TEXT_COLOR = '#2A9DF4'  # blue
+SELECTED_BG_COLOR = '#2A9DF4'  # blue
+HELP_TEXT_COLOR = '#616161'  # light grey
+HIGHLIGHT_COLOR = '#E5E5E5'  # light grey
+HEADER_COLOR = ELEMENT_COLOR = '#F8FAFC'  # light blue-grey
+BUTTON_TEXT_COLOR = BORDER_COLOR = '#767676'  # dark grey
+PASS_COLOR = '#ACFBAF'  # light-medium green
+APPROVE_COLOR = '#CCE7CD'  # medium-dark green
+WARNING_COLOR = '#FFD740'  # medium orange-yellow
+FAIL_COLOR = NOTE_COLOR = '#F4B3B3'  # light-medium red
 
-TBL_ALT_COL = '#E5F4FD'  # default table alternate row color: light blue
-TBL_BG_COL = '#FFFFFF'  # default table background color: white
-TBL_HEADER_COL = '#EFF2F4'  # table header color: light blue
-TBL_SELECT_COL = '#B3B3B3'  # table selected row color: medium-dark gray
+TBL_ALT_COLOR = '#E5F4FD'  # default table alternate row color: light blue
+TBL_BG_COLOR = '#FFFFFF'  # default table background color: white
+TBL_HEADER_COLOR = '#EFF2F4'  # table header color: light blue
+TBL_SELECT_COLOR = '#B3B3B3'  # table selected row color: medium-dark gray
 
 # Element Padding Constants
 FRAME_PAD = 20
@@ -62,10 +61,9 @@ WIN_HEIGHT = 600  # support for 1024 x 768 screen resolution
 WIN_WIDTH = 800  # support for 1024 x 768 screen resolution
 
 # GUI Elements
-B1_SIZE = 20
-B2_SIZE = 6
-B3_SIZE = 31
-IN1_SIZE = 20
+B1_WIDTH = 20
+B2_WIDTH = 6
+IN1_WIDTH = 20
 BTTN_SIZE = (60, 30)
 PARAM_SIZE_PX = (300, 10)  # pixels
 PARAM_SIZE_CHAR = (30, 1)  # characters

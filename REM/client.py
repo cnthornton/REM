@@ -711,9 +711,9 @@ class SettingsManager:
         pad_v = mod_const.VERT_PAD
         pad_frame = mod_const.FRAME_PAD
 
-        bg_col = mod_const.ACTION_COL
-        in_col = mod_const.INPUT_COL
-        select_col = mod_const.SELECT_TEXT_COL
+        bg_col = mod_const.DEFAULT_BG_COLOR
+        in_col = mod_const.ELEMENT_COLOR
+        select_col = mod_const.SELECTED_TEXT_COLOR
 
         bwidth = 1
         spacer_h = 0
@@ -744,7 +744,7 @@ class SettingsManager:
         hotkey_layout = []
         for hotkey_group in hotkey_groups:
             group_layout = [sg.Col([[sg.Text(hotkey_group, font=bold_font, background_color=bg_col)],
-                                    [sg.HorizontalSeparator(color=mod_const.FRAME_COL)]],
+                                    [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR)]],
                                    pad=(pad_v, (pad_v, pad_el)), background_color=bg_col, expand_x=True)]
             hotkey_layout.append(group_layout)
             group_col1 = [[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)]]

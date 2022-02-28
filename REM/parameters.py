@@ -130,7 +130,7 @@ class DataParameter:
         try:
             self.bg_col = entry['BackgroundColor']
         except KeyError:
-            self.bg_col = mod_const.ACTION_COL
+            self.bg_col = mod_const.DEFAULT_BG_COLOR
 
         self.auto_size = False
 
@@ -154,7 +154,7 @@ class DataParameter:
 
         return key
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.ACTION_COL,
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.DEFAULT_BG_COLOR,
                auto_size_desc: bool = True, hidden: bool = None, justification: str = None, border: bool = False):
         """
         Create a GUI layout for the parameter.
@@ -204,7 +204,7 @@ class DataParameter:
         # Required symbol
         if is_required is True:
             required_layout = [sg.Text('*', font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COL, tooltip='required')]
+                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
         else:
             required_layout = []
 
@@ -744,9 +744,9 @@ class DataParameterInput(DataParameterSingle):
 
         pad_el = mod_const.ELEM_PAD
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        in_col = mod_const.INPUT_COL
-        text_col = mod_const.TEXT_COL
+        bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
+        in_col = mod_const.ELEMENT_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         width, height = size
         elem_w = int(width * 0.7) if self.dtype not in settings.supported_date_dtypes else int((width - 2) * 0.6)
@@ -900,9 +900,9 @@ class DataParameterCombo(DataParameterSingle):
 
         # Element settings
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        in_col = mod_const.INPUT_COL
-        text_col = mod_const.TEXT_COL
+        bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
+        in_col = mod_const.ELEMENT_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Parameter size
         width, height = size
@@ -1095,8 +1095,8 @@ class DataParameterCheckbox(DataParameter):
         disabled = False if self.editable is True else True
 
         # Element settings
-        bg_col = mod_const.ACTION_COL if bg_col is None else bg_col
-        box_col = bg_col if not disabled else mod_const.DISABLED_BG_COL
+        bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
+        box_col = bg_col if not disabled else mod_const.DISABLED_BG_COLOR
 
         # Parameter size
         width, height = size
@@ -1294,8 +1294,8 @@ class DataParameterMulti(DataParameter):
         # Element settings
         font = mod_const.LARGE_FONT
         bg_col = self.bg_col if bg_col is None else bg_col
-        in_col = mod_const.INPUT_COL
-        text_col = mod_const.TEXT_COL
+        in_col = mod_const.ELEMENT_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Parameter size
         width, height = size
@@ -1863,9 +1863,9 @@ class DataParameterSelection(DataParameter):
         # Element settings
         font = mod_const.LARGE_FONT
         bg_col = self.bg_col if bg_col is None else bg_col
-        in_col = mod_const.INPUT_COL
-        text_col = mod_const.TEXT_COL
-        bttn_text_col = mod_const.DISABLED_TEXT_COL
+        in_col = mod_const.ELEMENT_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+        bttn_text_col = mod_const.DISABLED_TEXT_COLOR
 
         # Parameter size
         width, height = size
@@ -1971,8 +1971,8 @@ class DataParameterSelection(DataParameter):
         """
         Update selected menu items.
         """
-        bg_col = mod_const.ACTION_COL
-        text_col = mod_const.TEXT_COL
+        bg_col = mod_const.DEFAULT_BG_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
         menu_values = self.menu_values
 
         bttn_key = self.key_lookup('Element')

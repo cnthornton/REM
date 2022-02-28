@@ -99,17 +99,17 @@ class RecordElement:
 
                 continue
 
-            self.annotation_rules[code] = {'BackgroundColor': rule.get('BackgroundColor', mod_const.FAIL_COL),
+            self.annotation_rules[code] = {'BackgroundColor': rule.get('BackgroundColor', mod_const.FAIL_COLOR),
                                            'Description': rule.get('Description', code),
                                            'Condition': rule['Condition']}
 
         try:
             bg_col = entry['BackgroundColor']
         except KeyError:
-            self.bg_col = mod_const.ACTION_COL
+            self.bg_col = mod_const.DEFAULT_BG_COLOR
         else:
             if isinstance(bg_col, str) and (not bg_col.startswith('#') or len(bg_col) != 7):  # hex color codes
-                self.bg_col = mod_const.ACTION_COL
+                self.bg_col = mod_const.DEFAULT_BG_COLOR
             else:
                 self.bg_col = bg_col
 
@@ -506,12 +506,12 @@ class DataTable(RecordElement):
         try:
             row_color = entry['RowColor']
         except KeyError:
-            self.row_color = mod_const.TBL_ALT_COL
+            self.row_color = mod_const.TBL_ALT_COLOR
         else:
             if not row_color.startswith('#') or not len(row_color) == 7:
                 msg = self.format_log('row color {COL} is not a valid hexadecimal code'.format(COL=row_color))
                 logger.warning(msg)
-                self.row_color = mod_const.TBL_BG_COL
+                self.row_color = mod_const.TBL_BG_COLOR
             else:
                 self.row_color = row_color
 
@@ -1165,10 +1165,10 @@ class DataTable(RecordElement):
                 configured annotation rules.
         """
         is_float_dtype = pd.api.types.is_float_dtype
-        highlight_col = mod_const.SELECT_BG_COL
-        white_text_col = mod_const.WHITE_TEXT_COL
-        def_bg_col = mod_const.ACTION_COL
-        text_col = mod_const.TEXT_COL
+        highlight_col = mod_const.SELECTED_BG_COLOR
+        white_text_col = mod_const.WHITE_TEXT_COLOR
+        def_bg_col = mod_const.DEFAULT_BG_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         tbl_key = self.key_lookup('Element')
         annotations = {} if annotations is None else annotations
@@ -1481,16 +1481,16 @@ class DataTable(RecordElement):
         col3width_key = self.key_lookup('WidthCol3')
 
         # Element settings
-        text_col = mod_const.TEXT_COL  # standard text color
-        select_text_col = mod_const.WHITE_TEXT_COL  # row text highlight color
-        select_bg_col = mod_const.TBL_SELECT_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL  # disabled button text
-        disabled_bg_col = mod_const.INACTIVE_COL  # disabled button background
+        text_col = mod_const.DEFAULT_TEXT_COLOR  # standard text color
+        select_text_col = mod_const.WHITE_TEXT_COLOR  # row text highlight color
+        select_bg_col = mod_const.TBL_SELECT_COLOR
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR  # disabled button text
+        disabled_bg_col = mod_const.DISABLED_BG_COLOR  # disabled button background
         alt_col = self.row_color  # alternate row color
         row_col = self.bg_col  # default primary table color is white
-        header_col = mod_const.TBL_HEADER_COL if bg_color is None else bg_color  # color of the header background
-        frame_col = mod_const.DEFAULT_COL  # background color of the table frames
-        border_col = mod_const.BORDER_COL  # background color of the collapsible bars and the table frame
+        header_col = mod_const.TBL_HEADER_COLOR if bg_color is None else bg_color  # color of the header background
+        frame_col = mod_const.FRAME_COLOR  # background color of the table frames
+        border_col = mod_const.BORDER_COLOR  # background color of the collapsible bars and the table frame
 
         pad = padding if padding and isinstance(padding, tuple) else self.padding
         self.padding = pad
@@ -1520,7 +1520,7 @@ class DataTable(RecordElement):
 
         width = width if width is not None else mod_const.TBL_WIDTH
 
-        isize = mod_const.IN1_SIZE
+        isize = mod_const.IN1_WIDTH
 
         header_col_size = 200
         min_col_size = 10
@@ -3194,8 +3194,8 @@ class DataList(RecordElement):
         font = mod_const.BOLD_LARGE_FONT
         menu_font = mod_const.MAIN_FONT
 
-        text_col = mod_const.TEXT_COL
-        bg_col = mod_const.TBL_HEADER_COL if bg_color is None else bg_color
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+        bg_col = mod_const.TBL_HEADER_COLOR if bg_color is None else bg_color
 
         pad_el = mod_const.ELEM_PAD
         pad = padding if padding and isinstance(padding, tuple) else self.padding
@@ -3264,11 +3264,11 @@ class DataList(RecordElement):
 
         font = mod_const.LARGE_FONT
 
-        text_color = mod_const.TEXT_COL
-        icon_color = mod_const.FRAME_COL
-        disabled_text_color = mod_const.DISABLED_TEXT_COL
+        text_color = mod_const.DEFAULT_TEXT_COLOR
+        icon_color = mod_const.FRAME_COLOR
+        disabled_text_color = mod_const.DISABLED_TEXT_COLOR
         bg_color = self.bg_col
-        select_text_color = mod_const.SELECT_TEXT_COL if can_open else mod_const.DISABLED_TEXT_COL
+        select_text_color = mod_const.SELECTED_TEXT_COLOR if can_open else mod_const.DISABLED_TEXT_COLOR
 
         width, height = self._dimensions
         frame_w = width - pad_el * 2
@@ -3543,7 +3543,7 @@ class DataList(RecordElement):
             try:
                 annotation_code = annotations[index]
             except KeyError:
-                bg_color = mod_const.FRAME_COL
+                bg_color = mod_const.FRAME_COLOR
                 tooltip = ''
             else:
                 annotation_entry = annotation_rules[annotation_code]
@@ -4089,13 +4089,13 @@ class DataUnit(RecordElement):
         window[elem_key].expand(expand_x=True)
 
         window.refresh()
-        print('resizing record element {}'.format(self.name, new_w))
-        print('desired width of record element {}: {}'.format(self.name, new_w))
-        print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
-        print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
-        print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
-        print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
-        print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
+        #print('resizing record element {}'.format(self.name, new_w))
+        #print('desired width of record element {}: {}'.format(self.name, new_w))
+        #print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
+        #print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
+        #print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
+        #print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        #print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         self._dimensions = (new_w, new_h)
 
@@ -4128,10 +4128,10 @@ class DataUnit(RecordElement):
         self._dimensions = (new_w, new_h)
 
         window.refresh()
-        print('resizing record element {}'.format(self.name, new_w))
-        print('desired width of record element {}: {}'.format(self.name, new_w))
-        print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
-        print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
+        #print('resizing record element {}'.format(self.name, new_w))
+        #print('desired width of record element {}: {}'.format(self.name, new_w))
+        #print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        #print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         return window[self.key_lookup('Frame')].get_size()
 
@@ -4233,7 +4233,7 @@ class DataUnit(RecordElement):
         """
         Format element for display.
         """
-        bg_col = self.bg_col if self.bg_col else mod_const.ACTION_COL
+        bg_col = self.bg_col if self.bg_col else mod_const.DEFAULT_BG_COLOR
         tooltip = self.description
 
         elem_key = self.key_lookup('Element')
@@ -4311,7 +4311,7 @@ class DataVariable(DataUnit):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.DISABLED_TEXT_COLOR
         bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
@@ -4390,17 +4390,17 @@ class DataVariable(DataUnit):
         """
         Run a record element event.
         """
-        text_col = mod_const.TEXT_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
 
         elem_key = self.key_lookup('Element')
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
         aux_key = self.key_lookup('Auxiliary')
-        try:
-            calendar_key = self.key_lookup('Calendar')
-        except KeyError:
-            calendar_key = None
+        #try:
+        #    calendar_key = self.key_lookup('Calendar')
+        #except KeyError:
+        #    calendar_key = None
 
         currently_editing = self.edit_mode
         update_event = False
@@ -4434,8 +4434,8 @@ class DataVariable(DataUnit):
 
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=text_col)
-            if calendar_key:
-                window[calendar_key].update(disabled=False)
+            #if calendar_key:
+            #    window[calendar_key].update(disabled=False)
 
             self.edit_mode = True
 
@@ -4469,8 +4469,8 @@ class DataVariable(DataUnit):
             window[aux_key].update(visible=False)
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=disabled_text_col)
-            if calendar_key:
-                window[calendar_key].update(disabled=True)
+            #if calendar_key:
+            #    window[calendar_key].update(disabled=True)
 
             self.edit_mode = False
 
@@ -4482,8 +4482,8 @@ class DataVariable(DataUnit):
             window[aux_key].update(visible=False)
             if self.etype in ('input', 'multiline', 'text'):
                 window[elem_key].update(text_color=disabled_text_col)
-            if calendar_key:
-                window[calendar_key].update(disabled=False)
+            #if calendar_key:
+            #    window[calendar_key].update(disabled=False)
 
             self.edit_mode = False
             self.update_display(window)
@@ -4524,9 +4524,9 @@ class DataVariable(DataUnit):
 
         bold_font = mod_const.BOLD_HEADING_FONT
 
-        bg_col = mod_const.ACTION_COL if background is None else background
+        bg_col = mod_const.DEFAULT_BG_COLOR if background is None else background
         self.bg_col = background
-        text_col = mod_const.TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Element Icon, if provided
         icon = self.icon
@@ -4544,7 +4544,7 @@ class DataVariable(DataUnit):
         req_w = 11 + pad_el  # size of asterisk plus padding
         if is_required is True:
             required_layout = [sg.Text('*', pad=((0, pad_el), 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COL, tooltip='required')]
+                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
         else:
             required_layout = []
 
@@ -4645,7 +4645,7 @@ class DataVariableInput(DataVariable):
         """
         font = mod_const.LARGE_FONT
         pad_el = mod_const.ELEM_PAD
-        text_col = mod_const.TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
@@ -4658,7 +4658,7 @@ class DataVariableInput(DataVariable):
             date_bttn = []
         else:
             date_bttn = [sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d', pad=(pad_el, 0),
-                                           image_data=mod_const.CALENDAR_ICON, disabled=True,
+                                           image_data=mod_const.CALENDAR_ICON, disabled=False,
                                            button_color=(text_col, self.bg_col), border_width=0,
                                            tooltip='Select the date from the calendar menu')]
 
@@ -4735,7 +4735,7 @@ class DataVariableCombo(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        text_col = mod_const.TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
@@ -4815,7 +4815,7 @@ class DataVariableMultiline(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        text_col = mod_const.TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
@@ -4881,7 +4881,7 @@ class DataVariableCheckbox(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        text_col = mod_const.TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
@@ -4956,7 +4956,7 @@ class DependentVariable(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        text_col = mod_const.TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
 
         elem_key = self.key_lookup('Element')
@@ -5148,7 +5148,7 @@ class DependentVariableOld(DataUnit):
 
         bg_col = self.bg_col if bg_color is None else bg_color
         self.bg_col = bg_col
-        text_col = mod_const.DISABLED_TEXT_COL
+        text_col = mod_const.DISABLED_TEXT_COLOR
 
         # Element Icon, if provided
         icon = self.icon
@@ -5164,7 +5164,7 @@ class DependentVariableOld(DataUnit):
         # Required symbol
         if is_required is True:
             required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COL, tooltip='required')]
+                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
         else:
             required_layout = []
 
@@ -5326,7 +5326,7 @@ class DataConstant(DataUnit):
 
         bg_col = self.bg_col if bg_color is None else bg_color
         self.bg_col = bg_col
-        text_col = mod_const.TEXT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Element Icon, if provided
         icon = self.icon
@@ -5422,7 +5422,7 @@ class TableButton:
         try:
             self.bg_col = entry['BackgroundColor']
         except KeyError:
-            self.bg_col = mod_const.ACTION_COL
+            self.bg_col = mod_const.DEFAULT_BG_COLOR
 
         self.disabled = False
 
@@ -5452,8 +5452,8 @@ class TableButton:
         size = size if size else mod_const.PARAM_SIZE_CHAR
 
         # Element settings
-        text_col = mod_const.TEXT_COL  # standard text color
-        highlight_col = mod_const.HIGHLIGHT_COL
+        text_col = mod_const.DEFAULT_TEXT_COLOR  # standard text color
+        highlight_col = mod_const.HIGHLIGHT_COLOR
 
         # Parameter size
         width, height = size

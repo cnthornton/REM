@@ -730,13 +730,13 @@ class BankRule:
         params = self.parameters
 
         # Element parameters
-        bttn_text_col = mod_const.WHITE_TEXT_COL
-        bttn_bg_col = mod_const.BUTTON_COL
-        disabled_text_col = mod_const.DISABLED_TEXT_COL
-        disabled_bg_col = mod_const.DISABLED_BUTTON_COL
-        bg_col = mod_const.ACTION_COL
-        header_col = mod_const.HEADER_COL
-        text_col = mod_const.TEXT_COL
+        bttn_text_col = mod_const.WHITE_TEXT_COLOR
+        bttn_bg_col = mod_const.BUTTON_COLOR
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
+        disabled_bg_col = mod_const.DISABLED_BUTTON_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR
+        header_col = mod_const.HEADER_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         font = mod_const.MAIN_FONT
         param_font = mod_const.XX_FONT
@@ -2013,7 +2013,7 @@ class BankAccount:
             panel_key = self.key_lookup('AssocPanel')
 
         # Element parameters
-        bg_col = mod_const.ACTION_COL
+        bg_col = mod_const.DEFAULT_BG_COLOR
         pad_frame = mod_const.FRAME_PAD
 
         # Element sizes

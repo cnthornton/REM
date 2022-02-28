@@ -55,8 +55,8 @@ def text_layout(attributes):
     size = attributes.get('Size', None)
     bw = attributes.get('BW', 0)
     pad = attributes.get('Pad', None)
-    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
-    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+    bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
+    text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
     tooltip = attributes.get('Tooltip', None)
 
     # Element layout
@@ -74,11 +74,11 @@ def input_layout(attributes):
     size = attributes.get('Size', None)
     pad = attributes.get('Pad', None)
     bw = attributes.get('BW', 1)
-    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
-    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+    bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
+    text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
 
-    disabled_text_col = mod_const.DISABLED_TEXT_COL
-    disabled_bg_col = mod_const.ACTION_COL
+    disabled_text_col = mod_const.DISABLED_TEXT_COLOR
+    disabled_bg_col = mod_const.DEFAULT_BG_COLOR
 
     disabled = attributes.get('Disabled', False)
     tooltip = attributes.get('Tooltip', None)
@@ -100,8 +100,8 @@ def combo_layout(attributes):
     font = attributes.get('Font', mod_const.LARGE_FONT)
     size = attributes.get('Size', None)
     pad = attributes.get('Pad', None)
-    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
-    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+    bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
+    text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
 
     disabled = attributes.get('Disabled', False)
     tooltip = attributes.get('Tooltip', None)
@@ -124,9 +124,9 @@ def multiline_layout(attributes):
     font = attributes.get('Font', mod_const.LARGE_FONT)
     size = attributes.get('Size', None)
     pad = attributes.get('Pad', None)
-    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
-    def_text_col = attributes.get('TextColor', mod_const.TEXT_COL)
-    disabled_text_col = mod_const.DISABLED_TEXT_COL
+    bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
+    def_text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
+    disabled_text_col = mod_const.DISABLED_TEXT_COLOR
 
     disabled = attributes.get('Disabled', False)
     tooltip = attributes.get('Tooltip', None)
@@ -155,14 +155,14 @@ def checkbox_layout(attributes):
     font = attributes.get('Font', mod_const.LARGE_FONT)
     size = attributes.get('Size', None)
     pad = attributes.get('Pad', None)
-    bg_col = attributes.get('BackgroundColor', mod_const.ACTION_COL)
-    text_col = attributes.get('TextColor', mod_const.TEXT_COL)
+    bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
+    text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
 
     disabled = attributes.get('Disabled', False)
     tooltip = attributes.get('Tooltip', None)
 
     # Checkbox settings
-    box_col = bg_col if not disabled else mod_const.DISABLED_BG_COL
+    box_col = bg_col if not disabled else mod_const.DISABLED_BG_COLOR
 
     width, height = size
     elem_w = 0
@@ -182,18 +182,18 @@ def B1(*args, **kwargs):
     """
     Action button element defaults.
     """
-    size = mod_const.B1_SIZE
+    width = mod_const.B1_WIDTH
 
-    return sg.Button(*args, **kwargs, size=(size, 1))
+    return sg.Button(*args, **kwargs, size=(width, 1))
 
 
 def B2(*args, **kwargs):
     """
     Panel button element defaults.
     """
-    size = mod_const.B2_SIZE
+    width = mod_const.B2_WIDTH
 
-    return sg.Button(*args, **kwargs, size=(size, 1))
+    return sg.Button(*args, **kwargs, size=(width, 1))
 
 
 def nav_bttn(*args, **kwargs):
@@ -201,8 +201,8 @@ def nav_bttn(*args, **kwargs):
     Navigation button.
     """
     size = mod_const.BTTN_SIZE
-    text_col = mod_const.TEXT_COL
-    highlight_col = mod_const.HIGHLIGHT_COL
+    text_col = mod_const.DEFAULT_TEXT_COLOR
+    highlight_col = mod_const.HIGHLIGHT_COLOR
 
     return sg.Button(*args, **kwargs, image_size=size, mouseover_colors=(text_col, highlight_col))
 
@@ -214,11 +214,11 @@ def create_table_layout(data, header, keyname, events: bool = False, bind: bool 
     Create table elements that have consistency in layout.
     """
     # Element settings
-    text_col = mod_const.TEXT_COL
-    alt_col = mod_const.TBL_ALT_COL
-    bg_col = mod_const.TBL_BG_COL
-    select_col = mod_const.TBL_SELECT_COL
-    header_col = mod_const.HEADER_COL
+    text_col = mod_const.DEFAULT_TEXT_COLOR
+    alt_col = mod_const.TBL_ALT_COLOR
+    bg_col = mod_const.TBL_BG_COLOR
+    select_col = mod_const.TBL_SELECT_COLOR
+    header_col = mod_const.HEADER_COLOR
 
     pad_frame = mod_const.FRAME_PAD
     pad = pad if pad else (pad_frame, pad_frame)
@@ -271,12 +271,12 @@ def importer_layout(win_size: tuple = None):
         width, height = (int(mod_const.WIN_WIDTH * 0.9), int(mod_const.WIN_HEIGHT * 0.9))
 
     # Layout settings
-    header_col = mod_const.HEADER_COL
-    input_col = mod_const.INPUT_COL
-    bg_col = mod_const.ACTION_COL
-    def_col = mod_const.DEFAULT_COL
-    select_col = mod_const.SELECT_TEXT_COL
-    text_col = mod_const.TEXT_COL
+    header_col = mod_const.HEADER_COLOR
+    input_col = mod_const.ELEMENT_COLOR
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    frame_col = mod_const.FRAME_COLOR
+    select_col = mod_const.SELECTED_TEXT_COLOR
+    text_col = mod_const.DEFAULT_TEXT_COLOR
 
     pad_el = mod_const.ELEM_PAD
     pad_v = mod_const.VERT_PAD
@@ -352,14 +352,14 @@ def importer_layout(win_size: tuple = None):
                                   background_color=bg_col, auto_size_text=True)]],
                         justification='l', element_justification='l', background_color=bg_col),
                  sg.Col([[sg.Frame('', [
-                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=def_col, font=font_main),
+                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=frame_col, font=font_main),
                       sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(14, 1),
                                background_color=input_col, font=font_main, tooltip='Column'),
                       sg.Combo(cond_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(6, 1),
                                font=font_bold, background_color=input_col, tooltip='Operator'),
                       sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(14, 1),
                                background_color=input_col, font=font_main, tooltip='Column value')]],
-                                   background_color=def_col, border_width=1)]],
+                                   background_color=frame_col, border_width=1)]],
                         justification='c', element_justification='l', background_color=bg_col, expand_x=True),
                  sg.Col(subset_bttn_layout, pad=(pad_h, 0), justification='r', element_justification='r',
                         background_color=bg_col)]],
@@ -398,14 +398,14 @@ def importer_layout(win_size: tuple = None):
                                   background_color=bg_col, auto_size_text=True)]],
                         justification='l', element_justification='l', background_color=bg_col),
                  sg.Col([[sg.Frame('', [
-                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=def_col, font=font_main),
+                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=frame_col, font=font_main),
                       sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(14, 1),
                                background_color=input_col, font=font_main, tooltip='Column'),
                       sg.Combo(math_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(6, 1),
                                font=font_bold, background_color=input_col, tooltip='Operator'),
                       sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(14, 1),
                                background_color=input_col, font=font_main, tooltip='Column value')]],
-                                   background_color=def_col, border_width=1)]],
+                                   background_color=frame_col, border_width=1)]],
                         justification='c', element_justification='l', background_color=bg_col, expand_x=True),
                  sg.Col(modify_bttn_layout, pad=(pad_h, 0), justification='r', element_justification='r',
                         background_color=bg_col)]],
@@ -599,7 +599,7 @@ def importer_layout(win_size: tuple = None):
                               tooltip='Cancel importing records to the database ({})'.format(cancel_shortcut))]]
 
     sidebar_layout = [
-        [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=def_col)]], background_color=def_col),
+        [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=frame_col)]], background_color=frame_col),
          sg.Col([[sg.Text('• ', pad=((pad_frame, pad_el), (pad_frame, pad_el)), font=font_large),
                   sg.Text('File Options', key='-PN1-', pad=((pad_el, pad_frame), (pad_frame, pad_el)),
                           font=font_main, text_color=select_col)],
@@ -607,13 +607,13 @@ def importer_layout(win_size: tuple = None):
                   sg.Text('Import Options', key='-PN2-', pad=((pad_el, pad_frame), pad_el), font=font_main)],
                  [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large),
                   sg.Text('Data Preview', key='-PN3-', pad=((pad_el, pad_frame), pad_el), font=font_main)]],
-                background_color=def_col, element_justification='l', vertical_alignment='t', expand_y=True)]]
+                background_color=frame_col, element_justification='l', vertical_alignment='t', expand_y=True)]]
 
     layout = [[sg.Col([[sg.Text('Import to Database', pad=(pad_frame, (pad_frame, pad_v)),
                                 font=font_h, background_color=header_col)]],
                       pad=(0, 0), justification='l', background_color=header_col, expand_x=True, expand_y=True)],
               [sg.Frame('', sidebar_layout, border_width=bwidth, title_color=text_col, relief='solid',
-                        background_color=def_col),
+                        background_color=frame_col),
                sg.Frame('', panel_layout, border_width=bwidth, title_color=text_col, relief='solid',
                         background_color=bg_col)],
               [sg.Col(bttn_layout, justification='r', pad=(pad_frame, (pad_v, pad_frame)))]]
@@ -626,12 +626,13 @@ def home_screen(size):
     """
     Create layout for the home screen.
     """
-    bg_col = mod_const.DEFAULT_COL
+    bg_col = mod_const.FRAME_COLOR
     width, height = size
 
-    layout = sg.Col([[sg.Canvas(key='-HOME_WIDTH-', size=(width, 0))],
-                     [sg.Canvas(key='-HOME_HEIGHT-', size=(0, height)),
-                      sg.Image(filename=settings.logo, background_color=bg_col, key='-HOME_IMAGE-', size=(width, height))]],
+    layout = sg.Col([[sg.Canvas(key='-HOME_WIDTH-', size=(width, 0), background_color=bg_col)],
+                     [sg.Canvas(key='-HOME_HEIGHT-', size=(0, height), background_color=bg_col),
+                      sg.Image(filename=settings.logo, background_color=bg_col, key='-HOME_IMAGE-',
+                               size=(width, height))]],
                     key='-HOME-', element_justification='c', vertical_alignment='t', background_color=bg_col,
                     expand_y=True, expand_x=True, visible=False)
 

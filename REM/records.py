@@ -2855,11 +2855,11 @@ class DatabaseRecord:
         user_priv = user.access_permissions()
 
         # Element parameters
-        bg_col = mod_const.ACTION_COL
-        text_col = mod_const.TEXT_COL
-        inactive_col = mod_const.INACTIVE_COL
-        select_col = mod_const.SELECT_TEXT_COL
-        frame_col = mod_const.FRAME_COL
+        bg_col = mod_const.DEFAULT_BG_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+        inactive_col = mod_const.DISABLED_BG_COLOR
+        select_col = mod_const.SELECTED_TEXT_COLOR
+        frame_col = mod_const.FRAME_COLOR
 
         bold_font = mod_const.HEADING_FONT
         main_font = mod_const.MAIN_FONT
@@ -2903,7 +2903,6 @@ class DatabaseRecord:
             tab_title = '{:^40}'.format(tab_entry['Title'])
 
             tab_sections = tab_entry['Sections']
-            print('creating record tab {} layout with sections {}'.format(tab_name, tab_sections))
             if len(tab_sections) < 1:
                 continue
 
@@ -2913,7 +2912,6 @@ class DatabaseRecord:
                 if section_name not in tab_sections:
                     continue
 
-                print('creating layout for section {}'.format(section_name))
                 section_entry = sections[section_name]
 
                 section_elements = section_entry['Elements']
@@ -2964,9 +2962,10 @@ class DatabaseRecord:
                     section_layout.append(element_layout)
 
                 section_panel_key = self.key_lookup('{}Frame'.format(section_name))
-                sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key,
+                sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key, pad=(0, (0, pad_v)),
                                                       background_color=bg_col, visible=True, expand_x=True,
-                                                      metadata={'visible': True}))])
+                                                      metadata={'visible': True}),
+                                               expand_x=True)])
 
             tab_key = self.key_lookup('{}Tab'.format(tab_name))
             tab_frame_key = self.key_lookup('{}Col'.format(tab_name))
@@ -3030,7 +3029,7 @@ class DatabaseRecord:
             header.resize(window)
 
         # Expand the size of the record elements
-        print('setting record {} width to {}'.format(self.name, width))
+        #print('setting record {} width to {}'.format(self.name, width))
         for record_element in self.components:
             elem_h = None
             if record_element.name in self._heading_elements:
@@ -3042,7 +3041,7 @@ class DatabaseRecord:
                     elem_w = int(width * 0.6)
             elem_size = (elem_w, elem_h)
 
-            print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
+            #print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
             record_element.resize(window, size=elem_size)
 
         self._dimensions = (width, height)

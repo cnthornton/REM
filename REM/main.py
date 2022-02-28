@@ -323,8 +323,8 @@ class ToolBar:
 
         padding = mod_const.TOOLBAR_PAD
 
-        header_col = mod_const.HEADER_COL
-        text_col = mod_const.TEXT_COL
+        header_col = mod_const.HEADER_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
 
         font = mod_const.MAIN_FONT
 
@@ -495,7 +495,7 @@ class ToolBar:
         """
         Update user menu to display username after a user is logged in.
         """
-        select_col = mod_const.SELECT_TEXT_COL
+        select_col = mod_const.SELECTED_TEXT_COLOR
 
         element_key = '-UMENU-'
 
@@ -581,9 +581,8 @@ def main():
     Main function.
     """
     # Theme
-    default_col = mod_const.DEFAULT_COL
-    action_col = mod_const.ACTION_COL
-    text_col = mod_const.TEXT_COL
+    default_col = mod_const.DEFAULT_BG_COLOR
+    text_col = mod_const.DEFAULT_TEXT_COLOR
     font = mod_const.MAIN_FONT
 
     sg.set_options(element_padding=(0, 0), margins=(0, 0),
@@ -592,7 +591,7 @@ def main():
                    element_background_color=default_col, font=font,
                    input_text_color=text_col, text_color=text_col,
                    text_element_background_color=default_col,
-                   input_elements_background_color=action_col,
+                   input_elements_background_color=default_col,
                    button_color=(text_col, default_col),
                    tooltip_font=(mod_const.TOOLTIP_FONT))
 
