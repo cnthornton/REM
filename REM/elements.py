@@ -3862,7 +3862,7 @@ class ReferenceList(DataList):
         import_table.append(import_df, reindex=False)
 
         # Add entries that were set to deleted in the database to the import set
-        if self._type_field:
+        if self._type_field and not ref_df.empty:
             record_type = ref_df[self._type_field].unique().squeeze()
             record_entry = settings.records.fetch_rule(record_type)
             db_df = record_entry.import_references(ref_df, rule=self.association_rule, include_deleted=True)
@@ -4313,6 +4313,7 @@ class DataVariable(DataUnit):
         font = mod_const.LARGE_FONT
         text_col = mod_const.DISABLED_TEXT_COLOR
         bg_col = self.bg_col
+        value_col = mod_const.DEFAULT_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
@@ -4321,7 +4322,7 @@ class DataVariable(DataUnit):
         aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=self.bg_col, visible=False))]
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
-                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('text', layout_attrs)
 
         content_width_key = self.key_lookup('ContentWidth')
@@ -4397,10 +4398,6 @@ class DataVariable(DataUnit):
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
         aux_key = self.key_lookup('Auxiliary')
-        #try:
-        #    calendar_key = self.key_lookup('Calendar')
-        #except KeyError:
-        #    calendar_key = None
 
         currently_editing = self.edit_mode
         update_event = False
@@ -4432,10 +4429,8 @@ class DataVariable(DataUnit):
             window[update_key].update(visible=True)
             window[aux_key].update(visible=True)
 
-            if self.etype in ('input', 'multiline', 'text'):
+            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
                 window[elem_key].update(text_color=text_col)
-            #if calendar_key:
-            #    window[calendar_key].update(disabled=False)
 
             self.edit_mode = True
 
@@ -4467,10 +4462,8 @@ class DataVariable(DataUnit):
             window[elem_key].update(disabled=True)
             window[update_key].update(visible=False)
             window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text'):
+            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
                 window[elem_key].update(text_color=disabled_text_col)
-            #if calendar_key:
-            #    window[calendar_key].update(disabled=True)
 
             self.edit_mode = False
 
@@ -4480,10 +4473,8 @@ class DataVariable(DataUnit):
             window[elem_key].update(disabled=True)
             window[update_key].update(visible=False)
             window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text'):
+            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
                 window[elem_key].update(text_color=disabled_text_col)
-            #if calendar_key:
-            #    window[calendar_key].update(disabled=False)
 
             self.edit_mode = False
             self.update_display(window)
@@ -4514,8 +4505,6 @@ class DataVariable(DataUnit):
 
         background = self.bg_col if bg_color is None else bg_color
         tooltip = tooltip if tooltip else self.tooltip
-
-#        elem_key = self.key_lookup('Element')
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -4647,6 +4636,7 @@ class DataVariableInput(DataVariable):
         pad_el = mod_const.ELEM_PAD
         text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
+        value_col = mod_const.DEFAULT_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
@@ -4659,14 +4649,14 @@ class DataVariableInput(DataVariable):
         else:
             date_bttn = [sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d', pad=(pad_el, 0),
                                            image_data=mod_const.CALENDAR_ICON, disabled=False,
-                                           button_color=(text_col, self.bg_col), border_width=0,
+                                           button_color=(text_col, value_col), border_width=0,
                                            tooltip='Select the date from the calendar menu')]
 
         aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([date_bttn], key=aux_key, background_color=self.bg_col, visible=False))]
+        aux_layout = [sg.pin(sg.Col([date_bttn], key=aux_key, background_color=value_col, visible=False))]
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
-                        'BackgroundColor': self.bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('input', layout_attrs)
 
         content_width_key = self.key_lookup('ContentWidth')
@@ -4737,6 +4727,7 @@ class DataVariableCombo(DataVariable):
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
+        value_col = mod_const.DEFAULT_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
@@ -4753,10 +4744,10 @@ class DataVariableCombo(DataVariable):
                 display_values.append(self.format_display(value=option))
 
         aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
+        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=value_col, visible=False))]
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'ComboValues': display_values}
         element_layout = mod_lo.generate_layout('dropdown', layout_attrs)
 
@@ -4817,16 +4808,17 @@ class DataVariableMultiline(DataVariable):
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
         bg_col = self.bg_col
+        value_col = mod_const.DEFAULT_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
         nrow = self.nrow
 
         aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
+        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=value_col, visible=False))]
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'NRow': nrow}
         element_layout = mod_lo.generate_layout('multiline', layout_attrs)
 
@@ -4956,14 +4948,15 @@ class DependentVariable(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        text_col = mod_const.DEFAULT_TEXT_COLOR
+        text_col = mod_const.DISABLED_TEXT_COLOR
         bg_col = self.bg_col
+        value_col = mod_const.DEFAULT_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('text', layout_attrs)
 
         content_width_key = self.key_lookup('ContentWidth')

@@ -56,7 +56,7 @@ def text_layout(attributes):
     bw = attributes.get('BW', 0)
     pad = attributes.get('Pad', None)
     bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
-    text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
+    text_col = attributes.get('TextColor', mod_const.DISABLED_TEXT_COLOR)
     tooltip = attributes.get('Tooltip', None)
 
     # Element layout
@@ -78,7 +78,7 @@ def input_layout(attributes):
     text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
 
     disabled_text_col = mod_const.DISABLED_TEXT_COLOR
-    disabled_bg_col = mod_const.DEFAULT_BG_COLOR
+    disabled_bg_col = bg_col
 
     disabled = attributes.get('Disabled', False)
     tooltip = attributes.get('Tooltip', None)

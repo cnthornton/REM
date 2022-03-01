@@ -1979,14 +1979,14 @@ class DatabaseRecord:
                     element_name = None
 
                 element_names.append(element_name)
-            logger.debug('RecordType {NAME}: searching record elements for record element by element key {KEY}'
+            logger.debug('RecordType {NAME}: searching record elements by element key {KEY}'
                          .format(NAME=self.name, KEY=identifier))
         elif by_type is True:
-            logger.debug('RecordType {NAME}: searching record elements for record element by element type {KEY}'
+            logger.debug('RecordType {NAME}: searching record elements by element type {KEY}'
                          .format(NAME=self.name, KEY=identifier))
             element_names = [i.etype for i in elements]
         else:
-            logger.debug('RecordType {NAME}: searching record elements for record element by name {KEY}'
+            logger.debug('RecordType {NAME}: searching record elements by name {KEY}'
                          .format(NAME=self.name, KEY=identifier))
             element_names = [i.name for i in elements]
 
@@ -3038,7 +3038,7 @@ class DatabaseRecord:
                 if record_element.is_type('collection'):  # table or list
                     elem_w = width - (pad_w * 2 + scroll_w)
                 else:  # data variable
-                    elem_w = int(width * 0.6)
+                    elem_w = int(width * 0.7)
             elem_size = (elem_w, elem_h)
 
             #print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))

@@ -59,20 +59,20 @@ def login_window():
     pad_h = mod_const.HORZ_PAD
     pad_el = mod_const.ELEM_PAD
 
-    bg_col = mod_const.ACTION_COL
-    input_col = mod_const.INPUT_COL
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    input_col = mod_const.ELEMENT_COLOR
     login_col = mod_const.LOGIN_BUTTON_COL
     cancel_col = mod_const.CANCEL_BUTTON_COL
-    def_text_col = mod_const.TEXT_COL
-    text_col = mod_const.WHITE_TEXT_COL
-    help_col = mod_const.HELP_TEXT_COL
+    def_text_col = mod_const.DEFAULT_TEXT_COLOR
+    text_col = mod_const.WHITE_TEXT_COLOR
+    help_col = mod_const.HELP_TEXT_COLOR
     bold_text = mod_const.BOLD_FONT
 
     lock_icon = mod_const.LOCK_ICON
     username_icon = mod_const.USERNAME_ICON
 
-    isize = mod_const.IN1_SIZE
-    bsize = mod_const.B1_SIZE
+    isize = mod_const.IN1_WIDTH
+    bsize = mod_const.B1_WIDTH
 
     main_font = mod_const.MAIN_FONT
     small_font = mod_const.SMALL_FONT
@@ -183,8 +183,8 @@ def debug_window():
     pad_v = mod_const.VERT_PAD
     font = mod_const.LARGE_FONT
     bold_font = mod_const.BOLD_FONT
-    bg_col = mod_const.ACTION_COL
-    def_col = mod_const.DEFAULT_COL
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    frame_col = mod_const.FRAME_COLOR
 
     # Layout
     log_levels = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
@@ -203,7 +203,7 @@ def debug_window():
 
     layout = [[sg.Col(debug_layout, pad=(0, 0), background_color=bg_col, expand_y=True, expand_x=True)],
               [sg.Col(bttn_layout, justification='c', element_justification='c',
-                      pad=(0, (pad_v, pad_frame)), background_color=def_col, expand_x=True)]]
+                      pad=(0, (pad_v, pad_frame)), background_color=frame_col, expand_x=True)]]
 
     window = sg.Window('Debug Program', layout, modal=False, keep_on_top=False, resizable=True)
 
@@ -226,9 +226,9 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    bg_col = mod_const.ACTION_COL
-    text_col = mod_const.TEXT_COL
-    header_col = mod_const.HEADER_COL
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    text_col = mod_const.DEFAULT_TEXT_COLOR
+    header_col = mod_const.HEADER_COLOR
 
     font_h = mod_const.HEADING_FONT
 
@@ -290,9 +290,9 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     # Window layout
     layout = [[sg.Col(title_layout, key='-TITLE-', background_color=header_col, vertical_alignment='c', expand_x=True)],
-              [sg.HorizontalSeparator(color=mod_const.INACTIVE_COL)],
+              [sg.HorizontalSeparator(color=mod_const.DISABLED_BG_COLOR)],
               [sg.Col(record_layout, key='-RECORDS-', background_color=bg_col, expand_x=True, expand_y=True)],
-              [sg.HorizontalSeparator(color=mod_const.INACTIVE_COL)],
+              [sg.HorizontalSeparator(color=mod_const.DISABLED_BG_COLOR)],
               [sg.Col(bttn_layout, key='-BUTTONS-', justification='l', element_justification='c',
                       vertical_alignment='c', expand_x=True)]]
 
@@ -521,10 +521,10 @@ def parameter_window(account, win_size: tuple = None):
     font_h = mod_const.HEADING_FONT
     bold_font = mod_const.BOLD_FONT
 
-    bg_col = mod_const.ACTION_COL
-    header_col = mod_const.HEADER_COL
-    frame_col = mod_const.FRAME_COL
-    text_col = mod_const.TEXT_COL
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    header_col = mod_const.HEADER_COLOR
+    frame_col = mod_const.FRAME_COLOR
+    text_col = mod_const.DEFAULT_TEXT_COLOR
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys
@@ -546,7 +546,7 @@ def parameter_window(account, win_size: tuple = None):
     primary_layout = [[sg.Col([[sg.Text(account.title, pad=(0, 0), font=bold_font, text_color=text_col,
                                         background_color=frame_col)]],
                               background_color=frame_col, expand_x=True)],
-                      [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, pad_el))]]
+                      [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, pad_el))]]
 
     for param_name in acct_param_entry:
         param_entry = acct_param_entry[param_name]
@@ -597,7 +597,7 @@ def parameter_window(account, win_size: tuple = None):
         pgroup_layout = [[sg.Col([[sg.Text(pgroup_title, pad=(0, 0), font=bold_font, text_color=text_col,
                                            background_color=frame_col)]],
                                  expand_x=True, background_color=frame_col, justification='l')],
-                         [sg.HorizontalSeparator(color=mod_const.FRAME_COL, pad=(0, 0))]]
+                         [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, 0))]]
 
         # Create the import parameter objects and layouts for the associated account
         pgroup_params = pgroup_entry['ImportParameters']
@@ -654,10 +654,10 @@ def parameter_window(account, win_size: tuple = None):
               [sg.Col([[sg.Canvas(key=height_key, size=(0, height))]]),
                sg.Col([
                    [sg.Col(title_layout, background_color=header_col, expand_x=True)],
-                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.DISABLED_BG_COLOR)],
                    [sg.Col(params_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, scrollable=True,
                            vertical_scroll_only=True, expand_x=True, expand_y=True, vertical_alignment='t')],
-                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.INACTIVE_COL)],
+                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.DISABLED_BG_COLOR)],
                    [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
                ], key='-FRAME-', pad=(0, 0), expand_y=True, expand_x=True)]]
 
@@ -818,12 +818,12 @@ def add_note_window(note: str = None):
     pad_frame = mod_const.FRAME_PAD
     font = mod_const.LARGE_FONT
 
-    text_col = mod_const.TEXT_COL
-    bttn_text_col = mod_const.BUTTON_TEXT_COL
-    bg_col = mod_const.ACTION_COL
-    frame_col = mod_const.INACTIVE_COL
-    bttn_col = (mod_const.WHITE_TEXT_COL, mod_const.BUTTON_COL)
-    highlight_cols = (mod_const.DISABLED_TEXT_COL, mod_const.DISABLED_BUTTON_COL)
+    text_col = mod_const.DEFAULT_TEXT_COLOR
+    bttn_text_col = mod_const.BUTTON_TEXT_COLOR
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    frame_col = mod_const.DISABLED_BG_COLOR
+    bttn_col = (mod_const.WHITE_TEXT_COLOR, mod_const.BUTTON_COLOR)
+    highlight_cols = (mod_const.DISABLED_TEXT_COLOR, mod_const.DISABLED_BUTTON_COLOR)
 
     # Window layout
     nrow = 4
@@ -934,8 +934,8 @@ def database_importer_window(win_size: tuple = None):
     # Layout settings
     main_font = mod_const.MAIN_FONT
 
-    text_color = mod_const.TEXT_COL
-    select_color = mod_const.SELECT_TEXT_COL
+    text_color = mod_const.DEFAULT_TEXT_COLOR
+    select_color = mod_const.SELECTED_TEXT_COLOR
 
     # Window and element size parameters
     if win_size is not None:
@@ -1802,7 +1802,7 @@ def record_import_window(table, enable_new: bool = False):
         return None
 
     # Window and element size parameters
-    header_col = mod_const.HEADER_COL
+    header_col = mod_const.HEADER_COLOR
 
     header_font = mod_const.HEADING_FONT
 
@@ -2023,10 +2023,10 @@ def import_window(table, params: list = None):
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
 
-    bttn_text_col = mod_const.WHITE_TEXT_COL
-    bttn_bg_col = mod_const.BUTTON_COL
-    bg_col = mod_const.ACTION_COL
-    header_col = mod_const.HEADER_COL
+    bttn_text_col = mod_const.WHITE_TEXT_COLOR
+    bttn_bg_col = mod_const.BUTTON_COLOR
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    header_col = mod_const.HEADER_COLOR
 
     tbl_pad = pad_frame * 2  # padding on both sides of the table
 
@@ -2046,7 +2046,7 @@ def import_window(table, params: list = None):
         param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True, use_ttk_buttons=True,
                                       button_color=(bttn_text_col, bttn_bg_col), disabled=(not enable_search)))
         top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col)],
-                      [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COL)]]
+                      [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COLOR)]]
     else:
         top_layout = [[]]
 
@@ -2161,8 +2161,8 @@ def about():
     Display the "about program" window.
     """
     # Window and element size parameters
-    bg_col = mod_const.ACTION_COL
-    header_col = mod_const.HEADER_COL
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    header_col = mod_const.HEADER_COLOR
 
     header_font = mod_const.HEADING_FONT
     sub_font = mod_const.BOLD_LARGE_FONT
@@ -2224,7 +2224,7 @@ def edit_settings(win_size: tuple = None):
     pad_v = mod_const.VERT_PAD
 
     font_h = mod_const.HEADING_FONT
-    header_col = mod_const.HEADER_COL
+    header_col = mod_const.HEADER_COLOR
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys
@@ -2299,8 +2299,8 @@ def range_value_window(dtype, current: list = None, title: str = 'Range', date_f
     font = mod_const.LARGE_FONT
     bold_font = mod_const.BOLD_LARGE_FONT
 
-    in_col = mod_const.INPUT_COL
-    bg_col = mod_const.ACTION_COL
+    in_col = mod_const.ELEMENT_COLOR
+    bg_col = mod_const.DEFAULT_BG_COLOR
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys
@@ -2388,8 +2388,8 @@ def conditional_value_window(dtype, current: list = None, title: str = 'Conditio
     font = mod_const.LARGE_FONT
     bold_font = mod_const.BOLD_LARGE_FONT
 
-    in_col = mod_const.INPUT_COL
-    bg_col = mod_const.ACTION_COL
+    in_col = mod_const.ELEMENT_COLOR
+    bg_col = mod_const.DEFAULT_BG_COLOR
 
     # Keyboard shortcuts
     hotkeys = settings.hotkeys
@@ -2512,8 +2512,8 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     pad_frame = mod_const.FRAME_PAD
     pad_v = mod_const.VERT_PAD
 
-    header_col = mod_const.TBL_HEADER_COL
-    in_col = mod_const.INPUT_COL
+    header_col = mod_const.TBL_HEADER_COLOR
+    in_col = mod_const.ELEMENT_COLOR
 
     # GUI layout
 
@@ -2755,6 +2755,6 @@ def highlight_bool(s, column: str = 'Success'):
     """
     ncol = len(s)
     if s[column] is True or s[column] == 1:
-        return ['background-color: {}'.format(mod_const.PASS_COL)] * ncol
+        return ['background-color: {}'.format(mod_const.PASS_COLOR)] * ncol
     else:
-        return ['background-color: {}'.format(mod_const.FAIL_COL)] * ncol
+        return ['background-color: {}'.format(mod_const.FAIL_COLOR)] * ncol
