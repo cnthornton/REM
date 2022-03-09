@@ -821,6 +821,13 @@ class RecordEntry:
         if not statements:
             statements = {}
 
+        if not self.program_record:
+            msg = 'unable to modify database records for record entry {NAME} - record entry {NAME} is not a program ' \
+                  'record'.format(NAME=self.name)
+            logger.warning(msg)
+
+            return statements
+
         save_time = datetime.datetime.now().strftime(settings.date_format)
 
         if isinstance(records, pd.DataFrame):
@@ -1048,6 +1055,13 @@ class RecordEntry:
 
         if not statements:
             statements = {}
+
+        if not self.program_record:
+            msg = 'unable to modify database records for record entry {NAME} - record entry {NAME} is not a program ' \
+                  'record'.format(NAME=self.name)
+            logger.warning(msg)
+
+            return statements
 
         if ref_ids is None:
             ref_ids = []
