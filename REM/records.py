@@ -304,14 +304,65 @@ class RecordEntry:
                                  .format(NAME=name))
             sys.exit(1)
 
-    def load_records(self, id_list, id_field: str = 'RecordID'):
+        try:
+            self.id_column = entry['IDColumn']
+        except KeyError:
+            self.id_column = 'RecordID'
+
+        try:
+            self.date_column = entry['DateColumn']
+        except KeyError:
+            self.date_column = 'RecordDate'
+
+        try:
+            self.deleted_column = entry['DeletedColumn']
+        except KeyError:
+            self.deleted_column = 'IsDeleted'
+
+    def map_column(self, column):
+        """
+        Convert from record column to database column.
+        """
+        import_rules = self.import_rules
+        db_col = mod_db.get_import_column(import_rules, column)
+
+        return db_col
+
+    def unique_values(self, field, sort: bool = False):
+        """
+        Extract the unique values of a given record field from the database.
+
+        Arguments:
+            field (str): name of the record field to retrieve values for.
+
+            sort (bool): sort results [default: False].
+        """
+        import_rules = self.import_rules
+        prog_db = self.program_record
+
+        tables = mod_db.format_tables(import_rules)
+        filters = mod_db.format_import_filters(import_rules)
+        db_col = mod_db.get_import_column(import_rules, field)
+        if sort:
+            order_by = db_col
+        else:
+            order_by = None
+
+        # Find the date of the most recent transaction prior to current date
+        query = mod_db.prepare_sql_query(tables, columns=db_col, filter_rules=filters, order=order_by, distinct=True)
+        unique_df = user.read_db(*query, prog_db=prog_db)
+        unique_values = unique_df.iloc[:, 0].tolist()
+
+        return unique_values
+
+    def load_records(self, id_list, filters: bool = True):
         """
         Load a record from the database using the record ID.
 
         Arguments:
             id_list (list): load records with these record IDs from the database.
 
-            id_field (str): table field containing the record IDs [Default: RecordID].
+            filters (bool): use import rule filters when loading the records [Default: True].
 
         Returns:
             import_df (DataFrame): dataframe of imported records.
@@ -327,40 +378,50 @@ class RecordEntry:
         # Add configured import filters
         table_statement = mod_db.format_tables(self.import_rules)
         columns = mod_db.format_import_columns(self.import_rules)
-        id_col = mod_db.get_import_column(self.import_rules, id_field)
+        id_col = mod_db.get_import_column(self.import_rules, self.id_column)
 
         # Query existing database entries
         import_df = pd.DataFrame()
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
-            filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
-            filters = mod_db.format_import_filters(self.import_rules)
-            filters.append((filter_clause, tuple(sub_ids)))
-
-            if import_df.empty:
-                import_df = user.read_db(*mod_db.prepare_sql_query(table_statement, columns=columns,
-                                                                   filter_rules=filters),
-                                         prog_db=self.program_record)
+            if filters:
+                filter_rules = mod_db.format_import_filters(self.import_rules)
             else:
-                import_df = import_df.append(user.read_db(*mod_db.prepare_sql_query(table_statement, columns=columns,
-                                                                                    filter_rules=filters),
-                                                          prog_db=self.program_record), ignore_index=True)
+                filter_rules = []
+
+            filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
+            filter_rules.append((filter_clause, tuple(sub_ids)))
+
+            query = mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filter_rules, order=id_col)
+            if import_df.empty:
+                import_df = user.read_db(*query, prog_db=self.program_record)
+            else:
+                import_df = import_df.append(user.read_db(*query, prog_db=self.program_record), ignore_index=True)
 
         logger.debug('{NLOADED} records passed the query filters out of {NTOTAL} requested records'
                      .format(NLOADED=import_df.shape[0], NTOTAL=len(record_ids)))
 
         return import_df
 
-    def import_records(self, params: list = None, import_rules: dict = None):
+    def import_records(self, filter_params=None, filter_rules=None, import_rules: dict = None):
         """
         Import entry records from the database.
 
         Arguments:
-            params (list): list of data parameters that will be used to filter the database when importing records.
+            filter_params (list): list of parameter objects that will be used to filter the database when importing
+                records.
+
+            filter_rules (tuple): tuple or list of tuples containing where clause and value tuple for a given filter
+                rule.
 
             import_rules (dict): use custom import rules to import the records from the database.
         """
-        params = [] if params is None else params
+        if isinstance(filter_params, list) or isinstance(filter_params, tuple):
+            params = filter_params
+        elif isinstance(filter_params, type(None)):
+            params = []
+        else:
+            params = [filter_params]
 
         import_rules = self.import_rules if not import_rules else import_rules
 
@@ -368,6 +429,7 @@ class RecordEntry:
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
         columns = mod_db.format_import_columns(import_rules)
+        id_col = mod_db.get_import_column(import_rules, self.id_column)
 
         # Add optional parameter-based filters
         for param in params:
@@ -377,9 +439,15 @@ class RecordEntry:
                 if param_filter is not None:
                     filters.append(param_filter)
 
+        # Add optional filters in tuple form
+        if isinstance(filter_rules, list):
+            filters.extend(filter_rules)
+        elif isinstance(filter_rules, tuple):
+            filters.append(filter_rules)
+
         # Query existing database entries
-        import_df = user.read_db(*mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filters),
-                                 prog_db=self.program_record)
+        query = mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filters, order=id_col)
+        import_df = user.read_db(*query, prog_db=self.program_record)
 
         return import_df
 
@@ -1440,8 +1508,6 @@ class DatabaseRecord:
         self.name = name
 
         self.id = randint(0, 1000000000)
-        #self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-        #                 ('Element', 'DetailsTab', 'DetailsCol', 'MetaTab', 'MetaCol', 'TG', 'Header')}
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Element', 'TG', 'Header')}
         self.bindings = {}
@@ -1601,7 +1667,6 @@ class DatabaseRecord:
 
         self.sections = {}
         used_section_elements = []
-        self._heading_elements = []
         try:
             sections = entry['Sections']
         except KeyError:
@@ -1621,7 +1686,6 @@ class DatabaseRecord:
 
             if 'HeadingElement' in _section_entry:
                 heading_element = _section_entry['HeadingElement']
-                self._heading_elements.append(heading_element)
                 used_section_elements.append(heading_element)
                 section_entry['HeadingElement'] = heading_element
 
@@ -1748,7 +1812,6 @@ class DatabaseRecord:
                 references for the given association rule but will use the reference entries provided instead.
         """
         # pd.set_option('display.max_columns', None)
-        # meta_params = self.metadata
         record_elements = self.components
 
         if not references:
@@ -1787,16 +1850,6 @@ class DatabaseRecord:
         if new or as_new:
             record_data[settings.creator_code] = user.uid
             record_data[settings.creation_date] = datetime.datetime.now()
-
-        # Set metadata element values
-        # for meta_param in meta_params:
-        #    param_name = meta_param.name
-
-        #    try:
-        #        meta_param.format_value(record_data)
-        #    except KeyError:
-        #        logger.warning('RecordType {NAME}: input data is missing a value for metadata field "{COL}"'
-        #                       .format(NAME=self.name, COL=param_name))
 
         # Populate the record elements with data
         record_id = self.record_id()
@@ -1901,10 +1954,6 @@ class DatabaseRecord:
         self._record_id.reset(window)
         self._record_date.reset(window)
 
-        # Reset metadata elements
-        #for meta_param in self.metadata:
-        #    meta_param.reset(window)
-
         # Reset record data component elements
         for component in self.components:
             component.reset(window)
@@ -1999,26 +2048,6 @@ class DatabaseRecord:
         else:
             return element
 
-    def fetch_metadata(self, element, by_key: bool = False):
-        """
-        Fetch a record metadata by name or event key.
-        """
-        if by_key is True:
-            element_type = element[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.metadata]
-            # element_names = [i.key_lookup(element, rev=True) for i in self.metadata]
-        else:
-            element_names = [i.name for i in self.metadata]
-
-        if element in element_names:
-            index = element_names.index(element)
-            parameter = self.metadata[index]
-        else:
-            raise KeyError('element {ELEM} not found in list of record {NAME} metadata'
-                           .format(ELEM=element, NAME=self.name))
-
-        return parameter
-
     def run_event(self, window, event, values):
         """
         Perform a record action.
@@ -2026,17 +2055,7 @@ class DatabaseRecord:
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
         # Collapse or expand a section frame
-        # section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
-        # if event in section_bttns:
-        #    section_index = section_bttns.index(event)
-        #    self.collapse_expand(window, index=section_index)
-
-        #    return False
-
         if event in self.bindings:
-            #section_bttns = [self.key_lookup('SectionBttn{}'.format(i)) for i in range(len(self.sections))]
-            #section_index = section_bttns.index(event)
-            #self.collapse_expand(window, index=section_index)
             section_names = list(self.sections.keys())
             section_bttns = [self.key_lookup('{}Bttn'.format(i)) for i in section_names]
             if event in section_bttns:
@@ -2044,19 +2063,6 @@ class DatabaseRecord:
                 self.collapse_expand(window, section_names[section_index])
 
             return False
-
-        # Run a modifier event
-        #meta_events = [i for param in self.metadata for i in param.bindings]
-        #if event in meta_events:
-        #    try:
-        #        meta_param = self.fetch_metadata(event, by_key=True)
-        #    except KeyError:
-        #        logger.error('RecordType {NAME}, Record {ID}: unable to find the metadata element associated with '
-        #                     'event key "{KEY}"'.format(NAME=self.name, ID=self.record_id(), KEY=event))
-        #    else:
-        #        triggers = meta_param.run_event(window, event, values)
-#
-#            return False
 
         # Record element events
         elem_events = self.record_events(components_only=True)
@@ -2140,8 +2146,6 @@ class DatabaseRecord:
             for section_name in self.sections:
                 section_key = self.key_lookup('{}Col'.format(section_name))
                 window[section_key].contents_changed()
-            #window[self.key_lookup('DetailsCol')].contents_changed()
-            #window[self.key_lookup('MetaCol')].contents_changed()
 
         if triggers['ValueEvent']:
             # Update any element references with new values
@@ -2177,9 +2181,6 @@ class DatabaseRecord:
         self._record_id.update_display(window)
         self._record_date.update_display(window)
 
-        #for meta_elem in self.metadata:
-        #    meta_elem.update_display(window)
-
         # Update the record elements
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
         for record_element in self.components:
@@ -2202,10 +2203,6 @@ class DatabaseRecord:
         for record_element in self.components:
             events.update(record_element.bindings)
 
-        # Add record meta-data event bindings
-        #for param in self.metadata:
-        #    events.update(param.bindings)
-
         return events
 
     def record_elements(self):
@@ -2214,7 +2211,6 @@ class DatabaseRecord:
         """
         elements = []
         elements.extend(self.components)
-        #elements.extend(self.metadata)
 
         return elements
 
@@ -2328,12 +2324,6 @@ class DatabaseRecord:
             # Add header values
             values[record_id.name] = record_id.data()
             values[record_date.name] = record_date.data()
-
-            # Add modifier values
-            # for meta_elem in self.metadata:
-            #    param_value = meta_elem.data()
-            #    if not pd.isna(param_value):
-            #        values[meta_elem.name] = param_value
 
         # Add parameter values
         record_elements = self.components
@@ -3032,16 +3022,17 @@ class DatabaseRecord:
         #print('setting record {} width to {}'.format(self.name, width))
         for record_element in self.components:
             elem_h = None
-            if record_element.name in self._heading_elements:
-                elem_w = int(width * 0.4)
-            else:
-                if record_element.is_type('collection'):  # table or list
-                    elem_w = width - (pad_w * 2 + scroll_w)
-                else:  # data variable
+            if record_element.is_type('collection'):  # table or list
+                elem_w = width - (pad_w * 2 + scroll_w)
+            else:  # data variable
+                if record_element.align:
                     elem_w = int(width * 0.7)
-            elem_size = (elem_w, elem_h)
+                else:
+                    elem_w = None
 
-            #print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
+            elem_size = (elem_w, elem_h) if elem_w is not None else None
+
+            print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
             record_element.resize(window, size=elem_size)
 
         self._dimensions = (width, height)

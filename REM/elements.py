@@ -360,13 +360,14 @@ class DataTable(RecordElement):
             hidden_columns = []
 
         self.hidden_columns = []
-        for hide_column in hidden_columns:
-            if hide_column in self.display_columns:
-                self.hidden_columns.append(self.display_columns[hide_column])
+        for hidden_column in hidden_columns:
+            if hidden_column in self.display_columns:
+                self.hidden_columns.append(hidden_column)
             else:
                 msg = self.format_log('hidden column "{COL}" not found in the list of table display columns'
-                                      .format(COL=hide_column))
+                                      .format(COL=hidden_column))
                 logger.warning(msg)
+                print(self.display_columns)
 
         try:
             search_field = entry['SearchField']
@@ -548,13 +549,13 @@ class DataTable(RecordElement):
         """
         display_map = self.display_columns
         hidden_columns = self.hidden_columns
+
         header = []
         for column in display_map:
-            display_column = display_map[column]
-
-            if display_column in hidden_columns:
+            if column in hidden_columns:
                 continue
 
+            display_column = display_map[column]
             header.append(display_column)
 
         return header
@@ -1665,23 +1666,24 @@ class DataTable(RecordElement):
 
         # Data table
         row4 = []
-        hidden_columns = self.hidden_columns
-        header = display_df.columns.tolist()
-        data = display_df.values.tolist()
-        events = True if level < 2 else False
-        vis_map = []
-        for display_column in header:
-            if display_column in hidden_columns:
-                vis_map.append(False)
-            else:
-                vis_map.append(True)
 
         display_header = self._display_header()
-        min_w = scroll_w + border_w + len(display_header) * min_col_size
+        header = display_df.columns.tolist()
 
+        vis_map = []
+        for display_column in header:
+            if display_column in display_header:
+                vis_map.append(True)
+            else:
+                vis_map.append(False)
+
+        min_w = scroll_w + border_w + len(display_header) * min_col_size
         tbl_width = width - scroll_w - border_w if width >= min_w else min_w - scroll_w - border_w
         col_widths = self._calc_column_widths(display_header, width=tbl_width, size=font_size, pixels=False,
                                               widths=self.widths)
+
+        events = True if level < 2 else False
+        data = display_df.values.tolist()
         row4.append(sg.Table(data, key=keyname, headings=header, visible_column_map=vis_map, pad=(0, 0), num_rows=nrow,
                              row_height=row_h, alternating_row_color=alt_col, background_color=row_col,
                              text_color=text_col, selected_row_colors=(select_text_col, select_bg_col), font=tbl_font,
@@ -4034,7 +4036,13 @@ class DataUnit(RecordElement):
                                            .format(VAL=justification)))
             self.justification = 'l'
 
-        self.align = True  # auto-align elements
+        try:  # auto-align elements
+            self.align = bool(int(entry['Align']))
+        except KeyError:
+            self.align = True
+        except ValueError:
+            logger.warning(self.format_log('the "align" parameter must be either 0 (False) or 1 (True)'))
+            self.align = True
 
         # Dynamic variables
         self._offset = 0
@@ -4079,7 +4087,10 @@ class DataUnit(RecordElement):
 
             desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
             display_value = self.format_display()
-            elem_w_px = window[elem_key].string_width_in_pixels(font, display_value)
+            print('display value for element {}:'.format(self.name))
+            print(display_value)
+            value_w = window[desc_key].string_width_in_pixels(font, display_value) + mod_const.SCROLL_WIDTH + pad_w
+            elem_w_px = value_w if value_w >= mod_const.VARIABLE_WIDTH_PX else mod_const.VARIABLE_WIDTH_PX
             new_w = desc_w_px + elem_w_px + self._offset
 
         window[elem_key].set_size(size=(1, None))
@@ -4089,13 +4100,13 @@ class DataUnit(RecordElement):
         window[elem_key].expand(expand_x=True)
 
         window.refresh()
-        #print('resizing record element {}'.format(self.name, new_w))
-        #print('desired width of record element {}: {}'.format(self.name, new_w))
-        #print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
-        #print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
-        #print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
-        #print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
-        #print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
+        print('resizing record element {}'.format(self.name, new_w))
+        print('desired width of record element {}: {}'.format(self.name, new_w))
+        print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
+        print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
+        print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
+        print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         self._dimensions = (new_w, new_h)
 

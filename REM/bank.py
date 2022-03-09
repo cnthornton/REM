@@ -2537,7 +2537,7 @@ class BankAccount:
         record_entry = settings.records.fetch_rule(record_type)
 
         try:
-            df = record_entry.import_records(params=parameters, import_rules=self.import_rules)
+            df = record_entry.import_records(filter_params=parameters, import_rules=self.import_rules)
         except Exception as e:
             msg = 'failed to import data from the database'
             logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))

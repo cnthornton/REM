@@ -132,16 +132,6 @@ def login_window():
         if event == '-PASSWORD-':
             window['-PASSWORD-'].update(text_color=def_text_col)
             window['-SUCCESS-'].update(value='')
-        #            value = values['-PASSWORD-']
-        #            if value:
-        #                if len(value) > len(pass_list):  #added character
-        #                    pass_list.append(value[-1])
-        #                    print('password is {}'.format(''.join(pass_list)))
-        #                elif len(value) < len(pass_list):  #deleted character
-        #                    pass_list = pass_list[0:-1]
-        #                    print('password is {}'.format(''.join(pass_list)))
-
-        #            window['-PASSWORD-'].update(value='*' * len(value), text_color=def_text_col)
 
         if event in return_keys:
             window['-LOGIN-'].Click()
@@ -286,7 +276,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     record_w = min_w
     record_h = min_h - bffr_h
     record_layout = record.layout((record_w, record_h), padding=(pad_frame, pad_el), view_only=view_only)
-    print(record_layout)
 
     # Window layout
     layout = [[sg.Col(title_layout, key='-TITLE-', background_color=header_col, vertical_alignment='c', expand_x=True)],
@@ -297,7 +286,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                       vertical_alignment='c', expand_x=True)]]
 
     window_title = '{TITLE} ({LEVEL})'.format(TITLE=title, LEVEL=record_level)
-    print(layout)
     window = sg.Window(window_title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
     window.hide()
@@ -481,7 +469,6 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                     .format(ID=record_id, EVENT=event, ERR=e)
                 logger.exception(msg)
                 popup_notice('failed to run event for record {}'.format(record_id))
-                print(values)
 
                 continue
 
@@ -1928,7 +1915,7 @@ def record_import_window(table, enable_new: bool = False):
 
                 # Reload the display records
                 if record:
-                    import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
+                    import_df = record_entry.import_records(filter_params=table.parameters, import_rules=import_rules)
 
                     table.reset(window, reset_filters=False, collapse=False)
                     table.append(import_df)
@@ -1979,7 +1966,7 @@ def record_import_window(table, enable_new: bool = False):
             if reload:  # should reload the import records
                 table.reset(window, reset_filters=False, collapse=False)
 
-                import_df = record_entry.import_records(params=table.parameters, import_rules=import_rules)
+                import_df = record_entry.import_records(filter_params=table.parameters, import_rules=import_rules)
                 table.append(import_df)
                 table.update_display(window)
 
@@ -2147,8 +2134,6 @@ def import_window(table, params: list = None):
     layout = None
     window = None
     gc.collect()
-
-    print('indices selected from the table are: {}'.format(select_index))
 
     try:
         return table.data(indices=select_index)
