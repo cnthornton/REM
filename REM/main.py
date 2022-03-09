@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.10.1'
+__version__ = '3.11.0'
 
 import sys
 import tkinter as tk
@@ -11,7 +11,7 @@ from multiprocessing import freeze_support
 
 import PySimpleGUI as sg
 
-import REM.audit_new as mod_audit
+import REM.audit as mod_audit
 import REM.bank as mod_bank
 import REM.cash as mod_cash
 import REM.constants as mod_const
