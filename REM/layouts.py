@@ -602,11 +602,13 @@ def importer_layout(win_size: tuple = None):
         [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=frame_col)]], background_color=frame_col),
          sg.Col([[sg.Text('• ', pad=((pad_frame, pad_el), (pad_frame, pad_el)), font=font_large),
                   sg.Text('File Options', key='-PN1-', pad=((pad_el, pad_frame), (pad_frame, pad_el)),
-                          font=font_main, text_color=select_col)],
-                 [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large),
-                  sg.Text('Import Options', key='-PN2-', pad=((pad_el, pad_frame), pad_el), font=font_main)],
-                 [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large),
-                  sg.Text('Data Preview', key='-PN3-', pad=((pad_el, pad_frame), pad_el), font=font_main)]],
+                          font=font_main, text_color=select_col, background_color=frame_col)],
+                 [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large, background_color=frame_col),
+                  sg.Text('Import Options', key='-PN2-', pad=((pad_el, pad_frame), pad_el), font=font_main,
+                          background_color=frame_col)],
+                 [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large, background_color=frame_col),
+                  sg.Text('Data Preview', key='-PN3-', pad=((pad_el, pad_frame), pad_el), font=font_main,
+                          background_color=frame_col)]],
                 background_color=frame_col, element_justification='l', vertical_alignment='t', expand_y=True)]]
 
     layout = [[sg.Col([[sg.Text('Import to Database', pad=(pad_frame, (pad_frame, pad_v)),
