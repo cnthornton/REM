@@ -1818,17 +1818,24 @@ class DatabaseRecord:
                                   (tab_key, tab_frame)})
 
         # Record report layout definition
+        self.report = {}
         try:
             report = entry['Report']
         except KeyError:
-            self.report = None
-        else:
-            if 'Info' not in report:
-                report['Info'] = []
-            if 'Subsections' not in report:
-                report['Subsections'] = {}
+            report = {}
 
-            self.report = report
+        try:
+            self.report['Title'] = report['Title']
+        except KeyError:
+            self.report['Title'] = None
+        try:
+            self.report['ReportElements'] = report['ReportElements']
+        except KeyError:
+            self.report['ReportElements'] = {}
+        try:
+            self.report['Sections'] = report['Sections']
+        except KeyError:
+            self.report['Sections'] = {}
 
         self._minimum_height = 0
         self._padding = (0, 0)
@@ -2718,7 +2725,248 @@ class DatabaseRecord:
 
         return success
 
+    def _format_report_title(self):
+        """
+        Format the title of the record report.
+        """
+        report_def = self.report
+        record_id = self._record_id.format_display()
+        record_date = self._record_date.format_display()
+
+        title_str = report_def['Title']
+        if title_str is None:
+            report_title = '{TITLE}: {ID} ({DATE})'.format(TITLE=self.title, ID=record_id, DATE=record_date)
+
+            return report_title
+        else:
+            title_str = str(title_str)
+
+        elements = self.components
+
+        # Update the report title with record element values when part of the title
+        try:
+            title_components = re.findall(r'{(.*?)}', title_str)
+        except TypeError:
+            title_components = []
+        else:
+            logger.debug('RecordType {NAME}: report title components are {COMPS}'
+                         .format(NAME=self.name, COMPS=title_components))
+
+        title_params = {}
+        if 'RecordID' in title_components:
+            title_params['RecordID'] = record_id
+        if 'RecordDate' in title_components:
+            title_params['RecordDate'] = record_date
+
+        for element in elements:
+            element_name = element.name
+
+            # Check if parameter composes part of title
+            if element_name in title_components:
+                display_value = element.format_display()
+                logger.debug('RecordType {NAME}: adding record element value "{VAL}" to the report title'
+                             .format(NAME=self.name, VAL=display_value))
+                title_params[element_name] = display_value
+
+        try:
+            report_title = title_str.format(**title_params)
+        except KeyError as e:
+            logger.error('RecordType {NAME}: failed to format report title - {ERR}'.format(NAME=self.name, ERR=e))
+            report_title = title_str
+
+        logger.info('RecordType {NAME}: formatted report title is {TITLE}'
+                    .format(NAME=self.name, TITLE=report_title))
+
+        return report_title
+
     def generate_report(self):
+        """
+        Generate a summary report for the record.
+        """
+        report_def = self.report
+        record_type = self.name
+
+        logger.info('RecordType {NAME}: generating the template for the record report'.format(NAME=record_type))
+
+        # Generate the report title
+        report_title = self._format_report_title()
+
+        # Create the body of the report
+        element_settings = report_def['ReportElements']
+
+        sections = report_def['Sections']
+        report_body = {}
+        for section in sections:
+            section_entry = sections[section]
+            section_template = {}
+
+            try:
+                section_template['title'] = section_entry['Title']
+            except KeyError:
+                section_template['title'] = section
+
+            try:
+                section_template['level'] = int(section_entry['Level'])
+            except (KeyError, ValueError):
+                section_template['level'] = 0
+
+            print('adding section {} to the body at heading level {}'.format(section, section_template['level']))
+
+            try:
+                section_elements = section_entry['Elements']
+            except KeyError:
+                logger.warning('RecordType {NAME}: no elements defined under report section {SEC}'
+                               .format(NAME=record_type, SEC=section))
+                section_elements = []
+
+            elements = {}
+            for report_element in section_elements:
+                print('adding report element {} to section {}'.format(report_element, section))
+                try:
+                    element_entry = element_settings[report_element]
+                except KeyError:
+                    element_entry = {}
+
+                try:
+                    element_name = element_entry['RecordElement']
+                except KeyError:
+                    element_name = report_element
+
+                try:
+                    element = self.fetch_element(element_name)
+                except KeyError:
+                    logger.warning('RecordType {NAME}, Section {SEC}: unknown record element "{COMP}" defined in the '
+                                   'report configuration'.format(NAME=record_type, SEC=section, COMP=element_name))
+                    continue
+
+                try:
+                    elem_title = element_entry['Title']
+                except KeyError:
+                    elem_title = element.description
+
+                print('report element {} has title {}'.format(report_element, elem_title))
+
+                if element.is_type('table'):  # record element is a table
+                    print('report element {} is a table element'.format(report_element))
+                    # Subset table rows based on configured subset rules
+                    try:
+                        sub_rule = element_entry['Subset']
+                    except KeyError:
+                        subset_df = element.data()
+                    else:
+                        try:
+                            subset_df = element.subset(sub_rule)
+                        except ValueError as e:
+                            logger.warning('RecordType {NAME}, Section {SEC}: failed to subset record element {ELEM} '
+                                           'on rule "{SUB}" - {ERR}'
+                                           .format(NAME=record_type, ELEM=element_name, SEC=section, SUB=sub_rule, ERR=e))
+                            subset_df = element.data()
+
+                    # Select columns to display in the report
+                    try:
+                        subset_df = subset_df[element_entry['DisplayColumns']]
+                    except KeyError:
+                        subset_df = subset_df[list(element.display_columns)]
+
+                    if subset_df.empty:
+                        logger.warning('RecordType {NAME}, Section {SEC}: no entries remaining in record element {ELEM}'
+                                       .format(NAME=record_type, ELEM=element_name, SEC=section))
+                        html_out = '<p>N/A</p>'
+                    else:
+                        # Format table for display
+                        display_df = subset_df.copy()
+                        for column in subset_df.columns:
+                            try:
+                                display_df[column] = element.format_display_column(subset_df, column)
+                            except Exception as e:
+                                logger.exception('RecordType {NAME}, Section {SEC}: failed to format display column "{COL}" - {ERR}'
+                                                 .format(NAME=record_type, SEC=section, COL=column, ERR=e))
+
+                        # Index rows using grouping list in configuration
+                        try:
+                            grouping = element_entry['Group']
+                        except KeyError:
+                            grouped_df = display_df
+                        else:
+                            grouped_df = display_df.set_index(grouping).sort_index()
+
+                        html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
+                                                      sparsify=True, na_rep='')
+
+                        # Highlight errors in html string
+                        annotations = element.annotate_rows(grouped_df.reset_index())
+                        colors = {i: element.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
+                        try:  # colors should be a dictionary of row index with matching color
+                            html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
+                        except Exception as e:
+                            logger.warning('RecordType {NAME}, Section {SEC}: failed to annotate output - {ERR}'
+                                           .format(NAME=record_type, SEC=section, ERR=e))
+                            html_out = html_str
+
+                        # Add summary totals
+                        try:
+                            total_col = element_entry['Totals']
+                        except KeyError:
+                            pass
+                        else:
+                            if total_col in subset_df.columns:
+                                try:
+                                    col_total = element.summarize_column(total_col, indices=subset_df.index.tolist())
+                                except Exception as e:
+                                    logger.warning('RecordType {NAME}, Section {SEC}: failed to summarize column "{COL}" - {ERR}'
+                                                   .format(NAME=record_type, SEC=section, COL=total_col, ERR=e))
+                                else:
+                                    if isinstance(col_total, float):
+                                        summ_value = '{:,.2f}'.format(col_total)
+                                    else:
+                                        summ_value = '{}'.format(col_total)
+
+                                    soup = BeautifulSoup(html_out, 'html.parser')
+
+                                    # Add a totals footer to the table
+                                    footer = soup.new_tag('tfoot')
+                                    footer_row = soup.new_tag('tr')
+                                    footer_header = soup.new_tag('td')
+                                    footer_header['id'] = 'total'
+                                    footer_header['colspan'] = '{}'.format(subset_df.shape[1] - 1)
+                                    footer_header['style'] = 'text-align:right; font-weight:bold;'
+                                    footer_header.string = 'Total:'
+                                    footer_row.append(footer_header)
+
+                                    footer_data = soup.new_tag('td')
+                                    footer_data.string = summ_value
+                                    footer_row.append(footer_data)
+
+                                    footer.append(footer_row)
+                                    soup.table.append(footer)
+
+                                    html_out = soup.decode()
+                            else:
+                                logger.warning(
+                                    'RecordType {NAME}, Section {SEC}: the Totals column "{COL}" not found in list of output columns'
+                                    .format(NAME=report_title, SEC=section, COL=total_col))
+
+                    elem_value = html_out
+                    element_template = {'type': 'table', 'title': elem_title, 'value': elem_value}
+                else:
+                    print('report element {} is a variable element'.format(report_element))
+                    elem_value = element.format_display()
+                    if not elem_value or elem_value == "":
+                        elem_value = 'N/A'
+
+                    element_template = {'type': 'variable', 'title': elem_title, 'value': elem_value}
+
+                elements[report_element] = element_template
+
+            section_template['elements'] = elements
+
+            report_body[section] = section_template
+
+        template = {'title': report_title, 'body': report_body}
+
+        return template
+
+    def generate_report_old(self):
         """
         Generate a summary report for the record.
         """

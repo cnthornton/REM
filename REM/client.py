@@ -444,16 +444,6 @@ class SettingsManager:
                 self.report_template = report_template
 
         try:
-            audit_template = cnfg['display']['audit_template']
-        except KeyError:
-            self.audit_template = os.path.join(dirname, 'templates', 'audit_report.html')
-        else:
-            if not audit_template:
-                self.audit_template = os.path.join(dirname, 'templates', 'audit_report.html')
-            else:
-                self.audit_template = audit_template
-
-        try:
             report_style = cnfg['display']['report_stylesheet']
         except KeyError:
             self.report_css = os.path.join(dirname, 'static', 'css', 'report.css')
@@ -579,8 +569,6 @@ class SettingsManager:
             self.host = value
         elif attr == 'dbname':
             self.dbname = value
-        elif attr == 'audit_template':
-            self.audit_template = value
         elif attr == 'display_date':
             self.display_date_format = value
 
@@ -788,9 +776,6 @@ class SettingsManager:
                            sg.Col([[sg.Canvas(size=(dcol2_w, 0), background_color=bg_col)],
                                    [sg.Input(self.report_template, key='-TEMPLATE-', pad=((0, pad_el), (0, pad_el)),
                                              font=main_font, background_color=in_col),
-                                    sg.FileBrowse('Browse...', font=mod_const.SMALL_FONT)],
-                                   [sg.Input(self.audit_template, key='-AUDIT_TEMPLATE-',
-                                             pad=((0, pad_el), (0, pad_el)), font=main_font, background_color=in_col),
                                     sg.FileBrowse('Browse...', font=mod_const.SMALL_FONT)],
                                    [sg.Input(self.report_css, key='-CSS-', pad=((0, pad_el), (0, pad_el)),
                                              font=main_font, background_color=in_col),

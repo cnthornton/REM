@@ -881,11 +881,10 @@ class AuditRule:
         logger.info('AuditRule {NAME}: saving summary report {TITLE} to {FILE}'
                     .format(NAME=self.name, TITLE=report_title, FILE=filename))
 
-        audit_reports = [record.generate_report()]
-        template_vars = {'title': report_title, 'report_tabs': audit_reports}
+        template_vars = record.generate_report()
 
-        env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.audit_template))))
-        template = env.get_template(os.path.basename(os.path.abspath(settings.audit_template)))
+        env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.report_template))))
+        template = env.get_template(os.path.basename(os.path.abspath(settings.report_template)))
         html_out = template.render(template_vars)
         path_wkhtmltopdf = settings.wkhtmltopdf
         config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)

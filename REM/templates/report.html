@@ -17,13 +17,22 @@
   <h1>{{ title }}</h1>
 </div>
 <div class="container">
-    {% for element in info %}
-        <p><b>{{element[0]}}</b>: {{element[1]}}<br></p>
-    {% endfor %}
-    {% for section in sections %}
-        <br>
-        <p><b>{{section[0]}}:</b></p>
-        {{section[1]}}
+    {% for section_name, section in body.items() %}
+        {% if section['level'] == 1 %}
+            <h3>{{section['title']}}</h3>
+        {% elif section['level'] == 2 %}
+            <h4>{{section['title']}}</h4>
+        {% else %}
+            <h2>{{section['title']}}</h2>
+        {% endif %}
+        {% for element_name, element in section['elements'].items() %}
+            {% if element['type'] == "table" %}
+                <p><b>{{element['title']}}:</b></p>
+                {{element['value']}}
+            {% else %}
+                <p><b>{{element['title']}}</b>: {{element['value']}}<br></p>
+            {% endif %}
+        {% endfor %}
     {% endfor %}
 </div>
 </body>
