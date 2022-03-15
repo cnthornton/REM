@@ -2244,6 +2244,11 @@ class RecordTable(DataTable):
             self.record_type = None
 
         try:
+            self.import_filters = entry['ImportFilters']
+        except KeyError:
+            self.import_filters = None
+
+        try:
             import_rules = entry['ImportRules']
         except KeyError:
             import_rules = {}
@@ -3768,6 +3773,11 @@ class ReferenceList(DataList):
 
             raise AttributeError(msg)
 
+        try:
+            self.import_filters = entry['ImportFilters']
+        except KeyError:
+            self.import_filters = None
+
     def run_header_event(self, index):
         if self._ref_type_field:
             logger.debug(self.format_log('running header event at index {INDEX}'.format(INDEX=index)))
@@ -3927,7 +3937,7 @@ class ReferenceList(DataList):
         logger.info(self.format_log('loading reference record {ID} of type {TYPE} at level {LEVEL}'
                                     .format(ID=ref_id, TYPE=ref_type, LEVEL=level)))
 
-        imports = record_entry.load_records(ref_id)
+        imports = record_entry.load_records(ref_id, filters=self.import_filters)
         nrow = imports.shape[0]
 
         if nrow < 1:
@@ -4316,6 +4326,7 @@ class DataVariable(DataUnit):
 
         # Dynamic variables
         self.edit_mode = False
+        self.disabled = True
 
     def _value_layout(self, size: tuple = None):
         """
@@ -4501,7 +4512,7 @@ class DataVariable(DataUnit):
         """
         modifiers = self.modifiers
 
-        if not self.disabled:  # some variables are intrinsically un-editable (i.e. dependent variables)
+        if not self.disabled:  # some variables are intrinsically un-editable (i.e. dependent variables, text, etc.)
             is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
             self.disabled = is_disabled
         else:
@@ -4639,6 +4650,8 @@ class DataVariableInput(DataVariable):
             self.elements['Calendar'] = calendar_key
             self.bindings[calendar_key] = 'Calendar'
 
+        self.disabled = False
+
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
@@ -4731,6 +4744,8 @@ class DataVariableCombo(DataVariable):
                     mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
                     logger.warning(self.format_log(msg))
 
+        self.disabled = False
+
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
@@ -4812,6 +4827,8 @@ class DataVariableMultiline(DataVariable):
         except (KeyError, ValueError):
             self.nrow = 1
 
+        self.disabled = False
+
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
@@ -4878,6 +4895,7 @@ class DataVariableCheckbox(DataVariable):
             raise AttributeError(msg)
 
         self.arrangement = 'h'
+        self.disabled = False
 
     def _value_layout(self, size: tuple = None):
         """

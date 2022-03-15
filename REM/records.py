@@ -319,6 +319,60 @@ class RecordEntry:
         except KeyError:
             self.deleted_column = 'IsDeleted'
 
+    def _format_filter_set(self, filter_rules):
+        """
+        Format a set of database filters.
+        """
+        operators = {'=', '!=', '>', '<', '>=', '<=', 'IN', 'NOT IN'}
+
+        filters = []
+        for filter_column in filter_rules:
+            filter_entry = filter_rules[filter_column]
+
+            import_column = self.map_column(filter_column)
+
+            try:
+                operator = filter_entry[0].upper()
+            except (IndexError, AttributeError):
+                msg = 'no valid operator set for import filter {COL}'.format(COL=filter_column)
+                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                continue
+            else:
+                if operator not in operators:
+                    msg = 'no valid operator set for import filter {COL}'.format(COL=filter_column)
+                    logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    continue
+
+            try:
+                parameters = filter_entry[1:]
+            except IndexError:
+                msg = 'one or more import values required for filter column {COL}'.format(COL=filter_column)
+                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                continue
+            else:
+                if len(parameters) == 1:
+                    parameters = parameters[0]
+                else:
+                    parameters = tuple(parameters)
+
+            if isinstance(parameters, list) or isinstance(parameters, tuple):
+                values = ['?' for _ in parameters]
+                value = '({VALS})'.format(VALS=', '.join(values))
+            else:
+                value = '?'
+
+            if operator in ('IN', 'NOT IN') and 'NULL' not in parameters:
+                filters.append(('({COL} {OPER} {VAL} OR {COL} IS NULL)'
+                                .format(COL=import_column, OPER=operator, VAL=value), parameters))
+            else:
+                filters.append(('{COL} {OPER} {VAL}'
+                                .format(COL=import_column, OPER=operator, VAL=value), parameters))
+
+        return filters
+
     def map_column(self, column):
         """
         Convert from record column to database column.
@@ -355,14 +409,16 @@ class RecordEntry:
 
         return unique_values
 
-    def load_records(self, id_list, filters: bool = True):
+    def load_records(self, id_list, import_filters: bool = True, filters: dict = None):
         """
         Load a record from the database using the record ID.
 
         Arguments:
             id_list (list): load records with these record IDs from the database.
 
-            filters (bool): use import rule filters when loading the records [Default: True].
+            import_filters (bool): use import rule filters when loading the records [Default: True].
+
+            filters (dict): use additional selection import filters.
 
         Returns:
             import_df (DataFrame): dataframe of imported records.
@@ -375,6 +431,8 @@ class RecordEntry:
         record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
         logger.debug('loading records {IDS} of type "{TYPE}" from the database'.format(IDS=record_ids, TYPE=self.name))
 
+        custom_filters = self._format_filter_set(filters) if filters else []
+
         # Add configured import filters
         table_statement = mod_db.format_tables(self.import_rules)
         columns = mod_db.format_import_columns(self.import_rules)
@@ -384,10 +442,10 @@ class RecordEntry:
         import_df = pd.DataFrame()
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
-            if filters:
-                filter_rules = mod_db.format_import_filters(self.import_rules)
+            if import_filters:
+                filter_rules = custom_filters + mod_db.format_import_filters(self.import_rules)
             else:
-                filter_rules = []
+                filter_rules = custom_filters
 
             filter_clause = '{COL} IN ({VALS})'.format(COL=id_col, VALS=','.join(['?' for _ in sub_ids]))
             filter_rules.append((filter_clause, tuple(sub_ids)))
@@ -1907,7 +1965,7 @@ class DatabaseRecord:
                 import_ids = ref_data['ReferenceID']
 
                 # Load the component records
-                import_df = ref_entry.load_records(import_ids)
+                import_df = ref_entry.load_records(import_ids, filters=record_element.import_filters)
                 import_df = import_df[[i for i in import_df.columns if i in record_element.columns]]
                 record_element.append(import_df)
 

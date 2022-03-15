@@ -322,9 +322,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
         if event == sg.WIN_CLOSED:  # selected to close window without accepting changes
             # Remove unsaved IDs associated with the record
-            if savable or record.new:  # unsaved IDs should be removed if record can be saved or if newly created
-                record.remove_unsaved_ids()
-
+            record.remove_unsaved_ids()
             record = None
 
             break
@@ -1777,16 +1775,6 @@ def record_import_window(table, enable_new: bool = False):
     record_class = mod_records.DatabaseRecord
 
     # Layout
-    record_col = None
-    for colname in table.display_columns:
-        display_col = table.display_columns[colname]
-        if colname == 'RecordID':
-            record_col = display_col
-            break
-
-    if record_col is None:
-        logger.error('failed to initialize record import window - "RecordID" is a required display column')
-        return None
 
     # Window and element size parameters
     header_col = mod_const.HEADER_COLOR

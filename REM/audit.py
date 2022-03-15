@@ -426,7 +426,7 @@ class AuditRule:
             # Open the audit record in the record window
             record = mod_win2.record_window(record, modify_database=False)
 
-            if record is not None:  # audit record was accepted by the user
+            if record is not None:  # audit accepted by the user
                 # Get output file from user
                 report_title = self.update_title()
 
@@ -457,7 +457,7 @@ class AuditRule:
                         return current_rule
 
                 try:
-                    self.save_report(outfile, title=report_title)
+                    self.save_report(record, outfile, title=report_title)
                 except Exception as e:
                     msg = 'failed to save the audit report to {FILE}'.format(FILE=outfile)
                     logger.exception('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -1542,7 +1542,7 @@ class AuditTransaction:
 
         # Query database for the potentially missing transactions
         if missing_transactions:
-            missing_df = missing_df.append(record_entry.load_records(missing_transactions, filters=False),
+            missing_df = missing_df.append(record_entry.load_records(missing_transactions, import_filters=False),
                                            ignore_index=True)
 
         # Display import window with potentially missing data

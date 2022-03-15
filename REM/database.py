@@ -567,6 +567,56 @@ def format_import_filters(import_rules):
     return filters
 
 
+def format_filter_set(filter_rules):
+    """
+    Format a set of database filters.
+    """
+    operators = {'=', '!=', '>', '<', '>=', '<=', 'IN', 'NOT IN'}
+
+    filters = []
+    for filter_column in filter_rules:
+        filter_entry = filter_rules[filter_column]
+
+        try:
+            operator = filter_entry[0].upper()
+        except (IndexError, AttributeError):
+            logger.error('the "Filters" parameter of import table {TBL} is missing the operator'
+                         .format(TBL=import_table))
+            continue
+        else:
+            if operator not in operators:
+                logger.error('unknown operator {OPER} supplied the "Filters" parameters of import table {TBL}'
+                             .format(OPER=operator, TBL=import_table))
+                continue
+
+        try:
+            parameters = filter_entry[1:]
+        except IndexError:
+            logger.error('the "Filters" parameters of import table {TBL} requires one or more import values'
+                         .format(TBL=import_table))
+            continue
+        else:
+            if len(parameters) == 1:
+                parameters = parameters[0]
+            else:
+                parameters = tuple(parameters)
+
+        if isinstance(parameters, list) or isinstance(parameters, tuple):
+            values = ['?' for _ in parameters]
+            value = '({VALS})'.format(VALS=', '.join(values))
+        else:
+            value = '?'
+
+        if operator in ('IN', 'NOT IN') and 'NULL' not in parameters:
+            filters.append(('({TBL}.{COL} {OPER} {VAL} OR {TBL}.{COL} IS NULL)'
+                            .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
+        else:
+            filters.append(('{TBL}.{COL} {OPER} {VAL}'
+                            .format(TBL=import_table, COL=filter_column, OPER=operator, VAL=value), parameters))
+
+    return filters
+
+
 def format_import_columns(import_rules):
     """
     Format columns for querying.
