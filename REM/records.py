@@ -4,6 +4,7 @@ REM records classes and functions. Includes audit records and account records.
 
 from bs4 import BeautifulSoup
 import datetime
+import os
 import sys
 from random import randint
 import re
@@ -12,6 +13,8 @@ import PySimpleGUI as sg
 import dateutil
 import numpy as np
 import pandas as pd
+import pdfkit
+from jinja2 import Environment, FileSystemLoader
 
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
@@ -1829,6 +1832,10 @@ class DatabaseRecord:
         except KeyError:
             self.report['Title'] = None
         try:
+            self.report['Subtitle'] = report['Subtitle']
+        except KeyError:
+            self.report['Subtitle'] = None
+        try:
             self.report['ReportElements'] = report['ReportElements']
         except KeyError:
             self.report['ReportElements'] = {}
@@ -1863,17 +1870,23 @@ class DatabaseRecord:
 
         return key
 
-    def record_id(self):
+    def record_id(self, display: bool = False):
         """
         Convenience method for returning the record ID of the record object.
         """
-        return self._record_id.data()
+        if display:
+            return self._record_id.format_display()
+        else:
+            return self._record_id.data()
 
-    def record_date(self):
+    def record_date(self, display: bool = False):
         """
         Convenience method for returning the record date of the record object.
         """
-        return self._record_date.data()
+        if display:
+            return self._record_date.format_display()
+        else:
+            return self._record_date.data()
 
     def initialize(self, data, new: bool = False, as_new: bool = False, references: dict = None):
         """
@@ -2699,19 +2712,19 @@ class DatabaseRecord:
         try:
             statements = self.prepare_save_statements(statements=statements)
         except Exception as e:
-            msg = 'failed to save record {ID}'.format(ID=record_id)
-            logger.exception('Record {ID}: {MSG} - {ERR}'.format(ID=record_id, MSG=msg, ERR=e))
-
-            mod_win2.popup_error(msg)
+            msg = 'failed to save record - {ERR}'.format(ERR=e)
+            logger.exception('RecordType {NAME}: Record {ID}: {MSG}'.format(NAME=self.name, ID=record_id, MSG=msg))
 
             return False
         else:
             if len(statements) < 1:
-                logger.error('Record {ID}: failed to create transaction statements'.format(ID=record_id))
+                logger.error('RecordType {NAME}: Record {ID}: failed to save record - failed to prepare transaction '
+                             'statements'.format(NAME=self.name, ID=record_id))
 
                 return False
 
-        logger.info('Record {ID}: preparing to save record and record components'.format(ID=record_id))
+        logger.info('RecordType {NAME}: Record {ID}: preparing to save record and record components'
+                    ''.format(NAME=self.name, ID=record_id))
         sstrings = []
         psets = []
         for i, j in statements.items():
@@ -2725,59 +2738,49 @@ class DatabaseRecord:
 
         return success
 
-    def _format_report_title(self):
+    def _format_value_str(self, text_str):
         """
-        Format the title of the record report.
+        Format a text string that incorporates record element values.
         """
-        report_def = self.report
         record_id = self._record_id.format_display()
         record_date = self._record_date.format_display()
-
-        title_str = report_def['Title']
-        if title_str is None:
-            report_title = '{TITLE}: {ID} ({DATE})'.format(TITLE=self.title, ID=record_id, DATE=record_date)
-
-            return report_title
-        else:
-            title_str = str(title_str)
-
         elements = self.components
 
         # Update the report title with record element values when part of the title
         try:
-            title_components = re.findall(r'{(.*?)}', title_str)
+            value_components = re.findall(r'{(.*?)}', text_str)
         except TypeError:
-            title_components = []
+            value_components = []
         else:
-            logger.debug('RecordType {NAME}: report title components are {COMPS}'
-                         .format(NAME=self.name, COMPS=title_components))
+            logger.debug('RecordType {NAME}: string value components are {COMPS}'
+                         .format(NAME=self.name, COMPS=value_components))
 
-        title_params = {}
-        if 'RecordID' in title_components:
-            title_params['RecordID'] = record_id
-        if 'RecordDate' in title_components:
-            title_params['RecordDate'] = record_date
+        value_params = {}
+        if 'RecordID' in value_components:
+            value_params['RecordID'] = record_id
+        if 'RecordDate' in value_components:
+            value_params['RecordDate'] = record_date
 
         for element in elements:
             element_name = element.name
 
             # Check if parameter composes part of title
-            if element_name in title_components:
+            if element_name in value_components:
                 display_value = element.format_display()
-                logger.debug('RecordType {NAME}: adding record element value "{VAL}" to the report title'
+                logger.debug('RecordType {NAME}: adding record element value "{VAL}" to the text string'
                              .format(NAME=self.name, VAL=display_value))
-                title_params[element_name] = display_value
+                value_params[element_name] = display_value
 
         try:
-            report_title = title_str.format(**title_params)
+            formatted_text = text_str.format(**value_params)
         except KeyError as e:
-            logger.error('RecordType {NAME}: failed to format report title - {ERR}'.format(NAME=self.name, ERR=e))
-            report_title = title_str
+            logger.error('RecordType {NAME}: failed to format text string - {ERR}'.format(NAME=self.name, ERR=e))
+            formatted_text = text_str
 
-        logger.info('RecordType {NAME}: formatted report title is {TITLE}'
-                    .format(NAME=self.name, TITLE=report_title))
+        logger.info('RecordType {NAME}: formatted text string is {TITLE}'
+                    .format(NAME=self.name, TITLE=formatted_text))
 
-        return report_title
+        return formatted_text
 
     def generate_report(self):
         """
@@ -2789,7 +2792,19 @@ class DatabaseRecord:
         logger.info('RecordType {NAME}: generating the template for the record report'.format(NAME=record_type))
 
         # Generate the report title
-        report_title = self._format_report_title()
+        title_str = report_def['Title']
+        if title_str is None:
+            record_id = self._record_id.format_display()
+            record_date = self._record_date.format_display()
+            report_title = '{TITLE}: {ID} ({DATE})'.format(TITLE=self.title, ID=record_id, DATE=record_date)
+        else:
+            report_title = self._format_value_str(str(title_str))
+
+        subtitle_str = report_def['Subtitle']
+        if subtitle_str is None:
+            report_subtitle = ''
+        else:
+            report_subtitle = self._format_value_str(str(subtitle_str))
 
         # Create the body of the report
         element_settings = report_def['ReportElements']
@@ -2879,8 +2894,9 @@ class DatabaseRecord:
                             try:
                                 display_df[column] = element.format_display_column(subset_df, column)
                             except Exception as e:
-                                logger.exception('RecordType {NAME}, Section {SEC}: failed to format display column "{COL}" - {ERR}'
-                                                 .format(NAME=record_type, SEC=section, COL=column, ERR=e))
+                                msg = 'failed to format display column "{COL}" - {ERR}'.format(COL=column, ERR=e)
+                                logger.exception('RecordType {NAME}, Section {SEC}: {MSG}'
+                                                 .format(NAME=record_type, SEC=section, MSG=msg))
 
                         # Index rows using grouping list in configuration
                         try:
@@ -2913,8 +2929,9 @@ class DatabaseRecord:
                                 try:
                                     col_total = element.summarize_column(total_col, indices=subset_df.index.tolist())
                                 except Exception as e:
-                                    logger.warning('RecordType {NAME}, Section {SEC}: failed to summarize column "{COL}" - {ERR}'
-                                                   .format(NAME=record_type, SEC=section, COL=total_col, ERR=e))
+                                    msg = 'failed to summarize column "{COL}" - {ERR}'.format(COL=total_col, ERR=e)
+                                    logger.warning('RecordType {NAME}, Section {SEC}: {MSG}'
+                                                   .format(NAME=record_type, SEC=section, MSG=msg))
                                 else:
                                     if isinstance(col_total, float):
                                         summ_value = '{:,.2f}'.format(col_total)
@@ -2942,9 +2959,9 @@ class DatabaseRecord:
 
                                     html_out = soup.decode()
                             else:
-                                logger.warning(
-                                    'RecordType {NAME}, Section {SEC}: the Totals column "{COL}" not found in list of output columns'
-                                    .format(NAME=report_title, SEC=section, COL=total_col))
+                                msg = 'Totals column "{COL}" not found in list of output columns'.format(COL=total_col)
+                                logger.warning('RecordType {NAME}, Section {SEC}: {MSG}'
+                                               .format(NAME=report_title, SEC=section, MSG=msg))
 
                     elem_value = html_out
                     element_template = {'type': 'table', 'title': elem_title, 'value': elem_value}
@@ -2962,184 +2979,49 @@ class DatabaseRecord:
 
             report_body[section] = section_template
 
-        template = {'title': report_title, 'body': report_body}
+        template = {'title': report_title, 'subtitle': report_subtitle, 'body': report_body}
 
         return template
 
-    def generate_report_old(self):
+    def save_report(self, filename):
         """
-        Generate a summary report for the record.
+        Generate the audit record report and save the report to the output file.
+
+        Arguments:
+            filename (str): save record report to the provided output file.
+
+        Returns:
+            success (bool): saving report was successful.
         """
-        record_id = self._record_id.format_display()
-        record_date = self._record_date.format_display()
-        report_title = self.title
+        css_url = settings.report_css
 
-        report_dict = {'title': '{TITLE}: {ID} ({DATE})'.format(TITLE=report_title, ID=record_id, DATE=record_date),
-                       'info': [],
-                       'sections': []}
+        logger.info('AuditRule {NAME}: saving audit record report to {FILE}'
+                    .format(NAME=self.name, FILE=filename))
 
-        report_def = self.report
-        if not report_def:
-            return report_dict
+        try:
+            template_vars = self.generate_report()
+        except Exception as e:
+            msg = 'failed to generate the record report - {ERR}'.format(ERR=e)
+            logger.exception('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-        logger.info('{NAME}: generating the template for the record report'.format(NAME=report_title))
+            return False
 
-        # Add Info elements to the report, if defined
-        info_def = report_def['Info']
-        for element_name in info_def:
-            logger.debug('{NAME}: formatting report element {ELEM}'.format(NAME=report_title, ELEM=element_name))
-            try:
-                element = self.fetch_element(element_name)
-            except KeyError:
-                logger.warning('{NAME}: report item {ELEM} is not a valid record element'
-                               .format(NAME=report_title, ELEM=element_name))
-                continue
+        env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.report_template))))
+        template = env.get_template(os.path.basename(os.path.abspath(settings.report_template)))
+        html_out = template.render(template_vars)
+        path_wkhtmltopdf = settings.wkhtmltopdf
+        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+        try:
+            pdfkit.from_string(html_out, filename, configuration=config, css=css_url,
+                               options={'enable-local-file-access': None})
+        except Exception as e:
+            msg = 'failed to generate the record report - unable to write the PDF ({ERR})'.format(ERR=e)
+            logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            success = False
+        else:
+            success = True
 
-            elem_title = element.description
-            elem_value = element.format_display()
-            if not elem_value or elem_value == "":
-                elem_value = 'N/A'
-
-            report_dict['info'].append((elem_title, elem_value))
-
-        # Add sub-sections to the report, if defined
-        section_def = report_def['Subsections']
-        for heading in section_def:
-            section = section_def[heading]
-
-            try:
-                heading_title = section['Title']
-            except KeyError:
-                heading_title = heading
-
-            logger.debug('{NAME}: formatting report heading {HEAD}'.format(NAME=report_title, HEAD=heading_title))
-
-            try:
-                component = section['Component']
-            except KeyError:
-                logger.warning('{NAME}, Heading {SEC}: missing required parameter "Component" in report configuration'
-                               .format(NAME=report_title, SEC=heading))
-                continue
-            else:
-                try:
-                    comp_table = self.fetch_element(component)
-                except KeyError:
-                    logger.warning('{NAME}, Heading {SEC}: unknown Component "{COMP}" defined in report configuration'
-                                   .format(NAME=report_title, SEC=heading, COMP=component))
-                    continue
-                else:
-                    if comp_table.etype != 'component':
-                        logger.warning('{NAME}, Heading {SEC}: Component "{COMP}" defined in report configuration must '
-                                       'be a component table'.format(NAME=report_title, SEC=heading, COMP=component))
-                        continue
-
-            # Subset table rows based on configured subset rules
-            try:
-                sub_rule = section['Subset']
-            except KeyError:
-                subset_df = comp_table.data()
-            else:
-                try:
-                    subset_df = comp_table.subset(sub_rule)
-                except ValueError:
-                    continue
-                else:
-                    if subset_df.empty:
-                        logger.warning('{NAME}, Heading {SEC}: sub-setting on rule "{SUB}" '
-                                       'removed all records'.format(NAME=report_title, SEC=heading, SUB=sub_rule))
-                        continue
-
-            # Select columns configured
-            try:
-                subset_df = subset_df[section['Columns']]
-            except KeyError as e:
-                logger.warning('{NAME}, Heading {SEC}: unknown column provided to the report configuration - {ERR}'
-                               .format(NAME=report_title, SEC=heading, ERR=e))
-                continue
-
-            if subset_df.empty:
-                logger.warning('{NAME}, Heading {SEC}: no records remaining after sub-setting'
-                               .format(NAME=report_title, SEC=heading))
-                html_out = '<p>N/A</p>'
-                report_dict['sections'].append((heading_title, html_out))
-
-                continue
-
-            # Format table for display
-            display_df = subset_df.copy()
-            for column in subset_df.columns:
-                try:
-                    display_df[column] = comp_table.format_display_column(subset_df, column)
-                except Exception as e:
-                    logger.exception('{NAME}, Heading {SEC}: failed to format column "{COL}" - {ERR}'
-                                     .format(NAME=report_title, SEC=heading, COL=column, ERR=e))
-
-            # Index rows using grouping list in configuration
-            try:
-                grouping = section['Group']
-            except KeyError:
-                grouped_df = display_df
-            else:
-                grouped_df = display_df.set_index(grouping).sort_index()
-
-            html_str = grouped_df.to_html(header=False, index_names=False, float_format='{:,.2f}'.format,
-                                          sparsify=True, na_rep='')
-
-            # Highlight errors in html string
-            annotations = comp_table.annotate_rows(grouped_df.reset_index())
-            colors = {i: comp_table.annotation_rules[j]['BackgroundColor'] for i, j in annotations.items()}
-            try:  # colors should be a dictionary of row index with matching color
-                html_out = replace_nth(html_str, '<tr>', '<tr style="background-color: {}">', colors)
-            except Exception as e:
-                logger.warning('{NAME}, Heading {SEC}: failed to annotate output - {ERR}'
-                               .format(NAME=report_title, SEC=heading, ERR=e))
-                html_out = html_str
-
-            # Add summary totals
-            try:
-                total_col = section['Totals']
-            except KeyError:
-                pass
-            else:
-                if total_col in subset_df.columns:
-                    try:
-                        col_total = comp_table.summarize_column(total_col, indices=subset_df.index.tolist())
-                    except Exception as e:
-                        logger.warning('{NAME}, Heading {SEC}: failed to summarize column "{COL}" - {ERR}'
-                                       .format(NAME=report_title, SEC=heading, COL=total_col, ERR=e))
-                    else:
-                        if isinstance(col_total, float):
-                            summ_value = '{:,.2f}'.format(col_total)
-                        else:
-                            summ_value = '{}'.format(col_total)
-
-                        soup = BeautifulSoup(html_out, 'html.parser')
-
-                        # Add a totals footer to the table
-                        footer = soup.new_tag('tfoot')
-                        footer_row = soup.new_tag('tr')
-                        footer_header = soup.new_tag('td')
-                        footer_header['id'] = 'total'
-                        footer_header['colspan'] = '{}'.format(subset_df.shape[1] - 1)
-                        footer_header['style'] = 'text-align:right; font-weight:bold;'
-                        footer_header.string = 'Total:'
-                        footer_row.append(footer_header)
-
-                        footer_data = soup.new_tag('td')
-                        footer_data.string = summ_value
-                        footer_row.append(footer_data)
-
-                        footer.append(footer_row)
-                        soup.table.append(footer)
-
-                        html_out = soup.decode()
-                else:
-                    logger.warning('{NAME}, Heading {SEC}: Totals column "{COL}" not found in list of output columns'
-                                   .format(NAME=report_title, SEC=heading, COL=total_col))
-
-            report_dict['sections'].append((heading_title, html_out))
-
-        return report_dict
+        return success
 
     def layout(self, size, padding: tuple = None, view_only: bool = False):
         """

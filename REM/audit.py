@@ -2,14 +2,11 @@
 REM transaction audit configuration classes and functions. Includes audit rules, audit objects, and rule parameters.
 """
 import datetime
-import os
 import re
 from random import randint
 
 import PySimpleGUI as sg
 import pandas as pd
-import pdfkit
-from jinja2 import Environment, FileSystemLoader
 
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
@@ -18,7 +15,7 @@ import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
-from REM.client import logger, settings, user
+from REM.client import logger, settings
 
 
 class AuditRule:
@@ -144,15 +141,7 @@ class AuditRule:
             except KeyError:
                 self.record_mapping = {}
 
-        #db_record = settings.records.fetch_rule(self.record_type)
-        #self.record = mod_records.DatabaseRecord(self.record_type, db_record.record_layout, level=0)
-        #self.record_data = self.record.export_values()
         self.record_data = {}
-
-        try:
-            self._title = entry['Title']
-        except KeyError:
-            self._title = '{} Summary'.format(name)
 
         self.in_progress = False
 
@@ -428,10 +417,8 @@ class AuditRule:
 
             if record is not None:  # audit accepted by the user
                 # Get output file from user
-                report_title = self.update_title()
-
-                title = report_title.replace(' ', '_')
-                outfile = sg.popup_get_file('', title='Save As', default_path=title, save_as=True,
+                default_filename = '{}_{}'.format(record.record_id(display=True), record.record_date(display=True))
+                outfile = sg.popup_get_file('', title='Save Report As', default_path=default_filename, save_as=True,
                                             default_extension='pdf', no_window=True,
                                             file_types=(('PDF - Portable Document Format', '*.pdf'),))
 
@@ -443,12 +430,12 @@ class AuditRule:
 
                 # Save the audit record and audit report
                 try:
-                    save_status = self.save_record(record)
+                    save_status = record.save()
                 except Exception as e:
                     msg = 'database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)
 
-                    raise
+                    return current_rule
                 else:
                     if save_status is False:
                         msg = 'Database save failed'
@@ -457,17 +444,19 @@ class AuditRule:
                         return current_rule
 
                 try:
-                    self.save_report(record, outfile, title=report_title)
+                    report_status = record.save_report(outfile)
                 except Exception as e:
                     msg = 'failed to save the audit report to {FILE}'.format(FILE=outfile)
                     logger.exception('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                     mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
-
-                    return current_rule
                 else:
-                    msg = 'audit record was successfully saved to the database'
-                    logger.info('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                    mod_win2.popup_notice(msg)
+                    if report_status is False:
+                        msg = 'failed to save the audit report to {FILE}'.format(FILE=outfile)
+                        mod_win2.popup_error('{MSG} - see log for details'.format(MSG=msg))
+                    else:
+                        msg = 'audit record was successfully saved to the database'
+                        logger.info('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                        mod_win2.popup_notice(msg)
 
                 # Reset rule elements
                 current_rule = self.reset_rule(window, current=True)
@@ -703,47 +692,6 @@ class AuditRule:
         else:
             return None
 
-    def update_title(self):
-        """
-        Update summary panel title to include audit parameters.
-        """
-        params = self.parameters
-
-        # Update summary title with parameter values, if specified in title format
-        try:
-            title_components = re.findall(r'{(.*?)}', self._title)
-        except TypeError:
-            title_components = []
-        else:
-            logger.debug('AuditRule {NAME}: report components are {COMPS}'
-                         .format(NAME=self.name, COMPS=title_components))
-
-        title_params = {}
-        for param in params:
-            param_col = param.name
-
-            # Check if parameter composes part of title
-            if param_col in title_components:
-                display_value = param.format_display()
-                logger.debug('AuditRule {NAME}: adding parameter value {VAL} to title'
-                             .format(NAME=self.name, VAL=display_value))
-                title_params[param_col] = display_value
-            else:
-                logger.warning('AuditRule {NAME}: parameter {PARAM} not found in title'
-                               .format(NAME=self.name, PARAM=param_col))
-
-        try:
-            summ_title = self._title.format(**title_params)
-        except KeyError as e:
-            logger.error('AuditRule {NAME}: formatting summary title failed due to {ERR}'
-                         .format(NAME=self.name, ERR=e))
-            summ_title = self._title
-
-        logger.info('AuditRule {NAME}: formatted summary title is {TITLE}'
-                    .format(NAME=self.name, TITLE=summ_title))
-
-        return summ_title
-
     def reset_parameters(self, window):
         """
         Reset audit rule parameter values to default.
@@ -817,89 +765,6 @@ class AuditRule:
 
         return exists
 
-    def save_record(self, record, statements: dict = None):
-        """
-        Save the audit record to the program database defined in the configuration file.
-
-        Arguments:
-            record (DatabaseRecord): audit record.
-
-            statements (dict): optional dictionary of transaction statements to add to.
-
-        Returns:
-            success (bool): saving records to the database was successful.
-
-        """
-        # Prepare to export associated deposit records for the relevant account records
-        if not statements:
-            statements = {}
-
-        # Export the audit record
-        record_type = record.name
-        record_id = record.record_id()
-
-        try:
-            statements = record.prepare_save_statements(statements=statements, save_all=True)
-        except Exception as e:
-            msg = 'failed to save audit record {ID} of type {TYPE} to the database' \
-                .format(TYPE=record_type, ID=record_id)
-            logger.exception('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-
-            return False
-
-        logger.info('AuditRule {NAME}: saving audit record {ID} and associated records'
-                    .format(NAME=self.name, ID=record_id))
-        sstrings = []
-        psets = []
-        for i, j in statements.items():
-            sstrings.append(i)
-            psets.append(j)
-
-        success = user.write_db(sstrings, psets)
-        #success = True
-        print(statements)
-
-        return success
-
-    def save_report(self, record, filename, title: str = None):
-        """
-        Generate the summary report and save the report to the output file.
-
-        Arguments:
-            record (DatabaseRecord): audit record.
-
-            filename (str): save report to file.
-
-            title (str): name of the report [Default: generate from audit parameters].
-
-        Returns:
-            success (bool): saving report was successful.
-        """
-        css_url = settings.report_css
-        report_title = title if title else self.update_title()
-
-        logger.info('AuditRule {NAME}: saving summary report {TITLE} to {FILE}'
-                    .format(NAME=self.name, TITLE=report_title, FILE=filename))
-
-        template_vars = record.generate_report()
-
-        env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.report_template))))
-        template = env.get_template(os.path.basename(os.path.abspath(settings.report_template)))
-        html_out = template.render(template_vars)
-        path_wkhtmltopdf = settings.wkhtmltopdf
-        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-        try:
-            pdfkit.from_string(html_out, filename, configuration=config, css=css_url,
-                               options={'enable-local-file-access': None})
-        except Exception as e:
-            logger.error('AuditRule {NAME}: writing to PDF failed - {ERR}'
-                         .format(NAME=self.name, ERR=e))
-            success = False
-        else:
-            success = True
-
-        return success
-
     def map_summary(self):
         """
         Populate the audit record elements with transaction summary values.
@@ -913,7 +778,7 @@ class AuditRule:
                 summary_value = summary[summary_column]
                 summary_map['{TBL}.{COL}'.format(TBL=tab_name, COL=summary_column)] = summary_value
 
-        logger.debug('AuditRecord {NAME}: mapping transaction summaries to audit record elements'
+        logger.debug('AuditRule {NAME}: mapping transaction summaries to audit record elements'
                      .format(NAME=self.name))
 
         # Map audit totals columns to transaction table summaries
@@ -923,11 +788,11 @@ class AuditRule:
             try:
                 summary_total = mod_dm.evaluate_operation(summary_map, mapper)
             except Exception as e:
-                logger.warning('AuditRecord {NAME}: failed to evaluate summary totals - {ERR}'
+                logger.warning('AuditRule {NAME}: failed to evaluate summary totals - {ERR}'
                                .format(NAME=self.name, ERR=e))
                 summary_total = 0
 
-            logger.debug('AuditRecord {NAME}: adding {SUMM} to column {COL}'
+            logger.debug('AuditRule {NAME}: adding {SUMM} to column {COL}'
                          .format(NAME=self.name, SUMM=summary_total, COL=column))
 
             self.record_data[column] = summary_total
@@ -940,7 +805,7 @@ class AuditRule:
             record (DatabaseRecord): audit record.
         """
         pd.set_option('display.max_columns', None)
-        logger.debug('AuditRecord {NAME}: creating component records from the transaction records'
+        logger.debug('AuditRule {NAME}: creating component records from the transaction records'
                      .format(NAME=self.name))
 
         # Map transaction data to transaction records
@@ -951,12 +816,12 @@ class AuditRule:
             try:
                 dest_element = record.fetch_element(destination)
             except KeyError:
-                logger.warning('AuditRecord {NAME}: failed to map transactions for destination {COMP} - {COMP} is not '
+                logger.warning('AuditRule {NAME}: failed to map transactions for destination {COMP} - {COMP} is not '
                                'an audit record element'.format(NAME=self.name, COMP=destination))
                 continue
             else:
                 if not dest_element.is_type('component'):
-                    logger.warning('AuditRecord {NAME}: failed to map transactions for destination {COMP} - '
+                    logger.warning('AuditRule {NAME}: failed to map transactions for destination {COMP} - '
                                    'audit record element {COMP} must be an element of type "component_table"'
                                    .format(NAME=self.name, COMP=destination))
                     continue
@@ -971,7 +836,7 @@ class AuditRule:
                 try:
                     tab = self.fetch_tab(transaction, by_key=False)
                 except KeyError:
-                    logger.warning('AuditRecord {NAME}: failed to map transactions from transaction table {TBL} to '
+                    logger.warning('AuditRule {NAME}: failed to map transactions from transaction table {TBL} to '
                                    'audit record element {COMP} - unknown transaction table {TBL}'
                                    .format(NAME=self.name, TBL=transaction, COMP=destination))
                     continue
@@ -983,7 +848,7 @@ class AuditRule:
                     try:
                         column_map = rule_entry['ColumnMapping']
                     except KeyError:
-                        logger.warning('AuditRecord {NAME}: failed to map transactions from transaction table {TBL} to '
+                        logger.warning('AuditRule {NAME}: failed to map transactions from transaction table {TBL} to '
                                        'audit record element {DEST} - no data fields were selected for mapping'
                                        .format(NAME=self.name, TBL=transaction, DEST=destination))
                         continue
@@ -998,7 +863,7 @@ class AuditRule:
                         add_df = tab.table.subset(subset_rule)
 
                     if add_df.empty:
-                        logger.debug('AuditRecord {NAME}: no records remaining from transaction table {REF} to add '
+                        logger.debug('AuditRule {NAME}: no records remaining from transaction table {REF} to add '
                                      'to audit record element {DEST} based on rule {RULE}'
                                      .format(NAME=self.name, REF=transaction, DEST=destination, RULE=subset_rule))
                         continue
@@ -1016,8 +881,6 @@ class AuditRule:
                             add_df[default_col] = default_value
 
                     # Add record to the components table
-                    print('adding transactions from {} to {} component dataframe:'.format(transaction, destination))
-                    print(add_df)
                     comp_df = comp_df.append(add_df, ignore_index=True)
 
             # Remove NA columns - required when merging
@@ -1026,19 +889,16 @@ class AuditRule:
             # Merge records, if applicable
             if 'Merge' in dest_entry:
                 merge_on = [i for i in comp_df.columns if i not in dest_entry['Merge']]
-                logger.debug('AuditRecord {NAME}: merging new audit record element {DEST} components on columns {COLS}'
+                logger.debug('AuditRule {NAME}: merging new audit record element {DEST} components on columns {COLS}'
                              .format(NAME=self.name, DEST=destination, COLS=merge_on))
-                print(comp_df)
                 comp_df = comp_df.groupby(merge_on).sum().reset_index()
 
             # Add transaction records to the set of transaction records that will get mapped to the audit component
             # records
-            logger.debug('AuditRecord {NAME}: creating audit record element {DEST} components from transaction records'
+            logger.debug('AuditRule {NAME}: creating audit record element {DEST} components from transaction records'
                          .format(NAME=self.name, DEST=destination))
-            print(comp_df)
             if not comp_df.empty:
                 final_df = record.create_components(dest_element, record_data=comp_df)
-                print(final_df)
                 dest_element.append(final_df)
 
         return record

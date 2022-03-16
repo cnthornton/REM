@@ -6,14 +6,11 @@ missing data, the debugger, and the login window.
 import datetime
 import gc
 import textwrap
-import os
 
 import PySimpleGUI as sg
 import dateutil
 import numpy as np
 import pandas as pd
-import pdfkit
-from jinja2 import Environment, FileSystemLoader
 
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
@@ -225,9 +222,9 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     # User permissions
     user_priv = user.access_permissions()
     savable = (True if record.permissions['edit'] in user_priv and record_level < 1 and view_only is False and
-               modify_database is True else False)
+                       modify_database is True else False)
     deletable = (True if record.permissions['delete'] in user_priv and record_level < 1 and view_only is False and
-                 modify_database is True and record.new is False else False)
+                         modify_database is True and record.new is False else False)
     printable = True if record.report is not None and record.permissions['report'] in user_priv else False
 
     # Window Title
@@ -307,7 +304,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     record_w = win_w if win_w >= min_w else min_w
     record_h = win_h - bffr_h if win_h >= min_h else min_h
-    #record.resize(window, size=(record_w, record_h))
+    # record.resize(window, size=(record_w, record_h))
 
     record.update_display(window, size=(record_w, record_h))
 
@@ -421,40 +418,24 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
         # Generate a record report
         if event == '-REPORT-':
+            default_filename = '{}_{}'.format(record.record_id(display=True), record.record_date(display=True))
             outfile = sg.popup_get_file('', title='Save Report As', save_as=True, default_extension='pdf',
-                                        no_window=True, file_types=(('PDF - Portable Document Format', '*.pdf'),))
+                                        default_path=default_filename, no_window=True,
+                                        file_types=(('PDF - Portable Document Format', '*.pdf'),))
 
             if not outfile:
                 continue
 
-            css_url = settings.report_css
-
             try:
-                template_vars = record.generate_report()
+                save_report = record.save_report(outfile)
             except Exception as e:
-                msg = 'failed to generate the record report - {ERR}'.format(ERR=e)
-                logger.exception('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
-                popup_error(msg)
-
-                continue
-
-            env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.abspath(settings.report_template))))
-            template = env.get_template(os.path.basename(os.path.abspath(settings.report_template)))
-            html_out = template.render(template_vars)
-            path_wkhtmltopdf = settings.wkhtmltopdf
-            config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-            try:
-                pdfkit.from_string(html_out, outfile, configuration=config, css=css_url,
-                                   options={'enable-local-file-access': None})
-            except Exception as e:
-                msg = 'failed to generate the record {ID} report - unable to write the PDF'.format(ID=record_id)
-                popup_error(msg)
-                logger.error('Record {ID}: failed to generate the record report - {ERR}'
-                             .format(ID=record_id, ERR=e))
+                msg = 'failed to generate the record report'
+                logger.exception('Record {ID}: {MSG} - {ERR}'.format(ID=record_id, MSG=msg, ERR=e))
+                popup_error('{MSG} - see log for details'.format(MSG=msg))
             else:
-                msg = 'record report {OUTFILE} successfully written'.format(OUTFILE=outfile)
-                logger.debug('Record {ID}: {MSG}'.format(ID=record_id, MSG=msg))
-                popup_notice(msg)
+                if not save_report:
+                    msg = 'failed to generate the record report'
+                    popup_error('{MSG} - see log for details'.format(MSG=msg))
 
             continue
 
@@ -606,7 +587,7 @@ def parameter_window(account, win_size: tuple = None):
             elif param_etype == 'checkbox':
                 param_class = mod_param.DataParameterCheckbox
             else:
-                msg = 'unknown element type "{TYPE}" provided to parameter group {GROUP} parameter {PARAM}'\
+                msg = 'unknown element type "{TYPE}" provided to parameter group {GROUP} parameter {PARAM}' \
                     .format(TYPE=param_etype, GROUP=pgroup_name, PARAM=param_name)
                 logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
 
@@ -769,7 +750,7 @@ def parameter_window(account, win_size: tuple = None):
             continue
 
         # Hide account parameter groups removed by the user
-        #if event in discard_bttns:
+        # if event in discard_bttns:
         #    # Find the parameter group to hide
         #    discard_pgroup = discard_bttns[event]
 
@@ -821,9 +802,9 @@ def add_note_window(note: str = None):
                     sg.Button('Cancel', key=cancel_key, image_size=mod_const.BTTN_SIZE, border_width=0,
                               button_color=(bttn_text_col, bg_col))]]
 
-    #width_key = '-WIDTH-'
+    # width_key = '-WIDTH-'
     elem_key = '-NOTE-'
-    #elem_layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
+    # elem_layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
     #               [sg.Multiline('', key=elem_key, size=(width, nrow), font=font,
     #                             background_color=bg_col, text_color=text_col, border_width=1)]]
     elem_layout = [[sg.Multiline(note_text, key=elem_key, size=(width, nrow), font=font, background_color=bg_col,
@@ -843,7 +824,7 @@ def add_note_window(note: str = None):
     screen_w, screen_h = window.get_screen_dimensions()
     win_w = int(screen_w * 0.5)
 
-    #window[width_key].set_size((win_w, None))
+    # window[width_key].set_size((win_w, None))
     window[elem_key].expand(expand_x=True, expand_y=True)
 
     window = center_window(window)
@@ -865,7 +846,7 @@ def add_note_window(note: str = None):
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            #window[width_key].set_size((win_w, None))
+            # window[width_key].set_size((win_w, None))
             window[elem_key].expand(expand_x=True, expand_y=True)
 
             current_w, current_h = (win_w, win_h)
@@ -875,7 +856,7 @@ def add_note_window(note: str = None):
         # Save parameter settings
         if event in (save_key, '-HK_ENTER-'):
             note = values[elem_key].strip()
-            #note = note_text if note_text != '' else None
+            # note = note_text if note_text != '' else None
 
             break
 
@@ -893,12 +874,12 @@ def database_importer_window(win_size: tuple = None):
     """
     pd.set_option('display.max_columns', None)
 
-    #is_numeric_dtype = pd.api.types.is_numeric_dtype
-    #is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+    # is_numeric_dtype = pd.api.types.is_numeric_dtype
+    # is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
     relativedelta = dateutil.relativedelta.relativedelta
     strptime = datetime.datetime.strptime
 
-    #dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64, 'time': np.datetime64,
+    # dtype_map = {'date': np.datetime64, 'datetime': np.datetime64, 'timestamp': np.datetime64, 'time': np.datetime64,
     #             'float': float, 'decimal': float, 'dec': float, 'double': float, 'numeric': float, 'money': float,
     #             'int': 'Int64', 'integer': 'Int64', 'bit': 'Int8', 'tinyint': 'Int8',
     #             'bool': bool, 'boolean': bool,
@@ -911,9 +892,9 @@ def database_importer_window(win_size: tuple = None):
                  'char': np.object_, 'varchar': np.object_, 'binary': np.object_, 'varbinary': np.object_,
                  'tinytext': np.object_, 'text': np.object_, 'string': np.object_}
 
-    #oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
+    # oper_map = {'+': 'addition', '-': 'subtraction', '/': 'division', '*': 'multiplication', '%': 'modulo operation'}
 
-    #math_operators = ('+', '-', '*', '/', '%')
+    # math_operators = ('+', '-', '*', '/', '%')
     date_types = settings.supported_date_dtypes
 
     # Layout settings
@@ -1088,7 +1069,7 @@ def database_importer_window(win_size: tuple = None):
 
                 thousands_sep = values['-TSEP-']
                 if len(thousands_sep) > 1:
-                    msg = 'unsupported character "{SEP}" provided as the thousands separator'\
+                    msg = 'unsupported character "{SEP}" provided as the thousands separator' \
                         .format(SEP=values['-TSEP-'])
                     popup_notice(msg)
                     logger.warning(msg)
@@ -1115,7 +1096,7 @@ def database_importer_window(win_size: tuple = None):
                 try:
                     date_format = settings.format_date_str(values['-DATE_FORMAT-'])
                 except TypeError as e:
-                    msg = 'unaccepted format "{FMT}" provided to the date format parameter'\
+                    msg = 'unaccepted format "{FMT}" provided to the date format parameter' \
                         .format(FMT=values['-DATE_FORMAT-'])
                     popup_notice(msg)
                     logger.warning('{MSG} - {ERR}'.format(MSG=msg, ERR=e))
@@ -1216,7 +1197,7 @@ def database_importer_window(win_size: tuple = None):
                         for tbl_column in selected_columns:
                             if tbl_column not in import_df.columns.tolist():
                                 missing_cols.append(tbl_column)
-                        msg = 'mapped column(s) "{COL}" not found in database table {TBL}'\
+                        msg = 'mapped column(s) "{COL}" not found in database table {TBL}' \
                             .format(COL=','.join(missing_cols), TBL=table)
                         popup_error(msg)
                         logger.warning(msg)
@@ -1230,11 +1211,16 @@ def database_importer_window(win_size: tuple = None):
                         if coltype in date_types:  # need to strip the date offset, if any
                             try:
                                 if offset_oper == '+':
-                                    formatted_values = final_df[selected_column].apply(lambda x: (strptime(x, date_format) - relativedelta(years=+date_offset)).strftime(settings.date_format))
+                                    formatted_values = final_df[selected_column].apply(lambda x: (
+                                                strptime(x, date_format) - relativedelta(years=+date_offset)).strftime(
+                                        settings.date_format))
                                 else:
-                                    formatted_values = final_df[selected_column].apply(lambda x: (strptime(x, date_format) + relativedelta(years=+date_offset)).strftime(settings.date_format))
+                                    formatted_values = final_df[selected_column].apply(lambda x: (
+                                                strptime(x, date_format) + relativedelta(years=+date_offset)).strftime(
+                                        settings.date_format))
                             except Exception as e:
-                                msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}'.format(COL=selected_column, ERR=e)
+                                msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}'.format(
+                                    COL=selected_column, ERR=e)
                                 print(final_df[selected_column])
                                 popup_error(msg)
                                 logger.exception(msg)
@@ -1245,7 +1231,8 @@ def database_importer_window(win_size: tuple = None):
                             try:
                                 formatted_values = mod_dm.format_values(final_df[selected_column], coltype)
                             except Exception as e:
-                                msg = 'unable to convert values in column "{COL}" to "{FMT}" - {ERR}'.format(COL=selected_column, FMT=coltype, ERR=e)
+                                msg = 'unable to convert values in column "{COL}" to "{FMT}" - {ERR}'.format(
+                                    COL=selected_column, FMT=coltype, ERR=e)
                                 print(final_df[selected_column])
                                 logger.exception(msg)
                                 popup_error(msg)
@@ -1292,9 +1279,10 @@ def database_importer_window(win_size: tuple = None):
                     # Create record IDs for each row in the final import table
                     record_entry = settings.records.fetch_rule(record_type, by_title=True)
                     try:
-                        #date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
-                        date_list = pd.to_datetime(subset_df[settings.date_field].fillna(pd.NaT), errors='coerce', format=settings.date_format, utc=False)
-                        #date_list = subset_df[settings.date_field]
+                        # date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
+                        date_list = pd.to_datetime(subset_df[settings.date_field].fillna(pd.NaT), errors='coerce',
+                                                   format=settings.date_format, utc=False)
+                        # date_list = subset_df[settings.date_field]
                     except KeyError:
                         logger.warning('the record date field has not been set - defaulting to current date')
                         date_list = [datetime.datetime.now()] * subset_df.shape[0]
@@ -1344,7 +1332,7 @@ def database_importer_window(win_size: tuple = None):
                         try:
                             subset_df.loc[:, elem_col] = mod_dm.evaluate_operation(subset_df, oper_str)
                         except Exception as e:
-                            msg = 'failed to modify data column "{COL}" based on modifier rule "{RULE}" - {ERR}'\
+                            msg = 'failed to modify data column "{COL}" based on modifier rule "{RULE}" - {ERR}' \
                                 .format(COL=elem_col, RULE=oper_str, ERR=e)
                             popup_error(msg)
                             logger.warning(msg)
@@ -1352,7 +1340,7 @@ def database_importer_window(win_size: tuple = None):
                             continue
 
                         # Create the evaluation string
-                        #if is_numeric_dtype(elem_obj):
+                        # if is_numeric_dtype(elem_obj):
                         #    eval_str = 'subset_df["{COL}"] {OPER} {VAL}' \
                         #        .format(COL=elem_col, OPER=elem_oper, VAL=elem_val_fmt)
                         #    try:
@@ -1370,7 +1358,7 @@ def database_importer_window(win_size: tuple = None):
                         #    else:
                         #        logger.info('successfully modified column "{COL}" values based on "{RULE}"'
                         #                    .format(COL=elem_col, RULE=elem_num + 1))
-                        #elif is_datetime_dtype(elem_obj):
+                        # elif is_datetime_dtype(elem_obj):
                         #    if elem_oper == '+':
                         #        offset = relativedelta(days=+elem_val_fmt)
                         #    elif elem_oper == '-':
@@ -1394,7 +1382,7 @@ def database_importer_window(win_size: tuple = None):
                         #    else:
                         #        logger.info('successfully modified column "{COL}" values on rule "{RULE}"'
                         #                    .format(COL=elem_col, RULE=elem_num + 1))
-                        #else:
+                        # else:
                         #    msg = 'failed to modify column "{COL}" values with rule "{RULE}" - only columns with the ' \
                         #          'numeric or date data type can be modified'.format(RULE=elem_num + 1, COL=elem_col)
                         #    popup_error(msg)
