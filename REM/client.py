@@ -768,8 +768,6 @@ class SettingsManager:
                           [sg.Col([[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)],
                                    [sg.Text('Record Report Template:', pad=(0, (0, pad_el)), font=main_font,
                                             background_color=bg_col)],
-                                   [sg.Text('Audit Report Template:', pad=(0, (0, pad_el)), font=main_font,
-                                            background_color=bg_col)],
                                    [sg.Text('Report Stylesheet:', pad=(0, (0, pad_el)), font=main_font,
                                             background_color=bg_col)]],
                                   pad=(pad_v, pad_el), background_color=bg_col),

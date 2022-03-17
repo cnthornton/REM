@@ -2219,7 +2219,7 @@ def edit_settings(win_size: tuple = None):
 
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
                     '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname',
-                    '-DISPLAY_DATE-': 'display_date', '-AUDIT_TEMPLATE-': 'audit_template'}
+                    '-DISPLAY_DATE-': 'display_date'}
     for element_key in element_keys:
         window[element_key].expand(expand_x=True)
 

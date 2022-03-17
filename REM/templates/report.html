@@ -24,7 +24,7 @@
         {% elif section['level'] == 2 %}
             <h4>{{section['title']}}</h4>
         {% else %}
-            <h2>{{section['title']}}</h2>
+            <h3>{{section['title']}}</h3>
         {% endif %}
         {% for element_name, element in section['elements'].items() %}
             {% if element['type'] == "table" %}

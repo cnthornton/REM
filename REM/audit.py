@@ -417,7 +417,10 @@ class AuditRule:
 
             if record is not None:  # audit accepted by the user
                 # Get output file from user
-                default_filename = '{}_{}'.format(record.record_id(display=True), record.record_date(display=True))
+                filename_params = [record.record_id(display=True)]
+                for param in self.parameters:
+                    filename_params.append(param.format_display())
+                default_filename = '_'.join(filename_params)
                 outfile = sg.popup_get_file('', title='Save Report As', default_path=default_filename, save_as=True,
                                             default_extension='pdf', no_window=True,
                                             file_types=(('PDF - Portable Document Format', '*.pdf'),))
