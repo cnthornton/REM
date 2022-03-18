@@ -433,7 +433,7 @@ class AuditRule:
 
                 # Save the audit record and audit report
                 try:
-                    save_status = record.save()
+                    save_status = record.save(save_all=True)
                 except Exception as e:
                     msg = 'database save failed - {ERR}'.format(ERR=e)
                     mod_win2.popup_error(msg)

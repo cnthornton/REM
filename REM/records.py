@@ -2537,7 +2537,7 @@ class DatabaseRecord:
             statements (dict): optional dictionary of transaction statement dictionary to add to.
 
         Returns:
-            success (bool): record deletion was successful.
+            success (bool): record delete was successful.
         """
         record_id = self.record_id()
 
@@ -2632,9 +2632,9 @@ class DatabaseRecord:
                 ref_data = refbox.data(edited_rows=True)
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
-            logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
-                         .format(ID=record_id, ASSOC=association_rule))
-            deleted_df = refbox.data(deleted_rows=True)
+            #logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
+            #             .format(ID=record_id, ASSOC=association_rule))
+            #deleted_df = refbox.data(deleted_rows=True)
 
         # Prepare to save record components
         try:
@@ -2697,20 +2697,23 @@ class DatabaseRecord:
 
         return statements
 
-    def save(self, statements: dict = None):
+    def save(self, statements: dict = None, save_all: bool = False):
         """
         Save the record and child records to the database.
 
         Arguments:
             statements (dict): optional dictionary of transaction statement dictionary to add to.
 
+            save_all (bool): save all record element values, regardless of whether they were edited or not
+                [Default: False]
+
         Returns:
-            success (bool): record deletion was successful.
+            success (bool): record save was successful.
         """
         record_id = self.record_id()
 
         try:
-            statements = self.prepare_save_statements(statements=statements)
+            statements = self.prepare_save_statements(statements=statements, save_all=save_all)
         except Exception as e:
             msg = 'failed to save record - {ERR}'.format(ERR=e)
             logger.exception('RecordType {NAME}: Record {ID}: {MSG}'.format(NAME=self.name, ID=record_id, MSG=msg))
