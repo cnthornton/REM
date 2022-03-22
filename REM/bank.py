@@ -1209,8 +1209,15 @@ class BankRule:
             run_comparison = False
 
         for assoc_acct_name in ref_map:
+            print('searching for matching entries between {} and {}'.format(self.current_account, assoc_acct_name))
             # Subset merged df to include only the association records with the given account name
             assoc_df = ref_df[ref_df['_Account_'] == assoc_acct_name]
+            if assoc_df.empty:
+                msg = 'no entries in association account {ASSOC} to compare to the entries in {ACCT}'\
+                    .format(ASSOC=assoc_acct_name, ACCT=self.current_account)
+                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                continue
 
             assoc_rules = ref_map[assoc_acct_name]
             failed_indices = set()
@@ -1220,6 +1227,7 @@ class BankRule:
                 # Compare reference column values to the record columns values and store in a comparison table
                 col_values = assoc_df[col].copy()
                 if run_comparison:
+                    print('creating a new comparison table')
                     pm = bool(int(rule_entry.get('PatternMatching', 0)))
                     ignore = rule_entry.get('IgnoreCharacters', None)
                     row_value = getattr(row, col)
@@ -1227,7 +1235,14 @@ class BankRule:
 
                     comp_df.loc[:, col] = col_match
                 else:
-                    col_match = comp_df[col]
+                    print('using an existing comparison table')
+                    try:
+                        col_match = comp_df.loc[assoc_df.index, col].fillna(False).astype(bool)
+                        #col_match = comp_df[col]
+                    except KeyError:
+                        print('extracting column {} comparisons at indices {}'.format(col, col_values.index.tolist()))
+                        print(comp_df)
+                        raise
 
                 # Select the value fields that will be used to compare records. All fields with expanded search level
                 # greater than current iteration level will be left flexible
@@ -1236,7 +1251,20 @@ class BankRule:
                     if col not in expanded_cols:
                         expanded_cols.append(col)
                 else:
-                    col_failed = col_values[~col_match].index.tolist()
+                    not_matched = ~col_match
+                    try:
+                        col_failed = col_values[not_matched.tolist()].index.tolist()
+                    except (TypeError, KeyError):
+                        print('comparison dataframe:')
+                        print(comp_df)
+                        print('matching columns:')
+                        print(col_match)
+                        print('not matching values:')
+                        print(not_matched.tolist())
+                        print(col_match.index.tolist())
+                        print('column {} values:'.format(col))
+                        print(col_values)
+                        raise
                     failed_indices.update(col_failed)
 
             # Find exact matches between account record and the associated account records using relevant cols
@@ -1302,9 +1330,20 @@ class BankRule:
             # Attempt to find the best matching record
             if not closest_match:  # one or more matches were found in previous iteration
                 # Find the best match by iterative field inclusion
+                msg = 'attempting to find the best match for row {ROW} through iterative field inclusion'\
+                    .format(ROW=row.name)
+                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                print('using current matches as the reference dataframe:')
+                print(matches)
+
+
                 results = self.expand_search(row, matches, ref_map, comp_df=comp_df, expand_level=expand_level + 1)
             else:  # zero matches were found in the previous iteration
                 # Find the best match by searching for nearest like value on the closest match fields
+                msg = 'attempting to find the best match for row {ROW} by searching for nearest value on fields ' \
+                      '{FIELDS}'.format(ROW=row.name, FIELDS=closest_match)
+                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
                 results = nearest_match(row, matches, closest_match)
                 if results.empty:
                     msg = 'multiple matches found for account {ACCT}, row {ROW} but enough specificity in the data ' \
@@ -1333,150 +1372,6 @@ class BankRule:
                     if len(warning) > 0:
                         warning.insert(0, 'Warning:')
                         results['_Warning_'] = '\n'.join(warning)
-
-        return results
-
-    def expand_search_new(self, row, ref_df, ref_map, expand_level: int = 0, closest_match: list = None):
-        """
-        Attempt to find matching records using iterative expansion of reference columns.
-
-        Arguments:
-            row (Series): record entry of interest.
-
-            ref_df (DataFrame): table of record entries to search the record entry against.
-
-            ref_map (dict): transaction associations.
-
-            expand_level (int): start the search for matching entries at the given expansion level [Default: 0].
-
-            closest_match (list): use these columns to find the closest match to the record entry.
-        """
-        is_string_dtype = pd.api.types.is_string_dtype
-
-        results = pd.Series()
-        ref_df['_Warning_'] = None
-
-        matches = pd.DataFrame(columns=ref_df.columns)
-        expanded_cols = []
-        for assoc_acct_name in ref_map:
-            # Subset merged df to include only the association records with the given account name
-            assoc_df = ref_df[ref_df['_Account_'] == assoc_acct_name]
-
-            assoc_rules = ref_map[assoc_acct_name]
-            failed_indices = set()
-            for col in assoc_rules:
-                rule_entry = assoc_rules[col]
-
-                # Select the value fields that will be used to compare records. All fields with expanded search level
-                # greater than current iteration level will be left flexible
-                param_level = rule_entry.get('ExpandLevel', 0)
-                if param_level > expand_level:  # comparison field has an expand level higher than current search level
-                    if col not in expanded_cols:
-                        expanded_cols.append(col)
-
-                    continue
-
-                match_pattern = bool(int(rule_entry.get('PatternMatching', 0)))
-                row_value = getattr(row, col)
-                col_values = assoc_df[col]
-                if match_pattern and is_string_dtype(col_values):
-                    col_match = col_values.str.contains(str(row_value))
-                else:
-                    col_match = col_values.eq(row_value)
-
-                col_failed = col_values[~col_match].index.tolist()
-                failed_indices.update(col_failed)
-
-            # Find exact matches between account record and the associated account records using relevant cols
-            acct_matches = assoc_df[~assoc_df.index.isin(failed_indices)]
-            matches = matches.append(acct_matches)
-
-        nmatch = matches.shape[0]
-        if nmatch == 0:  # if level > 0, return to the previous expand level and find the closest match
-            if expand_level > 0:
-                prev_level = expand_level - 1
-                expanded_cols = []
-                for assoc_acct_name in ref_map:
-                    assoc_rules = ref_map[assoc_acct_name]
-                    for col in assoc_rules:
-                        rule_entry = assoc_rules[col]
-
-                        param_level = rule_entry.get('ExpandLevel', 0)
-                        if param_level == expand_level:
-                            if col not in expanded_cols:
-                                expanded_cols.append(col)
-
-                msg = 'no matches found for account {ACCT}, row {ROW} at expanded search level {L} - returning to ' \
-                      'previous search level matches to find for the closest match on columns {COLS}' \
-                    .format(ACCT=self.current_account, ROW=row.name, L=expand_level, COLS=expanded_cols)
-                logger.info('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                results = self.expand_search(row, ref_df, ref_map, expand_level=prev_level, closest_match=expanded_cols)
-            else:
-                msg = 'no matches found for account {ACCT}, row {ROW} from an expanded search' \
-                    .format(ACCT=self.current_account, ROW=row.name)
-                logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-        elif nmatch == 1:  # potential match, add with a warning
-            results = matches.iloc[0].copy()
-
-            # Determine appropriate warning for the expanded search
-            acct_name = results['_Account_']
-            assoc_rules = ref_map[acct_name]
-
-            warning = ["Warning:"]
-            for column in expanded_cols:
-                try:
-                    rule_entry = assoc_rules[column]
-                except KeyError:
-                    logger.warning('BankRule {NAME}: column {COL} does not have a configured association parameter for '
-                                   'association account {ACCT}'.format(NAME=self.name, COL=column, ACCT=acct_name))
-                    continue
-
-                if getattr(row, column) != results[column]:
-                    alt_warn = 'values for expanded column {COL} do not match'.format(COL=column)
-                    col_warning = rule_entry.get('Warning', alt_warn)
-                    warning.append('- {}'.format(col_warning))
-
-            warning = '\n'.join(warning)
-            results['_Warning_'] = warning
-
-        elif nmatch > 1:  # need to increase specificity to get the best match by adding more comparison fields
-            msg = 'found more than one expanded match for account {ACCT}, row {ROW} at search level {L} - ' \
-                  'searching for the best match'.format(ACCT=self.current_account, ROW=row.name, L=expand_level)
-            logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            # Attempt to find the best matching record
-            if not closest_match:  # one or more matches were found in previous iteration
-                # Find the best match by iterative field inclusion
-                results = self.expand_search(row, matches, ref_map, expand_level=expand_level + 1)
-            else:  # zero matches were found in the previous iteration
-                # Find the best match by searching for nearest like value on the closest match fields
-                results = nearest_match(row, matches, closest_match)
-                if results.empty:
-                    msg = 'multiple matches found for account {ACCT}, row {ROW} but enough specificity in the data ' \
-                          'to narrow it down to one match'.format(ACCT=self.current_account, ROW=row.name)
-                    logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                else:
-                    # Determine appropriate warning for the nearest match search
-                    acct_name = results['_Account_']
-                    assoc_rules = ref_map[acct_name]
-
-                    warning = ["Warning:"]
-                    for closest_col in closest_match:
-                        try:
-                            rule_entry = assoc_rules[closest_col]
-                        except KeyError:
-                            logger.warning(
-                                'BankRule {NAME}: column {COL} does not have a configured association parameter for '
-                                'association account {ACCT}'.format(NAME=self.name, COL=closest_col, ACCT=acct_name))
-                            continue
-
-                        alt_warning = 'association is the result of searching for the closest match on "{}"'\
-                            .format(closest_col)
-                        col_warning = rule_entry.get('Warning2', alt_warning)
-                        warning.append('- {}'.format(col_warning))
-
-                    results['_Warning_'] = '\n'.join(warning)
 
         return results
 
