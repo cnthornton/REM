@@ -298,23 +298,28 @@ def importer_layout(win_size: tuple = None):
     # Element sizes
     bwidth = 0.5
     format_param_w = 14
-    format_desc_w = 24
+    #format_desc_w = 24
     frame_w = int(width * 0.85)
-    checkbox_pad = 5
+    #checkbox_pad = 5
 
     # Element selection options
+    #try:
+    #    db_tables = user.database_tables(settings.prog_db)
+    #except ValueError:
+    #    db_tables = []
+
+    #record_types = settings.records.print_rules(by_title=True)
+
     try:
-        db_tables = user.database_tables(settings.prog_db)
+        record_types = [i.title for i in settings.records.rules if user.check_permission(i.permissions['upload'])]
     except ValueError:
-        db_tables = []
+        record_types = []
 
     file_types = ['xls', 'csv/tsv']
     encodings = ['Default']
 
     header_req = ['Table Column Name', 'Data Type', 'Default Value']
     header_map = ['Table Column Name', 'Data Type', 'File Column Name']
-
-    record_types = settings.records.print_rules(by_title=True)
 
     cond_operators = ['=', '!=', '>', '<', '>=', '<=']
     math_operators = ['+', '-', '*', '/', '%', '^', '//']
@@ -488,13 +493,17 @@ def importer_layout(win_size: tuple = None):
           ],
                     pad=(pad_frame, (pad_v, pad_frame)), border_width=bwidth, background_color=bg_col,
                     title_color=select_col, relief='groove')]]
-    p2 = [[sg.Col([[sg.Text('Database Table:', pad=((0, pad_el), 0), background_color=bg_col),
-                    sg.Combo(db_tables, key='-TABLE-', size=(28, 1), pad=((0, pad_h), 0), enable_events=True,
-                             background_color=input_col),
-                    sg.Text('Record Type:', pad=((0, pad_el), 0), background_color=bg_col),
+    p2 = [[sg.Col([[sg.Text('Record Type:', pad=((0, pad_el), 0), background_color=bg_col),
                     sg.Combo(record_types, key='-RECORDTYPE-', size=(28, 1), pad=(0, 0),
                              enable_events=True, background_color=input_col)]],
                   pad=(pad_frame, (pad_frame, pad_v)), justification='l', background_color=bg_col)],
+          #[sg.Col([[sg.Text('Database Table:', pad=((0, pad_el), 0), background_color=bg_col),
+          #          sg.Combo(db_tables, key='-TABLE-', size=(28, 1), pad=((0, pad_h), 0), enable_events=True,
+          #                   background_color=input_col),
+          #          sg.Text('Record Type:', pad=((0, pad_el), 0), background_color=bg_col),
+          #          sg.Combo(record_types, key='-RECORDTYPE-', size=(28, 1), pad=(0, 0),
+          #                   enable_events=True, background_color=input_col)]],
+          #        pad=(pad_frame, (pad_frame, pad_v)), justification='l', background_color=bg_col)],
           [sg.Frame('Required Columns', [
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([

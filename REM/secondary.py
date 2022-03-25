@@ -15,6 +15,7 @@ import pandas as pd
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
 import REM.database as mod_db
+import REM.data_collections as mod_col
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
@@ -220,12 +221,18 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     font_h = mod_const.HEADING_FONT
 
     # User permissions
-    user_priv = user.access_permissions()
-    savable = (True if record.permissions['edit'] in user_priv and record_level < 1 and view_only is False and
-                       modify_database is True else False)
-    deletable = (True if record.permissions['delete'] in user_priv and record_level < 1 and view_only is False and
-                         modify_database is True and record.new is False else False)
-    printable = True if record.report is not None and record.permissions['report'] in user_priv else False
+    record_entry = settings.records.fetch_rule(record.name)
+    # user_priv = user.access_permissions()
+    # savable = (True if record.permissions['edit'] in user_priv and record_level < 1 and view_only is False and
+    #                   modify_database is True else False)
+    # deletable = (True if record.permissions['delete'] in user_priv and record_level < 1 and view_only is False and
+    #                     modify_database is True and record.new is False else False)
+    # printable = True if record.report is not None and record.permissions['report'] in user_priv else False
+    savable = (True if user.check_permission(record_entry.permissions['edit']) and record_level < 1 and view_only is
+               False and modify_database is True else False)
+    deletable = (True if user.check_permission(record_entry.permissions['delete']) and record_level < 1 and view_only is
+                 False and modify_database is True and record.new is False else False)
+    printable = True if record.report is not None else False
 
     # Window Title
     bffr_h = 2 + pad_el * 2
@@ -927,13 +934,14 @@ def database_importer_window(win_size: tuple = None):
     first_panel = 0
     last_panel = 2
 
-    req_df = pd.DataFrame(columns=['Table Column Name', 'Data Type', 'Default Value'])
-    map_df = pd.DataFrame(columns=['Table Column Name', 'Data Type', 'File Column Name'])
+    req_df = pd.DataFrame(columns=['Record Field', 'Data Type', 'Value'])
+    map_df = pd.DataFrame(columns=['Record Field', 'Data Type', 'File Column Name'])
 
-    table = None
+    #table = None
     record_ids = []
     record_entry = None
     subset_df = None
+    collection = None
     reserved_values = [settings.id_field, settings.edit_date, settings.editor_code,
                        settings.creation_date, settings.creator_code]
     listbox_values = []
@@ -968,17 +976,21 @@ def database_importer_window(win_size: tuple = None):
                 continue
 
         if event == '-IMPORT-':
-            if subset_df is None or table is None or record_entry is None:
+            #if subset_df is None or table is None or record_entry is None:
+            #    continue
+            if record_entry is None:
                 continue
 
             # Prepare the record insertion statements
+            export_df = collection.data()
             print('export df is:')
-            print(subset_df)
+            print(export_df)
 
             print('id field is {}'.format(settings.id_field))
             try:
-                statements = record_entry.save_database_records(subset_df.replace({np.nan: None}),
-                                                                id_field=settings.id_field, export_columns=False)
+                #statements = record_entry.save_database_records(subset_df.replace({np.nan: None}),
+                #                                                id_field=settings.id_field, export_columns=False)
+                statements = record_entry.save_database_records(export_df)
             except Exception as e:
                 msg = 'failed to upload {TYPE} record entries to the database - {ERR}' \
                     .format(TYPE=record_entry.name, ERR=e)
@@ -1105,52 +1117,70 @@ def database_importer_window(win_size: tuple = None):
 
             # Populate Preview table with top 10 and bottom 10 values from spreadsheet
             if next_panel == last_panel:
-                table = values['-TABLE-']
-                record_type = values['-RECORDTYPE-']
-                if not table:
-                    popup_notice('Please select a valid table from the "Table" dropdown')
-                    logger.warning('no database table selected in the "Table" dropdown')
-                    continue
-                elif not record_type:
+                collection.reset()
+                #table = values['-TABLE-']
+                #record_type = values['-RECORDTYPE-']
+                #if not table:
+                #    popup_notice('Please select a valid table from the "Table" dropdown')
+                #    logger.warning('no database table selected in the "Table" dropdown')
+                #    continue
+                #elif not record_type:
+                #    popup_notice('Please select a valid record type from the "Record Type" dropdown')
+                #    logger.warning('no record type selected in the "Record Type" dropdown')
+                #    continue
+                if not record_entry:
                     popup_notice('Please select a valid record type from the "Record Type" dropdown')
                     logger.warning('no record type selected in the "Record Type" dropdown')
+
                     continue
                 else:
                     # Specify the import column data types
-                    convert_map = {}
-                    for index, row in map_df.iterrows():
-                        fcolname = row['File Column Name']
-                        colname = row['Table Column Name']
+                    #convert_map = {}
+                    #for index, row in map_df.iterrows():
+                    #    fcolname = row['File Column Name']
+                    #    colname = row['Record Field']
 
-                        db_type = columns[colname][0]
-                        if db_type in date_types:
-                            continue
+                    #    db_type = columns[colname][0]
+                    #    if db_type in date_types:
+                    #        continue
 
-                        try:
-                            coltype = dtype_map[db_type.lower()]
-                        except KeyError:
-                            msg = 'database data type {DTYPE} for row {ROW} not in list of expected data types' \
-                                .format(DTYPE=db_type, ROW=index)
-                            logger.warning(msg)
-                            popup_notice(msg)
+                    #    try:
+                    #        coltype = dtype_map[db_type.lower()]
+                    #    except KeyError:
+                    #        msg = 'database data type {DTYPE} for row {ROW} not in list of expected data types' \
+                    #            .format(DTYPE=db_type, ROW=index)
+                    #        logger.warning(msg)
+                    #        popup_notice(msg)
 
-                            continue
-                        else:
-                            convert_map[fcolname] = coltype
+                    #        continue
+                    #    else:
+                    #        convert_map[fcolname] = coltype
 
                     # Import spreadsheet into dataframe
                     file_format = values['-FORMAT-']
+                    #if file_format == 'xls':
+                    #    formatting_options = {'convert_float': values['-INTS-'], 'parse_dates': False,
+                    #                          'skiprows': skiptop, 'skipfooter': skipbottom, 'header': header_row,
+                    #                          'thousands': thousands_sep, 'dtype': convert_map}
+                    #    reader = pd.read_excel
+                    #else:
+                    #    formatting_options = {'sep': values['-FSEP-'], 'skiprows': skiptop,
+                    #                          'skipfooter': skipbottom, 'header': header_row,
+                    #                          'thousands': thousands_sep, 'encoding': 'utf-8',
+                    #                          'error_bad_lines': False, 'parse_dates': False,
+                    #                          'skip_blank_lines': True, 'dtype': convert_map}
+                    #    reader = pd.read_csv
                     if file_format == 'xls':
                         formatting_options = {'convert_float': values['-INTS-'], 'parse_dates': False,
                                               'skiprows': skiptop, 'skipfooter': skipbottom, 'header': header_row,
-                                              'thousands': thousands_sep, 'dtype': convert_map}
+                                              'thousands': thousands_sep}
                         reader = pd.read_excel
                     else:
                         formatting_options = {'sep': values['-FSEP-'], 'skiprows': skiptop,
                                               'skipfooter': skipbottom, 'header': header_row,
                                               'thousands': thousands_sep, 'encoding': 'utf-8',
                                               'error_bad_lines': False, 'parse_dates': False,
-                                              'skip_blank_lines': True, 'dtype': convert_map}
+                                              'skip_blank_lines': True}
                         reader = pd.read_csv
 
                     logger.debug('formatting import file options: {}'.format(formatting_options))
@@ -1166,7 +1196,7 @@ def database_importer_window(win_size: tuple = None):
                         continue
 
                     # Rename columns based on mapping information
-                    col_mapper = pd.Series(map_df['Table Column Name'].values,
+                    col_mapper = pd.Series(map_df['Record Field'].values,
                                            index=map_df['File Column Name']).to_dict()
                     print('column mapping is:')
                     print(col_mapper)
@@ -1183,13 +1213,13 @@ def database_importer_window(win_size: tuple = None):
 
                     # Set values for the required / static columns.
                     for index, row in req_df.iterrows():
-                        column_name = row['Table Column Name']
-                        column_value = row['Default Value']
+                        column_name = row['Record Field']
+                        column_value = row['Value']
 
                         import_df.loc[:, column_name] = column_value
 
                     # Subset the imported data on the selected static and mapping columns
-                    selected_columns = req_df['Table Column Name'].append(map_df['Table Column Name'])
+                    selected_columns = req_df['Record Field'].append(map_df['Record Field'])
                     try:
                         final_df = import_df[selected_columns]
                     except KeyError:
@@ -1197,8 +1227,8 @@ def database_importer_window(win_size: tuple = None):
                         for tbl_column in selected_columns:
                             if tbl_column not in import_df.columns.tolist():
                                 missing_cols.append(tbl_column)
-                        msg = 'mapped column(s) "{COL}" not found in database table {TBL}' \
-                            .format(COL=','.join(missing_cols), TBL=table)
+                        msg = 'mapped column(s) "{COL}" not found in set of record {TYPE} fields' \
+                            .format(COL=','.join(missing_cols), TYPE=record_type)
                         popup_error(msg)
                         logger.warning(msg)
 
@@ -1212,11 +1242,11 @@ def database_importer_window(win_size: tuple = None):
                             try:
                                 if offset_oper == '+':
                                     formatted_values = final_df[selected_column].apply(lambda x: (
-                                                strptime(x, date_format) - relativedelta(years=+date_offset)).strftime(
+                                            strptime(x, date_format) - relativedelta(years=+date_offset)).strftime(
                                         settings.date_format))
                                 else:
                                     formatted_values = final_df[selected_column].apply(lambda x: (
-                                                strptime(x, date_format) + relativedelta(years=+date_offset)).strftime(
+                                            strptime(x, date_format) + relativedelta(years=+date_offset)).strftime(
                                         settings.date_format))
                             except Exception as e:
                                 msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}'.format(
@@ -1339,56 +1369,7 @@ def database_importer_window(win_size: tuple = None):
 
                             continue
 
-                        # Create the evaluation string
-                        # if is_numeric_dtype(elem_obj):
-                        #    eval_str = 'subset_df["{COL}"] {OPER} {VAL}' \
-                        #        .format(COL=elem_col, OPER=elem_oper, VAL=elem_val_fmt)
-                        #    try:
-                        #        subset_df[elem_col] = eval(eval_str)
-                        #    except SyntaxError:
-                        #        msg = 'failed to modify column "{COL}" values with rule "{NAME}" - invalid syntax in ' \
-                        #              'evaluation string {STR}'.format(COL=elem_col, NAME=elem_num + 1, STR=eval_str)
-                        #        popup_error(msg)
-                        #        logger.warning(msg)
-                        #    except NameError:
-                        #        msg = 'failed to modify column "{COL}" values with rule "{NAME}" - unknown column ' \
-                        #              'specified in the rule'.format(COL=elem_col, NAME=elem_num + 1)
-                        #        popup_error(msg)
-                        #        logger.warning(msg)
-                        #    else:
-                        #        logger.info('successfully modified column "{COL}" values based on "{RULE}"'
-                        #                    .format(COL=elem_col, RULE=elem_num + 1))
-                        # elif is_datetime_dtype(elem_obj):
-                        #    if elem_oper == '+':
-                        #        offset = relativedelta(days=+elem_val_fmt)
-                        #    elif elem_oper == '-':
-                        #        offset = relativedelta(days=-elem_val_fmt)
-                        #    else:
-                        #        msg = 'failed to modify column "{COL}" values with rule "{RULE}" - operator "{OPER}" ' \
-                        #              'is not a valid operator. Only addition and subtraction is supported for date ' \
-                        #              'columns.'.format(COL=elem_col, OPER=oper_map[elem_oper], RULE=elem_num + 1)
-                        #        popup_error(msg)
-                        #        logger.warning(msg)
-
-                        #        continue
-
-                        #    try:
-                        #        subset_df[elem_col] = subset_df[elem_col].apply(lambda x: x + offset)
-                        #    except Exception as e:
-                        #        msg = 'failed to modify column "{COL}" values with rule "{RULE}" - {ERR}' \
-                        #            .format(COL=elem_col, RULE=elem_num + 1, ERR=e)
-                        #        popup_error(msg)
-                        #        logger.error(msg)
-                        #    else:
-                        #        logger.info('successfully modified column "{COL}" values on rule "{RULE}"'
-                        #                    .format(COL=elem_col, RULE=elem_num + 1))
-                        # else:
-                        #    msg = 'failed to modify column "{COL}" values with rule "{RULE}" - only columns with the ' \
-                        #          'numeric or date data type can be modified'.format(RULE=elem_num + 1, COL=elem_col)
-                        #    popup_error(msg)
-                        #    logger.error(msg)
-
-                        #    continue
+                    collection.append(subset_df)
 
                     # Populate preview with table values
                     final_cols = subset_df.columns.tolist()
@@ -1419,7 +1400,8 @@ def database_importer_window(win_size: tuple = None):
                     nrow, ncol = subset_df.shape
                     window['-NCOL-'].update(value=ncol)
                     window['-NROW-'].update(value=nrow)
-                    window['-TABLENAME-'].update(value=table)
+                    #window['-TABLENAME-'].update(value=table)
+                    window['-TABLENAME-'].update(value=record_type)
 
                     # Enable import button
                     window['-IMPORT-'].update(disabled=False)
@@ -1486,16 +1468,19 @@ def database_importer_window(win_size: tuple = None):
             current_panel = prev_panel
             continue
 
-        # Populate data tables based on database table selection
-        if event == '-TABLE-':
-            table = values['-TABLE-']
-            columns = {i: j for i, j in user.table_schema(settings.prog_db, table).items() if i not in reserved_values}
-
-            listbox_values = list(columns.keys())
+        # Populate column listboxes based on the record type selection
+        if event == '-RECORDTYPE-':
+            record_type = values['-RECORDTYPE-']
+            record_entry = settings.records.fetch_rule(record_type, by_title=True)
+            collection = mod_col.RecordCollection(record_type, record_entry.imort_table)
+            columns = collection.dtypes
+            for column in columns:
+                if column not in reserved_values:
+                    listbox_values.append(column)
 
             # Reset columns displayed in the listboxes
-            window['-REQLIST-'].update(values=listbox_values)
-            window['-MAPLIST-'].update(values=listbox_values)
+            window['-REQLIST-'].update(values=columns)
+            window['-MAPLIST-'].update(values=columns)
 
             # Reset the tables
             req_df.drop(req_df.index, inplace=True)
@@ -1507,17 +1492,48 @@ def database_importer_window(win_size: tuple = None):
             # Reset the subset rule columns
             for index in range(10):
                 sub_col_key = '-SUBSET_COL_{}-'.format(index)
-                window[sub_col_key].update(values=tuple(sorted(listbox_values)))
+                window[sub_col_key].update(values=tuple(sorted(columns)))
 
             # Reset the modify rule columns
             for index in range(10):
                 mod_col_key = '-MODIFY_COL_{}-'.format(index)
-                window[mod_col_key].update(values=tuple(sorted(listbox_values)))
+                window[mod_col_key].update(values=tuple(sorted(columns)))
 
             continue
 
+        # Populate column listboxes based on database table selection
+        #if event == '-TABLE-':
+        #    table = values['-TABLE-']
+        #    columns = {i: j for i, j in user.table_schema(settings.prog_db, table).items() if i not in reserved_values}
+
+        #    listbox_values = list(columns.keys())
+
+            # Reset columns displayed in the listboxes
+        #    window['-REQLIST-'].update(values=listbox_values)
+        #    window['-MAPLIST-'].update(values=listbox_values)
+
+            # Reset the tables
+        #    req_df.drop(req_df.index, inplace=True)
+        #    map_df.drop(map_df.index, inplace=True)
+
+        #    window['-REQCOL-'].update(values=req_df.values.tolist())
+        #    window['-MAPCOL-'].update(values=map_df.values.tolist())
+
+            # Reset the subset rule columns
+        #    for index in range(10):
+        #        sub_col_key = '-SUBSET_COL_{}-'.format(index)
+        #        window[sub_col_key].update(values=tuple(sorted(listbox_values)))
+
+            # Reset the modify rule columns
+        #    for index in range(10):
+        #        mod_col_key = '-MODIFY_COL_{}-'.format(index)
+        #        window[mod_col_key].update(values=tuple(sorted(listbox_values)))
+
+        #    continue
+
         # Populate tables with columns selected from the list-boxes
-        if event == '-REQLIST-' and table is not None:
+        #if event == '-REQLIST-' and table is not None:
+        if event == '-REQLIST-' and record_entry is not None:
             # Get index of column in listbox values
             try:
                 column = values['-REQLIST-'][0]
@@ -1536,7 +1552,8 @@ def database_importer_window(win_size: tuple = None):
             window['-MAPLIST-'].update(values=listbox_values)
             continue
 
-        if event == '-MAPLIST-' and table is not None:
+        #if event == '-MAPLIST-' and table is not None:
+        if event == '-MAPLIST-' and record_entry is not None:
             # Get index of column in listbox values
             try:
                 column = values['-MAPLIST-'][0]
@@ -1593,7 +1610,8 @@ def database_importer_window(win_size: tuple = None):
             window['-MAPLIST-'].update(values=listbox_values)
 
         # Edit a table row's values
-        if event == '-REQCOL-' and table is not None:
+        #if event == '-REQCOL-' and table is not None:
+        if event == '-REQCOL-' and record_entry is not None:
             try:
                 row_index = values['-REQCOL-'][0]
             except IndexError:
@@ -1611,7 +1629,8 @@ def database_importer_window(win_size: tuple = None):
 
             continue
 
-        if event == '-MAPCOL-' and table is not None:
+        #if event == '-MAPCOL-' and table is not None:
+        if event == '-MAPCOL-' and record_entry is not None:
             try:
                 row_index = values['-MAPCOL-'][0]
             except IndexError:
