@@ -311,15 +311,15 @@ def importer_layout(win_size: tuple = None):
     #record_types = settings.records.print_rules(by_title=True)
 
     try:
-        record_types = [i.title for i in settings.records.rules if user.check_permission(i.permissions['upload'])]
+        record_types = [i.menu_title for i in settings.records.rules if user.check_permission(i.permissions['upload'])]
     except ValueError:
         record_types = []
 
     file_types = ['xls', 'csv/tsv']
     encodings = ['Default']
 
-    header_req = ['Table Column Name', 'Data Type', 'Default Value']
-    header_map = ['Table Column Name', 'Data Type', 'File Column Name']
+    header_req = ['Record Field', 'Data Type', 'Value']
+    header_map = ['Record Field', 'Data Type', 'File Column Name']
 
     cond_operators = ['=', '!=', '>', '<', '>=', '<=']
     math_operators = ['+', '-', '*', '/', '%', '^', '//']
