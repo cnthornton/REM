@@ -15,7 +15,7 @@ import REM.layouts as mod_lo
 import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
-from REM.client import logger, settings
+from REM.client import logger, settings, user
 
 
 class AuditRule:
@@ -289,10 +289,17 @@ class AuditRule:
 
                     # Enable the finalize button when an audit has been run on all transactions.
                     if next_index == final_index:
-                        logger.info('AuditRule {NAME}: all transaction audits have been performed - preparing the '
-                                    'audit record'.format(NAME=self.name))
-                        window[save_key].update(disabled=False)
-                        window[save_key].metadata['disabled'] = False
+                        # Verify that the user has the right permissions to create an audit
+                        if not user.check_permission(self.permissions['create']):
+                            msg = '"{UID}" does not have the correct permissions to save the audit - please contact ' \
+                                  'the administrator if you suspect that this is in error'.format(UID=user.uid)
+                            logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            mod_win2.popup_error(msg)
+                        else:
+                            logger.info('AuditRule {NAME}: all transaction audits have been performed - preparing the '
+                                        'audit record'.format(NAME=self.name))
+                            window[save_key].update(disabled=False)
+                            window[save_key].metadata['disabled'] = False
 
             return current_rule
 
