@@ -291,10 +291,11 @@ class AuditRule:
                     if next_index == final_index:
                         # Verify that the user has the right permissions to create an audit
                         if not user.check_permission(self.permissions['create']):
-                            msg = '"{UID}" does not have the correct permissions to save the audit - please contact ' \
-                                  'the administrator if you suspect that this is in error'.format(UID=user.uid)
+                            msg = '"{UID}" does not have "create" permissions for the audit panel. An audit record ' \
+                                  'cannot be created without this permission. Please contact the administrator if ' \
+                                  'you suspect that this is in error'.format(UID=user.uid)
                             logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                            mod_win2.popup_error(msg)
+                            mod_win2.popup_error('warning - {MSG}'.format(MSG=msg))
                         else:
                             logger.info('AuditRule {NAME}: all transaction audits have been performed - preparing the '
                                         'audit record'.format(NAME=self.name))

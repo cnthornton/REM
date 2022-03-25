@@ -584,8 +584,16 @@ class BankRule:
                 window[param_key].update(disabled=True)
 
                 # Enable elements
-                window[save_key].update(disabled=False)
-                window[save_key].metadata['disabled'] = False
+                if not user.check_permission(self.permissions['create']):
+                    msg = '"{UID}" does not have "create" permissions for the reconciliation panel. Any changes made ' \
+                          'during the reconciliation will not be saved. Please contact the administrator if you ' \
+                          'suspect that this is in error'.format(UID=user.uid)
+                    logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error('warning - {MSG}'.format(MSG=msg))
+                else:
+                    window[save_key].update(disabled=False)
+                    window[save_key].metadata['disabled'] = False
+
                 if len(self.panels) > 1:
                     window[reconcile_key].update(disabled=False)
 
