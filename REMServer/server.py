@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.8'
+__version__ = '0.3.9'
 
 import datetime
 import logging
@@ -1014,6 +1014,41 @@ class SQLTransactManager:
 
         return conn
 
+    def _query_roles(self):
+        """
+        Retrieve user roles from the database.
+        """
+        # Connect to database
+        conn = self.conn
+        uid = self.uid
+
+        # Prepare the transaction statement
+        statement = """
+                    SELECT 
+                        UserRoles.RoleID
+                    FROM UserRoles
+                    LEFT JOIN Roles
+                        ON UserRoles.RoleID = Roles.RoleID
+                    LEFT JOIN Users
+                        ON UserRoles.UserID = Users.UserID
+                    WHERE 
+                        UserRoles.UserID = ? AND UserRoles.Active = ? AND Users.Active = ? AND Roles.Active = ?
+                    """
+        params = (uid, 1, 1, 1)
+
+        try:
+            logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
+                         .format(TSQL=statement, PARAMS=params))
+            df = pd.read_sql(statement, conn, params=params)
+        except sql.DatabaseError as e:
+            logger.error('database read failed - {ERR}'.format(ERR=e))
+            roles = None
+        else:
+            logger.info('database successfully read')
+            roles = df.replace({pd.NaT: None}).iloc[:, 0].tolist()
+
+        return roles
+
     def disconnect(self):
         """
         Close the pyODBC connection.
@@ -1030,11 +1065,11 @@ class SQLTransactManager:
 
     def login(self):
         """
-        Update the last login time for the user.
+        Update the last login time for the user and retrieve user roles from the database.
         """
         cursor = self.cursor
 
-        statement = 'UPDATE Users SET LastLogin = ? WHERE UserID = ?;'
+        statement = 'UPDATE Users SET LastLoginTime = ? WHERE UserID = ?;'
         params = (datetime.datetime.now(), self.uid)
 
         logger.debug('transaction statement supplied is {TSQL} with parameters {PARAMS}'
@@ -1048,8 +1083,13 @@ class SQLTransactManager:
         else:
             logger.info('database successfully written')
 
-            status = True
-            value = None
+            roles = self._query_roles()
+            if roles is not None:
+                status = True
+                value = roles
+            else:
+                status = False
+                value = 'failed to load user roles from the database'
 
         # Add return value to the queue
         return {'success': status, 'value': value}

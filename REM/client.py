@@ -522,6 +522,7 @@ class SettingsManager:
         self.cash_rules = None
         self.record_rules = None
         self.aliases = None
+        self.records = None
 
         try:
             self.dbname = cnfg['database']['default_database']
@@ -678,7 +679,7 @@ class SettingsManager:
         self.reference_lookup = table_field_attrs.get('reference_table', 'RecordReferences')
         self.bank_lookup = table_field_attrs.get('bank_table', 'Bank')
 
-        self.records = None
+        #self.records = None
 
         return success
 
@@ -697,7 +698,6 @@ class SettingsManager:
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
-        pad_frame = mod_const.FRAME_PAD
 
         bg_col = mod_const.DEFAULT_BG_COLOR
         in_col = mod_const.ELEMENT_COLOR
@@ -1275,6 +1275,7 @@ class AccountManager:
         self.uid = None
         self.pwd = None
         self.logged_in = False
+        self.roles = None
 
         # Old
         self.admin = False
@@ -1286,10 +1287,9 @@ class AccountManager:
         """
         db = database if database is not None else settings.prog_db
 
-        #return {'UID': self.uid, 'PWD': self.pwd, 'Database': db}
         return {'UID': self.uid, 'PWD': cipher.decrypt(self.pwd).decode('utf-8'), 'Database': db}
 
-    def login_new(self, uid, pwd, timeout: int = 10):
+    def login(self, uid, pwd, timeout: int = 10):
         """
         Verify username and password exists in the database accounts table and obtain user permissions.
 
@@ -1313,20 +1313,21 @@ class AccountManager:
         # Send the request for data to the server
         response = server_conn.process_request(request, timeout=timeout)
         if response['success'] is False:
-            msg = response['value']
-            logger.error('failed to sign in as "{UID}" - {ERR}'.format(UID=uid, ERR=msg))
+            err = response['value']
+            logger.error('failed to sign in as "{UID}" - {ERR}'.format(UID=uid, ERR=err))
 
             self.uid = None
             self.pwd = None
 
             return False
 
+        self.roles = response['value']
         self.logged_in = True
         logger.info('successfully signed in as "{}"'.format(user.uid))
 
         return True
 
-    def login(self, uid, pwd, timeout: int = 10):
+    def login_old(self, uid, pwd, timeout: int = 10):
         """
         Verify username and password exists in the database accounts table and obtain user permissions.
 
@@ -1447,6 +1448,17 @@ class AccountManager:
             return ['admin', 'user']
         else:
             return ['user']
+
+    def check_permission(self, access_group):
+        """
+        Check if the user belongs to a given access group.
+        """
+        roles = set(self.roles)
+        inter = set(access_group).intersection(roles)
+        if len(inter) > 0:
+            return True
+        else:
+            return False
 
     def database_tables(self, database, timeout: int = 5):
         """
