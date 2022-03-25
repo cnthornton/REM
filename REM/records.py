@@ -32,9 +32,9 @@ class RecordAssociation:
     Attributes:
         name (str): name of the association.
 
-        association_type (str): can be one_to_one, one_to_many, or many_to_many.
+        association_type (str): can be one-to-one, one-to-many, or many-to-many.
 
-        association_table (str): name of the database junction table, if relevant.
+        import_rules (str): database import rules.
 
         primary (dict): entity description of the primary record in the association.
 
@@ -54,23 +54,39 @@ class RecordAssociation:
             raise AttributeError('missing required configuration field "Name"')
 
         try:
+            self.title = entry['Title']
+        except KeyError:
+            self.title = self.name
+
+        try:
             association_type = entry['AssociationType']
         except KeyError:
             raise AttributeError('missing required configuration field "AssociationType"')
         else:
-            if association_type in ['one_to_one', 'one_to_many', 'many_to_many']:
+            if association_type in ['one-to-one', 'one-to-many', 'many-to-many']:
                 self.association_type = association_type
             else:
-                raise AttributeError('"AssociationType" must be one of "one_to_one", "one_to_many", or "many_to_many"')
+                raise AttributeError('"AssociationType" must be one of "one-to-one", "one-to-many", or "many-to-many"')
 
+        # Database import rules
         try:
-            self.association_table = entry['AssociationTable']
+            import_rules = entry['ImportRules']
         except KeyError:
-            self.association_table = None
+            mod_win2.popup_error('AssociationEntry {NAME}: configuration missing required parameter "ImportRules"'
+                                 .format(NAME=self.name))
+            sys.exit(1)
+        else:
+            for import_table in import_rules:
+                import_rule = import_rules[import_table]
 
-        if association_type == 'many_to_many' and self.association_table is None:
-            raise AttributeError('the "AssociationTable" field is required for record associations of type '
-                                 '"many_to_many"')
+                if 'Columns' not in import_rule:
+                    mod_win2.popup_error('AssociationEntry {NAME}: configuration missing required "ImportRules" {TBL} '
+                                         'parameter "Columns"'.format(NAME=self.name, TBL=import_table))
+                    sys.exit(1)
+                if 'Filters' not in import_rule:
+                    import_rule['Filters'] = None
+
+        self.import_rules = import_rules
 
         try:
             primary = entry['Primary']
@@ -79,8 +95,8 @@ class RecordAssociation:
 
         self.primary = {}
 
-        required_primary_fields = ['RecordType', 'PrimaryKey', 'ForeignKey']
-        for field in required_primary_fields:
+        required_fields = ['RecordType', 'Key']
+        for field in required_fields:
             try:
                 self.primary[field] = primary[field]
             except KeyError:
@@ -108,11 +124,7 @@ class RecordAssociation:
 
         self.relation = {}
 
-        required_relation_fields = ['RecordType', 'PrimaryKey']
-        if self.association_table is not None:
-            required_relation_fields.append('ForeignKey')
-
-        for field in required_relation_fields:
+        for field in required_fields:
             try:
                 self.relation[field] = relation[field]
             except KeyError:
@@ -136,13 +148,229 @@ class RecordAssociation:
         """
         Fetch the relevant entity configuration using the provided identifier.
         """
-        if identifier == self.primary['RecordType']:
+        if identifier in self.primary['RecordType']:
             return self.primary
-        elif identifier == self.relation['RecordType']:
+        elif identifier in self.relation['RecordType']:
             return self.relation
         else:
             raise KeyError('no record entity involved in the association matches the provided key "{IDENT}"'
                            .format(IDENT=identifier))
+
+    def import_references(self, records, include_deleted: bool = False, primary: bool = True):
+        """
+        Import a record's association.
+
+        Arguments:
+            records (list): list of record IDs to extract from the reference table.
+
+            include_deleted (bool): import reference entries that were set to deleted as well.
+
+            primary (bool): records are the primary records in the association [Default: True].
+        """
+        import_rules = self.import_rules
+
+        if isinstance(records, str):
+            record_ids = [records]
+        elif isinstance(records, pd.Series):
+            record_ids = records.tolist()
+        elif isinstance(records, pd.DataFrame):
+            try:
+                record_ids = records['RecordID'].tolist()
+            except KeyError:
+                msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"' \
+                    .format(COL='RecordID')
+                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise ImportError(msg)
+        else:
+            record_ids = records
+
+        # Remove duplicate IDs
+        record_ids = list(set(record_ids))
+
+        # Prepare the import data
+        df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
+                                   'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
+                                   'IsDeleted'])
+        for rule_name in import_rules:
+            try:
+                rule = association_rules[rule_name]
+            except KeyError:
+                msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                    .format(RULE=rule_name)
+                logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                raise ImportError(msg)
+
+            is_primary = rule['Primary']
+            reference_table = rule['ReferenceTable']
+
+            if is_primary:  # input records are the primary record IDs
+                columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate',
+                           'DocType AS RecordType',
+                           'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
+                           'IsChild', 'IsHardLink', 'IsApproved']
+                filter_str = 'DocNo IN ({VALS})'
+            else:  # input records are the reference record ID
+                columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
+                           'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes',
+                           'Warnings AS ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved']
+                filter_str = 'RefNo IN ({VALS})'
+
+            # Import reference entries related to record_id
+            for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
+                sub_ids = record_ids[i: i + 1000]
+                sub_vals = ','.join(['?' for _ in sub_ids])
+
+                filters = [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
+                if not include_deleted:
+                    filters.append(('IsDeleted = ?', 0))
+
+                import_df = user.read_db(*mod_db.prepare_sql_query(reference_table, columns=columns,
+                                                                   filter_rules=filters), prog_db=True)
+                df = df.append(import_df, ignore_index=True)
+
+        # Set column data types
+        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
+        df.fillna({i: False for i in bool_columns}, inplace=True)
+        df = df.astype({i: np.bool_ for i in bool_columns})
+
+        return df
+
+    def save_database_references(self, ref_data, rule_name, statements: dict = None):
+        """
+        Prepare to save database references.
+
+        Arguments:
+            ref_data (DataFrame): reference entries to save to the database table specified by the association rule.
+
+            rule_name (str): name of the association rule that indicates which database table to save the reference
+                entries to.
+
+            statements (dict): optional dictionary of transactions statements to append to.
+
+        Returns:
+            statements (dict): dictionary of transactions statements.
+        """
+        if statements is None:
+            statements = {}
+
+        if isinstance(ref_data, pd.DataFrame):
+            df = ref_data
+        elif isinstance(ref_data, pd.Series):
+            df = ref_data.to_frame().transpose()
+        elif isinstance(ref_data, dict):
+            df = pd.DataFrame(ref_data)
+        else:
+            raise ValueError('ref_data must be one of DataFrame, Series, or dictionary')
+
+        association_rules = self.association_rules
+        try:
+            rule = association_rules[rule_name]
+        except KeyError:
+            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                .format(RULE=rule_name)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        reference_table = rule['ReferenceTable']
+        is_primary = rule['Primary']
+        if is_primary:  # input record is the primary record ID
+            primary_col = 'RecordID'
+            export_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
+                              'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
+                              'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
+                              'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
+        else:  # reference record is the primary record ID
+            primary_col = 'ReferenceID'
+            export_col_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
+                              'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
+                              'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
+                              'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
+
+        # Remove rows where the primary column is NULL
+        df.drop(df[df[primary_col].isna()].index, inplace=True)
+        if df.empty:
+            logger.warning('RecordType {NAME}: no reference entries provided for saving'.format(NAME=self.name))
+            return statements
+
+        # Prepare separate update and insert statements depending on whether an individual reference entry exists
+        export_df = df[[i for i in export_col_map if i in df.columns]].rename(columns=export_col_map)
+
+        # Prepare the upsert statement
+        export_columns = export_df.columns.tolist()
+        export_values = [tuple(i) for i in export_df.values.tolist()]
+
+        statements = mod_db.prepare_sql_upsert(reference_table, export_columns, export_values, ['DocNo', 'RefNo'],
+                                               statements=statements)
+
+        return statements
+
+    def delete_database_references(self, ref_data, rule_name, statements: dict = None):
+        """
+        Prepare to delete database reference entries from the database.
+
+        Arguments:
+            ref_data (DataFrame): reference entries to delete from the database table specified by the association rule.
+
+            rule_name (str): name of the association rule linking the relevant records.
+
+            statements (dict): optional dictionary of transactions statements to append to.
+
+        Returns:
+            statements (dict): dictionary of transactions statements.
+        """
+        if statements is None:
+            statements = {}
+
+        if isinstance(ref_data, pd.DataFrame):
+            df = ref_data
+        elif isinstance(ref_data, pd.Series):
+            df = ref_data.to_frame().transpose()
+        elif isinstance(ref_data, dict):
+            df = pd.DataFrame(ref_data)
+        else:
+            raise ValueError('ref_data must be one of DataFrame, Series, or dictionary')
+
+        if df.empty:
+            logger.warning('RecordEntry {NAME}: no reference entries provided for deleting'.format(NAME=self.name))
+            return statements
+
+        association_rules = self.association_rules
+        try:
+            rule = association_rules[rule_name]
+        except KeyError:
+            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
+                .format(RULE=rule_name)
+            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise ImportError(msg)
+
+        reference_table = rule['ReferenceTable']
+        is_primary = rule['Primary']
+        if is_primary:  # input record is the primary record ID
+            export_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'IsDeleted': 'IsDeleted'}
+        else:  # reference record is the primary record ID
+            export_col_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'IsDeleted': 'IsDeleted'}
+
+        # Prepare the export reference entries
+        df = df[(~df['RecordID'].isna()) & (~df['ReferenceID'].isna())]
+        export_df = df[[i for i in export_col_map if i in df.columns]].rename(columns=export_col_map)
+
+        # Prepare the update statement
+        export_columns = [export_col_map['IsDeleted']]
+        export_values = [(1,) for _ in range(export_df.shape[0])]
+
+        filter_clause = '{COL} = ? AND {REFCOL} = ?'.format(COL=export_col_map['RecordID'],
+                                                            REFCOL=export_col_map['ReferenceID'])
+        filter_params = [(row[export_col_map['RecordID']], row[export_col_map['ReferenceID']]) for _, row in
+                         export_df.iterrows()]
+
+        statements = mod_db.prepare_sql_update(reference_table, export_columns, export_values, filter_clause,
+                                               filter_params, statements=statements)
+
+        return statements
 
 
 class RecordEntry:
@@ -174,7 +402,8 @@ class RecordEntry:
         try:
             menu = entry['Menu']
         except KeyError:
-            menu = {'MenuTitle': self.name, 'MenuGroup': None, 'AccessPermissions': 'admin'}
+            #menu = {'MenuTitle': self.name, 'MenuGroup': None, 'AccessPermissions': 'admin'}
+            menu = {'MenuTitle': self.name, 'MenuGroup': None}
             self.show_menu = False
         else:
             self.show_menu = True
@@ -182,12 +411,23 @@ class RecordEntry:
                 menu['MenuGroup'] = None
             if 'MenuTitle' not in menu:
                 menu['MenuTitle'] = self.name
-            if 'AccessPermissions' not in menu:
-                menu['AccessPermissions'] = 'admin'
+            #if 'AccessPermissions' not in menu:
+            #    menu['AccessPermissions'] = 'admin'
 
-        self.permissions = menu['AccessPermissions']
         self.menu_title = menu['MenuTitle']
         self.menu_group = menu['MenuGroup']
+        #self.permissions = menu['AccessPermissions']
+        try:
+            permissions = entry['Permissions']
+        except KeyError:
+            self.permissions = {'view': None, 'create': None, 'edit': None, 'delete': None, 'upload': None}
+        else:
+            self.permissions = {'view': permissions.get('View', None),
+                                'create': permissions.get('Create', None),
+                                'edit': permissions.get('Edit', None),
+                                'delete': permissions.get('Delete', None),
+                                'upload': permissions.get('Upload', None),
+                                }
 
         try:
             self.id_code = entry['IDCode']
@@ -1590,11 +1830,14 @@ class DatabaseRecord:
         try:
             permissions = entry['Permissions']
         except KeyError:
-            self.permissions = {'edit': None, 'delete': None, 'report': None}
+            self.permissions = {'view': None, 'create': None, 'edit': None, 'delete': None, 'report': None}
         else:
-            self.permissions = {'edit': permissions.get('Edit', None),
+            self.permissions = {'view': permissions.get('View', None),
+                                'create': permissions.get('Create', None),
+                                'edit': permissions.get('Edit', None),
                                 'delete': permissions.get('Delete', None),
                                 'report': permissions.get('Report', None),
+                                'upload': permissions.get('Upload', None),
                                 }
 
         try:
@@ -3047,7 +3290,7 @@ class DatabaseRecord:
                      .format(NAME=self.name, NEW=('new ' if is_new else ''), LEVEL=level))
 
         editable = False if (view_only is True and is_new is False) or (level > 1) else True
-        user_priv = user.access_permissions()
+        #user_priv = user.access_permissions()
 
         # Element parameters
         bg_col = mod_const.DEFAULT_BG_COLOR
@@ -3150,7 +3393,8 @@ class DatabaseRecord:
                 for element_name in section_elements:
                     element = self.fetch_element(element_name)
 
-                    can_edit = editable and element.permissions in user_priv
+                    #can_edit = editable and element.permissions in user_priv
+                    can_edit = editable
                     element_layout = [
                         element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
                                        level=level)]

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.12.0'
+__version__ = '3.13.0'
 
 import sys
 import tkinter as tk
@@ -179,7 +179,7 @@ class ToolBar:
             rule_menu = []
             for rule_entry in account_method.rules:
                 menu_title = rule_entry.menu_title
-                user_access = rule_entry.permissions
+                user_access = rule_entry.permissions['view']
 
                 # Add any submenus to the menu definition. Submenus act as flags to main workflow rule.
                 rule_submenu = rule_entry.menu_flags
@@ -218,7 +218,8 @@ class ToolBar:
 
             menu_title = record_entry.menu_title
             menu_group = record_entry.menu_group
-            user_access = record_entry.permissions
+            user_access = record_entry.permissions['view']
+            #user_access = record_entry.permissions
 
             if menu_group:  # menu title will be a sub menu
                 try:
@@ -388,40 +389,45 @@ class ToolBar:
         """
         Enable toolbar buttons.
         """
-        admin = user.admin
+        #admin = user.admin
 
         record_menus = self.record_items
         account_menus = self.account_items
 
         logger.info('Toolbar: enabling toolbar menus')
 
-        # User administration
-
         # Enable admin-only privileges
-        if admin is True:
-            # Database administration
-            window['-DBMENU-'].update(disabled=False)
+        #if admin is True:
+        #    # Database administration
+        #    window['-DBMENU-'].update(disabled=False)
 
-            # User administration
-            self.toggle_menu(window, 'umenu', 'manage accounts', disabled=False)
+        #    # User administration
+        #    self.toggle_menu(window, 'umenu', 'manage accounts', disabled=False)
+        # Database administration
+        window['-DBMENU-'].update(disabled=False)
+
+        # User administration
+        self.toggle_menu(window, 'umenu', 'manage accounts', disabled=False)
 
         self.toggle_menu(window, 'umenu', 'sign in', disabled=True)
         self.toggle_menu(window, 'umenu', 'sign out', disabled=False)
 
-        # Allow user to modify user-settings
+        # Allow user to modify session settings
         self.toggle_menu(window, 'mmenu', 'settings', disabled=False)
 
         # Disable record menus
         for menu in record_menus:
             user_access = record_menus[menu]
-            if admin is True or user_access in user.access_permissions():
+            #if admin is True or user_access in user.access_permissions():
+            if user.check_permission(user_access):
                 logger.debug('Toolbar: enabling record menu item {}'.format(menu))
                 self.toggle_menu(window, 'rmenu', menu, disabled=False)
 
         # Disable accounting method menus
         for menu in account_menus:
             user_access = account_menus[menu]
-            if admin is True or user_access in user.access_permissions():
+            #if admin is True or user_access in user.access_permissions():
+            if user.check_permission(user_access):
                 logger.debug('Toolbar: enabling accounting method menu item {}'.format(menu))
                 self.toggle_menu(window, 'amenu', menu, disabled=False)
 

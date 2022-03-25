@@ -54,10 +54,19 @@ class CashRule:
         except KeyError:
             self.menu_flags = None
 
+        #try:
+        #    self.permissions = entry['AccessPermissions']
+        #except KeyError:  # default permission for a cash rule is 'user'
+        #    self.permissions = 'user'
         try:
-            self.permissions = entry['AccessPermissions']
-        except KeyError:  # default permission for a cash rule is 'user'
-            self.permissions = 'user'
+            permissions = entry['Permissions']
+        except KeyError:
+            self.permissions = {'view': None, 'create': None, 'edit': None}
+        else:
+            self.permissions = {'view': permissions.get('View', None),
+                                'create': permissions.get('Create', None),
+                                'edit': permissions.get('Edit', None),
+                                }
 
         try:
             self.record_type = entry['RecordType']

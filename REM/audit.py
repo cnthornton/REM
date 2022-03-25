@@ -73,10 +73,19 @@ class AuditRule:
         except KeyError:
             self.menu_flags = None
 
+        #try:
+        #    self.permissions = entry['AccessPermissions']
+        #except KeyError:  # default permission for an audit rule is 'user'
+        #    self.permissions = 'user'
         try:
-            self.permissions = entry['AccessPermissions']
-        except KeyError:  # default permission for an audit rule is 'user'
-            self.permissions = 'user'
+            permissions = entry['Permissions']
+        except KeyError:
+            self.permissions = {'view': None, 'create': None, 'edit': None}
+        else:
+            self.permissions = {'view': permissions.get('View', None),
+                                'create': permissions.get('Create', None),
+                                'edit': permissions.get('Edit', None),
+                                }
 
         self.parameters = []
         try:

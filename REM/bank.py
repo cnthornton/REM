@@ -72,10 +72,19 @@ class BankRule:
         except KeyError:
             self.menu_flags = None
 
+        #try:
+        #    self.permissions = entry['AccessPermissions']
+        #except KeyError:  # default permission for a bank rule is 'admin'
+        #    self.permissions = 'admin'
         try:
-            self.permissions = entry['AccessPermissions']
-        except KeyError:  # default permission for a bank rule is 'admin'
-            self.permissions = 'admin'
+            permissions = entry['Permissions']
+        except KeyError:
+            self.permissions = {'view': None, 'create': None, 'edit': None}
+        else:
+            self.permissions = {'view': permissions.get('View', None),
+                                'create': permissions.get('Create', None),
+                                'edit': permissions.get('Edit', None),
+                                }
 
         self.parameters = []
         try:
@@ -1147,6 +1156,10 @@ class BankRule:
                 assoc_acct.add_reference(ref_id, record_id, acct.record_type, approved=True, warning=warning, refdate=refdate)
 
         if expand_search:
+            msg = 'using expanded search criteria to find any remaining associations for account {ACCT} records'\
+                .format(ACCT=acct.name)
+            logger.info('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
             df.drop(matched_indices, inplace=True)
             for index, row in df.iterrows():
                 record_id = getattr(row, id_column)
@@ -1199,6 +1212,7 @@ class BankRule:
         """
         results = pd.Series()
         ref_df['_Warning_'] = None
+        row_index = row.name
 
         matches = pd.DataFrame(columns=ref_df.columns)
         expanded_cols = []
@@ -1209,12 +1223,15 @@ class BankRule:
             run_comparison = False
 
         for assoc_acct_name in ref_map:
-            print('searching for matching entries between {} and {}'.format(self.current_account, assoc_acct_name))
+            msg = 'searching for matching entries between account {ACCT}, row {ROW} and association {ASSOC}'\
+                .format(ACCT=self.current_account, ROW=row_index, ASSOC=assoc_acct_name)
+            logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
             # Subset merged df to include only the association records with the given account name
             assoc_df = ref_df[ref_df['_Account_'] == assoc_acct_name]
             if assoc_df.empty:
-                msg = 'no entries in association account {ASSOC} to compare to the entries in {ACCT}'\
-                    .format(ASSOC=assoc_acct_name, ACCT=self.current_account)
+                msg = 'no entries in association {ASSOC} to compare against account {ACCT}, row {ROW}'\
+                    .format(ASSOC=assoc_acct_name, ACCT=self.current_account, ROW=row_index)
                 logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 continue
@@ -1227,15 +1244,14 @@ class BankRule:
                 # Compare reference column values to the record columns values and store in a comparison table
                 col_values = assoc_df[col].copy()
                 if run_comparison:
-                    print('creating a new comparison table')
                     pm = bool(int(rule_entry.get('PatternMatching', 0)))
                     ignore = rule_entry.get('IgnoreCharacters', None)
                     row_value = getattr(row, col)
                     col_match = compare_record_values(row_value, col_values, match_pattern=pm, ignore_chars=ignore)
 
-                    comp_df.loc[:, col] = col_match
+                    comp_df.loc[assoc_df.index, col] = col_match
+                    #comp_df.loc[:, col] = col_match
                 else:
-                    print('using an existing comparison table')
                     try:
                         col_match = comp_df.loc[assoc_df.index, col].fillna(False).astype(bool)
                         #col_match = comp_df[col]
@@ -1288,13 +1304,13 @@ class BankRule:
 
                 msg = 'no matches found for account {ACCT}, row {ROW} at expanded search level {L} - returning to ' \
                       'previous search level matches to find for the closest match on columns {COLS}' \
-                    .format(ACCT=self.current_account, ROW=row.name, L=expand_level, COLS=expanded_cols)
+                    .format(ACCT=self.current_account, ROW=row_index, L=expand_level, COLS=expanded_cols)
                 logger.info('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 results = self.expand_search(row, ref_df, ref_map, comp_df=comp_df, expand_level=prev_level,
                                              closest_match=expanded_cols)
             else:
                 msg = 'no matches found for account {ACCT}, row {ROW} from an expanded search' \
-                    .format(ACCT=self.current_account, ROW=row.name)
+                    .format(ACCT=self.current_account, ROW=row_index)
                 logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
         elif nmatch == 1:  # potential match, add with a warning
@@ -1324,7 +1340,7 @@ class BankRule:
 
         elif nmatch > 1:  # need to increase specificity to get the best match by adding more comparison fields
             msg = 'found more than one expanded match for account {ACCT}, row {ROW} at search level {L} - ' \
-                  'searching for the best match'.format(ACCT=self.current_account, ROW=row.name, L=expand_level)
+                  'searching for the best match'.format(ACCT=self.current_account, ROW=row_index, L=expand_level)
             logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             # Attempt to find the best matching record
@@ -1341,13 +1357,13 @@ class BankRule:
             else:  # zero matches were found in the previous iteration
                 # Find the best match by searching for nearest like value on the closest match fields
                 msg = 'attempting to find the best match for row {ROW} by searching for nearest value on fields ' \
-                      '{FIELDS}'.format(ROW=row.name, FIELDS=closest_match)
+                      '{FIELDS}'.format(ROW=row_index, FIELDS=closest_match)
                 logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 results = nearest_match(row, matches, closest_match)
                 if results.empty:
                     msg = 'multiple matches found for account {ACCT}, row {ROW} but enough specificity in the data ' \
-                          'to narrow it down to one match'.format(ACCT=self.current_account, ROW=row.name)
+                          'to narrow it down to one match'.format(ACCT=self.current_account, ROW=row_index)
                     logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 else:
                     # Determine appropriate warning for the nearest match search
