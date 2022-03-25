@@ -3,7 +3,7 @@
 REM server.
 """
 
-__version__ = '0.3.9'
+__version__ = '0.3.10'
 
 import datetime
 import logging
@@ -553,7 +553,8 @@ class ConfigManager:
         self.prog_db = 'REM'
         self.default_db = 'REM'
         self.dbs = ['REM']
-        self.date_format = format_date_str('YYYY-MM-DD HH:MI:SS')
+        #self.date_format = format_date_str('YYYY-MM-DD HH:MI:SS')
+        self.date_format = 'YYYY-MM-DD HH:MI:SS'
 
         # Table field parameters
         self.creator_code = 'CreatorName'
@@ -658,14 +659,22 @@ class ConfigManager:
             self.dbs = cnfg['database']['databases']
         except KeyError:
             self.dbs = []
+        #try:
+        #    self.date_format = format_date_str(cnfg['database']['date_format'])
+        #except KeyError:
+        #    self.date_format = format_date_str('YYYY-MM-DD HH:MI:SS')
+        #except TypeError:
+        #    logger.error('unsupported date format {} provided to configuration database parameter "date_format"'
+        #                 .format(cnfg['database']['date_format']))
+        #    self.date_format = format_date_str('YYYY-MM-DD HH:MI:SS')
         try:
-            self.date_format = format_date_str(cnfg['database']['date_format'])
+            self.date_format = cnfg['database']['date_format']
         except KeyError:
-            self.date_format = format_date_str('YYYY-MM-DD HH:MI:SS')
+            self.date_format = 'YYYY-MM-DD HH:MI:SS'
         except TypeError:
             logger.error('unsupported date format {} provided to configuration database parameter "date_format"'
                          .format(cnfg['database']['date_format']))
-            self.date_format = format_date_str('YYYY-MM-DD HH:MI:SS')
+            self.date_format = 'YYYY-MM-DD HH:MI:SS'
 
         # Table field parameters
         try:
@@ -1245,62 +1254,6 @@ class SQLTransactManager:
 
         # Add return value to the queue
         return {'success': status, 'value': value}
-
-
-def format_date_str(date_str):
-    """
-    Format a date string for use as input to datetime method.
-    """
-    separators = set(':/- ')
-    date_fmts = {'YYYY': '%Y', 'YY': '%y',
-                 'MMMM': '%B', 'MMM': '%b', 'MM': '%m', 'M': '%-m',
-                 'DD': '%d', 'D': '%-d',
-                 'HH': '%H', 'MI': '%M', 'SS': '%S'}
-
-    strfmt = []
-    last_char = date_str[0]
-    buff = [last_char]
-    for char in date_str[1:]:
-        if char not in separators:
-            if last_char != char:
-                # Check if char is first in a potential series
-                if last_char in separators:
-                    buff.append(char)
-                    last_char = char
-                    continue
-
-                # Check if component is minute
-                if ''.join(buff + [char]) == 'MI':
-                    strfmt.append(date_fmts['MI'])
-                    buff = []
-                    last_char = char
-                    continue
-
-                # Add characters in buffer to format string and reset buffer
-                component = ''.join(buff)
-                strfmt.append(date_fmts[component])
-                buff = [char]
-            else:
-                buff.append(char)
-        else:
-            component = ''.join(buff)
-            try:
-                strfmt.append(date_fmts[component])
-            except KeyError:
-                if component:
-                    raise TypeError('unknown component {} provided to date string {}.'.format(component, date_str))
-
-            strfmt.append(char)
-            buff = []
-
-        last_char = char
-
-    try:  # format final component remaining in buffer
-        strfmt.append(date_fmts[''.join(buff)])
-    except KeyError:
-        raise TypeError('unsupported characters {} found in date string {}'.format(''.join(buff), date_str))
-
-    return ''.join(strfmt)
 
 
 def load_config(cnfg_file):

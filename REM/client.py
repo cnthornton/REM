@@ -663,7 +663,8 @@ class SettingsManager:
         self.alt_dbs = database_attrs.get('databases', [])
         if not self.dbname or self.dbname not in self.alt_dbs:
             self.dbname = database_attrs.get('default_database', 'REM')
-        self.date_format = database_attrs.get('db_date_format', self.format_date_str('YYYY-MM-DD HH:MI:SS'))
+        #self.date_format = database_attrs.get('db_date_format', self.format_date_str('YYYY-MM-DD HH:MI:SS'))
+        self.date_format = self.format_date_str(database_attrs.get('db_date_format', 'YYYY-MM-DD HH:MI:SS'))
 
         # Reserved tables and table columns
         table_field_attrs = configuration.get('table_fields', {})
