@@ -1781,6 +1781,9 @@ def record_import_window(table, enable_new: bool = False):
 
     record_class = mod_records.DatabaseRecord
 
+    # Check user permissions
+    creatable = (True if user.check_permission(record_entry.permissions['create']) and enable_new is True else False)
+
     # Layout
 
     # Window and element size parameters
@@ -1809,7 +1812,7 @@ def record_import_window(table, enable_new: bool = False):
                               disabled=False,
                               tooltip='Cancel data import ({})'.format(cancel_shortcut)),
                     sg.Button('', key='-NEW-', image_data=mod_const.NEW_ICON, image_size=mod_const.BTTN_SIZE,
-                              pad=((0, pad_el), 0), visible=enable_new,
+                              pad=((0, pad_el), 0), visible=creatable,
                               tooltip='Create new record ({})'.format(new_shortcut))]]
 
     other_h = title_h + bttn_h
