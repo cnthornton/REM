@@ -925,6 +925,28 @@ class DataCollection:
 
         return df
 
+    def subset(self, rule):
+        """
+        Subset the table based on a set of rules.
+        """
+        df = self.data()
+        if df.empty:
+            return df
+
+        logger.debug('DataCollection {NAME}: sub-setting collection on rule {RULE}'
+                     .format(NAME=self.name, RULE=rule))
+        try:
+            results = mod_dm.evaluate_condition(df, rule)
+        except Exception as e:
+            msg = 'failed to subset collection on rule {RULE}'.format(RULE=rule)
+            logger.error('DataCollection {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+            raise ValueError(msg)
+
+        subset_df = df[results]
+
+        return subset_df
+
     def reset(self):
         """
         Reset the collection to default.
@@ -1005,6 +1027,54 @@ class DataCollection:
         self._set_dependants(df=df)
 
         return edited
+
+    def transform(self, field, operator, value=None, inplace: bool = True):
+        """
+        Transform a field's values.
+        """
+        if inplace:
+            df = self.df
+        else:
+            df = self.df.copy()
+
+        if value is not None:
+            math_operators = ('+', '-', '*', '/', '%')
+            if operator not in math_operators:
+                msg = 'failed to transform field "{COL}" values - unknown operator {OP} provided' \
+                    .format(COL=field, OP=operator)
+                logger.warning(msg)
+
+                raise TypeError(msg)
+
+            operation = '{COL} {OPER} {VAL}'.format(COL=field, OPER=operator, VAL=value)
+
+            try:
+                transformed_values = mod_dm.evaluate_operation(df, operation)
+            except Exception as e:
+                msg = 'failed to modify field "{COL}" based on modifier rule "{RULE}" - {ERR}' \
+                    .format(COL=field, RULE=operation, ERR=e)
+                logger.warning(msg)
+
+                raise
+        else:
+            try:
+                transformed_values = df[field].transform(operator)
+            except Exception as e:
+                msg = 'failed to transform field "{COL}" using transformation function "{RULE}" - {ERR}' \
+                    .format(COL=field, RULE=operator, ERR=e)
+                logger.warning(msg)
+
+                raise
+
+        df.loc[:, field] = transformed_values
+
+        return transformed_values
+
+    def list_fields(self):
+        """
+        Return a list of fields belonging to the collection.
+        """
+        return self._fields
 
 
 class RecordCollection(DataCollection):

@@ -2006,6 +2006,14 @@ class DataTable(RecordElement):
         """
         Subset the table based on a set of rules.
         """
+        subset_df = self.collection.subset(subset_rule)
+
+        return subset_df
+
+    def subset_old(self, subset_rule):
+        """
+        Subset the table based on a set of rules.
+        """
         df = self.data()
         if df.empty:
             return df
@@ -2655,146 +2663,6 @@ class ComponentTable(RecordTable):
         ref_df.loc[:, 'ReferenceNotes'] = ref_df.index.map(annotation_map)
 
         return ref_df
-
-
-class ReferenceTable(RecordTable):
-    """
-    Subclass of the records table, but for record references. Allows additional actions such as creating
-    associated records.
-
-    Attributes:
-        name (str): table element configuration name.
-
-        elements (list): list of table element keys.
-    """
-
-    def __init__(self, name, entry, parent=None):
-        """
-        Initialize reference table attributes.
-
-        Arguments:
-            name (str): name of the configured table element.
-
-            entry (dict): configuration entry for the table element.
-
-            parent (str): name of the parent element.
-        """
-        super().__init__(name, entry, parent)
-        self.etype = 'reference_table'
-
-        self.reference = mod_col.ReferenceCollection(name, entry)
-
-        # Control flags that modify the table's behaviour
-        try:
-            modifiers = entry['Modifiers']
-        except KeyError:
-            self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
-                              'export': False, 'fill': False, 'sort': False}
-        else:
-            self.modifiers = {'open': modifiers.get('open', 0), 'edit': 0,
-                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
-                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
-                              'fill': 0, 'sort': modifiers.get('sort', 0)}
-            for modifier in self.modifiers:
-                try:
-                    flag = bool(int(self.modifiers[modifier]))
-                except ValueError:
-                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
-                                                   .format(MOD=modifier)))
-                    flag = False
-
-                self.modifiers[modifier] = flag
-
-        try:
-            self.association_rule = entry['AssociationRule']
-        except KeyError:
-            msg = 'missing required parameter "AssociationRule"'
-            logger.error(self.format_log(msg))
-
-            raise AttributeError(msg)
-
-    def _aggregate_references(self):
-        """
-        Prepare the reference entry dataframe for merging with the records.
-        """
-        is_numeric_dtype = pd.api.types.is_numeric_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-
-        ref_df = self.reference.data()
-        ref_col_map = self.ref_map
-
-        ref_df.set_index('RecordID', inplace=True)
-
-        # Subset reference table columns by the reference map
-        ref_df = ref_df[[i for i in ref_col_map]].rename(columns=ref_col_map)
-        aggby = {}
-        for colname, dtype in ref_df.dtypes.iteritems():
-            if is_bool_dtype(dtype) or is_datetime_dtype(dtype):
-                aggfunc = 'first'
-            elif is_numeric_dtype(dtype):
-                aggfunc = 'sum'
-            elif is_string_dtype(dtype):
-                aggfunc = '; '.join
-                ref_df[colname].fillna('', inplace=True)
-            else:
-                aggfunc = 'sum'
-
-            aggby[colname] = aggfunc
-
-        # Group reference entries with the same record ID
-        ref_df = ref_df.groupby(ref_df.index).aggregate(aggby)
-
-        return ref_df
-
-    def merge_references(self, df: pd.DataFrame = None):
-        """
-        Merge the records table and the reference table on configured reference map columns.
-
-        Arguments:
-            df (DataFrame): merge references with the provided records dataframe [Default: use full records dataframe].
-
-        Returns:
-            df (DataFrame): dataframe of records merged with their corresponding reference entries.
-        """
-        pd.set_option('display.max_columns', None)
-
-        df = self.data() if df is None else df
-        ref_df = self._aggregate_references()
-
-        # Reorder the references dataframe to match the order of the records in the records table
-        ref_df = ref_df.reindex(index=df['RecordID'].tolist())
-
-        # Update the configured references columns in the records dataframe to be the same as the columns in references
-        # dataframe
-        for column in ref_df.columns:
-            try:
-                new_values = ref_df[column].tolist()
-            except KeyError:
-                new_values = None
-
-            self.update_column(column, new_values)
-
-    def has_reference(self, record_ids):
-        """
-        Confirm whether a set of records in the table has one or more corresponding reference entries.
-
-        Arguments:
-            record_ids (list): list of record IDs to check for references.
-        """
-        ref_df = self.reference.data(current=True)
-        if isinstance(record_ids, str):
-            record_ids = [record_ids]
-
-        references = ref_df.loc[ref_df['RecordID'].isin(record_ids)]
-
-        if references.empty:
-            return False
-        elif references['ReferenceID'].isna().any():
-            return False
-        else:
-            return True
 
 
 class DataList(RecordElement):
