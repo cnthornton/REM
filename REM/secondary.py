@@ -222,17 +222,16 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     # User permissions
     record_entry = settings.records.fetch_rule(record.name)
-    # user_priv = user.access_permissions()
-    # savable = (True if record.permissions['edit'] in user_priv and record_level < 1 and view_only is False and
-    #                   modify_database is True else False)
-    # deletable = (True if record.permissions['delete'] in user_priv and record_level < 1 and view_only is False and
-    #                     modify_database is True and record.new is False else False)
-    # printable = True if record.report is not None and record.permissions['report'] in user_priv else False
-    savable = (True if user.check_permission(record_entry.permissions['edit']) and record_level < 1 and view_only is
-               False and modify_database is True else False)
-    deletable = (True if user.check_permission(record_entry.permissions['delete']) and record_level < 1 and view_only is
-                 False and modify_database is True and record.new is False else False)
-    printable = True if record.report is not None else False
+
+    mod_perm = True if ((user.check_permission(record_entry.permissions['edit']) and record.new is False) or
+                        (user.check_permission(record_entry.permissions['create']) and record.new is True)) else False
+    del_perm = True if user.check_permission(record_entry.permissions['delete']) and record.new is False else False
+
+    can_save = True if mod_perm and record_level < 1 and view_only is False and modify_database is True else False
+    can_accept = True if mod_perm and record_level < 2 and view_only is False and modify_database is False else False
+    can_delete = True if del_perm and record_level < 1 and view_only is False and modify_database is True else False
+
+    gen_report = True if record.report is not None and (mod_perm or del_perm) else False
 
     # Window Title
     bffr_h = 2 + pad_el * 2
@@ -244,35 +243,23 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
                             expand_x=True, justification='l', vertical_alignment='c', background_color=header_col),
                      sg.Col([[sg.Button('', key='-REPORT-', image_data=mod_const.REPORT_ICON, border_width=0,
                                         pad=(pad_frame, 0), button_color=(text_col, header_col),
-                                        visible=printable, tooltip='Generate record report')]],
+                                        visible=gen_report, tooltip='Generate record report')]],
                             justification='r', element_justification='r', vertical_alignment='c',
                             background_color=header_col)]]
     bffr_h += title_h
 
     # Button layout
     bttn_h = mod_const.BTTN_HEIGHT
-    if savable:
-        bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-                        sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=deletable,
-                                  tooltip='Delete the record from the database'),
-                        sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=False,
-                                  tooltip='Accept changes to the record'),
-                        sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=True,
-                                  tooltip='Save record changes to the database')]]
-    else:
-        bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
-                        sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=deletable,
-                                  tooltip='Delete the record from the database'),
-                        sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=True,
-                                  tooltip='Accept changes to the record'),
-                        sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
-                                  pad=(pad_el, 0), visible=False,
-                                  tooltip='Save record changes to the database')]]
+    bttn_layout = [[sg.Canvas(size=(0, bttn_h)),
+                    sg.Button('', key='-DELETE-', image_data=mod_const.DELETE_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), visible=can_delete,
+                              tooltip='Delete the record from the database'),
+                    sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), visible=can_accept,
+                              tooltip='Accept changes to the record'),
+                    sg.Button('', key='-SAVE-', image_data=mod_const.SAVE_ICON, image_size=mod_const.BTTN_SIZE,
+                              pad=(pad_el, 0), visible=can_save,
+                              tooltip='Save record changes to the database')]]
 
     bffr_h += bttn_h
 
@@ -344,13 +331,13 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
             current_w, current_h = (win_w, win_h)
 
         if event == '-HK_RECORD_SAVE-':
-            if not savable:
+            if not can_save:
                 window['-OK-'].click()
             else:
                 window['-SAVE-'].click()
 
         if event == '-HK_RECORD_DEL-':
-            if deletable:
+            if can_delete:
                 window['-DELETE-'].click()
 
         if event == '-OK-':  # selected to accept record changes
@@ -1250,11 +1237,6 @@ def database_importer_window(win_size: tuple = None):
                         date_list = [datetime.datetime.now()] * subset_df.shape[0]
                     else:
                         date_list = date_list.tolist()
-
-                    print('data used to create record IDs:')
-                    print(subset_df)
-                    print('creating record IDs from record date:')
-                    print(date_list)
 
                     record_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
                     if not record_ids:

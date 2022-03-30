@@ -374,6 +374,14 @@ class RecordAssociation:
 
 
 class RecordEntry:
+    """
+    Attributes:
+        name (str): name of the record entry.
+
+        program_record (bool): record entry is a program record [Default: True].
+
+        permissions (dict): dictionary mapping permission rules to permission groups
+    """
 
     def __init__(self, name, entry):
         """
@@ -1791,8 +1799,6 @@ class DatabaseRecord:
 
         title (str): record display title.
 
-        permissions (dict): dictionary mapping permission rules to permission groups
-
         components (list): list of all record elements.
 
         tabs (dict): describes how layout sections are divided into tabs.
@@ -1826,19 +1832,6 @@ class DatabaseRecord:
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Element', 'TG', 'Header')}
         self.bindings = {}
-
-        try:
-            permissions = entry['Permissions']
-        except KeyError:
-            self.permissions = {'view': None, 'create': None, 'edit': None, 'delete': None, 'report': None}
-        else:
-            self.permissions = {'view': permissions.get('View', None),
-                                'create': permissions.get('Create', None),
-                                'edit': permissions.get('Edit', None),
-                                'delete': permissions.get('Delete', None),
-                                'report': permissions.get('Report', None),
-                                'upload': permissions.get('Upload', None),
-                                }
 
         try:
             self.title = entry['Title']
@@ -3289,7 +3282,8 @@ class DatabaseRecord:
         logger.debug('RecordType {NAME}: creating {NEW}record layout at level {LEVEL}'
                      .format(NAME=self.name, NEW=('new ' if is_new else ''), LEVEL=level))
 
-        editable = False if (view_only is True and is_new is False) or (level > 1) else True
+        editable = False if view_only is True else True
+        #editable = False if (view_only is True and is_new is False) or (level > 1) else True
         #user_priv = user.access_permissions()
 
         # Element parameters
