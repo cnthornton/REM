@@ -296,19 +296,12 @@ def importer_layout(win_size: tuple = None):
     back_shortcut = hotkeys['-HK_LEFT-'][2]
 
     # Element sizes
-    bwidth = 0.5
+    bwidth = 1
     format_param_w = 14
-    #format_desc_w = 24
     frame_w = int(width * 0.85)
-    #checkbox_pad = 5
-
-    # Element selection options
-    #try:
-    #    db_tables = user.database_tables(settings.prog_db)
-    #except ValueError:
-    #    db_tables = []
-
-    #record_types = settings.records.print_rules(by_title=True)
+    frame_pad = pad_frame * 2
+    container_w = frame_w - frame_pad
+    subset_w = int(container_w * 0.7)
 
     try:
         record_types = [i.menu_title for i in settings.records.rules if user.check_permission(i.permissions['upload'])]
@@ -323,12 +316,13 @@ def importer_layout(win_size: tuple = None):
 
     cond_operators = ['=', '!=', '>', '<', '>=', '<=']
     math_operators = ['+', '-', '*', '/', '%', '^', '//']
+    def_combo_values = ['', '', '', '', '', '']
 
     # Window Layout
 
     # Subset layout
     subset_keys = ['-SUBSET_{}-'.format(i) for i in range(10)]
-    subset_layout = [[sg.Canvas(size=(int(width * 0.85) - 40, 0), background_color=bg_col)]]
+    subset_layout = [[sg.Canvas(size=(container_w, 0), background_color=bg_col)]]
     for index, subset_key in enumerate(subset_keys):
         oper_key = '-SUBSET_OPER_{}-'.format(index)
         value_key = '-SUBSET_VALUE_{}-'.format(index)
@@ -351,30 +345,32 @@ def importer_layout(win_size: tuple = None):
                                    sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=1,
                                              button_color=(text_col, bg_col))]]
 
-        subset_layout.append(
-            [sg.Col([
-                [sg.Col([[sg.Text('Subset Rule {}:'.format(index + 1), pad=((0, pad_h), 0), font=font_bold,
-                                  background_color=bg_col, auto_size_text=True)]],
-                        justification='l', element_justification='l', background_color=bg_col),
-                 sg.Col([[sg.Frame('', [
-                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=frame_col, font=font_main),
-                      sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(14, 1),
-                               background_color=input_col, font=font_main, tooltip='Column'),
-                      sg.Combo(cond_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(6, 1),
-                               font=font_bold, background_color=input_col, tooltip='Operator'),
-                      sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(14, 1),
-                               background_color=input_col, font=font_main, tooltip='Column value')]],
-                                   background_color=frame_col, border_width=1)]],
-                        justification='c', element_justification='l', background_color=bg_col, expand_x=True),
-                 sg.Col(subset_bttn_layout, pad=(pad_h, 0), justification='r', element_justification='r',
-                        background_color=bg_col)]],
-                key=subset_key, pad=(0, int(pad_el / 2)), visible=visible, expand_x=True,
-                background_color=bg_col, vertical_alignment='t', justification='l',
-                element_justification='l')])
+        sub_cond_layout = [sg.Col([[sg.Canvas(size=(container_w, 0), background_color=bg_col)],
+                                   [sg.Col([[sg.Text('{}.'.format(index + 1), pad=((0, pad_h), 0), font=font_bold,
+                                                     background_color=bg_col, auto_size_text=True),
+                                             sg.Combo(def_combo_values, key=col_key, pad=((0, pad_h), pad_el),
+                                                      size=(int(subset_w * 0.4 / 9), 1), background_color=input_col,
+                                                      font=font_main, auto_size_text=False, disabled=True,
+                                                      tooltip='Column'),
+                                             sg.Combo(math_operators, key=oper_key, pad=((0, pad_h), pad_el),
+                                                      size=(int(subset_w * 0.2 / 9), 1), font=font_bold,
+                                                      background_color=input_col, auto_size_text=False, disabled=True,
+                                                      tooltip='Operator'),
+                                             sg.Input('', key=value_key, pad=((0, pad_el), pad_el),
+                                                      size=(int(subset_w * 0.4 / 9), 1), background_color=input_col,
+                                                      font=font_main, disabled=True, tooltip='Column value')]],
+                                           background_color=bg_col, justification='l', element_justification='l',
+                                           expand_x=True),
+                                    sg.Col(subset_bttn_layout, pad=(pad_h, 0), justification='r',
+                                           element_justification='r', background_color=bg_col)]],
+                                  key=subset_key, background_color=bg_col, vertical_alignment='t', justification='l',
+                                  element_justification='l', pad=(0, int(pad_el / 2)), visible=visible)
+                           ]
+        subset_layout.append(sub_cond_layout)
 
     # Modify layout
     modify_keys = ['-MODIFY_{}-'.format(i) for i in range(10)]
-    modify_layout = [[sg.Canvas(size=(int(width * 0.85) - 40, 0), background_color=bg_col)]]
+    modify_layout = [[sg.Canvas(size=(container_w, 0), background_color=bg_col)]]
     for index, modify_key in enumerate(modify_keys):
         oper_key = '-MODIFY_OPER_{}-'.format(index)
         value_key = '-MODIFY_VALUE_{}-'.format(index)
@@ -397,26 +393,28 @@ def importer_layout(win_size: tuple = None):
                                    sg.Button('', key=add_key, image_data=mod_const.ADD_ICON, border_width=1,
                                              button_color=(text_col, bg_col))]]
 
-        modify_layout.append(
-            [sg.Col([
-                [sg.Col([[sg.Text('Modify Rule {}:'.format(index + 1), pad=((0, pad_h), 0), font=font_bold,
-                                  background_color=bg_col, auto_size_text=True)]],
-                        justification='l', element_justification='l', background_color=bg_col),
-                 sg.Col([[sg.Frame('', [
-                     [sg.Text('Condition:', pad=(pad_el, pad_el), background_color=frame_col, font=font_main),
-                      sg.Combo([], key=col_key, pad=((0, pad_h), pad_el), size=(14, 1),
-                               background_color=input_col, font=font_main, tooltip='Column'),
-                      sg.Combo(math_operators, key=oper_key, pad=((0, pad_h), pad_el), size=(6, 1),
-                               font=font_bold, background_color=input_col, tooltip='Operator'),
-                      sg.Input('', key=value_key, pad=((0, pad_el), pad_el), size=(14, 1),
-                               background_color=input_col, font=font_main, tooltip='Column value')]],
-                                   background_color=frame_col, border_width=1)]],
-                        justification='c', element_justification='l', background_color=bg_col, expand_x=True),
-                 sg.Col(modify_bttn_layout, pad=(pad_h, 0), justification='r', element_justification='r',
-                        background_color=bg_col)]],
-                key=modify_key, pad=(0, int(pad_el / 2)), visible=visible, expand_x=True,
-                background_color=bg_col, vertical_alignment='t', justification='l',
-                element_justification='l')])
+        mod_cond_layout = [sg.Col([[sg.Canvas(size=(container_w, 0), background_color=bg_col)],
+                                   [sg.Col([[sg.Text('{}.'.format(index + 1), pad=((0, pad_h), 0), font=font_bold,
+                                                     background_color=bg_col, auto_size_text=True),
+                                             sg.Combo(def_combo_values, key=col_key, pad=((0, pad_h), pad_el),
+                                                      size=(int(subset_w * 0.4 / 9), 1), background_color=input_col,
+                                                      font=font_main, auto_size_text=False, disabled=True,
+                                                      tooltip='Column'),
+                                             sg.Combo(math_operators, key=oper_key, pad=((0, pad_h), pad_el),
+                                                      size=(int(subset_w * 0.2 / 9), 1), font=font_bold,
+                                                      background_color=input_col, auto_size_text=False, disabled=True,
+                                                      tooltip='Operator'),
+                                             sg.Input('', key=value_key, pad=((0, pad_el), pad_el),
+                                                      size=(int(subset_w * 0.4 / 9), 1), background_color=input_col,
+                                                      font=font_main, disabled=True, tooltip='Column value')]],
+                                           background_color=bg_col, justification='l', element_justification='l',
+                                           expand_x=True),
+                                    sg.Col(modify_bttn_layout, pad=(pad_h, 0), justification='r',
+                                           element_justification='r', background_color=bg_col)]],
+                                  key=modify_key, background_color=bg_col, vertical_alignment='t', justification='l',
+                                  element_justification='l', pad=(0, int(pad_el / 2)), visible=visible)
+                           ]
+        modify_layout.append(mod_cond_layout)
 
     # Panel layout
     p1 = [[sg.Col([[sg.Text('File:', size=(5, 1), pad=((0, pad_el), 0), background_color=bg_col),
@@ -432,24 +430,26 @@ def importer_layout(win_size: tuple = None):
                         sg.Combo(file_types, key='-FORMAT-', default_value='xls', size=(12, 1),
                                  pad=(pad_el, pad_el), background_color=input_col, tooltip='Format of the input file')],
                        [sg.Text('Encoding:', auto_size_text=True, pad=(pad_el, 0), background_color=bg_col),
-                   sg.Combo(encodings, key='-ENCODE-', default_value='Default', size=(12, 1), pad=(pad_el, pad_el),
-                            background_color=input_col)]],
+                        sg.Combo(encodings, key='-ENCODE-', default_value='Default', size=(12, 1), pad=(pad_el, pad_el),
+                                 background_color=input_col)]],
                       pad=((pad_h, 0), pad_v), background_color=bg_col, element_justification='r', expand_x=True),
                sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)]],
                       pad=(0, pad_v), background_color=bg_col, expand_x=True, expand_y=True),
                sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)],
-                       [sg.Text('Newline Separator:', auto_size_text=True, pad=(pad_el, pad_el), background_color=bg_col),
-                   sg.Input('\\n', key='-NSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
-                            background_color=input_col,
-                            tooltip='Character used in the CSV file to distinguish between rows')],
+                       [sg.Text('Newline Separator:', auto_size_text=True, pad=(pad_el, pad_el),
+                                background_color=bg_col),
+                        sg.Input('\\n', key='-NSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
+                                 background_color=input_col,
+                                 tooltip='Character used in the CSV file to distinguish between rows')],
                        [sg.Text('Field Separator:', auto_size_text=True, pad=(pad_el, pad_el), background_color=bg_col),
-                   sg.Input('\\t', key='-FSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
-                            background_color=input_col,
-                            tooltip='Character used in the CSV file to distinguish between columns')]],
+                        sg.Input('\\t', key='-FSEP-', size=(8, 1), pad=(pad_el, pad_el), disabled=True,
+                                 background_color=input_col,
+                                 tooltip='Character used in the CSV file to distinguish between columns')]],
                       pad=((0, pad_h), pad_v), background_color=bg_col, element_justification='r', expand_x=True),
                sg.Col([[sg.Canvas(size=(int(frame_w * 0.15), 0), background_color=bg_col)]], pad=(0, pad_v),
                       background_color=bg_col, expand_x=True, expand_y=True)]
-          ], pad=(pad_frame, pad_v), border_width=bwidth, background_color=bg_col, title_color=select_col, relief='groove')],
+          ], pad=(pad_frame, pad_v), border_width=bwidth, background_color=bg_col, title_color=select_col,
+                    relief='groove')],
           [sg.Frame('Formatting options', [
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Checkbox('Recognize dates', key='-DATES-', pad=(pad_h, (pad_v, pad_el)), default=True, font=font_main,
@@ -497,13 +497,6 @@ def importer_layout(win_size: tuple = None):
                     sg.Combo(record_types, key='-RECORDTYPE-', size=(28, 1), pad=(0, 0),
                              enable_events=True, background_color=input_col)]],
                   pad=(pad_frame, (pad_frame, pad_v)), justification='l', background_color=bg_col)],
-          #[sg.Col([[sg.Text('Database Table:', pad=((0, pad_el), 0), background_color=bg_col),
-          #          sg.Combo(db_tables, key='-TABLE-', size=(28, 1), pad=((0, pad_h), 0), enable_events=True,
-          #                   background_color=input_col),
-          #          sg.Text('Record Type:', pad=((0, pad_el), 0), background_color=bg_col),
-          #          sg.Combo(record_types, key='-RECORDTYPE-', size=(28, 1), pad=(0, 0),
-          #                   enable_events=True, background_color=input_col)]],
-          #        pad=(pad_frame, (pad_frame, pad_v)), justification='l', background_color=bg_col)],
           [sg.Frame('Required Columns', [
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
@@ -534,7 +527,7 @@ def importer_layout(win_size: tuple = None):
                   pad=(pad_v, pad_v), background_color=bg_col, expand_x=True)]],
                     pad=(pad_frame, pad_v), border_width=bwidth, background_color=bg_col, title_color=select_col,
                     relief='groove', tooltip='Map imported file column names to database table column names')],
-          [sg.Frame('Subset Table Rows', [
+          [sg.Frame('Subset Rows', [
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col(subset_layout, pad=(pad_v, pad_v), key='-SUBSET-',
                       background_color=bg_col, expand_x=True, expand_y=True,
@@ -543,7 +536,7 @@ def importer_layout(win_size: tuple = None):
                     pad=(pad_frame, pad_v), background_color=bg_col, border_width=bwidth,
                     title_color=select_col, relief='groove', element_justification='l', vertical_alignment='t',
                     tooltip='Use the subset rules to subset table rows based on the values of the imported columns')],
-          [sg.Frame('Modify Column Values', [
+          [sg.Frame('Transform Values', [
               [sg.Canvas(size=(int(width * 0.85), 0), background_color=bg_col)],
               [sg.Col(modify_layout, pad=(pad_v, pad_v), key='-MODIFY-',
                       background_color=bg_col, expand_x=True, expand_y=True,
@@ -557,7 +550,7 @@ def importer_layout(win_size: tuple = None):
     p3 = [[sg.Frame('Import Statistics', [
         [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
         [sg.Col([
-            [sg.Text('Database table:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+            [sg.Text('Record type:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
                      font=font_main),
              sg.Text('0', key='-TABLENAME-', size=(12, 1), pad=(0, pad_el), font=font_main,
                      background_color=bg_col)],
@@ -609,7 +602,8 @@ def importer_layout(win_size: tuple = None):
 
     sidebar_layout = [
         [sg.Col([[sg.Canvas(size=(0, height * 0.9), background_color=frame_col)]], background_color=frame_col),
-         sg.Col([[sg.Text('• ', pad=((pad_frame, pad_el), (pad_frame, pad_el)), font=font_large),
+         sg.Col([[sg.Text('• ', pad=((pad_frame, pad_el), (pad_frame, pad_el)), font=font_large,
+                          background_color=frame_col),
                   sg.Text('File Options', key='-PN1-', pad=((pad_el, pad_frame), (pad_frame, pad_el)),
                           font=font_main, text_color=select_col, background_color=frame_col)],
                  [sg.Text('• ', pad=((pad_frame, pad_el), pad_el), font=font_large, background_color=frame_col),
