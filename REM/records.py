@@ -624,6 +624,81 @@ class RecordEntry:
 
         return filters
 
+    def _format_import_columns(self, import_rules: dict = None):
+        """
+        Format columns for querying.
+        """
+        converter_funcs = {'CAST', 'CONVERT'}
+        merge_funcs = {'COALESCE', 'CONCAT'}
+
+        import_rules = self.import_rules if import_rules is None else import_rules
+        database = settings.prog_db if self.program_record else settings.dbname
+
+        columns = []
+        for import_table in import_rules:
+            import_rule = import_rules[import_table]
+            table_columns = user.table_schema(database, import_table)
+
+            try:
+                modifiers = import_rule['Modifiers']
+            except KeyError:
+                modifiers = {}
+
+            import_columns = import_rule['Columns']
+            for import_column in import_columns:
+                column_alias = import_columns[import_column]
+
+                col_mod = modifiers.get(import_column, None)
+                if col_mod:
+                    sql_func = col_mod['Function'].upper()
+                    sql_args = col_mod['Arguments']
+
+                    if sql_func in merge_funcs:
+                        merge_args = []
+                        for comp in sql_args:
+                            if comp in table_columns:
+                                merge_arg = '{TBL}.{COL}'.format(TBL=import_table, COL=comp)
+                            else:
+                                merge_arg = "'{}'".format(comp)
+
+                            merge_args.append(merge_arg)
+
+                        if sql_func == 'CONCAT':  # CONCAT is only supported in SQL Server >= 2012
+                            oper = '({ARGS})'.format(ARGS='+'.join(merge_args))
+                        else:
+                            oper = '{FUNC}({ARGS})'.format(FUNC=sql_func, ARGS=','.join(merge_args))
+                    elif sql_func in converter_funcs:
+                        try:
+                            dtype, col_size = sql_args
+                        except ValueError:
+                            try:
+                                dtype = sql_args
+                            except KeyError:
+                                logger.warning('unable to modify column {COL} from import table {TBL} - datatype is a '
+                                               'required argument for {FUNC} type modifiers'
+                                               .format(COL=import_column, TBL=import_table, FUNC=sql_func))
+                                dtype = col_size = None
+                            else:
+                                col_size = None
+
+                        if dtype is not None:
+                            if col_size is not None:
+                                oper = '{FUNC}({TBL}.{COL} AS {DTYPE}({SIZE}))' \
+                                        .format(FUNC=sql_func, TBL=import_table, COL=import_column, DTYPE=dtype, SIZE=col_size)
+                            else:
+                                oper = '{FUNC}({TBL}.{COL} AS {DTYPE})'.format(FUNC=sql_func, TBL=import_table, COL=import_column, DTYPE=dtype)
+                        else:
+                            oper = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+                    else:
+                        oper = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+                else:
+                    oper = '{TBL}.{COL}'.format(TBL=import_table, COL=import_column)
+
+                column = '{OPER} AS {ALIAS}'.format(OPER=oper, ALIAS=column_alias)
+                columns.append(column)
+
+        return columns
+
     def map_column(self, column):
         """
         Convert from record column to database column.
@@ -686,7 +761,7 @@ class RecordEntry:
 
         # Add configured import filters
         table_statement = mod_db.format_tables(self.import_rules)
-        columns = mod_db.format_import_columns(self.import_rules)
+        columns = self._format_import_columns()
         id_col = mod_db.get_import_column(self.import_rules, self.id_column)
 
         # Query existing database entries
@@ -737,7 +812,8 @@ class RecordEntry:
         # Add configured import filters
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
-        columns = mod_db.format_import_columns(import_rules)
+        columns = self._format_import_columns(import_rules)
+        #columns = mod_db.format_import_columns(import_rules)
         id_col = mod_db.get_import_column(import_rules, self.id_column)
 
         # Add optional parameter-based filters
@@ -872,7 +948,8 @@ class RecordEntry:
 
         # Import reference entries related to record_id
         db_id_col = mod_db.get_import_column(import_rules, 'RecordID')
-        columns = mod_db.format_import_columns(import_rules)
+        #columns = mod_db.format_import_columns(import_rules)
+        columns = self._format_import_columns(import_rules)
         filters = mod_db.format_import_filters(import_rules)
         # filters.append(('{TBL}.{COL} = ?'.format(TBL=reference_table, COL=import_col_map['Deleted']), 0))
         filters_clause = '{TBL}.{COL} IS NULL'.format(TBL=reference_table, COL=import_col_map['ReferenceID'])

@@ -378,7 +378,19 @@ class SettingsManager:
         self.translation = self.change_locale()
         self.translation.install('base')  # bind gettext to _() in __builtins__ namespace
 
-        # Display parameters
+        self.formatters = {'numeric': {'decimal_sep': locale_conv['decimal_point'],
+                                       'thousands_sep': locale_conv['thousands_sep']
+                                       },
+                           'currency': {'decimal_places': 2,
+                                        'int_symbol': locale_conv['int_curr_symbol'],
+                                        'symbol': locale_conv['currency_symbol']
+                                        },
+                           'date': {'display_format': self.format_date_str(self.display_date_format),
+                                    'offset': self.get_date_offset(),
+                                    'format': ''}
+                           }
+
+        # Logos and icons
         try:
             icon_name = cnfg['display']['icon']
         except KeyError:
@@ -433,6 +445,7 @@ class SettingsManager:
             self.logo_icon = logo_file
             fh.close()
 
+        # Record report templates
         try:
             report_template = cnfg['display']['record_template']
         except KeyError:
@@ -745,6 +758,8 @@ class SettingsManager:
             hotkey_layout.append([sg.Col(group_col1, pad=(pad_v, pad_el), background_color=bg_col),
                                   sg.Col(group_col2, pad=(pad_v, pad_el), background_color=bg_col)])
 
+        display_date_formats = self.supported_display_date_formats
+        default_date_format = self.display_date_format
         layout = [sg.Canvas(size=(1, container_h), background_color=bg_col),
                   sg.Col([
                       [sg.Frame('Localization', [
@@ -759,8 +774,8 @@ class SettingsManager:
                                              default_value=self.language, background_color=in_col)],
                                    [sg.Combo(list(self._locales), key='-LOCALE-', pad=(0, (0, pad_el)),
                                              default_value=self.locale, background_color=in_col)],
-                                   [sg.Combo(list(self.supported_display_date_formats), key='-DISPLAY_DATE-',
-                                             pad=(0, (0, pad_el)), default_value=self.display_date_format,
+                                   [sg.Combo(display_date_formats, key='-DISPLAY_DATE-',
+                                             pad=(0, (0, pad_el)), default_value=default_date_format,
                                              background_color=in_col)]],
                                   pad=(pad_v, pad_el), background_color=bg_col)]],
                                 pad=(pad_v, pad_v), border_width=bwidth, background_color=bg_col,
@@ -1278,10 +1293,6 @@ class AccountManager:
         self.logged_in = False
         self.roles = None
 
-        # Old
-        self.admin = False
-        self.group = None
-
     def _prepare_conn_str(self, database: str = None):
         """
         Prepare the connection string.
@@ -1328,67 +1339,6 @@ class AccountManager:
 
         return True
 
-    def login_old(self, uid, pwd, timeout: int = 10):
-        """
-        Verify username and password exists in the database accounts table and obtain user permissions.
-
-        Args:
-            uid (str): existing account username.
-
-            pwd (str): password associated with the existing account.
-
-            timeout (int): server connection timeout.
-        """
-        self.uid = uid
-        self.pwd = cipher.encrypt(pwd.encode('utf-8'))
-
-        logger.info('signing in as "{}"'.format(self.uid))
-
-        # Prepare query statement and parameters
-        query_str = 'SELECT UserName, UserGroup FROM Users WHERE UserName = ?'
-        params = (uid,)
-
-        # Prepare the server request
-        value = {'connection_string': self._prepare_conn_str(), 'transaction_type': 'read', 'statement': query_str,
-                 'parameters': params}
-        content = {'action': 'db_transact', 'value': value}
-        request = {'content': content, 'encoding': "utf-8"}
-
-        # Send the request for data to the server
-        response = server_conn.process_request(request, timeout=timeout)
-        if response['success'] is False:
-            msg = 'login failure for user {USER} - {ERR}'.format(USER=uid, ERR=response['value'])
-            logger.error(msg)
-            raise IOError(msg)
-        else:
-            try:
-                series = pd.DataFrame(response['value']).iloc[0]
-            except Exception as e:
-                msg = 'login failure for user {USER} - {ERR}'.format(USER=uid, ERR=e)
-                logger.error(msg)
-                raise IOError(msg)
-            else:
-                ugroup = series['UserGroup']
-
-        if not ugroup:
-            msg = 'login failure for user {USER} - no user group returned from the database'.format(USER=uid)
-            logger.error(msg)
-
-            self.uid = None
-            self.pwd = None
-
-            return False
-
-        self.group = ugroup
-        self.logged_in = True
-
-        if ugroup == 'admin':
-            self.admin = True
-
-        logger.info('successfully signed in as "{}"'.format(user.uid))
-
-        return True
-
     def logout(self):
         """
         Reset class attributes.
@@ -1398,67 +1348,25 @@ class AccountManager:
         self.uid = None
         self.pwd = None
         self.logged_in = False
-
-        #Old
-        self.admin = False
-        self.group = None
+        self.roles = None
 
         return True
-
-    def access_permissions_new(self, object_ids: list = None, actions: list = None, timeout: int = 5):
-        """
-        Return user permissions for a given program object.
-
-        Arguments:
-            object_ids (str): get user permissions for the given objects [Default: get permissions for all objects].
-
-            actions (list): get user permissions for the given operations [Default: get permissions for all operations].
-
-            timeout (int): connection timeout [Default: 5 seconds].
-        """
-        if isinstance(object_ids, str):
-            object_ids = [object_ids]
-
-        if isinstance(actions, str):
-            actions = [actions]
-
-        # Prepare user permissions for a given object
-        value = {'connection_string': self._prepare_conn_str(), 'object_id': object_ids, 'operation': actions}
-        content = {'action': 'permissions', 'value': value}
-        request = {'content': content, 'encoding': "utf-8"}
-
-        # Send the request for data to the server
-        response = server_conn.process_request(request, timeout=timeout)
-        if response['success'] is False:
-            msg = response['value']
-            logger.error(msg)
-
-            return []
-
-        df = pd.DataFrame(response['value'])
-
-        return df
-
-    def access_permissions(self):
-        """
-        Return escalated privileges for a given user group.
-        """
-        ugroup = self.group
-
-        if ugroup == 'admin':
-            return ['admin', 'user']
-        else:
-            return ['user']
 
     def check_permission(self, access_group):
         """
         Check if the user belongs to a given access group.
         """
+        if not isinstance(access_group, list) or isinstance(access_group, tuple) or isinstance(access_group, set):
+            return False
+
         roles = set(self.roles)
+        print('user {} belongs to user roles {}'.format(self.uid, roles))
         inter = set(access_group).intersection(roles)
         if len(inter) > 0:
+            print('permission granted for access group {}'.format(access_group))
             return True
         else:
+            print('permission not granted for access group {}'.format(access_group))
             return False
 
     def database_tables(self, database, timeout: int = 5):
@@ -1466,7 +1374,7 @@ class AccountManager:
         Get database schema information.
         """
         # Prepare the server request
-        value = {'connection_string': self._prepare_conn_str(), 'table': None, 'database': database}
+        value = {'connection_string': self._prepare_conn_str(database=database), 'table': None, 'database': database}
         content = {'action': 'db_schema', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
 
@@ -1487,7 +1395,7 @@ class AccountManager:
         Get table schema information.
         """
         # Prepare the server request
-        value = {'connection_string': self._prepare_conn_str(), 'table': table, 'database': database}
+        value = {'connection_string': self._prepare_conn_str(database=database), 'table': table, 'database': database}
         content = {'action': 'db_schema', 'value': value}
         request = {'content': content, 'encoding': "utf-8"}
 

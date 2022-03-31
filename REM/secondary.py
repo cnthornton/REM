@@ -1866,19 +1866,12 @@ def import_window(table, params: list = None):
         record_type = table.record_type
     except AttributeError:
         enable_search = False
-        table_statement = None
-        import_columns = None
-        program_database = False
+        record_entry = None
         import_rules = None
     else:
-        record_entry = settings.records.fetch_rule(record_type)
-        program_database = record_entry.program_record
-        import_rules = table.import_rules if table.import_rules else record_entry.import_rules
-
-        table_statement = mod_db.format_tables(import_rules)
-        import_columns = mod_db.format_import_columns(import_rules)
-
         enable_search = True
+        record_entry = settings.records.fetch_rule(record_type)
+        import_rules = table.import_rules if table.import_rules else record_entry.import_rules
 
     # Window and element size parameters
     font_h = mod_const.HEADING_FONT
@@ -1973,18 +1966,8 @@ def import_window(table, params: list = None):
             current_w, current_h = (win_w, win_h)
 
         if event == '-FIND-':  # click the find button to query database
-            # Set search parameter values
-            query_filters = []
-            for param in params:
-                param.format_value(values)
-                query_statement = param.query_statement(mod_db.get_import_column(import_rules, param.name))
-                if query_statement is not None:
-                    query_filters.append(query_statement)
-
             try:
-                record_df = user.read_db(*mod_db.prepare_sql_query(table_statement, columns=import_columns,
-                                                                   filter_rules=query_filters),
-                                         prog_db=program_database)
+                record_df = record_entry.import_records(filter_params=params, import_rules=import_rules)
             except Exception as e:
                 popup_error('failed to import records matching the defined search parameters from the database - {ERR}'
                             .format(ERR=e))
