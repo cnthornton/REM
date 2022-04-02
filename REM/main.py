@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.13.0'
+__version__ = '3.13.2'
 
 import sys
 import tkinter as tk
@@ -696,7 +696,7 @@ def main():
     while True:
         event, values = window.read(timeout=100)
 
-        # Quit program
+        # Quit the program
         if event == sg.WIN_CLOSED or values['-MMENU-'] == 'Quit':
             logger.info('exiting the program')
 
@@ -734,13 +734,13 @@ def main():
 
                 continue
 
-        # Resize screen
         # Get window dimensions
         try:
             win_w, win_h = window.size
         except AttributeError:
             continue
 
+        # Resize the main window
         if win_w != current_w or win_h != current_h:
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
@@ -752,86 +752,76 @@ def main():
 
             continue
 
-        # User login
-        if values['-UMENU-'] == 'Sign In':  # user logs on
-            logger.debug('displaying user login screen')
-            mod_win2.login_window()
+        if event == '-UMENU-':
+            menu_value = values['-UMENU-']
 
-            if user.logged_in is True:  # logged on successfully
-                # Switch user icon
-                window['-UMENU-'].Widget.configure(image=userin_image)
+            # User login
+            if menu_value == 'Sign In':  # user logs on
+                logger.debug('displaying user login screen')
+                mod_win2.login_window()
 
-                # Enable permission specific actions and menus
-                toolbar.enable(window)
+                if user.logged_in is True:  # logged on successfully
+                    # Switch user icon
+                    window['-UMENU-'].Widget.configure(image=userin_image)
 
-                # Update user menu items to include the login name
-                toolbar.update_username(window, user.uid)
+                    # Enable permission specific actions and menus
+                    toolbar.enable(window)
 
-            continue
+                    # Update user menu items to include the login name
+                    toolbar.update_username(window, user.uid)
 
-        # User log-off
-        if values['-UMENU-'] == 'Sign Out':  # user signs out
-            try:
-                in_progress = current_rule.in_progress
-            except AttributeError:
-                in_progress = False
+                continue
 
-            # Confirm sign-out
-            if in_progress:  # ask to switch first
-                msg = 'An audit is ongoing. Are you sure you would like to quit without saving?'
-                selection = mod_win2.popup_confirm(msg)
-
-                if selection == 'OK':
-                    # Reset the rule and update the panel
-                    current_rule = current_rule.reset_rule(window)
-                    current_panel = '-HOME-'
-                else:
-                    continue
-            else:  # no action being taken so ok to switch without asking
-                msg = 'Are you sure you would like to sign-out?'
-                selection = mod_win2.popup_confirm(msg)
-
-                if selection == 'Cancel':
-                    continue
-
+            # User log-off
+            if menu_value == 'Sign Out':  # user signs out
                 try:
-                    current_rule.reset_parameters(window)
-                    window[current_rule.element_key].update(visible=False)
+                    in_progress = current_rule.in_progress
                 except AttributeError:
-                    pass
+                    in_progress = False
 
-                window['-HOME-'].update(visible=True)
-                current_panel = '-HOME-'
+                # Confirm sign-out
+                if in_progress:  # ask to switch first
+                    msg = 'An audit is ongoing. Are you sure you would like to quit without saving?'
+                    selection = mod_win2.popup_confirm(msg)
 
-            # Remove all unsaved record IDs associated with the program instance
-            settings.remove_unsaved_ids()
+                    if selection == 'OK':
+                        # Reset the rule and update the panel
+                        current_rule = current_rule.reset_rule(window)
+                        current_panel = '-HOME-'
+                    else:
+                        continue
+                else:  # no action being taken so ok to switch without asking
+                    msg = 'Are you sure you would like to sign-out?'
+                    selection = mod_win2.popup_confirm(msg)
 
-            # Reset User attributes
-            user.logout()
+                    if selection == 'Cancel':
+                        continue
 
-            # Switch user icon
-            window['-UMENU-'].Widget.configure(image=user_image)
+                    try:
+                        current_rule.reset_parameters(window)
+                        window[current_rule.element_key].update(visible=False)
+                    except AttributeError:
+                        pass
 
-            # Disable all actions and menus
-            toolbar.disable(window)
+                    window['-HOME-'].update(visible=True)
+                    current_panel = '-HOME-'
 
-            continue
+                # Remove all unsaved record IDs associated with the program instance
+                settings.remove_unsaved_ids()
 
-        # Display the debug window
-        if not debug_win and values['-MMENU-'] == 'Debug':
-            if settings.log_file:
-                mod_win2.popup_notice('The debug window is deactivated when logging to a file. Program logs are '
-                                      'being sent to {}'.format(settings.log_file))
-            else:
-                debug_win = mod_win2.debug_window()
-                debug_win.finalize()
+                # Reset User attributes
+                user.logout()
 
-                # Reload logger with new log stream
-                settings.reload_logger(debug_win['-OUTPUT-'].TKOut)
-                logger.info('setting log output stream to the debug window')
+                # Switch user icon
+                window['-UMENU-'].Widget.configure(image=user_image)
 
-            continue
-        elif debug_win:
+                # Disable all actions and menus
+                toolbar.disable(window)
+
+                continue
+
+        # Handle debugger events, if relevant
+        if debug_win:
             debug_event, debug_value = debug_win.read(timeout=1000)
 
             if debug_event in (sg.WIN_CLOSED, '-CANCEL-'):
@@ -851,19 +841,37 @@ def main():
             else:
                 debug_win['-OUTPUT-'].expand(expand_x=True, expand_y=True, expand_row=True)
 
-        # Display the edit settings window
-        if values['-MMENU-'] == 'Settings':
-            mod_win2.edit_settings(win_size=window.size)
+        if event == '-MMENU-':
+            menu_value = values['-MMENU-']
 
-            continue
+            # Display the debug window
+            if menu_value == 'Debug' and not debug_win:
+                if settings.log_file:
+                    mod_win2.popup_notice('The debug window is deactivated when logging to a file. Program logs are '
+                                          'being sent to {}'.format(settings.log_file))
+                else:
+                    debug_win = mod_win2.debug_window()
+                    debug_win.finalize()
 
-        # Display "About" window
-        if values['-MMENU-'] == 'About':
-            mod_win2.about()
+                    # Reload logger with new log stream
+                    settings.reload_logger(debug_win['-OUTPUT-'].TKOut)
+                    logger.info('setting log output stream to the debug window')
 
-            continue
+                continue
 
-        # Display the database update window
+            # Display the edit settings window
+            elif menu_value == 'Settings':
+                mod_win2.edit_settings(win_size=window.size)
+
+                continue
+
+            # Display the "About" window
+            elif menu_value == 'About':
+                mod_win2.about()
+
+                continue
+
+        # Display the database importer window
         if event == '-DBMENU-':
             try:
                 mod_win2.database_importer_window(win_size=window.get_screen_size())
@@ -872,36 +880,34 @@ def main():
 
             continue
 
-        # Pull up an existing database record
+        # Display existing program records based on record type
         if event == '-RMENU-':
-            # Get Record Type selection
-            record_type = values['-RMENU-']
-            logger.info('displaying selection window for {TYPE} records'.format(TYPE=record_type))
+            menu_value = values['-RMENU-']
 
-            # Get record entry
-            record_entry = settings.records.fetch_rule(record_type, by_title=True)
+            # Get the record entry associated with the selected record type
+            record_entry = settings.records.fetch_rule(menu_value, by_title=True)
 
-            # Display the import record window
+            # Prepare the import record table
             table_entry = record_entry.import_table
             table_entry['RecordType'] = record_entry.name
             import_table = mod_elem.RecordTable(record_entry.name, table_entry)
 
+            logger.info('displaying selection window for {TYPE} records'.format(TYPE=menu_value))
             try:
                 mod_win2.record_import_window(import_table, enable_new=False)
             except Exception as e:
                 msg = 'record importing failed - {ERR}'.format(ERR=e)
                 mod_win2.popup_error(msg)
                 logger.exception(msg)
-#                raise
 
             continue
 
-        # Activate appropriate accounting workflow method panel
+        # Display the selected workflow panel
         selected_menu = values['-AMENU-']
-        if selected_menu in menu_mapper:
+        if event == '-AMENU-' and selected_menu in menu_mapper:
             selected_rule = menu_mapper[selected_menu]
 
-            if selected_rule in audit_names:  # workflow method is a transaction audit
+            if selected_rule in audit_names:  # selected workflow is transaction audit
                 # Obtain the selected rule object
                 current_rule = audit_rules.fetch_rule(selected_rule)
 
@@ -915,12 +921,12 @@ def main():
                 window[current_panel].update(visible=True)
                 logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
 
-                # Disable the toolbar
+                # Disable all toolbar elements
                 toolbar.disable(window)
 
                 continue
 
-            elif selected_rule in cash_names:  # workflow method is cash reconciliation
+            elif selected_rule in cash_names:  # selected workflow is cash reconciliation
                 # Obtain the selected rule object
                 current_rule = cash_rules.fetch_rule(selected_rule)
 
@@ -949,11 +955,11 @@ def main():
 
                 continue
 
-            elif selected_rule in bank_names:  # workflow method is bank reconciliation
+            elif selected_rule in bank_names:  # selected workflow is bank reconciliation
                 # Obtain the selected rule object
                 current_rule = bank_rules.fetch_rule(selected_rule)
 
-                # Clear the panel
+                # Reset the workflow
                 current_rule.reset_rule(window, current=True)
 
                 # Update the panel-in-display and the account panel
@@ -962,13 +968,13 @@ def main():
                 current_panel = current_rule.element_key
                 window[current_panel].update(visible=True)
 
-                # Disable toolbar
+                # Disable all toolbar elements
                 toolbar.disable(window)
 
                 logger.debug('panel in view is {NAME}'.format(NAME=current_rule.name))
                 continue
 
-        # Action events
+        # Workflow events
         if current_rule and event in current_rule.events():
             logger.info('running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
             try:
