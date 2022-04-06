@@ -2,6 +2,7 @@
 REM configuration settings.
 """
 
+import concurrent.futures
 import datetime
 import gettext
 import hashlib
@@ -134,15 +135,13 @@ class ServerConnection:
                 self._send_buffer = self._send_buffer[sent:]
 
     def _encode(self, obj, encoding):
-        #        return json.dumps(obj, ensure_ascii=False).encode(encoding)
+        # return json.dumps(obj, ensure_ascii=False).encode(encoding)
         return json_util.dumps(obj, ensure_ascii=False).encode(encoding)
 
     def _decode(self, json_bytes, encoding):
-        #        tiow = io.TextIOWrapper(
-        #            io.BytesIO(json_bytes), encoding=encoding, newline=""
-        #        )
-        #        obj = json.load(tiow)
-        #        tiow.close()
+        # tiow = io.TextIOWrapper(io.BytesIO(json_bytes), encoding=encoding, newline="")
+        # obj = json.load(tiow)
+        # tiow.close()
         obj = json_util.loads(json_bytes.decode(encoding))
 
         return obj
@@ -170,11 +169,12 @@ class ServerConnection:
 
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if time.time() - start_time > 1:
-                sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
+            elapsed_time = time.time() - start_time
+            if elapsed_time > 1:
+                sg.popup_animated(mod_const.PROGRESS_GIF, keep_on_top=True, alpha_channel=0.5)
 
             if self.response is not None:
-                logger.debug('server process completed')
+                logger.debug('server process completed after {} seconds'.format(elapsed_time))
                 result = self.response
                 sg.popup_animated(image_source=None)
                 break
@@ -182,8 +182,8 @@ class ServerConnection:
                 if self._ready_to_read:
                     try:
                         self.read()
-                    except Exception as e:
-                        msg = 'server request failed - {ERR}'.format(ERR=e)
+                    except Exception as err:
+                        msg = 'server request failed after {TIME} seconds - {ERR}'.format(ERR=err, TIME=elapsed_time)
                         result = {'success': False, 'value': msg}
                         sg.popup_animated(image_source=None)
 
@@ -192,7 +192,7 @@ class ServerConnection:
                     try:
                         self.write()
                     except Exception as e:
-                        msg = 'server request failed - {ERR}'.format(ERR=e)
+                        msg = 'server request failed after {TIME} seconds - {ERR}'.format(ERR=e, TIME=elapsed_time)
                         result = {'success': False, 'value': msg}
                         sg.popup_animated(image_source=None)
                         logger.error(msg)
@@ -676,7 +676,7 @@ class SettingsManager:
         self.alt_dbs = database_attrs.get('databases', [])
         if not self.dbname or self.dbname not in self.alt_dbs:
             self.dbname = database_attrs.get('default_database', 'REM')
-        #self.date_format = database_attrs.get('db_date_format', self.format_date_str('YYYY-MM-DD HH:MI:SS'))
+        # self.date_format = database_attrs.get('db_date_format', self.format_date_str('YYYY-MM-DD HH:MI:SS'))
         self.date_format = self.format_date_str(database_attrs.get('db_date_format', 'YYYY-MM-DD HH:MI:SS'))
 
         # Reserved tables and table columns
@@ -692,8 +692,6 @@ class SettingsManager:
         self.delete_field = table_field_attrs.get('delete_field', 'IsDeleted')
         self.reference_lookup = table_field_attrs.get('reference_table', 'RecordReferences')
         self.bank_lookup = table_field_attrs.get('bank_table', 'Bank')
-
-        #self.records = None
 
         return success
 
@@ -1465,6 +1463,56 @@ class AccountManager:
 
 
 # Functions
+def thread_operation(func, args, timeout: int = 600):
+    """
+    Run an operation in a separate thread.
+
+    Arguments:
+        func: function to pass to the thread pool executor.
+
+        args (dict): function arguments.
+
+        timeout (int): timeout in seconds [default: 600].
+    """
+    with concurrent.futures.ThreadPoolExecutor(1) as executor:
+        future = executor.submit(func, **args)
+
+        start_time = time.time()
+        logger.info('running a threaded operation at {}'.format(start_time))
+        while time.time() - start_time < timeout:
+            elapsed_time = time.time() - start_time
+            sg.popup_animated(mod_const.PROGRESS_GIF, keep_on_top=True, alpha_channel=0.5)
+
+            if future.done():
+                sg.popup_animated(image_source=None)
+                msg = 'threaded operation completed after {} seconds'.format(elapsed_time)
+                logger.info(msg)
+
+                try:
+                    return_value = future.result()
+                except Exception as e:
+                    msg = 'threaded operation failed after {TIME} seconds - {ERR}'.format(ERR=e, TIME=elapsed_time)
+                    result = {'success': False, 'value': msg}
+                else:
+                    result = {'success': True, 'value': return_value}
+
+                break
+
+        else:
+            sg.popup_animated(image_source=None)
+            msg = 'threaded operation failed to complete before the {} second timeout'.format(timeout)
+            logger.error(msg)
+
+            try:
+                return_value = future.result(1)
+            except concurrent.futures.TimeoutError:
+                result = {'success': False, 'value': msg}
+            else:
+                result = {'success': True, 'value': return_value}
+
+    return result
+
+
 def hash_password(password):
     """
     Obtain a password's hash-code.

@@ -3,7 +3,7 @@
 REM main program. Includes primary display.
 """
 
-__version__ = '3.13.2'
+__version__ = '3.13.3'
 
 import sys
 import tkinter as tk
@@ -213,15 +213,12 @@ class ToolBar:
 
         record_rules = records.rules
         for record_entry in record_rules:
-            #if not record_entry.program_record or not record_entry.show_menu:  # only display program records
             if not record_entry.show_menu:  # only display record entries with configured menus
                 continue
 
             menu_title = record_entry.menu_title
             menu_group = record_entry.menu_group
             user_access = record_entry.permissions['view']
-            print('record entry {} has access permissions {}'.format(menu_title, user_access))
-            #user_access = record_entry.permissions
 
             if menu_group:  # menu title will be a sub menu
                 try:
@@ -391,20 +388,11 @@ class ToolBar:
         """
         Enable toolbar buttons.
         """
-        #admin = user.admin
-
         record_menus = self.record_items
         account_menus = self.account_items
 
-        logger.info('Toolbar: enabling toolbar menus')
+        logger.info('Toolbar: enabling toolbar elements')
 
-        # Enable admin-only privileges
-        #if admin is True:
-        #    # Database administration
-        #    window['-DBMENU-'].update(disabled=False)
-
-        #    # User administration
-        #    self.toggle_menu(window, 'umenu', 'manage accounts', disabled=False)
         # Database administration
         window['-DBMENU-'].update(disabled=False)
 
@@ -420,7 +408,6 @@ class ToolBar:
         # Disable record menus
         for menu in record_menus:
             user_access = record_menus[menu]
-            #if admin is True or user_access in user.access_permissions():
             if user.check_permission(user_access):
                 logger.debug('Toolbar: enabling record menu item {}'.format(menu))
                 self.toggle_menu(window, 'rmenu', menu, disabled=False)
@@ -428,9 +415,8 @@ class ToolBar:
         # Disable accounting method menus
         for menu in account_menus:
             user_access = account_menus[menu]
-            #if admin is True or user_access in user.access_permissions():
             if user.check_permission(user_access):
-                logger.debug('Toolbar: enabling accounting method menu item {}'.format(menu))
+                logger.debug('Toolbar: enabling workflow menu item {}'.format(menu))
                 self.toggle_menu(window, 'amenu', menu, disabled=False)
 
     def toggle_menu(self, window, menu, menu_item, disabled: bool = False):
@@ -601,7 +587,7 @@ def main():
                    text_element_background_color=default_col,
                    input_elements_background_color=default_col,
                    button_color=(text_col, default_col),
-                   tooltip_font=(mod_const.TOOLTIP_FONT))
+                   tooltip_font=mod_const.TOOLTIP_FONT)
 
     # Original window size
     logger.debug('determining screen size')
@@ -975,25 +961,27 @@ def main():
                 continue
 
         # Workflow events
-        if current_rule and event in current_rule.events():
-            logger.info('running window event {EVENT} of rule {RULE}'.format(EVENT=event, RULE=current_rule.name))
-            try:
-                current_rule_name = current_rule.run_event(window, event, values)
-            except Exception as e:
-                msg = 'failed to run window event {EVENT} of rule {RULE} - {ERR}'\
-                    .format(EVENT=event, RULE=current_rule.name, ERR=e)
-                mod_win2.popup_error(msg)
-                logger.exception(msg)
+        if current_rule:
+            if event in current_rule.events():
+                logger.info('running rule {RULE} window event {EVENT}'.format(EVENT=event, RULE=current_rule.name))
 
-                continue
+                try:
+                    current_rule_name = current_rule.run_event(window, event, values)
+                except Exception as e:
+                    msg = 'failed to run window event {EVENT} of rule {RULE} - {ERR}'\
+                        .format(EVENT=event, RULE=current_rule.name, ERR=e)
+                    mod_win2.popup_error(msg)
+                    logger.exception(msg)
 
-            if current_rule_name is None:
-                # Enable toolbar
-                toolbar.enable(window)
+                    continue
 
-                # Reset current_rule
-                current_rule = None
-                current_panel = '-HOME-'
+                if current_rule_name is None:
+                    # Enable toolbar
+                    toolbar.enable(window)
+
+                    # Reset current_rule
+                    current_rule = None
+                    current_panel = '-HOME-'
 
             continue
 
