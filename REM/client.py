@@ -76,7 +76,7 @@ class ServerConnection:
         start_time = time.time()
         sg.popup_animated(image_source=None)
         while time.time() - start_time < timeout:
-            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=100, keep_on_top=True, alpha_channel=0.5)
+            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, keep_on_top=True, alpha_channel=0.9)
 
             try:
                 self.sock.connect(self.addr)
@@ -162,7 +162,7 @@ class ServerConnection:
         try:
             self.action = request['content']['action']
         except KeyError:
-            msg = 'the request made to {} was formatted improperly'.format(settings.host)
+            msg = 'the request made to {} was formatted incorrectly'.format(settings.host)
             return {'success': False, 'value': msg}
 
         self.request = request
@@ -171,7 +171,8 @@ class ServerConnection:
         while time.time() - start_time < timeout:
             elapsed_time = time.time() - start_time
             if elapsed_time > 1:
-                sg.popup_animated(mod_const.PROGRESS_GIF, keep_on_top=True, alpha_channel=0.5)
+                sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, keep_on_top=True, alpha_channel=0.9,
+                                  message='requesting data from the server')
 
             if self.response is not None:
                 logger.debug('server process completed after {} seconds'.format(elapsed_time))
@@ -1463,7 +1464,7 @@ class AccountManager:
 
 
 # Functions
-def thread_operation(func, args, timeout: int = 600):
+def thread_operation(func, args, timeout: int = 600, message: str = None):
     """
     Run an operation in a separate thread.
 
@@ -1473,6 +1474,8 @@ def thread_operation(func, args, timeout: int = 600):
         args (dict): function arguments.
 
         timeout (int): timeout in seconds [default: 600].
+
+        message (str): optional message to add to the operation-in-progress popup.
     """
     with concurrent.futures.ThreadPoolExecutor(1) as executor:
         future = executor.submit(func, **args)
@@ -1481,7 +1484,8 @@ def thread_operation(func, args, timeout: int = 600):
         logger.info('running a threaded operation at {}'.format(start_time))
         while time.time() - start_time < timeout:
             elapsed_time = time.time() - start_time
-            sg.popup_animated(mod_const.PROGRESS_GIF, keep_on_top=True, alpha_channel=0.5)
+            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, message=message, keep_on_top=True,
+                              alpha_channel=0.9)
 
             if future.done():
                 sg.popup_animated(image_source=None)
