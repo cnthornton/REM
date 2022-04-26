@@ -332,11 +332,7 @@ class AuditRule:
 
                 if selection == 'OK':
                     # Reset the rule and update the panel
-                    remain_in_panel = True if not values['-AMENU-'] else False
-                    if remain_in_panel is True:
-                        current_rule = self.reset_rule(window, current=True)
-                    else:
-                        current_rule = self.reset_rule(window, current=False)
+                    current_rule = self.reset_rule(window, current=True)
             else:
                 current_rule = self.reset_rule(window, current=False)
 

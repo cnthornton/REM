@@ -377,11 +377,7 @@ class BankRule:
 
                 if selection == 'OK':
                     # Reset the rule and update the panel
-                    remain_in_panel = True if not values['-AMENU-'] else False
-                    if remain_in_panel is True:
-                        current_rule = self.reset_rule(window, current=True)
-                    else:
-                        current_rule = self.reset_rule(window, current=False)
+                    current_rule = self.reset_rule(window, current=True)
             else:
                 current_rule = self.reset_rule(window, current=False)
 
@@ -1095,7 +1091,7 @@ class BankRule:
         logger.debug('BankRule {NAME}: attempting to find associations for account {ACCT} records'
                      .format(NAME=self.name, ACCT=acct.name))
         func_args = {'df': df, 'ref_df': merged_df, 'rules': assoc_ref_maps}
-        func_results = thread_operation(search_associations, func_args, message='searching for associations')
+        func_results = thread_operation(search_associations, func_args, message='reconciling accounts')
         if func_results['success']:
             matches = func_results['value']
         else:
@@ -1132,7 +1128,7 @@ class BankRule:
 
             # matches = search_associations_expanded(df, merged_df, assoc_ref_maps)
             func_args = {'df': df, 'ref_df': merged_df, 'rules': assoc_ref_maps}
-            func_results = thread_operation(search_associations_expanded, func_args, message='searching for associations with expanded search')
+            func_results = thread_operation(search_associations_expanded, func_args, message='reconciling accounts')
             if func_results['success']:
                 matches = func_results['value']
             else:
