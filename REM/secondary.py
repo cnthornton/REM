@@ -898,8 +898,20 @@ def database_importer_window(win_size: tuple = None):
     window.finalize()
 
     # Bind keyboard events
-    window = settings.set_shortcuts(window)
-    deletion_keys = ['d', 'Delete', 'BackSpace']
+    window = settings.set_shortcuts(window, hk_groups='Navigation')
+
+    deletion_keys = ['<Control-d>', '<Key-Delete>', '<Key-BackSpace>']
+    for del_key in deletion_keys:
+        window['-MAPCOL-'].bind(del_key, '+DELETE+')
+        window['-REQCOL-'].bind(del_key, '+DELETE+')
+
+    nav_keys = ['Up', 'Down']
+    for nav_key in nav_keys:
+        window['-MAPLIST-'].bind('<Key-{}>'.format(nav_key), '+{}+'.format(nav_key.upper()))
+        window['-REQLIST-'].bind('<Key-{}>'.format(nav_key), '+{}+'.format(nav_key.upper()))
+
+    for opt_key in ('-MAPLIST-', '-REQLIST-', '-MAPCOL-', '-REQCOL-', '-IMPORT-'):
+        window[opt_key].bind('<Return>', '+RETURN+')
 
     # Element values
     panel_keys = {0: '-P1-', 1: '-P2-', 2: '-P3-'}
@@ -926,11 +938,10 @@ def database_importer_window(win_size: tuple = None):
     mods_in_view = [0]
 
     # Start event loop
-    ready_to_import = False
     while True:
         event, values = window.read(timeout=1000)
 
-        if event in (sg.WIN_CLOSED, '-CANCEL-', '-HK_ESCAPE-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window or Cancel
             # Delete any unsaved record IDs created in the final step
             if len(record_ids) > 0 and record_entry is not None:
                 logger.info('removing unsaved record IDs')
@@ -939,14 +950,7 @@ def database_importer_window(win_size: tuple = None):
 
             break
 
-        # Import selected data into the database table
-        if event == '-HK_ENTER-':
-            if ready_to_import:
-                window['-IMPORT-'].click()
-            else:
-                continue
-
-        if event == '-IMPORT-':
+        if event in ('-IMPORT-', '-IMPORT-+RETURN+'):
             try:
                 export_df = collection.data()
             except AttributeError:
@@ -1300,7 +1304,7 @@ def database_importer_window(win_size: tuple = None):
 
                     # Enable import button
                     window['-IMPORT-'].update(disabled=False)
-                    ready_to_import = True
+                    window['-IMPORT-'].set_focus()
 
             # Enable /disable panels
             window[panel_keys[current_panel]].update(visible=False)
@@ -1359,7 +1363,6 @@ def database_importer_window(win_size: tuple = None):
             # Disable import button if not on last panel
             if prev_panel != last_panel:
                 window['-IMPORT-'].update(disabled=True)
-                ready_to_import = False
 
             # Reset current panel variable
             current_panel = prev_panel
@@ -1406,46 +1409,87 @@ def database_importer_window(win_size: tuple = None):
             continue
 
         # Populate tables with columns selected from the list-boxes
-        if event == '-REQLIST-' and record_entry is not None:
-            # Get index of column in listbox values
+        if event in ('-REQLIST-', '-REQLIST-+RETURN+') and record_entry is not None:
+            # Get indices of the selected items
+            selected_inds = window['-REQLIST-'].get_indexes()
             try:
-                column = values['-REQLIST-'][0]
-            except IndexError:
+                next_ind = selected_inds[-1]
+            except KeyError:
+                logger.warning('no indices selected for required column list')
                 continue
 
-            # Add column information to the dataframe as a new row
-            req_df.loc[len(req_df.index)] = [column, columns[column].upper(), '']
+            # Find the value names of the selected indices
+            current_values = window['-REQLIST-'].get_list_values()
+            selected_values = [current_values[i] for i in selected_inds]
+
+            new_df = pd.DataFrame({field_col: selected_values,
+                                   dtype_col: [columns[i] for i in selected_values],
+                                   def_value_col: ['' for _ in range(len(selected_inds))]})
+
+            # Add new rows to the table
+            req_df = req_df.append(new_df, ignore_index=True)
             window['-REQCOL-'].update(values=req_df.values.tolist())
 
             # Remove column from listbox list
-            listbox_values.remove(column)
+            for column in selected_values:
+                listbox_values.remove(column)
 
-            window['-REQLIST-'].update(values=listbox_values)
+            window['-REQLIST-'].update(values=listbox_values, set_to_index=[next_ind], scroll_to_index=next_ind)
             window['-MAPLIST-'].update(values=listbox_values)
 
             continue
 
-        if event == '-MAPLIST-' and record_entry is not None:
+        if event == '-REQLIST-+UP+':
+            print('scrolling up')
+            scroll_list_up(window['-REQLIST-'])
+            continue
+
+        if event == '-REQLIST-+DOWN+':
+            scroll_list_down(window['-REQLIST-'])
+            print('scrolling down')
+            continue
+
+        if event in ('-MAPLIST-', '-MAPLIST-+RETURN+') and record_entry is not None:
             # Get index of column in listbox values
+            selected_inds = window['-MAPLIST-'].get_indexes()
             try:
-                column = values['-MAPLIST-'][0]
+                next_ind = selected_inds[-1]
             except IndexError:
+                logger.warning('no indices selected for mapping column list')
                 continue
 
-            # Add column information to the dataframe as a new row
-            map_df.loc[len(map_df.index)] = [column, columns[column].upper(), '']
+            # Find the value names of the selected indices
+            current_values = window['-MAPLIST-'].get_list_values()
+            selected_values = [current_values[i] for i in selected_inds]
+
+            new_df = pd.DataFrame({field_col: selected_values,
+                                   dtype_col: [columns[i] for i in selected_values],
+                                   file_col: ['' for _ in range(len(selected_inds))]})
+
+            # Add new rows to the table
+            map_df = map_df.append(new_df, ignore_index=True)
             window['-MAPCOL-'].update(values=map_df.values.tolist())
 
             # Remove column from listbox list
-            listbox_values.remove(column)
+            for column in selected_values:
+                listbox_values.remove(column)
 
             window['-REQLIST-'].update(values=listbox_values)
-            window['-MAPLIST-'].update(values=listbox_values)
+            window['-MAPLIST-'].update(values=listbox_values, set_to_index=[next_ind], scroll_to_index=next_ind)
 
             continue
 
-        # Remove rows from the tables
-        if event.split(':')[0] in deletion_keys and values['-MAPCOL-']:
+        if event == '-MAPLIST-+UP+':
+            print('scrolling up')
+            scroll_list_up(window['-MAPLIST-'])
+            continue
+
+        if event == '-MAPLIST-+DOWN+':
+            scroll_list_down(window['-MAPLIST-'])
+            print('scrolling down')
+            continue
+
+        if event == '-MAPCOL-+DELETE+':
             indices = values['-MAPCOL-']
             col_names = map_df.loc[indices, field_col]
 
@@ -1463,7 +1507,7 @@ def database_importer_window(win_size: tuple = None):
             window['-REQLIST-'].update(values=listbox_values)
             window['-MAPLIST-'].update(values=listbox_values)
 
-        if event.split(':')[0] in deletion_keys and values['-REQCOL-']:
+        if event == '-REQCOL-+DELETE+':
             indices = values['-REQCOL-']
             col_names = req_df.loc[indices, field_col]
 
@@ -1482,7 +1526,7 @@ def database_importer_window(win_size: tuple = None):
             window['-MAPLIST-'].update(values=listbox_values)
 
         # Edit a table row's values
-        if event == '-REQCOL-' and record_entry is not None:
+        if event in ('-REQCOL-', '-REQCOL-+RETURN+') and record_entry is not None:
             try:
                 row_index = values['-REQCOL-'][0]
             except IndexError:
@@ -1491,26 +1535,28 @@ def database_importer_window(win_size: tuple = None):
             # Find datatype of selected column
             row_name = req_df.at[row_index, field_col]
             row_dtype = columns[row_name]
+            edit_map = {'DataType': row_dtype, 'ElementType': 'input'}
 
             # Modify table row
-            row = edit_row_window(req_df.iloc[row_index], edit_columns={def_value_col: {'ElementType': row_dtype}})
+            #row = edit_row_window(req_df.iloc[row_index], edit_columns={def_value_col: {'ElementType': row_dtype}})
+            row = edit_row_window(req_df.iloc[row_index], edit_columns={def_value_col: edit_map})
             window['-REQCOL-'].update(values=req_df.values.tolist())
             if row is not None:
                 req_df.iloc[row_index] = row
 
             continue
 
-        if event == '-MAPCOL-' and record_entry is not None:
+        if event in ('-MAPCOL-', '-MAPCOL-+RETURN+') and record_entry is not None:
             try:
                 row_index = values['-MAPCOL-'][0]
             except IndexError:
                 continue
 
             # Find datatype of selected column
-            row_dtype = 'string'
+            edit_map = {'DataType': 'string', 'ElementType': 'input', 'Default': map_df.loc[row_index, field_col]}
 
             # Modify table row
-            row = edit_row_window(map_df.iloc[row_index], edit_columns={file_col: {'ElementType': row_dtype}})
+            row = edit_row_window(map_df.iloc[row_index], edit_columns={file_col: edit_map})
             window['-MAPCOL-'].update(values=map_df.values.tolist())
             if row is not None:
                 map_df.iloc[row_index] = row
@@ -2357,23 +2403,28 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     # Define the layout for each field of the row that will be displayed
     tbl_layout = []
     dtype_map = {}
+    focus_element = None
     for i, display_column in enumerate(display_header):
         display_name = header_map[display_column]
 
+        # Column header
         col_width = lengths[i]
         col_key = '-{COL}-'.format(COL=display_column.upper())
         column_layout = [[sg.Text(display_name, key=col_key, size=(col_width, 1), auto_size_text=False, border_width=1,
                                   relief='sunken', background_color=header_col, justification='c', font=main_font,
                                   tooltip=display_name)]]
 
+        # Column value
         field_val = row[display_column]
-
-        # Determine the element and data types of the column
+        print('value of field {} is {}'.format(display_column, field_val))
         if display_column in edit_keys:
-            element_key = edit_keys[display_column]
+            col_def = edit_columns[display_column]
             readonly = False
+
+            # Determine the element and data types of the column
+            element_key = edit_keys[display_column]
             try:
-                etype = edit_columns[display_column]['ElementType'].lower()
+                etype = col_def['ElementType'].lower()
             except (KeyError, AttributeError):
                 etype = 'input'
                 logger.warning('unable to obtain the element type of editable column "{COL}" ... setting to default '
@@ -2382,14 +2433,18 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                 logger.debug('column "{COL}" is editable and has element type "{TYPE}"'
                              .format(COL=display_column, TYPE=etype))
             try:
-                dtype = edit_columns[display_column]['DataType'].lower()
+                dtype = col_def['DataType'].lower()
             except (KeyError, AttributeError):
                 dtype = 'string'
                 logger.warning('unable to obtain the data type of editable column "{COL}" ... setting to default '
                                '"string"'.format(COL=display_column))
             else:
-                logger.debug('column "{COL}" is editable and has data type "{TYPE}"'
+                logger.debug('column "{COL}" has data type "{TYPE}"'
                              .format(COL=display_column, TYPE=dtype))
+
+            if (pd.isna(field_val) or field_val == '') and 'Default' in col_def:
+                field_val = col_def['Default']
+                print('setting value of editable field {} to default {}'.format(display_column, field_val))
 
         else:
             logger.debug('column "{COL}" is marked as readonly'.format(COL=display_column))
@@ -2401,8 +2456,6 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
         # Add the column data type to the dtype mapper
         if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
             dtype_obj = np.datetime64
-        elif dtype == 'dropdown':
-            dtype_obj = np.object_
         elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
             dtype_obj = float
         elif dtype in ('int', 'integer', 'bit'):
@@ -2414,7 +2467,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
 
         dtype_map[display_column] = dtype_obj
 
-        # Create the layout for the field based on the element type
+        # Create the layout for the field value based on the element type. Can either be an input element or dropdown
         if etype == 'dropdown':
             try:
                 values = edit_columns[display_column]['Values']
@@ -2424,6 +2477,10 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                                               font=main_font, readonly=readonly,
                                               tooltip='Select item from the dropdown menu')])
         else:
+            if not focus_element and not readonly:  # sets focus to first editable input element
+                focus_element = element_key
+                print('focus will be set to display column value {}'.format(display_column))
+
             column_layout.append([sg.Input(field_val, key=element_key, size=(col_width, 1), border_width=1,
                                            font=main_font, justification='r', readonly=readonly,
                                            background_color=in_col, tooltip=field_val)])
@@ -2463,6 +2520,12 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
         window[element_key].expand(expand_x=True)
 
     window = center_window(window)
+
+    # Set window focus on first editable input element and highlight any existing text
+    if focus_element:
+        print('setting focus to {}'.format(focus_element))
+        window[focus_element].set_focus()
+        window[focus_element].update(select=True)
 
     # Start event loop
     while True:
@@ -2516,7 +2579,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
                 elif is_datetime_dtype(dtype):
                     try:
                         field_val = pd.to_datetime(input_val, format=settings.format_date_str(), errors='coerce')
-                    except ValueError:
+                    except (ValueError, KeyError):
                         logger.warning(msg.format(VAL=input_val, COL=header_map[column]))
                         popup_notice(msg.format(VAL=input_val, COL=header_map[column]))
                         ready_to_save.append(False)
@@ -2586,3 +2649,36 @@ def highlight_bool(s, column: str = 'Success'):
         return ['background-color: {}'.format(mod_const.PASS_COLOR)] * ncol
     else:
         return ['background-color: {}'.format(mod_const.FAIL_COLOR)] * ncol
+
+
+def scroll_list_up(element):
+    """
+    Use the Up navigation arrow to scroll through the options of a listbox.
+    """
+    current_inds = element.get_indexes()
+    print(current_inds)
+    try:
+        next_ind = current_inds[0] - 1
+    except IndexError:
+        print('cant find index for next item after ({})'.format(current_inds))
+    else:
+        print('next indices is {}'.format(next_ind))
+        if next_ind >= 0:
+            element.update(set_to_index=next_ind, scroll_to_index=next_ind)
+
+
+def scroll_list_down(element):
+    """
+    Use the Down navigation arrow to scroll through the options of a listbox.
+    """
+    current_inds = element.get_indexes()
+    print(current_inds)
+    try:
+        next_ind = current_inds[-1] + 1
+    except IndexError:
+        print('cant find index for next item after ({})'.format(current_inds))
+    else:
+        print('next indices is {}'.format(next_ind))
+        all_values = element.get_list_values()
+        if next_ind < len(all_values):
+            element.update(set_to_index=next_ind, scroll_to_index=next_ind)

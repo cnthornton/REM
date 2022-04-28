@@ -352,7 +352,7 @@ def importer_layout(win_size: tuple = None):
                                                       size=(int(subset_w * 0.4 / 9), 1), background_color=input_col,
                                                       font=font_main, auto_size_text=False, disabled=True,
                                                       tooltip='Column'),
-                                             sg.Combo(math_operators, key=oper_key, pad=((0, pad_h), pad_el),
+                                             sg.Combo(cond_operators, key=oper_key, pad=((0, pad_h), pad_el),
                                                       size=(int(subset_w * 0.2 / 9), 1), font=font_bold,
                                                       background_color=input_col, auto_size_text=False, disabled=True,
                                                       tooltip='Operator'),
@@ -500,8 +500,8 @@ def importer_layout(win_size: tuple = None):
           [sg.Frame('Required Columns', [
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
-                  [sg.Col([[sg.Listbox(values=[], key='-REQLIST-', size=(26, 8), font=font_main,
-                                       background_color=bg_col, bind_return_key=True,
+                  [sg.Col([[sg.Listbox(values=[], key='-REQLIST-', size=(26, 8), font=font_main, bind_return_key=True,
+                                       background_color=bg_col, select_mode='LISTBOX_SELECT_MODE_EXTENDED',
                                        tooltip='Double-click on a column name to add the column to the table')]],
                           background_color=bg_col, justification='l', element_justification='l', expand_x=True),
                    sg.Col([[create_table_layout([[]], header_req, '-REQCOL-', bind=True, pad=(0, 0), nrow=4,
@@ -515,8 +515,8 @@ def importer_layout(win_size: tuple = None):
           [sg.Frame('Column Map', [
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
-                  [sg.Col([[sg.Listbox(values=[], key='-MAPLIST-', size=(26, 8), font=font_main,
-                                       background_color=bg_col, bind_return_key=True,
+                  [sg.Col([[sg.Listbox(values=[], key='-MAPLIST-', size=(26, 8), font=font_main, bind_return_key=True,
+                                       background_color=bg_col, select_mode='LISTBOX_SELECT_MODE_EXTENDED',
                                        tooltip='Double-click on a column name to add the column to the table')]],
                           background_color=bg_col, justification='l', element_justification='l', expand_x=True),
                    sg.Col([[create_table_layout([[]], header_map, '-MAPCOL-', bind=True, pad=(0, 0), nrow=4,
@@ -554,11 +554,11 @@ def importer_layout(win_size: tuple = None):
                      font=font_main),
              sg.Text('0', key='-TABLENAME-', size=(12, 1), pad=(0, pad_el), font=font_main,
                      background_color=bg_col)],
-            [sg.Text('Number of columns selected:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+            [sg.Text('Number of data columns:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
                      font=font_main),
              sg.Text('0', key='-NCOL-', size=(12, 1), pad=(0, pad_el), font=font_main,
                      background_color=bg_col)],
-            [sg.Text('Number of rows to be imported:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
+            [sg.Text('Number of import rows:', size=(28, 1), pad=(0, pad_el), background_color=bg_col,
                      font=font_main),
              sg.Text('0', key='-NROW-', size=(12, 1), pad=(0, pad_el), font=font_main, background_color=bg_col)
              ]
