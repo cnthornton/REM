@@ -1491,6 +1491,9 @@ def database_importer_window(win_size: tuple = None):
 
         if event == '-MAPCOL-+DELETE+':
             indices = values['-MAPCOL-']
+            if len(indices) < 1:
+                continue
+
             col_names = map_df.loc[indices, field_col]
 
             # Remove rows from the dataframe
@@ -1507,8 +1510,16 @@ def database_importer_window(win_size: tuple = None):
             window['-REQLIST-'].update(values=listbox_values)
             window['-MAPLIST-'].update(values=listbox_values)
 
+            # Highlight the next row in the table
+            next_ind = indices[0]
+            if next_ind < map_df.shape[0]:
+                window['-MAPCOL-'].update(select_rows=[next_ind])
+
         if event == '-REQCOL-+DELETE+':
             indices = values['-REQCOL-']
+            if len(indices) < 1:
+                continue
+
             col_names = req_df.loc[indices, field_col]
 
             # Remove rows from the dataframe
@@ -1525,6 +1536,11 @@ def database_importer_window(win_size: tuple = None):
             window['-REQLIST-'].update(values=listbox_values)
             window['-MAPLIST-'].update(values=listbox_values)
 
+            # Highlight the next row in the table
+            next_ind = indices[0]
+            if next_ind < req_df.shape[0]:
+                window['-REQCOL-'].update(select_rows=[next_ind])
+
         # Edit a table row's values
         if event in ('-REQCOL-', '-REQCOL-+RETURN+') and record_entry is not None:
             try:
@@ -1538,11 +1554,15 @@ def database_importer_window(win_size: tuple = None):
             edit_map = {'DataType': row_dtype, 'ElementType': 'input'}
 
             # Modify table row
-            #row = edit_row_window(req_df.iloc[row_index], edit_columns={def_value_col: {'ElementType': row_dtype}})
             row = edit_row_window(req_df.iloc[row_index], edit_columns={def_value_col: edit_map})
             window['-REQCOL-'].update(values=req_df.values.tolist())
             if row is not None:
                 req_df.iloc[row_index] = row
+
+            # Highlight the next row in the table
+            next_ind = row_index + 1
+            if next_ind < req_df.shape[0]:
+                window['-REQCOL-'].update(select_rows=[next_ind])
 
             continue
 
@@ -1560,6 +1580,11 @@ def database_importer_window(win_size: tuple = None):
             window['-MAPCOL-'].update(values=map_df.values.tolist())
             if row is not None:
                 map_df.iloc[row_index] = row
+
+            # Highlight the next row in the table
+            next_ind = row_index + 1
+            if next_ind < map_df.shape[0]:
+                window['-MAPCOL-'].update(select_rows=[next_ind])
 
             continue
 
