@@ -947,21 +947,12 @@ def database_importer_window(win_size: tuple = None):
                 continue
 
         if event == '-IMPORT-':
-            #if subset_df is None or table is None or record_entry is None:
-            #    continue
-            # Prepare the record insertion statements
             try:
                 export_df = collection.data()
             except AttributeError:
                 continue
 
-            print('export df is:')
-            print(export_df)
-
-            print('id field is {}'.format(settings.id_field))
             try:
-                #statements = record_entry.save_database_records(subset_df.replace({np.nan: None}),
-                #                                                id_field=settings.id_field, export_columns=False)
                 statements = record_entry.save_database_records(export_df)
             except Exception as e:
                 msg = 'failed to upload {TYPE} record entries to the database - {ERR}' \
@@ -993,7 +984,6 @@ def database_importer_window(win_size: tuple = None):
 
             # Export report describing success of import by row
             success_col = 'Successfully saved'
-            #subset_df.loc[:, success_col] = success
             export_df.loc[:, success_col] = success
             outfile = sg.popup_get_file('', title='Save Database import report', save_as=True,
                                         default_extension='xlsx', no_window=True,
@@ -1007,10 +997,7 @@ def database_importer_window(win_size: tuple = None):
 
             if out_fmt == 'csv':
                 export_df.to_csv(outfile, sep=',', header=True, index=False)
-                #subset_df.to_csv(outfile, sep=',', header=True, index=False)
             else:
-                #subset_df.style.apply(highlight_bool, column=success_col, axis=1).to_excel(outfile, engine='openpyxl',
-                #                                                                           header=True, index=False)
                 export_df.style.apply(highlight_bool, column=success_col, axis=1).to_excel(outfile, engine='openpyxl',
                                                                                            header=True, index=False)
 
@@ -1225,33 +1212,28 @@ def database_importer_window(win_size: tuple = None):
 
                             continue
 
-                    # Create record IDs for each row in the final import table
-                    record_entry = settings.records.fetch_rule(record_type, by_title=True)
-                    try:
-                        # date_list = pd.to_datetime(subset_df[settings.date_field], errors='coerce')
-                        date_list = pd.to_datetime(subset_df[record_entry.date_column].fillna(pd.NaT), errors='coerce',
-                                                   format=settings.date_format, utc=False)
-                        # date_list = subset_df[settings.date_field]
-                    except KeyError:
-                        logger.warning('the record date field has not been set - defaulting to current date')
-                        date_list = [datetime.datetime.now()] * subset_df.shape[0]
-                    else:
-                        date_list = date_list.tolist()
+                    # Create record IDs for each row in the final import table if no record ID column provided
+                    id_column = record_entry.id_column
+                    if id_column not in subset_df.columns:
+                        try:
+                            date_list = pd.to_datetime(subset_df[record_entry.date_column].fillna(pd.NaT),
+                                                       errors='coerce', format=settings.date_format, utc=False)
+                        except KeyError:
+                            logger.warning('the record date field has not been set - defaulting to current date')
+                            date_list = [datetime.datetime.now()] * subset_df.shape[0]
+                        else:
+                            date_list = date_list.tolist()
 
-                    record_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
-                    if not record_ids:
-                        msg = 'failed to create a record IDs for the table entries'
-                        popup_notice(msg)
-                        logger.error(msg)
-                        record_ids = []
+                        record_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
+                        if not record_ids:
+                            msg = 'failed to create a record IDs for the table entries'
+                            popup_notice(msg)
+                            logger.error(msg)
+                            record_ids = []
 
-                        continue
+                            continue
 
-                    subset_df.loc[:, record_entry.id_column] = record_ids
-
-                    # Set values for the creator fields
-                    subset_df.loc[:, settings.creator_code] = user.uid
-                    subset_df.loc[:, settings.creation_date] = datetime.datetime.now()
+                        subset_df.loc[:, id_column] = record_ids
 
                     # Modify table column values based on the modify column rules
                     for elem_num in mods_in_view:
@@ -1314,7 +1296,6 @@ def database_importer_window(win_size: tuple = None):
                     nrow, ncol = subset_df.shape
                     window['-NCOL-'].update(value=ncol)
                     window['-NROW-'].update(value=nrow)
-                    #window['-TABLENAME-'].update(value=table)
                     window['-TABLENAME-'].update(value=record_type)
 
                     # Enable import button

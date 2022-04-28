@@ -16,8 +16,7 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
     # Size of data
     ncol = len(header)
 
-    # When table columns not long enough, need to adjust so that the
-    # table fills the empty space.
+    # When table columns not long enough, need to adjust so that the table fills the empty space.
     width = width
 
     try:
@@ -50,7 +49,7 @@ def calc_column_widths(header, width: int = 1200, font_size: int = 13, pixels=Fa
     return lengths
 
 
-def format_value(value, dtype):
+def format_value(value, dtype, date_format: str = None):
     """
     Set the datatype for a single value.
 
@@ -58,9 +57,12 @@ def format_value(value, dtype):
         value (Series): non-iterable value to set.
 
         dtype (str): scalar data type.
+
+        date_format (str): formatted date string to use instead of the program default.
     """
     if dtype in ('date', 'datetime', 'timestamp', 'time'):
-        value = np.datetime64(pd.to_datetime(value))
+        dt = settings.date_format if date_format is None else date_format
+        value = np.datetime64(pd.to_datetime(value, format=dt, utc=False))
     elif dtype in ('int', 'integer', 'bigint'):
         value = np.int_(value)
     elif dtype == 'mediumint':
@@ -75,15 +77,13 @@ def format_value(value, dtype):
         value = np.double(value)
     elif dtype in ('bool', 'boolean'):
         value = np.bool_(value)
-    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        value = np.str_(value)
     else:
         value = np.str_(value)
 
     return value
 
 
-def format_values(values, dtype, date_format: str = None, extended: bool = True):
+def format_values(values, dtype, formatters: dict = None, extended: bool = True):
     """
     Set the datatype for an array of values.
 
@@ -92,16 +92,19 @@ def format_values(values, dtype, date_format: str = None, extended: bool = True)
 
         dtype (str): array data type.
 
-        date_format (str): custom format to use when converting values to datetime.
+        formatters (dict): custom formatting options.
 
         extended (bool): use Pandas extended data types for integers.
     """
+    formatters = settings.formatters if not formatters else formatters
+
     if not isinstance(values, pd.Series):
         values = pd.Series(values)
 
     if dtype in ('date', 'datetime', 'timestamp', 'time'):
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        date_format = date_format if date_format else settings.date_format
+        date_formatters = formatters.get('date', {})
+        date_format = date_formatters.get('format', settings.date_format)
 
         if not is_datetime_dtype(values.dtype):
             try:
@@ -113,7 +116,6 @@ def format_values(values, dtype, date_format: str = None, extended: bool = True)
         else:  # is datetime dtype
             values = values.dt.tz_localize(None)
             # values = column_values.apply(lambda x: x.replace(tzinfo=None))
-
     elif dtype in ('int', 'integer', 'bigint'):
         if extended:
             try:
@@ -152,9 +154,7 @@ def format_values(values, dtype, date_format: str = None, extended: bool = True)
         values = pd.to_numeric(values, errors='coerce')
     elif dtype in ('bool', 'boolean'):
         values = values.fillna(False).astype(np.bool_, errors='raise')
-    elif dtype in ('char', 'varchar', 'binary', 'text', 'string'):
-        values = values.astype(np.object_, errors='raise')
-    else:
+    else:  # convert anything else to an object
         values = values.astype(np.object_, errors='raise')
 
     return values
