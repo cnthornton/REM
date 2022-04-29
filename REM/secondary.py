@@ -952,7 +952,7 @@ def database_importer_window(win_size: tuple = None):
 
         if event in ('-IMPORT-', '-IMPORT-+RETURN+'):
             try:
-                export_df = collection.data()
+                export_df = collection.data(fields=selected_columns, drop_na=True)
             except AttributeError:
                 continue
 
@@ -974,16 +974,17 @@ def database_importer_window(win_size: tuple = None):
 
             success = user.write_db(sstrings, psets)
 
+            nrecord = export_df.shape[0]
             if success:
-                msg = 'successfully saved {NROW} rows to the database'.format(NROW=len(record_ids))
+                msg = 'successfully saved {NROW} rows to the database'.format(NROW=nrecord)
             else:
-                msg = 'failed to save {NROW} rows to the database'.format(NROW=len(record_ids))
+                msg = 'failed to save {NROW} rows to the database'.format(NROW=nrecord)
 
             popup_notice(msg)
             logger.info(msg)
 
             # Delete saved record IDs from list of unsaved IDs
-            logger.info('removing saved records from the list of unsaved IDs')
+            logger.info('removing newly saved records from the list of unsaved IDs')
             record_entry.remove_unsaved_ids(record_ids)
 
             # Export report describing success of import by row
@@ -1223,14 +1224,19 @@ def database_importer_window(win_size: tuple = None):
                             date_list = pd.to_datetime(subset_df[record_entry.date_column].fillna(pd.NaT),
                                                        errors='coerce', format=settings.date_format, utc=False)
                         except KeyError:
-                            logger.warning('the record date field has not been set - defaulting to current date')
-                            date_list = [datetime.datetime.now()] * subset_df.shape[0]
+                            msg = 'failed to create IDs for the new record entries - record date is required for ' \
+                                  'new entries'
+                            popup_notice(msg)
+                            logger.error(msg)
+                            record_ids = []
+
+                            continue
                         else:
                             date_list = date_list.tolist()
 
                         record_ids = record_entry.create_record_ids(date_list, offset=settings.get_date_offset())
                         if not record_ids:
-                            msg = 'failed to create a record IDs for the table entries'
+                            msg = 'failed to create IDs for the new record entries'
                             popup_notice(msg)
                             logger.error(msg)
                             record_ids = []

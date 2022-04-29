@@ -2,7 +2,6 @@
 REM data container classes.
 """
 
-import numpy as np
 import pandas as pd
 
 import REM.data_manipulation as mod_dm
@@ -412,6 +411,12 @@ class DataCollection:
     def _set_dtypes(self, df=None, dtypes: dict = None):
         """
         Set field data types based on header mapping.
+
+        Arguments:
+            df (DataFrame): set data types for the given dataframe instead of the collection dataframe. The alternative
+                dataframe must have the same structure as the collection dataframe.
+
+            dtypes (dict): provide a custom set of field data types to use instead of the collection set.
         """
         df = self.df.copy() if df is None else df
         dtype_map = self.dtypes if dtypes is None else dtypes
@@ -527,7 +532,7 @@ class DataCollection:
         return add_df
 
     def data(self, current: bool = True, indices: list = None, edited_only: bool = False, deleted_only: bool = False,
-             added_only: bool = False):
+             added_only: bool = False, drop_na: bool = False, fields: list = None):
         """
         Return the collection data.
 
@@ -542,10 +547,20 @@ class DataCollection:
 
             added_only (bool): return only the entries that have been added to the collection [Default: False].
 
+            drop_na (bool): drop columns with all NA/NULL values [Default: False].
+
+            fields (list): return data only for the listed fields [Default: return all].
+
         Returns:
             df (DataFrame): data matching the selection requirements.
         """
         df = self.df.copy()
+        dtypes = self.dtypes
+        state_fields = [self._added_column, self._edited_column, self._deleted_column]
+        if not isinstance(fields, list):
+            fields = list(dtypes)
+
+        select_fields = [i for i in fields if i not in state_fields]
 
         if current and (indices is not None or deleted_only is True):
             current = False
@@ -569,7 +584,12 @@ class DataCollection:
             df = df[df[self._deleted_column]]
 
         # Remove the state fields from the data
-        df.drop(columns=[self._added_column, self._edited_column, self._deleted_column], inplace=True)
+        #df.drop(columns=[self._added_column, self._edited_column, self._deleted_column], inplace=True)
+        df = df[select_fields]
+
+        # Remove columns with all null values
+        if drop_na:
+            df.dropna(axis=1, how='all', inplace=True)
 
         return df
 
@@ -587,6 +607,7 @@ class DataCollection:
             reindex (bool): reset collection entry indices after append.
         """
         df = self.df.copy()
+        add_df = add_df.copy()
 
         if add_df.empty:  # no data to add
             return df
