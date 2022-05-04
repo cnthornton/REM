@@ -14,7 +14,6 @@ import pandas as pd
 
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
-import REM.database as mod_db
 import REM.data_collections as mod_col
 import REM.layouts as mod_lo
 import REM.parameters as mod_param
@@ -872,6 +871,24 @@ def database_importer_window(win_size: tuple = None):
     strptime = datetime.datetime.strptime
 
     date_types = settings.supported_date_dtypes
+    int_types = settings.supported_int_dtypes
+    float_types = settings.supported_float_dtypes
+    bool_types = settings.supported_bool_dtypes
+    str_types = settings.supported_str_dtypes
+    cat_dtypes = settings.supported_cat_dtypes
+
+    dtype_map = {}
+    for i in int_types:
+        dtype_map[i] = int
+
+    for i in float_types:
+        dtype_map[i] = float
+
+    for i in bool_types:
+        dtype_map[i] = bool
+
+    for i in date_types + str_types + cat_dtypes:
+        dtype_map[i] = str
 
     field_col = 'Record Field'
     def_value_col = 'Value'
@@ -992,8 +1009,8 @@ def database_importer_window(win_size: tuple = None):
             export_df.loc[:, success_col] = success
             outfile = sg.popup_get_file('', title='Save Database import report', save_as=True,
                                         default_extension='xlsx', no_window=True,
-                                        file_types=(
-                                            ('XLS - Microsoft Excel', '*.xlsx'), ('Comma-Separated Values', '*.csv')))
+                                        file_types=(('XLS - Microsoft Excel', '*.xlsx'),
+                                                    ('Comma-Separated Values', '*.csv')))
 
             try:
                 out_fmt = outfile.split('.')[-1]
@@ -1091,19 +1108,21 @@ def database_importer_window(win_size: tuple = None):
 
                     continue
                 else:
+                    converters = {row[file_col]: dtype_map.get(row[dtype_col], str) for i, row in map_df.iterrows()}
+
                     # Import spreadsheet into dataframe
                     file_format = values['-FORMAT-']
                     if file_format == 'xls':
                         formatting_options = {'convert_float': values['-INTS-'], 'parse_dates': False,
                                               'skiprows': skiptop, 'skipfooter': skipbottom, 'header': header_row,
-                                              'thousands': thousands_sep}
+                                              'thousands': thousands_sep, 'converters': converters}
                         reader = pd.read_excel
                     else:
                         formatting_options = {'sep': values['-FSEP-'], 'skiprows': skiptop,
                                               'skipfooter': skipbottom, 'header': header_row,
                                               'thousands': thousands_sep, 'encoding': 'utf-8',
                                               'error_bad_lines': False, 'parse_dates': False,
-                                              'skip_blank_lines': True}
+                                              'skip_blank_lines': True, 'converters': converters}
                         reader = pd.read_csv
 
                     logger.debug('formatting import file options: {}'.format(formatting_options))
@@ -2374,6 +2393,29 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
     is_bool_dtype = pd.api.types.is_bool_dtype
 
+    date_types = settings.supported_date_dtypes
+    int_types = settings.supported_int_dtypes
+    float_types = settings.supported_float_dtypes
+    bool_types = settings.supported_bool_dtypes
+    str_types = settings.supported_str_dtypes
+    cat_dtypes = settings.supported_cat_dtypes
+
+    converter = {}
+    for i in int_types:
+        converter[i] = int
+
+    for i in float_types:
+        converter[i] = float
+
+    for i in bool_types:
+        converter[i] = bool
+
+    for i in str_types + cat_dtypes:
+        converter[i] = np.object_
+
+    for i in date_types:
+        converter[i] = np.datetime64
+
     if not isinstance(edit_columns, dict) and edit_columns is not None:
         logger.error('argument edit_columns must be a dictionary but has current type "{TYPE}"'
                      .format(TYPE=type(edit_columns)))
@@ -2485,18 +2527,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
             dtype = 'string'
 
         # Add the column data type to the dtype mapper
-        if dtype in ('date', 'datetime', 'timestamp', 'time', 'year'):
-            dtype_obj = np.datetime64
-        elif dtype in ('float', 'decimal', 'dec', 'double', 'numeric', 'money'):
-            dtype_obj = float
-        elif dtype in ('int', 'integer', 'bit'):
-            dtype_obj = int
-        elif dtype in ('bool', 'boolean'):
-            dtype_obj = bool
-        else:
-            dtype_obj = np.object_
-
-        dtype_map[display_column] = dtype_obj
+        dtype_map[display_column] = converter.get(dtype, np.object_)
 
         # Create the layout for the field value based on the element type. Can either be an input element or dropdown
         if etype == 'dropdown':
