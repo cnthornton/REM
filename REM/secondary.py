@@ -509,31 +509,35 @@ def parameter_window(account, win_size: tuple = None):
 
     for param_name in acct_param_entry:
         param_entry = acct_param_entry[param_name]
+        #try:
+        #    param_etype = param_entry['ElementType']
+        #except KeyError:
+        #    msg = 'no element type specified for primary account {ACCT} parameter {PARAM}' \
+        #        .format(ACCT=primary_acct_name, PARAM=param_name)
+        #    logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
+        #    continue
+        #if param_etype == 'dropdown':
+        #    param_class = mod_param.DataParameterCombo
+        #elif param_etype == 'input':
+        #    param_class = mod_param.DataParameterInput
+        #elif param_etype == 'range':
+        #    param_class = mod_param.DataParameterRange
+        #elif param_etype == 'checkbox':
+        #    param_class = mod_param.DataParameterCheckbox
+        #else:
+        #    msg = 'unknown element type "{TYPE}" provided to Transaction account {ACCT} import ' \
+        #          'parameter {PARAM}'.format(TYPE=param_etype, ACCT=primary_acct_name, PARAM=param_name)
+        #    logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
+        #    continue
+        #param = param_class(param_name, param_entry)
+
         try:
-            param_etype = param_entry['ElementType']
-        except KeyError:
-            msg = 'no element type specified for primary account {ACCT} parameter {PARAM}' \
-                .format(ACCT=primary_acct_name, PARAM=param_name)
-            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
+            param = mod_param.initialize_parameter(param_name, param_entry)
+        except Exception as e:
+            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=e))
 
             continue
 
-        if param_etype == 'dropdown':
-            param_class = mod_param.DataParameterCombo
-        elif param_etype == 'input':
-            param_class = mod_param.DataParameterInput
-        elif param_etype == 'range':
-            param_class = mod_param.DataParameterRange
-        elif param_etype == 'checkbox':
-            param_class = mod_param.DataParameterCheckbox
-        else:
-            msg = 'unknown element type "{TYPE}" provided to Transaction account {ACCT} import ' \
-                  'parameter {PARAM}'.format(TYPE=param_etype, ACCT=primary_acct_name, PARAM=param_name)
-            logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
-
-            continue
-
-        param = param_class(param_name, param_entry)
         primary_layout.append(
             param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left', auto_size_desc=False))
         for element in param.bindings:
