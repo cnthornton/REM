@@ -452,7 +452,235 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     return record
 
 
-def parameter_window(account, win_size: tuple = None):
+def parameter_window(definitions, win_size: tuple = None):
+    """
+    Display the parameter selection window for a bank reconciliation rule.
+
+    Arguments:
+        definitions (dict): dictionary of parameter definitions grouped by section.
+
+        win_size (tuple): optional window size parameters (width, height).
+    """
+    # Initial window size
+    if win_size:
+        width, height = win_size
+    else:
+        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+
+    param_values = {}
+
+    # Element settings
+    pad_el = mod_const.ELEM_PAD
+    pad_v = mod_const.VERT_PAD
+    pad_h = mod_const.HORZ_PAD
+    pad_frame = mod_const.FRAME_PAD
+
+    font_h = mod_const.HEADING_FONT
+    bold_font = mod_const.BOLD_FONT
+
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    header_col = mod_const.HEADER_COLOR
+    frame_col = mod_const.FRAME_COLOR
+    text_col = mod_const.DEFAULT_TEXT_COLOR
+
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    load_shortcut = hotkeys['-HK_ENTER-'][2]
+
+    # Layout elements
+
+    # Window Title
+    title = 'Select import parameters'
+    title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
+
+    # Parameters layout
+    params_layout = []
+    params = {}
+    bindings = {}
+
+    # Associated account parameters
+    for section_title in definitions:  # iterate over parameter groups
+        section_params = definitions[section_title]
+
+        pgroup_layout = [[sg.Col([[sg.Text(section_title, pad=(0, 0), font=bold_font, text_color=text_col,
+                                           background_color=frame_col)]],
+                                 expand_x=True, background_color=frame_col, justification='l')],
+                         [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, 0))]]
+
+        # Create the import parameter objects and layouts for the associated account
+        for param_name in section_params:
+            param_entry = section_params[param_name]
+            try:
+                param = mod_param.initialize_parameter(param_name, param_entry)
+            except Exception as e:
+                logger.error(e)
+
+                continue
+
+            pgroup_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left',
+                                              auto_size_desc=False))
+            try:
+                params[section_title].append(param)
+            except KeyError:
+                params[section_title] = [param]
+
+            for element in param.bindings:
+                bindings[element] = section_title
+
+        params_layout.append([sg.Col(pgroup_layout, key='-{}-'.format(section_title), pad=(pad_h, pad_v),
+                                     background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
+
+    # Control elements
+    load_key = '-LOAD-'
+    bttn_layout = [[sg.Button('', key=load_key, pad=((pad_el, 0), 0), image_data=mod_const.IMPORT_ICON,
+                              image_size=mod_const.BTTN_SIZE, disabled=False,
+                              tooltip='Load records ({})'.format(load_shortcut))]]
+
+    # Window layout
+    height_key = '-HEIGHT-'
+    width_key = '-WIDTH-'
+    layout = [[sg.Canvas(key=width_key, size=(width, 0))],
+              [sg.Col([[sg.Canvas(key=height_key, size=(0, height))]]),
+               sg.Col([
+                   [sg.Col(title_layout, background_color=header_col, expand_x=True)],
+                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.DISABLED_BG_COLOR)],
+                   [sg.Col(params_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, scrollable=True,
+                           vertical_scroll_only=True, expand_x=True, expand_y=True, vertical_alignment='t')],
+                   [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.DISABLED_BG_COLOR)],
+                   [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
+               ], key='-FRAME-', pad=(0, 0), expand_y=True, expand_x=True)]]
+
+    window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
+    window.finalize()
+
+    # Bind keys to events
+    window = settings.set_shortcuts(window)
+
+    # Resize window
+    screen_w, screen_h = window.get_screen_dimensions()
+    wh_ratio = 0.75  # window width to height ratio
+    win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
+    win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
+
+    window[height_key].set_size(size=(None, int(win_h)))
+    window[width_key].set_size(size=(int(win_w), None))
+    for pgroup in params:
+        for param in params[pgroup]:
+            param.resize(window, size=(int(win_w - 40), None), pixels=True)
+
+    window = center_window(window)
+    current_w, current_h = [int(i) for i in window.size]
+
+    # Event window
+    while True:
+        event, values = window.read(timeout=100)
+
+        # Cancel parameter selection
+        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected to close window without setting param values
+            param_values = None
+
+            break
+
+        # Window resized
+        win_w, win_h = [int(i) for i in window.size]
+        if win_w != current_w or win_h != current_h:
+            logger.debug('current window size is {W} x {H}'.format(W=current_w, H=current_h))
+            logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
+
+            # Update sizable elements
+            window[height_key].set_size(size=(None, int(win_h)))
+            window[width_key].set_size(size=(int(win_w), None))
+
+            for pgroup in params:
+                for param in params[pgroup]:
+                    param.resize(window, size=(int(win_w - 40), None), pixels=True)
+
+            current_w, current_h = (win_w, win_h)
+
+            continue
+
+        # Save parameter settings
+        if event == '-HK_ENTER-':
+            window['-LOAD-'].click()
+
+        if event == '-LOAD-':
+            ready_to_save = True
+            for pgroup in params:
+                # Ignore parameters from hidden accounts
+                if not window['-{}-'.format(pgroup)].metadata['visible']:
+                    param_values[pgroup] = None
+
+                    continue
+
+                # Verify that required parameters have values
+                acct_params = params[pgroup]
+                has_values = []
+                for acct_param in acct_params:
+                    acct_param.value = acct_param.format_value(values)
+
+                    if not acct_param.has_value():  # no value set for parameter
+                        if acct_param.required:  # parameter is required, so notify user that value must be provided
+                            msg = 'missing value from required account {ACCT} parameter {PARAM}' \
+                                .format(ACCT=pgroup, PARAM=acct_param.name)
+                            logger.warning(msg)
+                            popup_error(msg)
+                            has_values.append(False)
+
+                            break
+                        else:  # parameter is not required, so can safely ignore
+                            continue
+
+                    try:
+                        param_values[pgroup].append(acct_param)
+                    except KeyError:
+                        param_values[pgroup] = [acct_param]
+
+                if not all(has_values):
+                    ready_to_save = False
+                    break
+
+            if ready_to_save:
+                break
+            else:
+                continue
+
+        # Associated account parameter events
+        if event in bindings:
+            # Fetch the parameter corresponding to the window event element
+            event_pgroup = bindings[event]
+            pgroup_params = params[event_pgroup]
+            event_param = mod_param.fetch_parameter(pgroup_params, event, by_key=True)
+
+            # Run the parameter event associated with the window element key
+            event_param.run_event(window, event, values)
+
+            # Propagate parameter value to other pgroup parameters that are related by name and element type and that do
+            # not currently have values
+            if event_param.has_value():
+                for pgroup in params:
+                    if pgroup == event_pgroup:
+                        continue
+
+                    related_params = mod_param.fetch_parameter(params[pgroup], event_param.name)
+                    if related_params:
+                        if not isinstance(related_params, list):
+                            related_params = [related_params]
+                        for related_param in related_params:
+                            if not related_param.has_value() and related_param.etype == event_param.etype:
+                                related_param.format_value(event_param.value)
+                                related_param.update_display(window)
+
+            continue
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return param_values
+
+
+def parameter_window_old(account, win_size: tuple = None):
     """
     Display the parameter selection window for a bank reconciliation rule.
 
@@ -509,27 +737,6 @@ def parameter_window(account, win_size: tuple = None):
 
     for param_name in acct_param_entry:
         param_entry = acct_param_entry[param_name]
-        #try:
-        #    param_etype = param_entry['ElementType']
-        #except KeyError:
-        #    msg = 'no element type specified for primary account {ACCT} parameter {PARAM}' \
-        #        .format(ACCT=primary_acct_name, PARAM=param_name)
-        #    logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
-        #    continue
-        #if param_etype == 'dropdown':
-        #    param_class = mod_param.DataParameterCombo
-        #elif param_etype == 'input':
-        #    param_class = mod_param.DataParameterInput
-        #elif param_etype == 'range':
-        #    param_class = mod_param.DataParameterRange
-        #elif param_etype == 'checkbox':
-        #    param_class = mod_param.DataParameterCheckbox
-        #else:
-        #    msg = 'unknown element type "{TYPE}" provided to Transaction account {ACCT} import ' \
-        #          'parameter {PARAM}'.format(TYPE=param_etype, ACCT=primary_acct_name, PARAM=param_name)
-        #    logger.error('AccountEntry {NAME}: {MSG}'.format(NAME=primary_acct_name, MSG=msg))
-        #    continue
-        #param = param_class(param_name, param_entry)
 
         try:
             param = mod_param.initialize_parameter(param_name, param_entry)

@@ -248,12 +248,14 @@ class BankRule:
             acct = self.fetch_account(current_acct)
             acct_keys = acct.bindings
         else:
+            acct = None
             acct_keys = []
 
         if current_assoc:
             assoc_acct = self.fetch_account(current_assoc)
             assoc_keys = assoc_acct.bindings
         else:
+            assoc_acct = None
             assoc_keys = []
 
         # Run an account entry event
@@ -491,7 +493,7 @@ class BankRule:
 
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
-        elif rule_event == 'Parameters':
+        elif rule_event == 'Parameters' and acct is not None:
             acct_key = self.key_lookup('Account')
             assoc_key = self.key_lookup('Association')
             param_key = self.key_lookup('Parameters')
@@ -499,25 +501,37 @@ class BankRule:
             save_key = self.key_lookup('Save')
 
             # Get the parameter settings
-            params = mod_win2.parameter_window(self.fetch_account(current_acct))
+            transactions = acct.transactions
+            param_def = {acct.title: acct.parameters}
+            for trans_acct_name in transactions:
+                try:
+                    trans_acct = self.fetch_account(trans_acct_name)
+                except KeyError:
+                    msg = 'no entry configured for transaction account {ASSOC} defined in {ACCT}'\
+                        .format(ASSOC=trans_acct_name, ACCT=current_acct)
+                    logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    continue
+
+                param_def[trans_acct.title] = trans_acct.parameters
+
+            params = mod_win2.parameter_window(param_def)
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
                 # Load the main transaction account data using the defined parameters
-                main_acct = self.current_account
-                acct_params = params[main_acct]
+                acct_params = params[current_acct]
                 if not acct_params:
-                    msg = 'no parameters supplied for main account {ACCT}'.format(ACCT=main_acct)
-                    mod_win2.popup_error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    msg = 'no parameters supplied for account {ACCT}'.format(ACCT=current_acct)
+                    logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                    mod_win2.popup_error(msg)
 
                     return self.reset_rule(window, current=True)
-
-                acct = self.fetch_account(main_acct)
 
                 try:
                     acct.load_data(acct_params)
                 except Exception as e:
-                    msg = 'failed to load data for current account {ACCT} - {ERR}'.format(ACCT=main_acct, ERR=e)
+                    msg = 'failed to load data for current account {ACCT} - {ERR}'.format(ACCT=current_acct, ERR=e)
                     logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
 
@@ -530,17 +544,17 @@ class BankRule:
                 # Enable table action buttons for the main account
                 acct.table.enable(window)
 
-                self.panels.append(self.panel_keys[main_acct])
+                self.panels.append(self.panel_keys[current_acct])
 
                 # Load the association account data using the defined parameters
                 assoc_accounts = []
                 for acct_name in params:
-                    if acct_name == main_acct:  # data already loaded
+                    if acct_name == current_acct:  # data already loaded
                         continue
 
                     acct_params = params[acct_name]
                     if not acct_params:
-                        msg = 'no parameters supplied for association account {ACCT}'.format(ACCT=main_acct)
+                        msg = 'no parameters supplied for association account {ACCT}'.format(ACCT=current_acct)
                         logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                         continue
@@ -1110,11 +1124,23 @@ class BankRule:
             assoc_acct = self.fetch_account(assoc_acct_name)
             ref_type = assoc_acct.record_type
 
+            # Annotate the match
+            annotation = None
+            #annot_rules = transactions[assoc_acct_name]['Annotations']
+            #if annot_rules:
+            #    record_data = acct.record_values(record_id)
+            #    ref_data = assoc_acct.record_values(ref_id)
+            #    annotation = annotate_match(record_data, ref_data, annot_rules)
+            #else:
+            #    annotation = None
+
             # Insert the reference into the account records reference dataframe
-            acct.add_reference(record_id, ref_id, ref_type, approved=approved, refdate=refdate, warning=warning)
+            acct.add_reference(record_id, ref_id, ref_type, approved=approved, refdate=refdate, warning=warning,
+                               note=annotation)
 
             # Insert the reference into the associated account's reference dataframe
-            assoc_acct.add_reference(ref_id, record_id, acct_type, approved=approved, refdate=refdate, warning=warning)
+            assoc_acct.add_reference(ref_id, record_id, acct_type, approved=approved, refdate=refdate, warning=warning,
+                                     note=annotation)
 
         nfound = matches.shape[0]
 
@@ -1156,247 +1182,6 @@ class BankRule:
                                          warning=warning)
 
             nfound += matches.shape[0]
-
-        logger.info('BankRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
-                    .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
-
-        return True
-
-    def reconcile_statement_old(self, search_expanded: bool = False, search_failed: bool = False):
-        """
-        Run the primary Bank Reconciliation rule algorithm for the record tab.
-
-        Arguments:
-            search_expanded (bool): expand the search by ignoring association parameters designated as expanded
-                [Default: False].
-
-            search_failed (bool): search for failed transactions, such as mistaken payments and bounced cheques
-                [Default: False].
-
-        Returns:
-            success (bool): bank reconciliation was successful.
-        """
-        pd.set_option('display.max_columns', None)
-
-        # Fetch primary account and prepare data
-        acct = self.fetch_account(self.current_account)
-        logger.info('BankRule {NAME}: reconciling account {ACCT}'.format(NAME=self.name, ACCT=acct.name))
-        logger.debug('BankRule {NAME}: expanded search is set to {VAL}'
-                     .format(NAME=self.name, VAL=('on' if search_expanded else 'off')))
-
-        table = acct.get_table()
-        id_column = table.id_column
-        acct_type = acct.record_type
-
-        # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
-        ref_df = acct.ref_df.copy()
-        ref_df = ref_df[~ref_df['IsDeleted']]
-        df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), ref_df, how='left', on='RecordID')
-        header = df.columns.tolist()
-
-        if df.empty:
-            return True
-
-        # Filter out records already associated with transaction account records
-        logger.debug('BankRule {NAME}: dropping {ACCT} records that are already associated with a transaction '
-                     'account record'.format(NAME=self.name, ACCT=acct.name))
-        df.drop(df[~df['ReferenceID'].isna()].index, axis=0, inplace=True)
-
-        # Filter out void transactions
-        if search_failed:
-            logger.debug('BankRule {NAME}: searching for void transactions for account {ACCT}'
-                         .format(NAME=self.name, ACCT=acct.name))
-            df = acct.search_void(df)
-        else:
-            logger.debug('BankRule {NAME}: skipping void transactions from account {ACCT}'
-                         .format(NAME=self.name, ACCT=acct.name))
-            df = acct.filter_void(df)
-
-        # Initialize the merged dataframe of associated account records
-        logger.debug('BankRule {NAME}: initializing the merged accounts table'.format(NAME=self.name, ACCT=acct.name))
-        required_fields = ['_Account_', '_RecordID_', '_RecordType_']
-        merged_df = pd.DataFrame(columns=required_fields)
-
-        # Fetch associated account data
-        transactions = acct.transactions
-        assoc_ref_maps = {}
-        for assoc_acct_name in transactions:
-            assoc_acct = self.fetch_account(assoc_acct_name)
-            logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
-                         .format(NAME=self.name, ACCT=assoc_acct.name))
-
-            assoc_table = assoc_acct.get_table()
-            assoc_df = assoc_table.data()
-            if assoc_df.empty:  # no records loaded to match to, so skip
-                continue
-
-            # Merge the associated records and references tables
-            assoc_ref_df = assoc_acct.ref_df.copy()
-            assoc_ref_df = assoc_ref_df[~assoc_ref_df['IsDeleted']]
-            assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct.ref_map.values())), assoc_ref_df, how='left',
-                                on='RecordID')
-            assoc_header = assoc_df.columns.tolist()
-
-            # Filter association account records that are already associated with a record
-            drop_conds = ~assoc_df['ReferenceID'].isna()
-            drop_labels = assoc_df[drop_conds].index
-            assoc_df = assoc_df.drop(drop_labels, axis=0)
-
-            # Filter out void transactions
-            if search_failed:
-                logger.debug('BankRule {NAME}: searching for void transactions for account {ACCT}'
-                             .format(NAME=self.name, ACCT=acct.name))
-                assoc_df = assoc_acct.search_void(assoc_df)
-            else:
-                logger.debug('BankRule {NAME}: skipping void transactions from association account {ACCT}'
-                             .format(NAME=self.name, ACCT=assoc_acct_name))
-                assoc_df = assoc_acct.filter_void(assoc_df)
-
-            # Create the account-association account column mapping from the association rules
-            assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
-            colmap = {}
-            rule_map = {}
-            for acct_colname in assoc_rules:
-                if acct_colname not in header:  # attempting to use a column that was not defined in the table config
-                    msg = 'AssociationRule column {COL} is missing from the account data'.format(COL=acct_colname)
-                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
-
-                    continue
-
-                rule_entry = assoc_rules[acct_colname]
-                assoc_colname = rule_entry['ForeignField']
-                if assoc_colname not in assoc_header:
-                    msg = 'AssociationRule reference column {COL} is missing from transaction account {ACCT} data' \
-                        .format(COL=assoc_colname, ACCT=assoc_acct_name)
-                    logger.warning('BankRule: {NAME}: {MSG}'.format(NAME=acct.name, MSG=msg))
-
-                    continue
-
-                colmap[assoc_colname] = acct_colname
-                rule_map[acct_colname] = rule_entry
-
-            # Store column mappers for fast recall during matching
-            assoc_ref_maps[assoc_acct_name] = rule_map
-
-            # Remove all but the relevant columns from the association account table
-            colmap[assoc_acct.table.id_column] = "_RecordID_"
-            assoc_df = assoc_df[list(colmap)]
-
-            # Change column names of the association account table using the column map
-            assoc_df.rename(columns=colmap, inplace=True)
-
-            # Add association account name and record type to the association account table
-            assoc_df['_Account_'] = assoc_acct_name
-            assoc_df['_RecordType_'] = assoc_acct.record_type
-
-            # Concatenate association tables
-            merged_df = merged_df.append(assoc_df, ignore_index=True)
-
-        # Iterate over record rows, attempting to find matches in associated transaction records
-        logger.debug('BankRule {NAME}: attempting to find associations for account {ACCT} records'
-                     .format(NAME=self.name, ACCT=acct.name))
-        nfound = 0
-        matched_indices = []
-        for index, row in df.iterrows():
-            record_id = getattr(row, id_column)
-
-            # Attempt to find a match for the record to each of the associated transaction accounts
-            matches = pd.DataFrame(columns=merged_df.columns)
-            for assoc_acct_name in assoc_ref_maps:
-                # Subset merged df to include only the association records with the given account name
-                assoc_df = merged_df[merged_df['_Account_'] == assoc_acct_name]
-
-                assoc_rules = assoc_ref_maps[assoc_acct_name]
-                cols = list(assoc_rules)
-
-                # Find exact matches between account record and the associated account records using only the
-                # relevant columns
-                row_vals = [getattr(row, i) for i in cols]
-                acct_matches = assoc_df[assoc_df[cols].eq(row_vals).all(axis=1)]
-                matches = matches.append(acct_matches)
-
-            # Check matches and find correct association
-            nmatch = matches.shape[0]
-            if nmatch == 1:  # found one exact match
-                nfound += 1
-                matched_indices.append(index)
-
-                results = matches.iloc[0]
-                ref_id = results['_RecordID_']
-                ref_type = results['_RecordType_']
-                assoc_acct_name = results['_Account_']
-
-                logger.debug('BankRule {NAME}: associating {ACCT} record {REFID} to account record {ID}'
-                             .format(NAME=self.name, ACCT=assoc_acct_name, REFID=ref_id, ID=record_id))
-
-                # Remove the found match from the dataframe of unmatched associated account records
-                merged_df.drop(matches.index.tolist()[0], inplace=True)
-
-                # Insert the reference into the account records reference dataframe
-                refdate = datetime.datetime.now()
-                acct.add_reference(record_id, ref_id, ref_type, approved=True, refdate=refdate)
-
-                # Insert the reference into the associated account's reference dataframe
-                assoc_acct = self.fetch_account(assoc_acct_name)
-                assoc_acct.add_reference(ref_id, record_id, acct_type, approved=True, refdate=refdate)
-
-            elif nmatch > 1:  # too many matches
-                nfound += 1
-                matched_indices.append(index)
-
-                warning = 'Found more than one match for account {ACCT} record "{RECORD}"' \
-                    .format(ACCT=self.current_account, RECORD=record_id)
-                logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=warning))
-
-                # Match the first of the exact matches
-                results = matches.iloc[0]
-                ref_id = results['_RecordID_']
-                ref_type = results['_RecordType_']
-                assoc_acct_name = results['_Account_']
-
-                # Remove match from list of unmatched association records
-                merged_df.drop(matches.index.tolist()[0], inplace=True)
-
-                # Insert the reference into the account records reference dataframe
-                refdate = datetime.datetime.now()
-                acct.add_reference(record_id, ref_id, ref_type, approved=True, warning=warning, refdate=refdate)
-
-                # Insert the reference into the associated account's reference dataframe
-                assoc_acct = self.fetch_account(assoc_acct_name)
-                assoc_acct.add_reference(ref_id, record_id, acct_type, approved=True, warning=warning, refdate=refdate)
-
-        if search_expanded:
-            msg = 'using expanded search criteria to find any remaining associations for account {ACCT} records'\
-                .format(ACCT=acct.name)
-            logger.info('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            df.drop(matched_indices, inplace=True)
-            for index, row in df.iterrows():
-                record_id = getattr(row, id_column)
-
-                match = self.expand_search(row, merged_df, assoc_ref_maps, expand_level=0)
-                if match.empty:
-                    continue
-
-                assoc_acct_name = match['_Account_']
-                ref_id = match['_RecordID_']
-                ref_type = match['_RecordType_']
-                warning = match['_Warning_']
-
-                logger.debug('BankRule {NAME}: associating {ACCT} record {REF_ID} to account record {ID} from an '
-                             'expanded search'.format(NAME=self.name, ACCT=assoc_acct_name, REF_ID=ref_id,
-                                                      ID=record_id))
-
-                # Remove the found match from the dataframe of unmatched associated account records
-                merged_df.drop(match.name, inplace=True)
-
-                # Insert the reference into the account records reference dataframe
-                refdate = datetime.datetime.now()
-                acct.add_reference(record_id, ref_id, ref_type, approved=False, warning=warning, refdate=refdate)
-
-                # Insert the reference into the associated account's reference dataframe
-                assoc_acct = self.fetch_account(assoc_acct_name)
-                assoc_acct.add_reference(ref_id, record_id, acct_type, approved=False, warning=warning, refdate=refdate)
 
         logger.info('BankRule {NAME}: found {NMATCH} associations out of {NTOTAL} unreferenced account {ACCT} records'
                     .format(NAME=self.name, NMATCH=nfound, NTOTAL=df.shape[0], ACCT=acct.name))
@@ -3116,3 +2901,18 @@ def compare_record_values(value, ref_values, match_pattern: bool = False, ignore
 
     return col_match
 
+
+def annotate_match(data, ref_data, rules):
+    """
+    Annotate an association using provided association rules.
+    """
+    annotation = None
+    for rule_name in rules:
+        rule = rules[rule_name]
+
+        if 'Description' in rule:
+            description = annotation
+        else:
+            continue
+
+    return annotation
