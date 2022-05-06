@@ -1022,12 +1022,12 @@ class BankRule:
 
         # Initialize the merged dataframe of associated account records
         logger.debug('BankRule {NAME}: initializing the merged accounts table'.format(NAME=self.name, ACCT=acct.name))
-        required_fields = ['_Account_', '_RecordID_', '_RecordType_']
+        required_fields = ['_Source_', '_RecordID_']
         merged_df = pd.DataFrame(columns=required_fields)
 
         # Fetch associated account data
         transactions = acct.transactions
-        assoc_ref_maps = {}
+        #assoc_ref_maps = {}
         for assoc_acct_name in transactions:
             assoc_acct = self.fetch_account(assoc_acct_name)
             logger.debug('BankRule {NAME}: adding data from the association account {ACCT} to the merged table'
@@ -1061,9 +1061,10 @@ class BankRule:
                 assoc_df = assoc_acct.filter_void(assoc_df)
 
             # Create the account-association account column mapping from the association rules
-            assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
+            #assoc_rules = transactions[assoc_acct_name]['AssociationParameters']
+            assoc_rules = transactions[assoc_acct_name]
             colmap = {}
-            rule_map = {}
+            #rule_map = {}
             for acct_colname in assoc_rules:
                 if acct_colname not in header:  # attempting to use a column that was not defined in the table config
                     msg = 'AssociationRule column {COL} is missing from the account data'.format(COL=acct_colname)
@@ -1081,10 +1082,10 @@ class BankRule:
                     continue
 
                 colmap[assoc_colname] = acct_colname
-                rule_map[acct_colname] = rule_entry
+                #rule_map[acct_colname] = rule_entry
 
             # Store column mappers for fast recall during matching
-            assoc_ref_maps[assoc_acct_name] = rule_map
+            #assoc_ref_maps[assoc_acct_name] = rule_map
 
             # Remove all but the relevant columns from the association account table
             colmap[assoc_acct.table.id_column] = "_RecordID_"
@@ -1094,8 +1095,7 @@ class BankRule:
             assoc_df.rename(columns=colmap, inplace=True)
 
             # Add association account name and record type to the association account table
-            assoc_df['_Account_'] = assoc_acct_name
-            assoc_df['_RecordType_'] = assoc_acct.record_type
+            assoc_df['_Source_'] = assoc_acct_name
 
             # Concatenate association tables
             merged_df = merged_df.append(assoc_df, ignore_index=True)
@@ -1104,7 +1104,8 @@ class BankRule:
         df.set_index(id_column, inplace=True)
         logger.debug('BankRule {NAME}: attempting to find associations for account {ACCT} records'
                      .format(NAME=self.name, ACCT=acct.name))
-        func_args = {'df': df, 'ref_df': merged_df, 'rules': assoc_ref_maps}
+        #func_args = {'df': df, 'ref_df': merged_df, 'rules': assoc_ref_maps}
+        func_args = {'df': df, 'ref_df': merged_df, 'rules': transactions}
         func_results = thread_operation(search_associations, func_args, message='reconciling accounts')
         if func_results['success']:
             matches = func_results['value']
@@ -1153,7 +1154,8 @@ class BankRule:
             df.drop(matched_indices, inplace=True)
 
             # matches = search_associations_expanded(df, merged_df, assoc_ref_maps)
-            func_args = {'df': df, 'ref_df': merged_df, 'rules': assoc_ref_maps}
+            #func_args = {'df': df, 'ref_df': merged_df, 'rules': assoc_ref_maps}
+            func_args = {'df': df, 'ref_df': merged_df, 'rules': transactions}
             func_results = thread_operation(search_associations_expanded, func_args, message='reconciling accounts')
             if func_results['success']:
                 matches = func_results['value']
@@ -1223,7 +1225,7 @@ class BankRule:
             logger.debug('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             # Subset merged df to include only the association records with the given account name
-            assoc_df = ref_df[ref_df['_Account_'] == assoc_acct_name]
+            assoc_df = ref_df[ref_df['_Source_'] == assoc_acct_name]
             if assoc_df.empty:
                 msg = 'no entries in association {ASSOC} to compare against account {ACCT}, row {ROW}'\
                     .format(ASSOC=assoc_acct_name, ACCT=self.current_account, ROW=row_index)
@@ -1310,7 +1312,7 @@ class BankRule:
             results = matches.iloc[0].copy()
 
             # Determine appropriate warning for the expanded search
-            acct_name = results['_Account_']
+            acct_name = results['_Source_']
             assoc_rules = ref_map[acct_name]
 
             warning = []
@@ -1357,7 +1359,7 @@ class BankRule:
                     logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 else:
                     # Determine appropriate warning for the nearest match search
-                    acct_name = results['_Account_']
+                    acct_name = results['_Source_']
                     assoc_rules = ref_map[acct_name]
 
                     warning = []
@@ -1637,10 +1639,7 @@ class BankAccount:
                          ('Panel', 'AssocPanel', 'Approve', 'Reset', 'Link')}
         self.bindings = {self.elements[i]: i for i in ('Approve', 'Reset', 'Link')}
 
-        try:
-            self.title = entry['Title']
-        except KeyError:
-            self.title = name
+        self.title = entry.get('Title', name)
 
         try:
             self.record_type = entry['RecordType']
@@ -1660,11 +1659,7 @@ class BankAccount:
 
             raise AttributeError(msg)
 
-        try:
-            table_entry = entry['DisplayTable']
-        except KeyError:
-            table_entry = record_entry.import_table
-
+        table_entry = entry.get('DisplayTable', record_entry.import_table)
         self.table = mod_elem.RecordTable(name, table_entry)
         self.bindings.update(self.table.bindings)
 
@@ -1706,67 +1701,46 @@ class BankAccount:
         try:
             transactions = entry['Transactions']
         except KeyError:
-            self.transactions = {}
-        else:
-            self.transactions = {}
-            for transaction_acct in transactions:
-                cnfg_entry = transactions[transaction_acct]
-                trans_entry = {}
+            transactions = {}
 
-                if 'ImportParameters' not in cnfg_entry:
-                    trans_entry['ImportParameters'] = {}
-                else:
-                    trans_entry['ImportParameters'] = cnfg_entry['ImportParameters']
+        self.associations = {}
+        annot_rules = transactions.get('AnnotationRules', {})
+        for rule_name in annot_rules:
+            annot_entry = annot_rules[rule_name]
 
-                if 'Title' not in cnfg_entry:
-                    trans_entry['Title'] = transaction_acct
-                else:
-                    trans_entry['Title'] = cnfg_entry['Title']
+        self.transactions = {}
+        assoc_rules = transactions.get('AssociationRules', {})
+        for transaction_acct in assoc_rules:
+            assoc_params = assoc_rules[transaction_acct]
 
-                if 'AssociationParameters' not in cnfg_entry:
-                    msg = 'BankAccount {NAME}: Transaction account {ACCT} is missing required parameter ' \
-                          '"AssociationParameters"'.format(NAME=name, ACCT=transaction_acct)
-                    logger.error(msg)
+            params = {}
+            for assoc_column in assoc_params:
+                if assoc_column not in self.table.columns:
+                    msg = 'association field "{COL}" for transaction account {ACCT} is not found in the list of ' \
+                          'table columns'.format(ACCT=transaction_acct, COL=assoc_column)
+                    logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                     continue
 
-                assoc_params = cnfg_entry['AssociationParameters']
-                params = {}
-                for assoc_column in list(assoc_params):
-                    if assoc_column not in self.table.columns:
-                        msg = 'BankAccount {NAME}: the associated column "{COL}" for transaction account {ACCT} is ' \
-                              'not found in the list of table columns'\
-                            .format(NAME=name, ACCT=transaction_acct, COL=assoc_column)
-                        logger.error(msg)
+                param_entry = assoc_params[assoc_column]
+                if 'ForeignField' not in param_entry:
+                    msg = 'no foreign field specified for associated column {COL} of transaction account {ACCT} - ' \
+                          'setting to {COL}'.format(ACCT=transaction_acct, COL=assoc_column)
+                    logger.warning('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                        continue
+                    param_entry['ForeignField'] = assoc_column
 
-                    param_entry = assoc_params[assoc_column]
-                    if 'ForeignField' not in param_entry:
-                        msg = 'BankAccount {NAME}: no foreign field specified for associated column {COL} of ' \
-                              'transaction account {ACCT} - setting to {COL}'\
-                            .format(NAME=name, ACCT=transaction_acct, COL=assoc_column)
-                        logger.warning(msg)
+                try:
+                    param_entry['ExpandLevel'] = int(param_entry['ExpandLevel'])
+                except (KeyError, ValueError):
+                    param_entry['ExpandLevel'] = 0
 
-                        param_entry['ForeignField'] = assoc_column
-
-                    try:
-                        param_entry['ExpandLevel'] = int(param_entry['ExpandLevel'])
-                    except (KeyError, ValueError):
-                        param_entry['ExpandLevel'] = 0
-
-                    params[assoc_column] = param_entry
-
-                trans_entry['AssociationParameters'] = params
-
-                self.transactions[transaction_acct] = trans_entry
+                params[assoc_column] = param_entry
+                self.transactions[transaction_acct] = params
 
         self.void_transactions = entry.get('VoidTransactions', entry.get('FailedTransactions', {}))
 
-        try:
-            self.import_rules = entry['ImportRules']
-        except KeyError:
-            self.import_rules = record_entry.import_rules
+        self.import_rules = entry.get('ImportRules', record_entry.import_rules)
 
         self.ref_df = None
         self.primary = False
@@ -2533,7 +2507,7 @@ def search_associations(df, ref_df, rules):
         matches = pd.DataFrame(columns=ref_df.columns)
         for assoc_acct_name in rules:
             # Subset merged df to include only the association records with the given account name
-            assoc_acct_df = ref_df[ref_df['_Account_'] == assoc_acct_name]
+            assoc_acct_df = ref_df[ref_df['_Source_'] == assoc_acct_name]
 
             assoc_rules = rules[assoc_acct_name]
             cols = list(assoc_rules)
@@ -2550,7 +2524,7 @@ def search_associations(df, ref_df, rules):
         if nmatch == 1:  # found one exact match
             results = matches.iloc[0]
             ref_id = results['_RecordID_']
-            source = results['_Account_']
+            source = results['_Source_']
 
             logger.debug('associating {ACCT} record {REFID} to account record {ID}'
                          .format(ACCT=source, REFID=ref_id, ID=record_id))
@@ -2569,7 +2543,7 @@ def search_associations(df, ref_df, rules):
             # Match the first of the exact matches
             results = matches.iloc[0]
             ref_id = results['_RecordID_']
-            source = results['_Account_']
+            source = results['_Source_']
 
             logger.debug('associating {ACCT} record {REFID} to account record {ID}'
                          .format(ACCT=source, REFID=ref_id, ID=record_id))
@@ -2595,7 +2569,7 @@ def search_associations_expanded(df, ref_df, rules):
         if match.empty:
             continue
 
-        source = match['_Account_']
+        source = match['_Source_']
         ref_id = match['_RecordID_']
         warning = match['_Warning_']
 
@@ -2647,7 +2621,7 @@ def expand_search(row, ref_df, ref_map, comp_df=None, expand_level: int = 0, clo
         logger.debug(msg)
 
         # Subset merged df to include only the association records with the given account name
-        assoc_df = ref_df[ref_df['_Account_'] == assoc_acct_name]
+        assoc_df = ref_df[ref_df['_Source_'] == assoc_acct_name]
         if assoc_df.empty:
             msg = 'no entries in association {ASSOC} to compare against record {ROW}' \
                 .format(ASSOC=assoc_acct_name, ROW=row_index)
@@ -2716,7 +2690,7 @@ def expand_search(row, ref_df, ref_map, comp_df=None, expand_level: int = 0, clo
         results = matches.iloc[0].copy()
 
         # Determine appropriate warning for the expanded search
-        acct_name = results['_Account_']
+        acct_name = results['_Source_']
         assoc_rules = ref_map[acct_name]
 
         warning = []
@@ -2764,7 +2738,7 @@ def expand_search(row, ref_df, ref_map, comp_df=None, expand_level: int = 0, clo
                 logger.warning(msg)
             else:
                 # Determine appropriate warning for the nearest match search
-                acct_name = results['_Account_']
+                acct_name = results['_Source_']
                 assoc_rules = ref_map[acct_name]
 
                 warning = []
@@ -2906,13 +2880,23 @@ def annotate_match(data, ref_data, rules):
     """
     Annotate an association using provided association rules.
     """
+    data = data.set_index('RecordID').add_prefix('{}.'.format(data.name))
+    ref_data = ref_data.dropna(subset=['ReferenceID']).set_index('ReferenceID').add_prefix('{}.'.format(ref_data.name))
+    merged = data.merge(ref_data, how='left', left_index=True, right_index=True)
+
     annotation = None
     for rule_name in rules:
         rule = rules[rule_name]
 
-        if 'Description' in rule:
-            description = annotation
-        else:
-            continue
+        description = rule.get('Description', rule_name)
+        subset_rule = rule.get('Subset', None)
+        condition = rule.get('Condition', None)
+        if subset_rule:
+            try:
+                results = mod_dm.evaluate_condition(merged, subset_rule)
+            except Exception as e:
+                continue
+
+            merged = merged[results]
 
     return annotation
