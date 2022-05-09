@@ -303,7 +303,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
 
     # Center the record window
     window.un_hide()
-    window = center_window(window)
+    window = align_window(window)
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
@@ -568,7 +568,7 @@ def parameter_window(definitions, win_size: tuple = None):
         for param in params[pgroup]:
             param.resize(window, size=(int(win_w - 40), None), pixels=True)
 
-    window = center_window(window)
+    window = align_window(window)
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
@@ -849,7 +849,7 @@ def parameter_window_old(account, win_size: tuple = None):
         for param in params[pgroup]:
             param.resize(window, size=(int(win_w - 40), None), pixels=True)
 
-    window = center_window(window)
+    window = align_window(window)
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
@@ -1031,7 +1031,7 @@ def add_note_window(note: str = None):
     # window[width_key].set_size((win_w, None))
     window[elem_key].expand(expand_x=True, expand_y=True)
 
-    window = center_window(window)
+    window = align_window(window)
     current_w, current_h = [int(i) for i in window.size]
 
     # Event window
@@ -2024,7 +2024,7 @@ def record_import_window(table, enable_new: bool = False):
     table.resize(window, size=(tbl_w, tbl_h))
 
     window.un_hide()
-    window = center_window(window)
+    window = align_window(window)
 
     current_w, current_h = window.size
 
@@ -2229,7 +2229,7 @@ def import_window(table, params: list = None):
     table.resize(window, size=(tbl_w, tbl_h))
 
     window.un_hide()
-    window = center_window(window)
+    window = align_window(window)
     current_w, current_h = window.size
 
     # Start event loop
@@ -2389,7 +2389,7 @@ def edit_settings(win_size: tuple = None):
     window = sg.Window('Settings', layout, modal=True, resizable=False)
     window.finalize()
 
-    window = center_window(window)
+    window = align_window(window)
 
     element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
                     '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname',
@@ -2420,11 +2420,18 @@ def edit_settings(win_size: tuple = None):
     gc.collect()
 
 
-def range_value_window(dtype, current: list = None, title: str = 'Range', date_format: str = None):
+def range_value_window(dtype, current: list = None, title: str = None, date_format: str = None, location: tuple = None,
+                       size: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
     value_range = current if current and len(current) == 2 else [None, None]
+
+    if isinstance(size, tuple) and len(size) == 2:
+        win_w, win_h = size
+    else:
+        win_w = 380
+        win_h = 120
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
@@ -2444,38 +2451,53 @@ def range_value_window(dtype, current: list = None, title: str = 'Range', date_f
     # Layout
     orig_val1, orig_val2 = value_range
     if dtype in settings.supported_date_dtypes:
-        in_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
-                              pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
-                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                     sg.CalendarButton('', target='-R1-', format='%Y-%m-%d', image_data=date_ico, font=font,
-                                       border_width=0, tooltip='Select date from calendar menu'),
-                     sg.Text('  -  ', font=bold_font),
-                     sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
-                              pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
-                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                     sg.CalendarButton('', target='-R2-', format='%Y-%m-%d', image_data=date_ico, font=font,
-                                       border_width=0, tooltip='Select date from calendar menu'),
-                     ]
+        elem_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
+                                pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
+                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                       sg.CalendarButton('', target='-R1-', format='%Y-%m-%d', image_data=date_ico, font=font,
+                                         border_width=0, tooltip='Select date from calendar menu'),
+                       sg.Text('  -  ', font=bold_font),
+                       sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
+                                pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
+                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                       sg.CalendarButton('', target='-R2-', format='%Y-%m-%d', image_data=date_ico, font=font,
+                                         border_width=0, tooltip='Select date from calendar menu')
+                       ]
     else:
-        in_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
-                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                     sg.Text('  -  ', font=bold_font),
-                     sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
-                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                              tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                     ]
+        elem_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
+                                pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                       sg.Text('  -  ', font=bold_font),
+                       sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
+                                pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
+                       ]
 
     bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Save value range ({})'.format(save_shortcut))]]
 
-    layout = [[sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+    layout = [[sg.Canvas(size=(win_w, 0), background_color=bg_col)],
+              [sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
+                      expand_x=True)],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
 
     window = sg.Window(title, layout, modal=True, resizable=False)
     window.finalize()
-    window = center_window(window)
+
+    if isinstance(location, tuple) and len(location) == 2:
+        coord_x, coord_y = location
+        try:
+            pos_x = int(coord_x - 0.5 * win_w)
+            pos_y = int(coord_y + 2)
+        except ValueError:
+            pos_xy = None
+        else:
+            pos_xy = (pos_x, pos_y)
+    else:
+        pos_xy = None
+
+    window = align_window(window, location=pos_xy)
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
@@ -2509,12 +2531,18 @@ def range_value_window(dtype, current: list = None, title: str = 'Range', date_f
     return value_range
 
 
-def conditional_value_window(dtype, current: list = None, title: str = 'Conditional'):
+def conditional_value_window(dtype, current: list = None, title: str = None, location: tuple = None, size: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
     saved_value = current if current and len(current) == 2 else [None, None]
     operators = ['>', '<', '>=', '<=', '=']
+
+    if isinstance(size, tuple) and len(size) == 2:
+        win_w, win_h = size
+    else:
+        win_w = 380
+        win_h = 120
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
@@ -2532,24 +2560,38 @@ def conditional_value_window(dtype, current: list = None, title: str = 'Conditio
 
     # Layout
     current_oper, current_value = saved_value
-    in_layout = [sg.Combo(operators, default_value=current_oper, key='-OPER-', enable_events=True, size=(4, 1),
-                          pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                          tooltip='Select valid operator'),
-                 sg.Input(current_value, key='-VAL-', enable_events=True, size=(14, 1),
-                          pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                          tooltip='Input value'),
-                 ]
+    elem_layout = [sg.Combo(operators, default_value=current_oper, key='-OPER-', enable_events=True, size=(4, 1),
+                            pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                            tooltip='Select valid operator'),
+                   sg.Input(current_value, key='-VAL-', enable_events=True, size=(14, 1),
+                            pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                            tooltip='Input value'),
+                   ]
 
     bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Save value range ({})'.format(save_shortcut))]]
 
-    layout = [[sg.Col([in_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+    layout = [[sg.Canvas(size=(win_w, 0), background_color=bg_col)],
+              [sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
 
     window = sg.Window(title, layout, modal=True, resizable=False)
     window.finalize()
-    window = center_window(window)
+
+    if isinstance(location, tuple) and len(location) == 2:
+        coord_x, coord_y = location
+        try:
+            pos_x = int(coord_x - 0.5 * win_w)
+            pos_y = int(coord_y + 2)
+        except ValueError:
+            pos_xy = None
+        else:
+            pos_xy = (pos_x, pos_y)
+    else:
+        pos_xy = None
+
+    window = align_window(window, location=pos_xy)
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
@@ -2584,6 +2626,99 @@ def conditional_value_window(dtype, current: list = None, title: str = 'Conditio
     gc.collect()
 
     return saved_value
+
+
+def select_value_window(values, current: list = None, title: str = None, location: tuple = None, size: tuple = None):
+    """
+    Display window for obtaining one or more values from a list of possible choices.
+    """
+    if isinstance(size, tuple) and len(size) == 2:
+        win_w, win_h = size
+    else:
+        win_w = 380
+        win_h = 120
+
+    if not isinstance(values, list):
+        values = [values]
+
+    nchar = max([len(i) for i in values])
+    nvalues = len(values)
+
+    nrow = nvalues if nvalues <= 6 else 6
+
+    if current is not None:
+        current_values = [i for i in current if i in values]
+    else:
+        current_values = []
+
+    selection = current_values
+
+    # Element settings
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+
+    font = mod_const.LARGE_FONT
+    bold_font = mod_const.BOLD_LARGE_FONT
+
+    in_col = mod_const.ELEMENT_COLOR
+    bg_col = mod_const.DEFAULT_BG_COLOR
+
+    # Keyboard shortcuts
+    hotkeys = settings.hotkeys
+    save_shortcut = hotkeys['-HK_ENTER-'][2]
+
+    # Layout
+    elem_layout = [sg.Listbox(values, default_values=current_values, key='-SELECT-', size=(nchar, nrow),
+                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
+                              select_mode='extended',
+                              tooltip='Select one or more values from the list')]
+
+    bttn_layout = [[sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                              bind_return_key=True, pad=(pad_el, 0),
+                              tooltip='Accept selection ({})'.format(save_shortcut))]]
+
+    layout = [[sg.Canvas(size=(win_w, 0), background_color=bg_col)],
+              [sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+
+    window = sg.Window(title, layout, modal=True, resizable=False)
+    window.finalize()
+
+    if isinstance(location, tuple) and len(location) == 2:
+        coord_x, coord_y = location
+        try:
+            pos_x = int(coord_x - 0.5 * win_w)
+            pos_y = int(coord_y + 2)
+        except ValueError:
+            pos_xy = None
+        else:
+            pos_xy = (pos_x, pos_y)
+    else:
+        pos_xy = None
+
+    window = align_window(window, location=pos_xy)
+
+    # Bind keys to events
+    window = settings.set_shortcuts(window)
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
+            break
+
+        if event in ('-OK-', '-HK_ENTER-'):
+            selection = values['-SELECT-']
+
+            break
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return selection
 
 
 def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win_size: tuple = None):
@@ -2792,7 +2927,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
 
         window[element_key].expand(expand_x=True)
 
-    window = center_window(window)
+    window = align_window(window)
 
     # Set window focus on first editable input element and highlight any existing text
     if focus_element:
@@ -2885,19 +3020,29 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     return row
 
 
-def center_window(window):
+def align_window(window, location: tuple = None):
     """
     Center a secondary window on the screen.
+
+    Arguments:
+        window: GUI window.
+
+        location (tuple): place upper left corner of the window at the given coordinates [Default: center the window].
     """
     screen_w, screen_h = window.get_screen_dimensions()
 
     logger.debug('centering window')
     window.refresh()
 
-    logger.debug('current window size: {}'.format(window.size))
     win_w, win_h = window.size
-    win_x = int(screen_w / 2 - win_w / 2)
-    win_y = int(screen_h / 2 - win_h / 2)
+    logger.debug('current window size: ({W}, {H})'.format(W=win_w, H=win_h))
+
+    if not isinstance(location, tuple):  # center window by default
+        win_x = int(screen_w / 2 - win_w / 2)
+        win_y = int(screen_h / 2 - win_h / 2)
+    else:
+        win_x, win_y = location
+
     logger.debug('window current location: ({}, {})'.format(*window.current_location()))
     logger.debug('window new location: ({}, {})'.format(win_x, win_y))
     if win_x + win_w > screen_w:
