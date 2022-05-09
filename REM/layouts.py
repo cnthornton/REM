@@ -501,7 +501,7 @@ def importer_layout(win_size: tuple = None):
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
                   [sg.Col([[sg.Listbox(values=[], key='-REQLIST-', size=(26, 8), font=font_main, bind_return_key=True,
-                                       background_color=bg_col, select_mode='LISTBOX_SELECT_MODE_EXTENDED',
+                                       background_color=bg_col, select_mode='extended',
                                        tooltip='Double-click on a column name to add the column to the table')]],
                           background_color=bg_col, justification='l', element_justification='l', expand_x=True),
                    sg.Col([[create_table_layout([[]], header_req, '-REQCOL-', bind=True, pad=(0, 0), nrow=4,
@@ -516,7 +516,7 @@ def importer_layout(win_size: tuple = None):
               [sg.Canvas(size=(frame_w, 0), background_color=bg_col)],
               [sg.Col([
                   [sg.Col([[sg.Listbox(values=[], key='-MAPLIST-', size=(26, 8), font=font_main, bind_return_key=True,
-                                       background_color=bg_col, select_mode='LISTBOX_SELECT_MODE_EXTENDED',
+                                       background_color=bg_col, select_mode='extended',
                                        tooltip='Double-click on a column name to add the column to the table')]],
                           background_color=bg_col, justification='l', element_justification='l', expand_x=True),
                    sg.Col([[create_table_layout([[]], header_map, '-MAPCOL-', bind=True, pad=(0, 0), nrow=4,
