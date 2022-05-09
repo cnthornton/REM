@@ -2420,18 +2420,11 @@ def edit_settings(win_size: tuple = None):
     gc.collect()
 
 
-def range_value_window(dtype, current: list = None, title: str = None, date_format: str = None, location: tuple = None,
-                       size: tuple = None):
+def range_value_window(dtype, current: list = None, title: str = None, date_format: str = None, location: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
     value_range = current if current and len(current) == 2 else [None, None]
-
-    if isinstance(size, tuple) and len(size) == 2:
-        win_w, win_h = size
-    else:
-        win_w = 380
-        win_h = 120
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
@@ -2477,14 +2470,14 @@ def range_value_window(dtype, current: list = None, title: str = None, date_form
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Save value range ({})'.format(save_shortcut))]]
 
-    layout = [[sg.Canvas(size=(win_w, 0), background_color=bg_col)],
-              [sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
+    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
                       expand_x=True)],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
 
     window = sg.Window(title, layout, modal=True, resizable=False)
     window.finalize()
 
+    win_w, win_h = window.size
     if isinstance(location, tuple) and len(location) == 2:
         coord_x, coord_y = location
         try:
@@ -2531,25 +2524,18 @@ def range_value_window(dtype, current: list = None, title: str = None, date_form
     return value_range
 
 
-def conditional_value_window(dtype, current: list = None, title: str = None, location: tuple = None, size: tuple = None):
+def conditional_value_window(dtype, current: list = None, title: str = None, location: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
     saved_value = current if current and len(current) == 2 else [None, None]
     operators = ['>', '<', '>=', '<=', '=']
 
-    if isinstance(size, tuple) and len(size) == 2:
-        win_w, win_h = size
-    else:
-        win_w = 380
-        win_h = 120
-
     # Element settings
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
 
     font = mod_const.LARGE_FONT
-    bold_font = mod_const.BOLD_LARGE_FONT
 
     in_col = mod_const.ELEMENT_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
@@ -2572,13 +2558,13 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Save value range ({})'.format(save_shortcut))]]
 
-    layout = [[sg.Canvas(size=(win_w, 0), background_color=bg_col)],
-              [sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
 
     window = sg.Window(title, layout, modal=True, resizable=False)
     window.finalize()
 
+    win_w, win_h = window.size
     if isinstance(location, tuple) and len(location) == 2:
         coord_x, coord_y = location
         try:
@@ -2628,23 +2614,12 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     return saved_value
 
 
-def select_value_window(values, current: list = None, title: str = None, location: tuple = None, size: tuple = None):
+def select_value_window(values, current: list = None, title: str = None, location: tuple = None):
     """
     Display window for obtaining one or more values from a list of possible choices.
     """
-    if isinstance(size, tuple) and len(size) == 2:
-        win_w, win_h = size
-    else:
-        win_w = 380
-        win_h = 120
-
     if not isinstance(values, list):
         values = [values]
-
-    nchar = max([len(i) for i in values])
-    nvalues = len(values)
-
-    nrow = nvalues if nvalues <= 6 else 6
 
     if current is not None:
         current_values = [i for i in current if i in values]
@@ -2658,7 +2633,6 @@ def select_value_window(values, current: list = None, title: str = None, locatio
     pad_frame = mod_const.FRAME_PAD
 
     font = mod_const.LARGE_FONT
-    bold_font = mod_const.BOLD_LARGE_FONT
 
     in_col = mod_const.ELEMENT_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
@@ -2667,23 +2641,28 @@ def select_value_window(values, current: list = None, title: str = None, locatio
     hotkeys = settings.hotkeys
     save_shortcut = hotkeys['-HK_ENTER-'][2]
 
+    # Window and element sizes
+    nchar = max([len(i) for i in values])
+    nvalues = len(values)
+
+    nrow = nvalues if nvalues <= 6 else 6
+
     # Layout
     elem_layout = [sg.Listbox(values, default_values=current_values, key='-SELECT-', size=(nchar, nrow),
                               pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                              select_mode='extended',
-                              tooltip='Select one or more values from the list')]
+                              select_mode='multiple', tooltip='Select one or more values from the list')]
 
     bttn_layout = [[sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
                               bind_return_key=True, pad=(pad_el, 0),
                               tooltip='Accept selection ({})'.format(save_shortcut))]]
 
-    layout = [[sg.Canvas(size=(win_w, 0), background_color=bg_col)],
-              [sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
 
     window = sg.Window(title, layout, modal=True, resizable=False)
     window.finalize()
 
+    win_w, win_h = window.size
     if isinstance(location, tuple) and len(location) == 2:
         coord_x, coord_y = location
         try:
