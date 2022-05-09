@@ -666,7 +666,8 @@ def parameter_window(definitions, win_size: tuple = None):
                         if not isinstance(related_params, list):
                             related_params = [related_params]
                         for related_param in related_params:
-                            if not related_param.has_value() and related_param.etype == event_param.etype:
+                            if not related_param.has_value() and related_param.etype == event_param.etype and \
+                                    related_param.required:
                                 related_param.format_value(event_param.value)
                                 related_param.update_display(window)
 
