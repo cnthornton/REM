@@ -1012,6 +1012,13 @@ class DataCollection:
         df = self.df
         edited = False
 
+        try:
+            dtype = self.dtypes[column]
+        except KeyError:
+            msg = 'DataCollection {NAME}: failed to update column "{COL}" - {COL} is not a valid collection field' \
+                .format(NAME=self.name, COL=column)
+            raise IndexError(msg)
+
         if indices is None:  # update all rows
             indices = df.index.tolist()
         elif isinstance(indices, int):
@@ -1027,7 +1034,6 @@ class DataCollection:
         if not isinstance(values, pd.Series):
             values = pd.Series(values, index=indices)
 
-        dtype = self.dtypes[column]
         values = mod_dm.format_values(values, dtype)
 
         # Set "Is Edited" to True where existing column values do not match the update values
