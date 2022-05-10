@@ -896,6 +896,9 @@ class BankRule:
         """
         Update the audit record summary tab's record display.
         """
+        # Annotate reference entries
+        self.annotate_associations()
+
         # Update the relevant account panels
         for acct_panel in self.panels:
             acct = self.fetch_account(acct_panel, by_key=True)
