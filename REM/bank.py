@@ -489,6 +489,7 @@ class BankRule:
             # Get the parameter settings
             transactions = acct.transactions
             param_def = {acct.title: acct.parameters}
+            acct_titles = {current_acct: acct.title}
             for trans_acct_name in transactions:
                 try:
                     trans_acct = self.fetch_account(trans_acct_name)
@@ -500,13 +501,15 @@ class BankRule:
                     continue
 
                 param_def[trans_acct.title] = trans_acct.parameters
+                acct_titles[trans_acct_name] = trans_acct.title
 
             params = mod_win2.parameter_window(param_def)
+            print(params)
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
                 # Load the main transaction account data using the defined parameters
-                acct_params = params[current_acct]
+                acct_params = params[acct_titles[current_acct]]
                 if not acct_params:
                     msg = 'no parameters supplied for account {ACCT}'.format(ACCT=current_acct)
                     logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -534,11 +537,17 @@ class BankRule:
 
                 # Load the association account data using the defined parameters
                 assoc_accounts = []
-                for acct_name in params:
-                    if acct_name == current_acct:  # data already loaded
+                for assoc_acct in self.accts:
+                    acct_name = assoc_acct.name
+                    try:
+                        acct_title = acct_titles[acct_name]
+                    except KeyError:  # no parameters set for this account
                         continue
 
-                    acct_params = params[acct_name]
+                    if acct_title == acct_titles[current_acct]:  # data already loaded for the primary account
+                        continue
+
+                    acct_params = params[acct_title]
                     if not acct_params:
                         msg = 'no parameters supplied for association account {ACCT}'.format(ACCT=current_acct)
                         logger.warning('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -547,9 +556,8 @@ class BankRule:
 
                     logger.debug('BankRule {NAME}: loading database records for association account {ACCT}'
                                  .format(NAME=self.name, ACCT=acct_name))
-                    assoc_acct = self.fetch_account(acct_name)
                     assoc_type = assoc_acct.record_type
-                    assoc_accounts.append(assoc_acct.title)
+                    assoc_accounts.append(acct_title)
 
                     refs = ref_df.copy()
                     reference_records = refs.loc[refs['ReferenceType'] == assoc_type, 'ReferenceID'].tolist()
@@ -1171,26 +1179,33 @@ class BankRule:
         """
         Annotate associations using the provided association rules.
         """
+        print('annotating associations')
         acct_name = self.current_account
         acct = self.fetch_account(acct_name)
 
-        df = acct.get_table().data()
-        merged_df = df.dropna(subset=['ReferenceID']).set_index('ReferenceID').add_prefix('{}.'.format(acct_name))
+        ref_col = acct.ref_map['ReferenceID']
+        acct_prefix = '{}.'.format(acct_name)
+
+        df = acct.merge_references(agg=False)
+        merged_df = df.dropna(subset=[ref_col]).add_prefix(acct_prefix)
 
         # Merge reference account data with account data on reference IDs
         transaction_rules = acct.transactions
         for ref_acct_name in transaction_rules:
-            ref_acct = self.fetch_account(ref_acct_name)
+            assoc_acct = self.fetch_account(ref_acct_name)
 
-            ref_df = ref_acct.get_table().data()
-            ref_df = ref_df.set_index('RecordID').add_prefix('{}.'.format(ref_acct_name))
+            assoc_df = assoc_acct.merge_references(agg=False)
 
-            merged_df = merged_df.merge(ref_df, how='left', left_index=True, right_index=True)
+            assoc_prefix = '{}.'.format(ref_acct_name)
+            assoc_df = assoc_df.add_prefix(assoc_prefix)
+
+            merged_df = merged_df.merge(assoc_df, how='left', left_index=True, right_index=True)
 
         # Check if any associations meets the conditions of configured annotation rules
         annotations = {}
         annot_rules = acct.annotations
         for rule_name in annot_rules:
+            print('annotating associations on rule {}'.format(rule_name))
             rule = annot_rules[rule_name]
             merged = merged_df.copy()
 
@@ -1221,13 +1236,17 @@ class BankRule:
                 results = merged.index
 
             description = rule.get('Description', rule_name)
-            for record_id, result in results[results].iteritems():  # condition for the annotation has been met
-                if record_id not in annotations:
-                    annotations[record_id] = description
+            for ref_id, result in results[results].iteritems():  # condition for the annotation has been met
+                record_id = result
+                if ref_id not in annotations:
+                    annotations[ref_id] = description
 
-        # Add annotations to the "Notes" reference field
-        annotations = pd.Series(annotations, name='Notes')
-        reference_indices = acct.update_reference_field('Notes', annotations)
+        print('the following account {} references will be annotated:'.format(acct_name))
+        print(annotations)
+
+        # Add annotations to the "ReferenceNotes" reference field
+        annotations = pd.Series(annotations, name='ReferenceNotes')
+        reference_indices = acct.update_reference_field('ReferenceNotes', annotations)
 
         self.update_references(reference_indices)
 
@@ -1784,7 +1803,8 @@ class BankAccount:
 
                 try:
                     #reference_indices = self.approve(record_ids)
-                    reference_indices = self.update_reference_field('IsApproved', True, record_ids=record_ids)
+                    #reference_indices = self.update_reference_field('IsApproved', True, record_ids=record_ids)
+                    reference_indices = self.update_reference_field('IsApproved', True, on=pd.Series(record_ids, name='RecordID'))
                 except Exception as e:
                     msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
                     logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -2047,9 +2067,17 @@ class BankAccount:
 
         return ref_indices
 
-    def update_reference_field(self, field, values, record_ids: list = None):
+    def update_reference_field(self, field, values, on: pd.DataFrame = None):
         """
         Manually update a reference field for the selected records.
+
+        Arguments:
+            field (str): reference field to update values.
+
+            values (list): new values of the reference field.
+
+            on (DataFrame): conditions specifying which entries should be updated. The number of entries should match
+                the length of the value set.
         """
         ref_df = self.ref_df
         if field not in ref_df.columns:
@@ -2057,24 +2085,28 @@ class BankAccount:
                   'field'.format(NAME=self.name, COL=field)
             raise IndexError(msg)
 
-        if isinstance(values, pd.Series):
-            if not record_ids:
-                record_ids = values.index
-
-            new_values = values.values
+        # Find update indices based on the condition set
+        if isinstance(on, pd.Series):
+            if on.name in ref_df.columns:
+                on = on.to_frame().T
+                keys = on.columns.tolist()
+                update_indices = get_row_intersection(ref_df, on, keys)
+            else:
+                update_indices = on
+        elif isinstance(on, dict):
+            on = pd.DataFrame(on)
+            keys = on.columns.tolist()
+            update_indices = get_row_intersection(ref_df, on, keys)
+        elif isinstance(on, pd.DataFrame):
+            keys = on.columns.tolist()
+            update_indices = get_row_intersection(ref_df, on, keys)
         else:
-            new_values = values
-
-        if record_ids is None:  # update all entries
-            record_ids = ref_df['RecordID']
-        elif isinstance(record_ids, str):
-            record_ids = [record_ids]
+            update_indices = ref_df.index
 
         # Set values for reference column entries
-        ref_indices = ref_df.index[ref_df['RecordID'].isin(record_ids)]
-        ref_df.loc[ref_indices, [field]] = new_values
+        ref_df.loc[update_indices, [field]] = values
 
-        return ref_indices.tolist()
+        return update_indices.tolist()
 
     def approve(self, record_ids):
         """
@@ -2803,3 +2835,16 @@ def compare_record_values(value, ref_values, match_pattern: bool = False, ignore
 
     return col_match
 
+
+def get_row_intersection(df1, df2, keys: list = None):
+    """
+    Find the row indices from the first dataframe where dataframe column values intersect.
+    """
+    if not keys:
+        keys = list(set(df1.columns.tolist()).intersection(df2.columns.tolist()))
+
+    i1 = df1.set_index(keys).index
+    i2 = df2.set_index(keys).index
+    indices = df1[i1.isin(i2)].index
+
+    return indices
