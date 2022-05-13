@@ -1,5 +1,5 @@
 """
-REM records classes and functions. Includes audit records and account records.
+REM records classes and functions.
 """
 
 from bs4 import BeautifulSoup
@@ -23,354 +23,6 @@ import REM.elements as mod_elem
 import REM.layouts as mod_lo
 import REM.secondary as mod_win2
 from REM.client import logger, server_conn, settings, user
-
-
-class RecordAssociation:
-    """
-    Manages the relationship between record types.
-
-    Attributes:
-        name (str): name of the association.
-
-        association_type (str): can be one-to-one, one-to-many, or many-to-many.
-
-        import_rules (str): database import rules.
-
-        primary (dict): entity description of the primary record in the association.
-
-        relation (dict): entity description of the relation record in the association.
-    """
-
-    def __init__(self, entry):
-        """
-        Initialize association attributes.
-
-        Arguments:
-            entry (dict): configuration entry for the record association.
-        """
-        try:
-            self.name = entry['Name']
-        except KeyError:
-            raise AttributeError('missing required configuration field "Name"')
-
-        try:
-            self.title = entry['Title']
-        except KeyError:
-            self.title = self.name
-
-        try:
-            association_type = entry['AssociationType']
-        except KeyError:
-            raise AttributeError('missing required configuration field "AssociationType"')
-        else:
-            if association_type in ['one-to-one', 'one-to-many', 'many-to-many']:
-                self.association_type = association_type
-            else:
-                raise AttributeError('"AssociationType" must be one of "one-to-one", "one-to-many", or "many-to-many"')
-
-        # Database import rules
-        try:
-            import_rules = entry['ImportRules']
-        except KeyError:
-            mod_win2.popup_error('AssociationEntry {NAME}: configuration missing required parameter "ImportRules"'
-                                 .format(NAME=self.name))
-            sys.exit(1)
-        else:
-            for import_table in import_rules:
-                import_rule = import_rules[import_table]
-
-                if 'Columns' not in import_rule:
-                    mod_win2.popup_error('AssociationEntry {NAME}: configuration missing required "ImportRules" {TBL} '
-                                         'parameter "Columns"'.format(NAME=self.name, TBL=import_table))
-                    sys.exit(1)
-                if 'Filters' not in import_rule:
-                    import_rule['Filters'] = None
-
-        self.import_rules = import_rules
-
-        try:
-            primary = entry['Primary']
-        except KeyError:
-            raise AttributeError('missing required configuration field "Primary"')
-
-        self.primary = {}
-
-        required_fields = ['RecordType', 'Key']
-        for field in required_fields:
-            try:
-                self.primary[field] = primary[field]
-            except KeyError:
-                raise AttributeError('Primary entity is missing required field "{FIELD}"'.format(FIELD=field))
-
-        participation_map = {'optional': 0, 'mandatory': 1}
-        try:
-            participation = primary['Participation']
-        except KeyError:
-            self.primary['Participation'] = 0  # default optional participation
-        else:
-            try:
-                self.primary['Participation'] = int(participation)
-            except ValueError:
-                if participation in participation_map:
-                    self.primary['Participation'] = participation_map[participation]
-                else:
-                    raise AttributeError('Unknown value "{VAL}" provided to the primary entities Participation field'
-                                         .format(VAL=participation))
-
-        try:
-            relation = entry['Relation']
-        except KeyError:
-            raise AttributeError('missing required configuration field "Relation"')
-
-        self.relation = {}
-
-        for field in required_fields:
-            try:
-                self.relation[field] = relation[field]
-            except KeyError:
-                raise AttributeError('Relation entity is missing required field "{FIELD}"'.format(FIELD=field))
-
-        try:
-            participation = relation['Participation']
-        except KeyError:
-            self.relation['Participation'] = 0  # default optional participation
-        else:
-            try:
-                self.relation['Participation'] = int(participation)
-            except ValueError:
-                if participation in participation_map:
-                    self.relation['Participation'] = participation_map[participation]
-                else:
-                    raise AttributeError('Unknown value "{VAL}" provided to the relation entities Participation field'
-                                         .format(VAL=participation))
-
-    def get_entity(self, identifier):
-        """
-        Fetch the relevant entity configuration using the provided identifier.
-        """
-        if identifier in self.primary['RecordType']:
-            return self.primary
-        elif identifier in self.relation['RecordType']:
-            return self.relation
-        else:
-            raise KeyError('no record entity involved in the association matches the provided key "{IDENT}"'
-                           .format(IDENT=identifier))
-
-    def import_references(self, records, include_deleted: bool = False, primary: bool = True):
-        """
-        Import a record's association.
-
-        Arguments:
-            records (list): list of record IDs to extract from the reference table.
-
-            include_deleted (bool): import reference entries that were set to deleted as well.
-
-            primary (bool): records are the primary records in the association [Default: True].
-        """
-        import_rules = self.import_rules
-
-        if isinstance(records, str):
-            record_ids = [records]
-        elif isinstance(records, pd.Series):
-            record_ids = records.tolist()
-        elif isinstance(records, pd.DataFrame):
-            try:
-                record_ids = records['RecordID'].tolist()
-            except KeyError:
-                msg = 'failed to import reference entries - the provided dataframe is missing required column "{COL}"' \
-                    .format(COL='RecordID')
-                logger.error('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise ImportError(msg)
-        else:
-            record_ids = records
-
-        # Remove duplicate IDs
-        record_ids = list(set(record_ids))
-
-        # Prepare the import data
-        df = pd.DataFrame(columns=['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType',
-                                   'ReferenceNotes', 'ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved',
-                                   'IsDeleted'])
-        for rule_name in import_rules:
-            try:
-                rule = association_rules[rule_name]
-            except KeyError:
-                msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
-                    .format(RULE=rule_name)
-                logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                raise ImportError(msg)
-
-            is_primary = rule['Primary']
-            reference_table = rule['ReferenceTable']
-
-            if is_primary:  # input records are the primary record IDs
-                columns = ['DocNo AS RecordID', 'RefNo AS ReferenceID', 'RefDate AS ReferenceDate',
-                           'DocType AS RecordType',
-                           'RefType AS ReferenceType', 'Notes AS ReferenceNotes', 'Warnings AS ReferenceWarnings',
-                           'IsChild', 'IsHardLink', 'IsApproved']
-                filter_str = 'DocNo IN ({VALS})'
-            else:  # input records are the reference record ID
-                columns = ['DocNo AS ReferenceID', 'RefNo AS RecordID', 'RefDate AS ReferenceDate',
-                           'DocType AS ReferenceType', 'RefType AS RecordType', 'Notes AS ReferenceNotes',
-                           'Warnings AS ReferenceWarnings', 'IsChild', 'IsHardLink', 'IsApproved']
-                filter_str = 'RefNo IN ({VALS})'
-
-            # Import reference entries related to record_id
-            for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
-                sub_ids = record_ids[i: i + 1000]
-                sub_vals = ','.join(['?' for _ in sub_ids])
-
-                filters = [(filter_str.format(VALS=sub_vals), tuple(sub_ids))]
-                if not include_deleted:
-                    filters.append(('IsDeleted = ?', 0))
-
-                import_df = user.read_db(*mod_db.prepare_sql_query(reference_table, columns=columns,
-                                                                   filter_rules=filters), prog_db=True)
-                df = df.append(import_df, ignore_index=True)
-
-        # Set column data types
-        bool_columns = ['IsChild', 'IsHardLink', 'IsApproved', 'IsDeleted']
-        df.fillna({i: False for i in bool_columns}, inplace=True)
-        df = df.astype({i: np.bool_ for i in bool_columns})
-
-        return df
-
-    def save_database_references(self, ref_data, rule_name, statements: dict = None):
-        """
-        Prepare to save database references.
-
-        Arguments:
-            ref_data (DataFrame): reference entries to save to the database table specified by the association rule.
-
-            rule_name (str): name of the association rule that indicates which database table to save the reference
-                entries to.
-
-            statements (dict): optional dictionary of transactions statements to append to.
-
-        Returns:
-            statements (dict): dictionary of transactions statements.
-        """
-        if statements is None:
-            statements = {}
-
-        if isinstance(ref_data, pd.DataFrame):
-            df = ref_data
-        elif isinstance(ref_data, pd.Series):
-            df = ref_data.to_frame().transpose()
-        elif isinstance(ref_data, dict):
-            df = pd.DataFrame(ref_data)
-        else:
-            raise ValueError('ref_data must be one of DataFrame, Series, or dictionary')
-
-        association_rules = self.association_rules
-        try:
-            rule = association_rules[rule_name]
-        except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
-                .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ImportError(msg)
-
-        reference_table = rule['ReferenceTable']
-        is_primary = rule['Primary']
-        if is_primary:  # input record is the primary record ID
-            primary_col = 'RecordID'
-            export_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'ReferenceDate': 'RefDate',
-                              'RecordType': 'DocType', 'ReferenceType': 'RefType', 'ReferenceNotes': 'Notes',
-                              'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
-                              'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
-        else:  # reference record is the primary record ID
-            primary_col = 'ReferenceID'
-            export_col_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'ReferenceDate': 'RefDate',
-                              'ReferenceType': 'DocType', 'RecordType': 'RefType', 'ReferenceNotes': 'Notes',
-                              'ReferenceWarnings': 'Warnings', 'IsApproved': 'IsApproved', 'IsChild': 'IsChild',
-                              'IsHardLink': 'IsHardLink', 'IsDeleted': 'IsDeleted'}
-
-        # Remove rows where the primary column is NULL
-        df.drop(df[df[primary_col].isna()].index, inplace=True)
-        if df.empty:
-            logger.warning('RecordType {NAME}: no reference entries provided for saving'.format(NAME=self.name))
-            return statements
-
-        # Prepare separate update and insert statements depending on whether an individual reference entry exists
-        export_df = df[[i for i in export_col_map if i in df.columns]].rename(columns=export_col_map)
-
-        # Prepare the upsert statement
-        export_columns = export_df.columns.tolist()
-        export_values = [tuple(i) for i in export_df.values.tolist()]
-
-        statements = mod_db.prepare_sql_upsert(reference_table, export_columns, export_values, ['DocNo', 'RefNo'],
-                                               statements=statements)
-
-        return statements
-
-    def delete_database_references(self, ref_data, rule_name, statements: dict = None):
-        """
-        Prepare to delete database reference entries from the database.
-
-        Arguments:
-            ref_data (DataFrame): reference entries to delete from the database table specified by the association rule.
-
-            rule_name (str): name of the association rule linking the relevant records.
-
-            statements (dict): optional dictionary of transactions statements to append to.
-
-        Returns:
-            statements (dict): dictionary of transactions statements.
-        """
-        if statements is None:
-            statements = {}
-
-        if isinstance(ref_data, pd.DataFrame):
-            df = ref_data
-        elif isinstance(ref_data, pd.Series):
-            df = ref_data.to_frame().transpose()
-        elif isinstance(ref_data, dict):
-            df = pd.DataFrame(ref_data)
-        else:
-            raise ValueError('ref_data must be one of DataFrame, Series, or dictionary')
-
-        if df.empty:
-            logger.warning('RecordEntry {NAME}: no reference entries provided for deleting'.format(NAME=self.name))
-            return statements
-
-        association_rules = self.association_rules
-        try:
-            rule = association_rules[rule_name]
-        except KeyError:
-            msg = 'association rule {RULE} not found in the set of association rules for the record entry' \
-                .format(RULE=rule_name)
-            logger.exception('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise ImportError(msg)
-
-        reference_table = rule['ReferenceTable']
-        is_primary = rule['Primary']
-        if is_primary:  # input record is the primary record ID
-            export_col_map = {'RecordID': 'DocNo', 'ReferenceID': 'RefNo', 'IsDeleted': 'IsDeleted'}
-        else:  # reference record is the primary record ID
-            export_col_map = {'ReferenceID': 'DocNo', 'RecordID': 'RefNo', 'IsDeleted': 'IsDeleted'}
-
-        # Prepare the export reference entries
-        df = df[(~df['RecordID'].isna()) & (~df['ReferenceID'].isna())]
-        export_df = df[[i for i in export_col_map if i in df.columns]].rename(columns=export_col_map)
-
-        # Prepare the update statement
-        export_columns = [export_col_map['IsDeleted']]
-        export_values = [(1,) for _ in range(export_df.shape[0])]
-
-        filter_clause = '{COL} = ? AND {REFCOL} = ?'.format(COL=export_col_map['RecordID'],
-                                                            REFCOL=export_col_map['ReferenceID'])
-        filter_params = [(row[export_col_map['RecordID']], row[export_col_map['ReferenceID']]) for _, row in
-                         export_df.iterrows()]
-
-        statements = mod_db.prepare_sql_update(reference_table, export_columns, export_values, filter_clause,
-                                               filter_params, statements=statements)
-
-        return statements
 
 
 class RecordEntry:
@@ -410,7 +62,6 @@ class RecordEntry:
         try:
             menu = entry['Menu']
         except KeyError:
-            #menu = {'MenuTitle': self.name, 'MenuGroup': None, 'AccessPermissions': 'admin'}
             menu = {'MenuTitle': self.name, 'MenuGroup': None}
             self.show_menu = False
         else:
@@ -419,12 +70,10 @@ class RecordEntry:
                 menu['MenuGroup'] = None
             if 'MenuTitle' not in menu:
                 menu['MenuTitle'] = self.name
-            #if 'AccessPermissions' not in menu:
-            #    menu['AccessPermissions'] = 'admin'
 
         self.menu_title = menu['MenuTitle']
         self.menu_group = menu['MenuGroup']
-        #self.permissions = menu['AccessPermissions']
+
         try:
             permissions = entry['Permissions']
         except KeyError:
@@ -735,9 +384,10 @@ class RecordEntry:
 
         return unique_values
 
-    def load_records(self, id_list, import_filters: bool = True, filters: dict = None):
+    def load_records(self, id_list, import_filters: bool = True, filters: dict = None, import_rules: dict = None,
+                     database: str = None):
         """
-        Load a record from the database using the record ID.
+        Load database records from a list of provided record IDs.
 
         Arguments:
             id_list (list): load records with these record IDs from the database.
@@ -746,9 +396,15 @@ class RecordEntry:
 
             filters (dict): use additional selection import filters.
 
+            import_rules (dict): use custom import rules to import the records from the database.
+
+            database (str): load records from the provided database.
+
         Returns:
             import_df (DataFrame): dataframe of imported records.
         """
+        import_rules = self.import_rules if not import_rules else import_rules
+
         if isinstance(id_list, str):
             record_ids = [id_list]
         else:
@@ -760,16 +416,16 @@ class RecordEntry:
         custom_filters = self._format_filter_set(filters) if filters else []
 
         # Add configured import filters
-        table_statement = mod_db.format_tables(self.import_rules)
-        columns = self._format_import_columns()
-        id_col = mod_db.get_import_column(self.import_rules, self.id_column)
+        table_statement = mod_db.format_tables(import_rules)
+        columns = self._format_import_columns(import_rules)
+        id_col = mod_db.get_import_column(import_rules, self.id_column)
 
         # Query existing database entries
         import_df = pd.DataFrame()
         for i in range(0, len(record_ids), 1000):  # split into sets of 1000 to prevent max parameter errors in SQL
             sub_ids = record_ids[i: i + 1000]
             if import_filters:
-                filter_rules = custom_filters + mod_db.format_import_filters(self.import_rules)
+                filter_rules = custom_filters + mod_db.format_import_filters(import_rules)
             else:
                 filter_rules = custom_filters
 
@@ -777,17 +433,19 @@ class RecordEntry:
             filter_rules.append((filter_clause, tuple(sub_ids)))
 
             query = mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filter_rules, order=id_col)
+            loaded_df = user.read_db(*query, prog_db=self.program_record, database=database)
+
             if import_df.empty:
-                import_df = user.read_db(*query, prog_db=self.program_record)
+                import_df = loaded_df
             else:
-                import_df = import_df.append(user.read_db(*query, prog_db=self.program_record), ignore_index=True)
+                import_df = import_df.append(loaded_df, ignore_index=True)
 
         logger.debug('{NLOADED} records passed the query filters out of {NTOTAL} requested records'
                      .format(NLOADED=import_df.shape[0], NTOTAL=len(record_ids)))
 
         return import_df
 
-    def import_records(self, filter_params=None, filter_rules=None, import_rules: dict = None):
+    def import_records(self, filter_params=None, filter_rules=None, import_rules: dict = None, database: str = None):
         """
         Import entry records from the database.
 
@@ -799,6 +457,8 @@ class RecordEntry:
                 rule.
 
             import_rules (dict): use custom import rules to import the records from the database.
+
+            database (str): load records from the provided database.
         """
         if isinstance(filter_params, list) or isinstance(filter_params, tuple):
             params = filter_params
@@ -832,7 +492,7 @@ class RecordEntry:
 
         # Query existing database entries
         query = mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filters, order=id_col)
-        import_df = user.read_db(*query, prog_db=self.program_record)
+        import_df = user.read_db(*query, prog_db=self.program_record, database=database)
 
         return import_df
 

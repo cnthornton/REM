@@ -76,7 +76,7 @@ class ServerConnection:
         start_time = time.time()
         sg.popup_animated(image_source=None)
         while time.time() - start_time < timeout:
-            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, keep_on_top=True, alpha_channel=0.9)
+            sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, keep_on_top=True, alpha_channel=0.8)
 
             try:
                 self.sock.connect(self.addr)
@@ -171,8 +171,8 @@ class ServerConnection:
         while time.time() - start_time < timeout:
             elapsed_time = time.time() - start_time
             if elapsed_time > 1:
-                sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, keep_on_top=True, alpha_channel=0.9,
-                                  message='requesting data from the server')
+                sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, keep_on_top=True, alpha_channel=0.8,
+                                  message='processing server request')
 
             if self.response is not None:
                 logger.debug('server process completed after {} seconds'.format(elapsed_time))
@@ -448,7 +448,7 @@ class SettingsManager:
 
         # Record report templates
         try:
-            report_template = cnfg['display']['record_template']
+            report_template = cnfg['display']['report_template']
         except KeyError:
             self.report_template = os.path.join(dirname, 'templates', 'report.html')
         else:
@@ -539,7 +539,7 @@ class SettingsManager:
         self.records = None
 
         try:
-            self.dbname = cnfg['database']['default_database']
+            self.dbname = cnfg['database']['default']
         except KeyError:
             self.dbname = None
         self.prog_db = None
@@ -1410,12 +1410,19 @@ class AccountManager:
 
         return results
 
-    def read_db(self, statement, params, prog_db: bool = False):
+    def read_db(self, statement, params, prog_db: bool = False, database: str = None):
         """
         Read from an ODBC database.
         """
         # Prepare the server request
-        db = settings.prog_db if prog_db is True else settings.dbname
+        if database:
+            if database == settings.prog_db or database in settings.alt_dbs:
+                db = database
+            else:
+                raise ConnectionError('database {DB} is not an available program database'.format(DB=database))
+        else:
+            db = settings.prog_db if prog_db is True else settings.dbname
+
         value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'read',
                  'statement': statement, 'parameters': params}
         content = {'action': 'db_transact', 'value': value}
@@ -1485,7 +1492,7 @@ def thread_operation(func, args, timeout: int = 600, message: str = None):
         while time.time() - start_time < timeout:
             elapsed_time = time.time() - start_time
             sg.popup_animated(mod_const.PROGRESS_GIF, time_between_frames=50, message=message, keep_on_top=True,
-                              alpha_channel=0.9)
+                              alpha_channel=0.8)
 
             if future.done():
                 sg.popup_animated(image_source=None)
