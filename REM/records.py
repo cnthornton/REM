@@ -405,6 +405,23 @@ class RecordEntry:
         """
         import_rules = self.import_rules if not import_rules else import_rules
 
+        program_db = settings.prog_db
+        if self.program_record:
+            db = program_db
+        else:
+            if database:
+                if database == program_db:
+                    db = program_db
+                elif database in settings.alt_dbs:
+                    db = database
+                else:
+                    msg = 'database {DB} is not an available program database'.format(DB=database)
+                    logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    db = settings.dbname
+            else:
+                db = settings.dbname
+
         if isinstance(id_list, str):
             record_ids = [id_list]
         else:
@@ -433,7 +450,7 @@ class RecordEntry:
             filter_rules.append((filter_clause, tuple(sub_ids)))
 
             query = mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filter_rules, order=id_col)
-            loaded_df = user.read_db(*query, prog_db=self.program_record, database=database)
+            loaded_df = user.read_db(*query, database=db)
 
             if import_df.empty:
                 import_df = loaded_df
@@ -469,6 +486,23 @@ class RecordEntry:
 
         import_rules = self.import_rules if not import_rules else import_rules
 
+        program_db = settings.prog_db
+        if self.program_record:
+            db = program_db
+        else:
+            if database:
+                if database == program_db:
+                    db = program_db
+                elif database in settings.alt_dbs:
+                    db = database
+                else:
+                    msg = 'database {DB} is not an available program database'.format(DB=database)
+                    logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    db = settings.dbname
+            else:
+                db = settings.dbname
+
         # Add configured import filters
         filters = mod_db.format_import_filters(import_rules)
         table_statement = mod_db.format_tables(import_rules)
@@ -492,7 +526,7 @@ class RecordEntry:
 
         # Query existing database entries
         query = mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filters, order=id_col)
-        import_df = user.read_db(*query, prog_db=self.program_record, database=database)
+        import_df = user.read_db(*query, database=db)
 
         return import_df
 

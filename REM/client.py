@@ -1414,14 +1414,18 @@ class AccountManager:
         """
         Read from an ODBC database.
         """
+        program_db = settings.prog_db
+
         # Prepare the server request
         if database:
-            if database == settings.prog_db or database in settings.alt_dbs:
+            if program_db is True or database == program_db:
+                db = program_db
+            elif database in settings.alt_dbs:
                 db = database
             else:
                 raise ConnectionError('database {DB} is not an available program database'.format(DB=database))
         else:
-            db = settings.prog_db if prog_db is True else settings.dbname
+            db = program_db if prog_db is True else settings.dbname
 
         value = {'connection_string': self._prepare_conn_str(database=db), 'transaction_type': 'read',
                  'statement': statement, 'parameters': params}

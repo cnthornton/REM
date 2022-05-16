@@ -58,7 +58,7 @@ class BankRule:
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Panel', 'Account', 'Association', 'Reconcile', 'Parameters', 'Cancel', 'Save',
-                          'Panel1', 'Panel2', 'MessageP1', 'MessageP2', 'Frame', 'Buttons', 'Title')}
+                          'Panel1', 'Panel2', 'MessageP1', 'MessageP2', 'Frame', 'Buttons', 'Title', 'Database')}
 
         self.bindings = {self.elements[i]: i for i in
                          ('Cancel', 'Save', 'Account', 'Association', 'Parameters', 'Reconcile')}
@@ -243,8 +243,6 @@ class BankRule:
         current_rule = self.name
 
         current_acct = self.current_account
-        current_assoc = self.current_association
-
         if current_acct:
             acct = self.fetch_account(current_acct)
             acct_keys = acct.bindings
@@ -252,6 +250,7 @@ class BankRule:
             acct = None
             acct_keys = []
 
+        current_assoc = self.current_association
         if current_assoc:
             assoc_acct = self.fetch_account(current_assoc)
             assoc_keys = assoc_acct.bindings
@@ -268,7 +267,7 @@ class BankRule:
             link_event = triggers.get('Link')
             if link_event:
                 try:
-                    self.link_records(current_acct, current_assoc)
+                    self.link_selected()
                 except Exception as e:
                     msg = 'failed to link records - {ERR}'.format(ERR=e)
                     logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -307,8 +306,7 @@ class BankRule:
                         panel_message = None
 
                     # Select the reference in the associated table, if any
-                    if current_assoc:
-                        assoc_acct = self.fetch_account(current_assoc)
+                    if assoc_acct is not None:
                         assoc_table = assoc_acct.get_table()
 
                         selected_ref_ids = acct.reference_field_values('ReferenceID', on=sub_on)
@@ -327,7 +325,6 @@ class BankRule:
 
         # Run an association account event
         if event in assoc_keys:
-            assoc_acct = self.fetch_account(current_assoc)
             triggers = assoc_acct.run_event(window, event, values)
 
             # Store indices of the selected row(s)
@@ -509,10 +506,11 @@ class BankRule:
                 acct_titles[trans_acct_name] = trans_acct.title
 
             params = mod_win2.parameter_window(param_def)
-            print(params)
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
+                database = values[self.key_lookup('Database')]
+
                 # Load the main transaction account data using the defined parameters
                 acct_params = params[acct_titles[current_acct]]
                 if not acct_params:
@@ -523,7 +521,7 @@ class BankRule:
                     return self.reset_rule(window, current=True)
 
                 try:
-                    acct.load_data(acct_params)
+                    acct.load_data(acct_params, database=database)
                 except Exception as e:
                     msg = 'failed to load data for current account {ACCT} - {ERR}'.format(ACCT=current_acct, ERR=e)
                     logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -568,7 +566,7 @@ class BankRule:
                     reference_records = refs.loc[refs['ReferenceType'] == assoc_type, 'ReferenceID'].tolist()
 
                     try:
-                        assoc_acct.load_data(acct_params, records=reference_records)
+                        assoc_acct.load_data(acct_params, records=reference_records, database=database)
                     except Exception as e:
                         msg = 'failed to load data for association {ACCT} - {MSG}'.format(ACCT=acct_name, MSG=e)
                         logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -614,9 +612,7 @@ class BankRule:
         # account and any associated accounts with data.
         elif rule_event == 'Reconcile':
             expand_param = self.fetch_parameter('ExpandSearch')
-            #failed_param = self.fetch_parameter('SearchFailed')
             run_expanded_search = values[expand_param.key_lookup('Element')]
-            #search_for_failed = values[failed_param.key_lookup('Element')]
 
             try:
                 assoc_pairs = self.reconcile_statement(search_expanded=run_expanded_search)
@@ -625,8 +621,6 @@ class BankRule:
                 logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
                 mod_win2.popup_error(msg)
             else:
-                print('found the following associations during reconciliation:')
-                print(assoc_pairs)
                 # Annotate reference entries
                 if len(assoc_pairs) > 0:
                     self.annotate_references(assoc_pairs)
@@ -767,6 +761,8 @@ class BankRule:
         # Column 1 header
         entry_key = self.key_lookup('Account')
         param_key = self.key_lookup('Parameters')
+        db_key = self.key_lookup('Database')
+        db_size = (max([len(i) for i in settings.alt_dbs]), 1)
 
         entries = [i.title for i in self.accts]
         header1 = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
@@ -774,7 +770,12 @@ class BankRule:
                                     font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
                                     enable_events=True, tooltip='Select reconciliation account'),
                            sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON, image_size=(28, 28),
-                                     button_color=(text_col, bg_col), disabled=True, tooltip='Set parameters')]],
+                                     pad=((0, pad_el * 2), 0), button_color=(text_col, bg_col), disabled=True,
+                                     tooltip='Set parameters'),
+                           sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
+                                    font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
+                                    tooltip='Record import database')
+                           ]],
                          expand_x=True, justification='l', element_justification='l', vertical_alignment='b',
                          background_color=bg_col)
 
@@ -920,25 +921,35 @@ class BankRule:
             acct = self.fetch_account(acct_panel, by_key=True)
             acct.update_display(window)
 
-    def link_records(self, acct_name, assoc_name: str = None):
+    def selected_rows(self):
         """
-        Link two or more selected records.
+        Get the
         """
+        pass
+
+    def link_selected(self):
+        """
+        Manually link two or more selected records.
+        """
+        acct_name = self.current_account
+        assoc_name = self.current_association
+
         # Get selected row(s) of the transaction accounts
         acct = self.fetch_account(acct_name)
         acct_table = acct.get_table()
         rows = acct_table.selected(real=True)  # real indices of selected account records
 
-        if assoc_name:
+        try:
             assoc_acct = self.fetch_account(assoc_name)
-            assoc_table = assoc_acct.get_table()
-            acct_rows = rows
-            assoc_rows = assoc_table.selected(real=True)  # real indices of selected association records
-        else:
+        except KeyError:  # no association table in view
             assoc_acct = acct
             assoc_table = acct_table
             acct_rows = [rows[0]]
             assoc_rows = rows[1:]
+        else:
+            assoc_table = assoc_acct.get_table()
+            acct_rows = rows
+            assoc_rows = assoc_table.selected(real=True)  # real indices of selected association records
 
         n_select_acct = len(acct_rows)
         n_select_assoc = len(assoc_rows)
@@ -1231,8 +1242,6 @@ class BankRule:
 
                     continue
 
-                print('results of subset:')
-                print(results)
                 merged = merged[results]
 
             if merged.empty:
@@ -1253,16 +1262,11 @@ class BankRule:
 
             description = rule.get('Description', rule_name)
             for index, row in merged.iterrows():  # condition for the annotation has been met
-                print('found annotation for:')
-                print(index)
                 if index not in new_rows:
                     new_rows.append(index)
                     new_values.append(description)
 
         update_on = pd.DataFrame(new_rows, columns=['RecordID', 'ReferenceID'])
-
-        print('found annotations for the following associations:')
-        print(update_on)
 
         # Add annotations to the "ReferenceNotes" reference field
         reference_indices = acct.update_reference_field('ReferenceNotes', new_values, on=update_on)
@@ -1603,12 +1607,12 @@ class BankAccount:
 
             self.ref_map[column] = ref_map[column]
 
-        try:
-            self._col_map = entry['ColumnMap']
-        except KeyError:
-            self._col_map = {'TransactionCode': 'TransactionCode', 'TransactionType': 'TransactionType',
-                             'Notes': 'Notes', 'Withdrawal': 'Withdrawal', 'Deposit': 'Deposit'
-                             }
+        #try:
+        #    self._col_map = entry['ColumnMap']
+        #except KeyError:
+        #    self._col_map = {'TransactionCode': 'TransactionCode', 'TransactionType': 'TransactionType',
+        #                     'Notes': 'Notes', 'Withdrawal': 'Withdrawal', 'Deposit': 'Deposit'
+        #                     }
 
         try:
             transactions = entry['Transactions']
@@ -1732,7 +1736,7 @@ class BankAccount:
         """
         pd.set_option('display.max_columns', None)
 
-        colmap = self._col_map
+        #colmap = self._col_map
         table = self.get_table()
         table_keys = table.bindings
 
@@ -1829,8 +1833,8 @@ class BankAccount:
                 # Update the status in the records table. This will also update the "is edited" column of the table to
                 # indicate that the records at the given indices were edited wherever the new values do not match the
                 # old values.
-                if 'Approved' in colmap:
-                    table.update_column(colmap['Approved'], True, indices=indices)
+                #if 'Approved' in colmap:
+                #    table.update_column(colmap['Approved'], True, indices=indices)
 
                 # Deselect selected rows
                 table.deselect(window)
@@ -1857,9 +1861,6 @@ class BankAccount:
 
                 # Deselect selected rows
                 table.deselect(window)
-
-                # Reset void transaction status
-                self.reset_records(indices, index=True)
 
             elif tbl_event == 'Link' and table.enabled('Link'):
                 link_event = True
@@ -2064,7 +2065,6 @@ class BankAccount:
             modified_ids = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID'].tolist()
 
             self.reset_references(modified_ids, index=False)
-            self.reset_records(modified_ids, index=False)
 
             ref_df.drop(deleted_references.index, inplace=True)
         else:
@@ -2138,150 +2138,6 @@ class BankAccount:
         ref_df.loc[update_indices, [field]] = values
 
         return update_indices.tolist()
-
-    def search_void(self, df):
-        """
-        Set the correct transaction type for failed transaction records.
-        """
-        pd.set_option('display.max_columns', None)
-
-        table = self.get_table()
-        record_type = self.record_type
-        column_map = self._col_map
-        void_transactions = self.void_transactions
-
-        if not void_transactions:
-            return df
-
-        try:
-            type_col = column_map['TransactionType']
-            failed_col = column_map['Void']
-            withdraw_col = column_map['Withdrawal']
-            deposit_col = column_map['Deposit']
-            date_col = column_map['TransactionDate']
-            tcode_col = column_map['TransactionCode']
-        except KeyError as e:
-            msg = 'missing required column mapping {ERR}'.format(ERR=e)
-            raise KeyError(msg)
-
-        void_records = []
-        # Search for bounced cheques
-        bc_entry = void_transactions.get('ChequeBounce', None)
-        print('BankAccount {}: searching for bounced cheques'.format(self.name))
-        if bc_entry:
-            bc_code = bc_entry.get('Code', 'RT')
-            bounced = df[(df[tcode_col] == bc_code) & (df[type_col] == 1)]
-            print('BankAccount {}: finding nearest matches for all records with code {}:'.format(self.name, bc_code))
-            print(bounced)
-            deposits = df[df[type_col] == 0]
-            matches = nearest_matches(bounced.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}),
-                                      deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}), 'Date',
-                                      on='Amount', value_range=bc_entry.get('DateRange', 1))
-
-            print('BankAccount {}: all matched indices:'.format(self.name))
-            print(matches)
-            for match_indices in matches:
-                record_ind, ref_ind = match_indices
-
-                record_id = bounced.loc[record_ind, 'RecordID']
-                ref_id = deposits.loc[ref_ind, 'RecordID']
-                match_pair = (record_id, ref_id)
-                print('record IDs of the matching bounced check transactions are {} and {}'.format(*match_pair))
-
-                # Insert the reference into the account records reference dataframe
-                warning = bc_entry.get('Warning', 'bounced check')
-
-                self.add_reference(record_id, ref_id, record_type, warning=warning)
-                self.add_reference(ref_id, record_id, record_type, warning=warning)
-
-                # Set the transaction code for the bounced cheque
-                void_records.extend(list(match_pair))
-                df.drop(df[df['RecordID'].isin(match_pair)].index, inplace=True)
-
-        # Search for mistaken payments
-        print('BankAccount {}: searching for mistaken payments'.format(self.name))
-        mp_entry = void_transactions.get('MistakenPayments', None)
-        if mp_entry:
-            withdrawals = df[df[type_col] == 1]
-            deposits = df[df[type_col] == 0]
-            matches = nearest_matches(deposits.rename(columns={date_col: 'Date', deposit_col: 'Amount'}),
-                                      withdrawals.rename(columns={date_col: 'Date', withdraw_col: 'Amount'}), 'Date',
-                                      on='Amount', value_range=mp_entry.get('DateRange', 1))
-
-            print('BankAccount {}: all matched indices:'.format(self.name))
-            print(matches)
-            for match_indices in matches:
-                record_ind, ref_ind = match_indices
-
-                record_id = deposits.loc[record_ind, 'RecordID']
-                ref_id = withdrawals.loc[ref_ind, 'RecordID']
-                match_pair = (record_id, ref_id)
-
-                # Insert the reference into the account records reference dataframe
-                warning = mp_entry.get('Warning', 'mistaken payment')
-
-                refdate = datetime.datetime.now()
-                self.add_reference(record_id, ref_id, record_type, warning=warning, refdate=refdate)
-                self.add_reference(ref_id, record_id, record_type, warning=warning, refdate=refdate)
-
-                # Set the transaction code for the bounced cheque
-                void_records.extend(list(match_pair))
-                df.drop(df[df['RecordID'].isin(match_pair)].index, inplace=True)
-
-        # Update the record tables
-        void_inds = table.record_index(void_records)
-        if len(void_inds) > 0:
-            print('BankAccount {}: setting void column {} to true for indices:'.format(self.name, failed_col))
-            print(void_inds)
-            table.update_column(failed_col, True, indices=void_inds)
-
-        return df
-
-    def filter_void(self, df: pd.DataFrame = None):
-        """
-        Remove void transactions from a dataframe.
-        """
-        column_map = self._col_map
-        table = self.get_table()
-
-        df = df if df is not None else table.data()
-
-        try:
-            failed_col = column_map['Void']
-        except KeyError:
-            return df
-
-        df.drop(df[df[failed_col]].index, inplace=True)
-
-        return df
-
-    def reset_records(self, identifiers, index: bool = True):
-        """
-        Reset reconciliation parameters for the selected records.
-
-        Arguments:
-            identifiers (list): list of record identifiers corresponding to the records to modify.
-
-            index (bool): record identifiers are table indices [Default: True].
-
-        Returns:
-            indices (list): list of affected record indices.
-        """
-        table = self.get_table()
-        colmap = self._col_map
-
-        if index:
-            indices = identifiers
-        else:
-            indices = table.record_index(identifiers)
-
-        if 'Void' in colmap:
-            table.update_column(colmap['Void'], False, indices=indices)
-
-        if 'Approved' in colmap:
-            table.update_column(colmap['Approved'], False, indices=indices)
-
-        return indices
 
     def reset_references(self, identifiers, index: bool = False):
         """
@@ -2357,7 +2213,7 @@ class BankAccount:
         # Update the display table
         table.update_display(window)
 
-    def load_data(self, params, records: list = None):
+    def load_data(self, params, records: list = None, database: str = None):
         """
         Load record and reference data from the database.
         """
@@ -2367,7 +2223,7 @@ class BankAccount:
         id_column = table.id_column
 
         # Update the record table dataframe with the data imported from the database
-        df = self.load_records(params, records=records)
+        df = self.load_records(params, records=records, database=database)
 
         # Load the record references from the reference table connected with the association rule
         record_ids = df[id_column].tolist()
@@ -2414,7 +2270,7 @@ class BankAccount:
 
         return df.copy()
 
-    def load_records(self, parameters, records: list = None):
+    def load_records(self, parameters, records: list = None, database: str = None):
         """
         Load record and reference data from the database based on the supplied parameter set.
 
@@ -2423,6 +2279,8 @@ class BankAccount:
 
             records (list): also load records in the list of record IDs.
 
+            database (str): load records from the provided database.
+
         Returns:
             success (bool): records and references were loaded successfully.
         """
@@ -2430,9 +2288,10 @@ class BankAccount:
 
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
+        import_rules = self.import_rules
 
         try:
-            df = record_entry.import_records(filter_params=parameters, import_rules=self.import_rules)
+            df = record_entry.import_records(filter_params=parameters, import_rules=import_rules, database=database)
         except Exception as e:
             msg = 'failed to import data from the database'
             logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
