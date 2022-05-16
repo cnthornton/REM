@@ -1347,8 +1347,8 @@ class BankRule:
         record_type = acct.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
-        association_name = acct.association_rule
-        association_rule = record_entry.association_rules[association_name]
+        assoc_type = acct.association_type
+        assoc_rule = record_entry.association_rules[assoc_type]
 
         ref_df = acct.ref_df.copy()
         try:
@@ -1385,13 +1385,12 @@ class BankRule:
         print(save_df)
 
         # Save references for the account if the account records are the primary records in the reference table
-        is_primary = association_rule['Primary']
+        is_primary = assoc_rule['Primary']
         if is_primary:
             logger.debug('BankRule {NAME}: preparing account {ACCT} reference statements'
                          .format(NAME=self.name, ACCT=acct.name))
             try:
-                statements = record_entry.delete_database_references(deleted_df, acct.association_rule,
-                                                                     statements=statements)
+                statements = record_entry.delete_database_references(deleted_df, assoc_type, statements=statements)
             except Exception as e:
                 msg = 'failed to prepare the delete statement for the account {ACCT} references - {ERR}' \
                     .format(ACCT=acct.name, ERR=e)
@@ -1400,8 +1399,7 @@ class BankRule:
                 return False
 
             try:
-                statements = record_entry.save_database_references(save_df, acct.association_rule,
-                                                                   statements=statements)
+                statements = record_entry.save_database_references(save_df, assoc_type, statements=statements)
             except Exception as e:
                 msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
                     .format(ACCT=acct.name, ERR=e)
@@ -1420,11 +1418,11 @@ class BankRule:
         for ref_type in ref_types:
             ref_entry = settings.records.fetch_rule(ref_type)
             try:
-                association_rule = ref_entry.association_rules[association_name]
+                assoc_rule = ref_entry.association_rules[assoc_type]
             except KeyError:
                 continue
 
-            is_primary = association_rule['Primary']
+            is_primary = assoc_rule['Primary']
             if is_primary:
                 # Subset modified reference entries by the primary reference type and save changes
                 sub_df = save_df[save_df['ReferenceType'] == ref_type].copy()
@@ -1437,8 +1435,7 @@ class BankRule:
                 print('associated reference entries will also be saved:')
                 print(sub_df)
                 try:
-                    statements = ref_entry.save_database_references(sub_df, acct.association_rule,
-                                                                    statements=statements)
+                    statements = ref_entry.save_database_references(sub_df, assoc_type, statements=statements)
                 except Exception as e:
                     msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
                         .format(ACCT=acct.name, ERR=e)
@@ -1455,8 +1452,7 @@ class BankRule:
                 sub_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
                                        'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
                 try:
-                    statements = ref_entry.delete_database_references(sub_df, acct.association_rule,
-                                                                      statements=statements)
+                    statements = ref_entry.delete_database_references(sub_df, assoc_type, statements=statements)
                 except Exception as e:
                     msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
                         .format(ACCT=acct.name, ERR=e)
@@ -1529,7 +1525,7 @@ class BankAccount:
 
         record_type (str): bank account entry database record type.
 
-        association_rule (str): name of the association rule referenced when attempting to find associations between
+        association_type (str): name of the association rule referenced when attempting to find associations between
             account entries.
 
         import_parameters (list): list of entry data parameters used in the import window.
@@ -1577,9 +1573,9 @@ class BankAccount:
             record_entry = settings.records.fetch_rule(self.record_type)
 
         try:
-            self.association_rule = entry['AssociationRule']
+            self.association_type = entry['AssociationType']
         except KeyError:
-            msg = 'ReferenceBox {NAME}: missing required parameter "AssociationRule"'.format(NAME=self.name)
+            msg = 'ReferenceBox {NAME}: missing required parameter "AssociationType"'.format(NAME=self.name)
             logger.error(msg)
 
             raise AttributeError(msg)
@@ -1764,7 +1760,7 @@ class BankAccount:
 
             # Record was selected for opening
             if tbl_event == 'Load' and can_open:
-                association_rule = self.association_rule
+                assoc_type = self.association_type
 
                 # Close options panel, if open
                 table.set_table_dimensions(window)
@@ -1787,7 +1783,7 @@ class BankAccount:
                         level = 1
 
                         record = table.load_record(index, level=level, savable=False,
-                                                   references={association_rule: ref_df})
+                                                   references={assoc_type: ref_df})
                         if record is None:
                             msg = 'unable to update references for record at index {IND} - no record was returned' \
                                 .format(IND=index)
@@ -1809,7 +1805,7 @@ class BankAccount:
 
                                 # Update the reference entry dataframe to reflect changes made to an entry through the
                                 # record window
-                                ref_values = record.export_associations(association_rule=association_rule)
+                                ref_values = record.export_associations(association_rule=assoc_type)
                                 #updated_refs = self.update_references(ref_values)
                                 reference_indices = self.update_references(ref_values)
 
@@ -2262,15 +2258,15 @@ class BankAccount:
         """
         Load record references from the database.
         """
-        rule_name = self.association_rule
+        assoc_type = self.association_type
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
         # Import reference entries from the database
         try:
-            df = record_entry.import_references(record_ids, rule=rule_name)
+            df = record_entry.import_references(record_ids, rule=assoc_type)
         except Exception as e:
-            msg = 'failed to import references from association rule {RULE}'.format(RULE=rule_name)
+            msg = 'failed to import association {RULE} reference entries'.format(RULE=assoc_type)
             logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
 
             raise ImportError(msg)

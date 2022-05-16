@@ -2636,7 +2636,7 @@ class DatabaseRecord:
             statements = record_entry.save_database_references(ref_data, association_rule, statements=statements)
 
             #logger.debug('Record {ID}: preparing export statements for deleted "{ASSOC}" references'
-            #             .format(ID=record_id, ASSOC=association_rule))
+            #             .format(ID=record_id, ASSOC=association_type))
             #deleted_df = refbox.data(deleted_rows=True)
 
         # Prepare to save record components
