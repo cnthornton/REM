@@ -730,8 +730,6 @@ class BankRule:
         pad_v = mod_const.VERT_PAD
         pad_frame = mod_const.FRAME_PAD
 
-        param_size = mod_const.PARAM_SIZE_CHAR
-
         # Element sizes
         title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
         pad_h = 22  # horizontal bar with padding
@@ -759,22 +757,41 @@ class BankRule:
         # Column 1
 
         # Column 1 header
+        entries = [i.title for i in self.accts]
+
         entry_key = self.key_lookup('Account')
         param_key = self.key_lookup('Parameters')
         db_key = self.key_lookup('Database')
         db_size = (max([len(i) for i in settings.alt_dbs]), 1)
+        param_size = (max([len(i) for i in entries]), 1)
 
-        entries = [i.title for i in self.accts]
+        #header1 = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
+        #                   sg.Combo(entries, default_value='', key=entry_key, size=param_size, pad=((0, pad_el * 2), 0),
+        #                            font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
+        #                            enable_events=True, tooltip='Select reconciliation account'),
+        #                   sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON, image_size=(28, 28),
+        #                             pad=((0, pad_el * 2), 0), button_color=(text_col, bg_col), disabled=True,
+        #                             tooltip='Set parameters'),
+        #                   sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
+        #                            font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
+        #                            tooltip='Record import database')
+        #                   ]],
+        #                 expand_x=True, justification='l', element_justification='l', vertical_alignment='b',
+        #                 background_color=bg_col)
         header1 = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
-                           sg.Combo(entries, default_value='', key=entry_key, size=param_size, pad=((0, pad_el * 2), 0),
-                                    font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
-                                    enable_events=True, tooltip='Select reconciliation account'),
-                           sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON, image_size=(28, 28),
-                                     pad=((0, pad_el * 2), 0), button_color=(text_col, bg_col), disabled=True,
-                                     tooltip='Set parameters'),
-                           sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
-                                    font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
-                                    tooltip='Record import database')
+                           sg.Col([[sg.Combo(entries, default_value='', key=entry_key, size=param_size,
+                                             pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
+                                             background_color=bg_col, disabled=False, enable_events=True,
+                                             tooltip='Select reconciliation account')]],
+                                  expand_x=True, justification='l', background_color=bg_col),
+                           sg.Col([[sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
+                                             pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
+                                             background_color=bg_col, disabled=False, tooltip='Record import database'),
+                                    sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
+                                              image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
+                                              tooltip='Set parameters')
+                                    ]],
+                                  element_justification='r', background_color=bg_col)
                            ]],
                          expand_x=True, justification='l', element_justification='l', vertical_alignment='b',
                          background_color=bg_col)
@@ -814,20 +831,33 @@ class BankRule:
             param_pad = (0, 0)
 
         assoc_key = self.key_lookup('Association')
-        param_elements = [sg.Canvas(size=(0, header_h), background_color=bg_col),
-                          sg.Combo(entries, default_value='', key=assoc_key, size=param_size, pad=((0, pad_el * 2), 0),
-                                   font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
-                                   enable_events=True, tooltip='Select association account'),
-                          sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
-                                    button_color=(bttn_text_col, bttn_bg_col),
-                                    disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                    tooltip='Run reconciliation')]
+        #param_elements = [sg.Canvas(size=(0, header_h), background_color=bg_col),
+        #                  sg.Combo(entries, default_value='', key=assoc_key, size=param_size, pad=((0, pad_el * 2), 0),
+        #                           font=param_font, text_color=text_col, background_color=bg_col, disabled=False,
+        #                           enable_events=True, tooltip='Select association account'),
+        #                  sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
+        #                            button_color=(bttn_text_col, bttn_bg_col),
+        #                            disabled_button_color=(disabled_text_col, disabled_bg_col),
+        #                            tooltip='Run reconciliation')]
+        rec_elements = []
         for param in params:
             element_layout = param.layout(padding=param_pad, auto_size_desc=True)
-            param_elements.extend(element_layout)
+            rec_elements.extend(element_layout)
 
-        header2 = sg.Col([param_elements], expand_x=True,
-                         justification='l', element_justification='l', vertical_alignment='b', background_color=bg_col)
+        rec_elements.append(sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
+                                      button_color=(bttn_text_col, bttn_bg_col),
+                                      disabled_button_color=(disabled_text_col, disabled_bg_col),
+                                      tooltip='Run reconciliation'))
+
+        param_elements = [sg.Canvas(size=(0, header_h), background_color=bg_col),
+                          sg.Col([[sg.Combo(entries, default_value='', key=assoc_key, size=param_size, font=param_font,
+                                            text_color=text_col, background_color=bg_col, disabled=False,
+                                            enable_events=True, tooltip='Select association account')]],
+                                 expand_x=True, justification='l', background_color=bg_col),
+                          sg.Col([rec_elements], element_justification='r', background_color=bg_col)]
+
+        header2 = sg.Col([param_elements], expand_x=True, justification='l', element_justification='l',
+                         vertical_alignment='b', background_color=bg_col)
 
         # Column 2 Panels
         panels = []
