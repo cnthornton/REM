@@ -378,10 +378,11 @@ class AuditRule:
                     tab_keys.append(tab_key)
 
                     # Set tab parameters
+                    database = values[self.key_lookup('Database')]
                     transaction_tab.parameters = self.parameters
+                    transaction_tab.database = database
 
                     # Import tab data from the database
-                    database = values[self.key_lookup('Database')]
                     try:
                         transaction_tab.load_data(database=database)
                     except ImportError as e:
@@ -1013,6 +1014,7 @@ class AuditTransaction:
             raise AttributeError(msg)
 
         self.parameters = None
+        self.database = None
         self.id_components = []
 
     def key_lookup(self, component, rev: bool = False):
@@ -1234,6 +1236,7 @@ class AuditTransaction:
         # Class attributes
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
+        database = self.database
 
         table = self.table
         collection = table.collection
@@ -1270,10 +1273,12 @@ class AuditTransaction:
             logger.debug('AuditTransaction {NAME}: first transaction ID is {ID}'.format(NAME=self.name, ID=first_id))
 
             # Find the date of the most recent transaction prior to current date
-            unq_dates = record_entry.unique_values(date_col, sort=False)
+            unq_dates = record_entry.unique_values(date_col, sort=False, database=database)
             unq_dates_iso = [i.strftime("%Y-%m-%d") for i in unq_dates]
             unq_dates_iso.sort()
 
+            print('looking for {}'.format(audit_date_iso))
+            print('in {}'.format(unq_dates_iso))
             current_date_index = unq_dates_iso.index(audit_date_iso)
 
             try:
@@ -1293,7 +1298,7 @@ class AuditTransaction:
                             'transaction date {DATE}'.format(NAME=self.name, DATE=prev_date.strftime('%Y-%m-%d')))
 
                 import_filters = ('{} = ?'.format(date_db_col), prev_date.strftime(settings.date_format))
-                last_df = record_entry.import_records(filter_rules=import_filters)
+                last_df = record_entry.import_records(filter_rules=import_filters, database=database)
                 last_df.sort_values(by=[pkey], inplace=True, ascending=False)
 
                 last_id = None
@@ -1398,7 +1403,7 @@ class AuditTransaction:
             last_id_of_df = id_list[-1]  # last transaction of the dataframe
 
             import_filters = ('{} = ?'.format(date_db_col), audit_date.strftime(settings.date_format))
-            current_df = record_entry.import_records(filter_rules=import_filters)
+            current_df = record_entry.import_records(filter_rules=import_filters, database=database)
 
             current_ids = sorted(current_df[pkey].tolist(), reverse=True)
             for current_id in current_ids:
@@ -1424,8 +1429,8 @@ class AuditTransaction:
 
         # Query database for the potentially missing transactions
         if missing_transactions:
-            missing_df = missing_df.append(record_entry.load_records(missing_transactions, import_filters=False),
-                                           ignore_index=True)
+            loaded_df = record_entry.load_records(missing_transactions, import_filters=False, database=database)
+            missing_df = missing_df.append(loaded_df, ignore_index=True)
 
         # Display import window with potentially missing data
         if not missing_df.empty:

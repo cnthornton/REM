@@ -348,6 +348,29 @@ class RecordEntry:
 
         return columns
 
+    def _set_database(self, database: str = None):
+        """
+        Set the import database.
+        """
+        program_db = settings.prog_db
+        if self.program_record:
+            db = program_db
+        else:
+            if database:
+                if database == program_db:
+                    db = program_db
+                elif database in settings.alt_dbs:
+                    db = database
+                else:
+                    msg = 'database {DB} is not an available program database'.format(DB=database)
+                    logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    db = settings.dbname
+            else:
+                db = settings.dbname
+
+        return db
+
     def map_column(self, column):
         """
         Convert from record column to database column.
@@ -357,7 +380,7 @@ class RecordEntry:
 
         return db_col
 
-    def unique_values(self, field, sort: bool = False):
+    def unique_values(self, field, sort: bool = False, database: str = None):
         """
         Extract the unique values of a given record field from the database.
 
@@ -365,9 +388,11 @@ class RecordEntry:
             field (str): name of the record field to retrieve values for.
 
             sort (bool): sort results [default: False].
+
+            database (str): load unique values from the provided database.
         """
         import_rules = self.import_rules
-        prog_db = self.program_record
+        db = self._set_database(database)
 
         tables = mod_db.format_tables(import_rules)
         filters = mod_db.format_import_filters(import_rules)
@@ -379,7 +404,7 @@ class RecordEntry:
 
         # Find the date of the most recent transaction prior to current date
         query = mod_db.prepare_sql_query(tables, columns=db_col, filter_rules=filters, order=order_by, distinct=True)
-        unique_df = user.read_db(*query, prog_db=prog_db)
+        unique_df = user.read_db(*query, database=db)
         unique_values = unique_df.iloc[:, 0].tolist()
 
         return unique_values
@@ -404,23 +429,7 @@ class RecordEntry:
             import_df (DataFrame): dataframe of imported records.
         """
         import_rules = self.import_rules if not import_rules else import_rules
-
-        program_db = settings.prog_db
-        if self.program_record:
-            db = program_db
-        else:
-            if database:
-                if database == program_db:
-                    db = program_db
-                elif database in settings.alt_dbs:
-                    db = database
-                else:
-                    msg = 'database {DB} is not an available program database'.format(DB=database)
-                    logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    db = settings.dbname
-            else:
-                db = settings.dbname
+        db = self._set_database(database)
 
         if isinstance(id_list, str):
             record_ids = [id_list]
@@ -485,23 +494,7 @@ class RecordEntry:
             params = [filter_params]
 
         import_rules = self.import_rules if not import_rules else import_rules
-
-        program_db = settings.prog_db
-        if self.program_record:
-            db = program_db
-        else:
-            if database:
-                if database == program_db:
-                    db = program_db
-                elif database in settings.alt_dbs:
-                    db = database
-                else:
-                    msg = 'database {DB} is not an available program database'.format(DB=database)
-                    logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                    db = settings.dbname
-            else:
-                db = settings.dbname
+        db = self._set_database(database)
 
         # Add configured import filters
         filters = mod_db.format_import_filters(import_rules)
@@ -617,12 +610,13 @@ class RecordEntry:
 
         return df
 
-    def load_unreferenced_records(self, rule_name):
+    def load_unreferenced_records(self, rule_name, database: str = None):
         """
         Load entry records that do not have a record reference for the given association rule.
         """
         association_rules = self.association_rules
         import_rules = self.import_rules
+        db = self._set_database(database)
 
         try:
             rule = association_rules[rule_name]
@@ -657,11 +651,11 @@ class RecordEntry:
 
         table_statement = mod_db.format_tables(import_rules)
         import_df = user.read_db(*mod_db.prepare_sql_query(table_statement, columns=columns, filter_rules=filters),
-                                 prog_db=True)
+                                 database=db)
 
         return import_df
 
-    def confirm_saved(self, id_list, id_field: str = 'RecordID', table: str = None):
+    def confirm_saved(self, id_list, id_field: str = 'RecordID', table: str = None, database: str = None):
         """
         Check whether or not records have already been saved to the database.
 
@@ -671,6 +665,8 @@ class RecordEntry:
             id_field (str): table field containing the record IDs [Default: RecordID].
 
             table (str): search this database table for the record IDs.
+
+            database (str): search this database for the record IDs.
 
         Returns:
             records_saved (list): list of corresponding booleans giving the status of the record ID in the database.
@@ -691,13 +687,13 @@ class RecordEntry:
 
         # Add configured import filters
         if table is None:
-            prog_db = self.program_record
+            db = settings.prog_db
             table_statement = mod_db.format_tables(self.import_rules)
             id_col = mod_db.get_import_column(self.import_rules, id_field)
             if not id_col:
                 id_col = id_field
         else:
-            prog_db = True
+            db = self._set_database(database)
             table_statement = table
             id_col = id_field
 
@@ -711,11 +707,11 @@ class RecordEntry:
             if import_df.empty:
                 import_df = user.read_db(*mod_db.prepare_sql_query(table_statement, columns=id_col,
                                                                    filter_rules=filters),
-                                         prog_db=prog_db)
+                                         database=db)
             else:
                 import_df = import_df.append(user.read_db(*mod_db.prepare_sql_query(table_statement, columns=id_col,
                                                                                     filter_rules=filters),
-                                                          prog_db=prog_db),
+                                                          database=db),
                                              ignore_index=True)
 
         try:
