@@ -59,7 +59,8 @@ class AuditRule:
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
                          ('Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth', 'PanelHeight', 'FrameHeight',
-                          'FrameWidth', 'TG', 'TransactionPanel', 'Panels', 'Buttons', 'Title', 'Frame', 'Header')}
+                          'FrameWidth', 'TG', 'TransactionPanel', 'Panels', 'Buttons', 'Title', 'Frame', 'Header',
+                          'Database')}
 
         self.bindings = {self.elements[i]: i for i in ('Cancel', 'Start', 'Back', 'Next', 'Save', 'TG')}
 
@@ -380,8 +381,9 @@ class AuditRule:
                     transaction_tab.parameters = self.parameters
 
                     # Import tab data from the database
+                    database = values[self.key_lookup('Database')]
                     try:
-                        transaction_tab.load_data()
+                        transaction_tab.load_data(database=database)
                     except ImportError as e:
                         msg = 'failed to initialize the audit transactions'
                         logger.error('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -518,6 +520,8 @@ class AuditRule:
 
         # Rule parameters
         params = self.parameters
+        db_key = self.key_lookup('Database')
+        db_size = (max([len(i) for i in settings.alt_dbs]), 1)
 
         # Element sizes
         title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
@@ -544,17 +548,20 @@ class AuditRule:
 
         # Rule parameter elements
         if len(params) > 1:
-            param_pad = ((0, pad_h), 0)
+            param_pad = ((0, pad_v), 0)
         else:
             param_pad = (0, 0)
 
         param_elements = []
         for param in params:
             element_layout = param.layout(padding=param_pad, auto_size_desc=True)
-            param_elements += element_layout
+            param_elements.extend(element_layout)
 
         start_key = self.key_lookup('Start')
-        start_layout = [[mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False, use_ttk_buttons=True,
+        start_layout = [[sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
+                                  pad=((0, pad_el * 2), 0), text_color=text_col, background_color=bg_col,
+                                  disabled=False, tooltip='Record database'),
+                         mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False, use_ttk_buttons=True,
                                    button_color=(bttn_text_col, bttn_bg_col), metadata={'disabled': False},
                                    disabled_button_color=(disabled_text_col, disabled_bg_col),
                                    tooltip='Start transaction audit')]]
@@ -1195,7 +1202,7 @@ class AuditTransaction:
 
         return list(failed_rows)
 
-    def load_data(self):
+    def load_data(self, database: str = None):
         """
         Load data from the database.
         """
@@ -1207,7 +1214,7 @@ class AuditTransaction:
         logger.info('AuditTransaction {NAME}: attempting to load transaction records from the database based on '
                     'the supplied parameters'.format(NAME=self.name))
         try:
-            df = record_entry.import_records(filter_params=parameters)
+            df = record_entry.import_records(filter_params=parameters, database=database)
         except Exception as e:
             msg = 'failed to load the transaction records from the database'
             logger.exception('AuditTransaction {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
