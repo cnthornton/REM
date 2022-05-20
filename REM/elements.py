@@ -43,8 +43,6 @@ class RecordElement:
         tooltip (str): element tooltip.
 
         edited (bool): record element was edited [Default: False].
-
-        permissions (str): permissions group required to edit the element.
     """
 
     def __init__(self, name, entry, parent=None):
@@ -77,11 +75,6 @@ class RecordElement:
             self.description = entry['Description']
         except KeyError:
             self.description = name
-
-        try:
-            self.permissions = entry['Permissions']
-        except KeyError:
-            self.permissions = settings.default_pgroup
 
         # Layout styling options
         try:
@@ -496,13 +489,15 @@ class DataTable(RecordElement):
         self.sort_on = self._default_sort
 
         try:
-            self.nrow = int(entry['Rows'])
+            nrow = int(entry['Rows'])
         except KeyError:
             self.nrow = mod_const.TBL_NROW
         except ValueError:
             msg = self.format_log('input to the Rows parameter must be an integer value')
             logger.warning(msg)
             self.nrow = mod_const.TBL_NROW
+        else:  # table must contain at least one row for data display
+            self.nrow = 1 if nrow < 1 else nrow
 
         try:
             row_color = entry['RowColor']
@@ -2813,6 +2808,17 @@ class DataList(RecordElement):
                                           .format(COL=display_column))
                     logger.warning(msg)
 
+        try:
+            nrow = int(entry['Rows'])
+        except KeyError:
+            self.nrow = 1
+        except ValueError:
+            msg = self.format_log('input to the Rows parameter must be an integer value')
+            logger.warning(msg)
+            self.nrow = 1
+        else:
+            self.nrow = 1 if nrow < 1 else nrow
+
         try:  # boolean fields can be displayed as a symbol - shown if true, hidden if false
             display_flags = entry['Flags']
         except KeyError:
@@ -3051,6 +3057,114 @@ class DataList(RecordElement):
         """
         return self._dimensions
 
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the record element.
+        """
+        current_w, current_h = self.dimensions()
+        border_w = 1
+        scroll_w = mod_const.SCROLL_WIDTH
+        pad_el = mod_const.ELEM_PAD
+        pad_w, pad_h = self.pad_offset()
+        nrow = self.nrow
+        indices = self.indices
+
+        if size:
+            width, height = size
+            new_h = None if height is None else height - border_w * 2 - pad_h
+            new_w = current_w if width is None else width - border_w * 2 - pad_w
+        else:
+            new_h = None  # base height on number of configured "rows"
+            new_w = current_w
+
+        listbox_h = mod_const.LISTBOX_HEIGHT
+        box_h = listbox_h + pad_el * 2 + border_w * 2
+        listbox_w = new_w - pad_el * 2 - border_w * 2 - scroll_w
+
+        list_h = 0
+        for i, index in enumerate(indices):
+            try:
+                entry_key = self.key_lookup('Entry:{}'.format(index))
+            except KeyError as e:
+                msg = self.format_log('failed to find the entry frame for index {IND} - {ERR}'.format(IND=index, ERR=e))
+                logger.warning(msg)
+                continue
+
+            mod_lo.set_size(window, entry_key, (listbox_w, listbox_h))
+
+            if window[entry_key].metadata['visible'] and (nrow - 1 >= i):
+                list_h += box_h
+
+            notes_key = self.key_lookup('Notes:{}'.format(index))
+            window[notes_key].expand(expand_x=True)
+
+        if (nrow < 2) and (len(indices) > 1):  # make it obvious that there are is than one entry in the list
+            list_h += int(box_h / 5)
+
+        desc_key = self.key_lookup('Description')
+        new_h = window[desc_key].get_size()[1] + pad_el * 4 + border_w + list_h if not new_h else new_h
+
+        # Resize the list-box element
+        frame_key = self.key_lookup('Frame')
+        new_size = (new_w, new_h)
+        mod_lo.set_size(window, frame_key, new_size)
+
+        self._dimensions = new_size
+
+        # Resize the column of list entries
+        elem_key = self.key_lookup('Element')
+        list_w = new_w - pad_el * 2
+        mod_lo.set_size(window, elem_key, (list_w, list_h))
+
+        return window[frame_key].get_size()
+
+    def resize_old(self, window, size: tuple = None):
+        """
+        Resize the record element.
+        """
+        current_w, current_h = self.dimensions()
+        border_w = 1
+        pad_el = mod_const.ELEM_PAD
+        pad_w, pad_h = self.pad_offset()
+
+        if size:
+            width, height = size
+            new_h = current_h if height is None else height - border_w * 2 - pad_h
+            new_w = current_w if width is None else width - border_w * 2 - pad_w
+        else:
+            new_w, new_h = (current_w, current_h)
+
+        listbox_h = mod_const.LISTBOX_HEIGHT
+        listbox_w = new_w - pad_el * 2
+
+        desc_key = self.key_lookup('Description')
+        new_h = window[desc_key].get_size()[1] + pad_el * 5 + border_w
+        for index in self.indices:
+            try:
+                entry_key = self.key_lookup('Entry:{}'.format(index))
+            except KeyError as e:
+                msg = self.format_log('failed to find the entry frame for index {IND} - {ERR}'.format(IND=index, ERR=e))
+                logger.warning(msg)
+                continue
+
+            mod_lo.set_size(window, entry_key, (listbox_w, listbox_h))
+
+            if window[entry_key].metadata['visible']:
+                new_h += listbox_h + pad_el * 2 + border_w * 2
+            else:
+                new_h += 1
+
+            notes_key = self.key_lookup('Notes:{}'.format(index))
+            window[notes_key].expand(expand_x=True)
+
+        frame_key = self.key_lookup('Frame')
+        new_size = (new_w, new_h)
+        mod_lo.set_size(window, frame_key, new_size)
+
+        self._dimensions = new_size
+
+        return window[frame_key].get_size()
+
     def layout(self, size: tuple = None, padding: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
@@ -3070,7 +3184,8 @@ class DataList(RecordElement):
         menu_font = mod_const.MAIN_FONT
 
         text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = mod_const.TBL_HEADER_COLOR if bg_color is None else bg_color
+        header_col = mod_const.TBL_HEADER_COLOR if bg_color is None else bg_color
+        bg_col = mod_const.DEFAULT_BG_COLOR
 
         pad_el = mod_const.ELEM_PAD
         pad = padding if padding and isinstance(padding, tuple) else self.padding
@@ -3079,8 +3194,8 @@ class DataList(RecordElement):
         # Element description
         desc_key = self.key_lookup('Description')
         desc_layout = sg.Col([[sg.Text(self.description, auto_size_text=True, pad=(0, 0), text_color=text_col,
-                                       font=font, background_color=bg_col, tooltip=tooltip)]],
-                             key=desc_key, pad=(pad_el, pad_el), background_color=bg_col, expand_x=True,
+                                       font=font, background_color=header_col, tooltip=tooltip)]],
+                             key=desc_key, pad=(pad_el, pad_el), background_color=header_col, expand_x=True,
                              vertical_alignment='c')
 
         options_list = []
@@ -3098,15 +3213,16 @@ class DataList(RecordElement):
         options_key = self.key_lookup('Options')
         options_layout = sg.Col([[sg.ButtonMenu('', menu, key=options_key, image_data=mod_const.OPTIONS_ICON,
                                                 visible=options_visible, font=menu_font,
-                                                button_color=(text_col, bg_col), border_width=0)]],
-                                pad=(pad_el, pad_el), background_color=bg_col, vertical_alignment='c')
+                                                button_color=(text_col, header_col), border_width=0)]],
+                                pad=(pad_el, pad_el), background_color=header_col, vertical_alignment='c')
 
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Frame')
         layout = sg.Frame('', [[desc_layout, options_layout],
-                               [sg.Col([[sg.HorizontalSeparator()]], background_color=bg_col, expand_x=True)],
-                               [sg.Col([[]], key=elem_key, background_color=bg_col, expand_x=True, expand_y=True)]],
-                          key=frame_key, pad=pad, size=size, background_color=bg_col)
+                               [sg.Col([[sg.HorizontalSeparator()]], background_color=header_col, expand_x=True)],
+                               [sg.Col([[]], key=elem_key, background_color=bg_col, expand_x=True, expand_y=True,
+                                       scrollable=True, vertical_scroll_only=True, visible=True)]],
+                          key=frame_key, pad=pad, size=size, background_color=header_col)
 
         return layout
 
@@ -3330,53 +3446,6 @@ class DataList(RecordElement):
         warning_visible = True if warning_text else False
         window[warnings_key].set_tooltip(warning_text)
         window[warnings_key].update(visible=warning_visible)
-
-    def resize(self, window, size: tuple = None):
-        """
-        Resize the record element.
-        """
-        current_w, current_h = self.dimensions()
-        border_w = 1
-        pad_el = mod_const.ELEM_PAD
-        pad_w, pad_h = self.pad_offset()
-
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height - border_w * 2 - pad_h
-            new_w = current_w if width is None else width - border_w * 2 - pad_w
-        else:
-            new_w, new_h = (current_w, current_h)
-
-        listbox_h = mod_const.LISTBOX_HEIGHT
-        listbox_w = new_w - pad_el * 2
-
-        desc_key = self.key_lookup('Description')
-        new_h = window[desc_key].get_size()[1] + pad_el * 5 + border_w
-        for index in self.indices:
-            try:
-                entry_key = self.key_lookup('Entry:{}'.format(index))
-            except KeyError as e:
-                msg = self.format_log('failed to find the entry frame for index {IND} - {ERR}'.format(IND=index, ERR=e))
-                logger.warning(msg)
-                continue
-
-            mod_lo.set_size(window, entry_key, (listbox_w, listbox_h))
-
-            if window[entry_key].metadata['visible']:
-                new_h += listbox_h + pad_el * 2 + border_w * 2
-            else:
-                new_h += 1
-
-            notes_key = self.key_lookup('Notes:{}'.format(index))
-            window[notes_key].expand(expand_x=True)
-
-        frame_key = self.key_lookup('Frame')
-        new_size = (new_w, new_h)
-        mod_lo.set_size(window, frame_key, new_size)
-
-        self._dimensions = new_size
-
-        return window[frame_key].get_size()
 
     def update_display(self, window):
         """

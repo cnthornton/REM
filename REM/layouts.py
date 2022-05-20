@@ -21,7 +21,7 @@ def set_size(window, element_key, size):
     except AttributeError:
         scrollable = False
 
-    if scrollable:
+    if scrollable or element.Size != (None, None):
         element.Widget.canvas.configure(**options)
         element.contents_changed()
     else:
