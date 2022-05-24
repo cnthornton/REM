@@ -53,7 +53,7 @@ class DataParameter:
         self.name = name
         self.id = randint(0, 1000000000)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'Header', 'Value', 'Description', 'Width')}
+                         ('Element', 'Description', 'Frame', 'Header', 'Value', 'Width')}
 
         self.bindings = {self.key_lookup(i): i for i in ('Element', )}
 
@@ -229,8 +229,9 @@ class DataParameter:
         layout = [[sg.Canvas(key=width_key, size=(layout_w, 0), background_color=bg_col)],
                   elem_layout]
 
-        return [sg.Frame('', layout, pad=padding, visible=visible, background_color=bg_col, relief=relief,
-                         border_width=1, vertical_alignment='c')]
+        frame_key = self.key_lookup('Frame')
+        return [sg.Frame('', layout, key=frame_key, pad=padding, visible=visible, background_color=bg_col,
+                         relief=relief, border_width=1, vertical_alignment='c')]
 
     def element_layout(self, size: tuple = None, bg_col: str = None):
         """
@@ -255,7 +256,7 @@ class DataParameter:
             elem_w = int(width * 0.6) if not auto_size else 1
             desc_h = elem_h = height
             param_w = width if not auto_size else 1
-        else:
+        else:  # need to convert provided width and height to pixels
             desc_w = int(width * 0.4) * 10 if not auto_size else 1
             elem_w = int(width * 0.6) * 10 if not auto_size else 1
             desc_h = elem_h = int(height * 10) if height else None
@@ -606,7 +607,6 @@ class DataParameterSingle(DataParameter):
         except KeyError:
             param_event = None
 
-        #if event in self.elements:
         if param_event == 'Element':
             display_value = self._enforce_formatting(window, values, event)
             window[event].update(value=display_value)
@@ -709,8 +709,6 @@ class DataParameterInput(DataParameterSingle):
         # Add additional calendar element for input with datetime data types to list of editable elements
         if self.dtype in settings.supported_date_dtypes:
             calendar_key = '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar')
-            #self.elements.append(calendar_key)
-            #self.bindings.append(calendar_key)
             self.elements['Calendar'] = calendar_key
             self.bindings[calendar_key] = 'Calendar'
 
@@ -768,6 +766,7 @@ class DataParameterInput(DataParameterSingle):
                 calendar_bttn = sg.CalendarButton('', target=elem_key, key=calendar_key, format='%Y-%m-%d',
                                                   image_data=date_ico, pad=((pad_el, 0), 0), font=font,
                                                   button_color=(text_col, bg_col), border_width=0,
+                                                  locale=settings.locale,
                                                   tooltip='Select date from calendar menu',
                                                   metadata={'disabled': disabled})
                 layout.append(calendar_bttn)
@@ -1231,10 +1230,10 @@ class DataParameterCheckbox(DataParameter):
         return df
 
 
-# Multi-value data parameters
-class DataParameterMulti(DataParameter):
+# Multiple component data parameters
+class DataParameterComp(DataParameter):
     """
-    Parent class for data parameters with a multi-value element.
+    Parent class for data parameters where the element value is split into components.
 
     Attributes:
         name (str): data element configuration name.
@@ -1319,7 +1318,7 @@ class DataParameterMulti(DataParameter):
         return layout
 
 
-class DataParameterRange(DataParameterMulti):
+class DataParameterRange(DataParameterComp):
     """
     Data parameter with a range-picking element.
 
@@ -1357,14 +1356,11 @@ class DataParameterRange(DataParameterMulti):
         """
         Run a window event associated with the parameter.
         """
-        #element_key = self.key_lookup('Element')
         try:
             param_event = self.bindings[event]
         except KeyError:
             param_event = None
 
-        # if event in self.elements:
-        #if event == element_key:
         if param_event == 'Element':
             self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
                                                      date_format='YYYY-MM-DD', location=window.mouse_location())
@@ -1544,7 +1540,7 @@ class DataParameterRange(DataParameterMulti):
         return any(values_set)
 
 
-class DataParameterCondition(DataParameterMulti):
+class DataParameterCondition(DataParameterComp):
     """
     Data parameter with a condition-picking element.
 
@@ -1583,13 +1579,11 @@ class DataParameterCondition(DataParameterMulti):
         """
         Run a window event associated with the parameter.
         """
-        #element_key = self.key_lookup('Element')
         try:
             param_event = self.bindings[event]
         except KeyError:
             param_event = None
 
-        #if event == element_key:
         if param_event == 'Element':
             self.value = mod_win2.conditional_value_window(self.dtype, current=self.value, title=self.description,
                                                            location=window.mouse_location())
@@ -1740,8 +1734,8 @@ class DataParameterCondition(DataParameterMulti):
             return False
 
 
-# Multiple Selection parameters
-class DataParameterSelection(DataParameter):
+# Special data parameters
+class DataParameterMultiple(DataParameter):
     """
     Data parameter multiple selection element.
 
@@ -2026,6 +2020,249 @@ class DataParameterSelection(DataParameter):
             return False
 
 
+class DataParameterDate(DataParameter):
+    """
+    Data parameter split date element.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        elements (list): list of data element GUI keys.
+
+        value: value of the parameter's data storage elements.
+    """
+
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+
+        for elem in ('Year', 'Month'):
+            elem_key = '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=elem)
+            self.elements[elem] = elem_key
+            self.bindings[elem_key] = elem
+
+        # Enforce supported data types for the parameter
+        supported_dtypes = settings.supported_date_dtypes
+        if not self.dtype or self.dtype not in supported_dtypes:
+            msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
+                  '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
+            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.dtype = 'datetime'
+
+        # Parameter-type specific attributes
+        try:
+            self.localize = bool(int(entry['localize']))
+        except (KeyError, ValueError):
+            self.localize = False
+
+        # Parameters of the split-date type do not accept default values
+        self.default = None
+        self.value = None
+
+        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
+        if param_event == 'Element':
+            element_key = self.key_lookup('Element')
+            self.format_value({element_key: selected})
+            self.update_display(window)
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+                     .format(NAME=self.name, VAL=self.value, DEF=self.default))
+        self.value = [i for i in self.default]
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.update_display(window)
+
+    def element_layout(self, size: tuple = None, bg_col: str = None):
+        """
+        Create the type-specific layout for the value element of the parameter.
+        """
+        size = size if size else mod_const.PARAM_SIZE_CHAR
+        disabled = False if self.editable is True else True
+
+        # Element settings
+        font = mod_const.LARGE_FONT
+        bg_col = self.bg_col if bg_col is None else bg_col
+        in_col = mod_const.ELEMENT_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+
+        # Parameter size
+        width, height = size
+        elem_w = width
+        elem_h = height
+
+        # Parameter settings
+        display_value = self.format_display()
+        elem_key = self.key_lookup('Element')
+
+        if not disabled:
+            layout = [sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True, font=font,
+                               background_color=in_col, text_color=text_col,
+                               tooltip='Input value for {}'.format(self.description),
+                               metadata={'value': display_value, 'disabled': disabled})]
+
+            if self.dtype in settings.supported_date_dtypes:
+                calendar_key = self.key_lookup('Calendar')
+                date_ico = mod_const.CALENDAR_ICON
+
+                calendar_bttn = sg.CalendarButton('', target=elem_key, key=calendar_key, format='%Y-%m-%d',
+                                                  image_data=date_ico, pad=((pad_el, 0), 0), font=font,
+                                                  button_color=(text_col, bg_col), border_width=0,
+                                                  tooltip='Select date from calendar menu',
+                                                  metadata={'disabled': disabled})
+                layout.append(calendar_bttn)
+        else:
+            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font, text_color=text_col,
+                              background_color=bg_col, border_width=1,
+                              metadata={'value': display_value, 'disabled': disabled})]
+
+        return layout
+
+    def format_value(self, values):
+        """
+        Set the value of the data element from user input.
+
+        Arguments:
+            values: GUI element values or a single input value.
+        """
+        dtype = self.dtype
+        current_value = self.value
+
+        if isinstance(values, dict):
+            try:
+                day = values[self.key_lookup('Element')]
+                month = values[self.key_lookup('Month')]
+                year = values[self.key_lookup('Year')]
+            except KeyError:
+                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
+                logger.warning(msg)
+
+                return current_value
+        elif isinstance(values, list) or isinstance(values, tuple):
+            try:
+                day, month, year = values
+            except ValueError:
+                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(NAME=self.name)
+                logger.warning(msg)
+
+                return current_value
+        else:
+            return current_value
+
+        try:
+            year = int(year)
+            month = int(month)
+            day = int(day)
+        except ValueError:
+            logger.warning('DataParameter {NAME}: failed to format selected value {Y}-{M}-{D} as a date'
+                           .format(NAME=self.name, Y=year, M=month, D=day, DTYPE=dtype))
+
+            return current_value
+
+        formatted_value = datetime.datetime(year, month, day)
+        self.value = formatted_value
+
+        return formatted_value
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        if not self.has_value():
+            return ''
+
+        value = self.value
+        try:
+            display_value = settings.format_display_date(value)
+        except ValueError:
+            logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                           'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=self.dtype))
+            display_value = ''
+
+        return display_value
+
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        frame_key = self.key_lookup('Frame')
+
+        # Update element text
+        display_value = self.format_display()
+        window[frame_key].set_tooltip(display_value)
+
+    def query_statement(self, column):
+        """
+        Generate the filter clause for SQL querying.
+        """
+        if self.has_value():
+            query_value = self.value.strftime(settings.date_format)
+            statement = ('{COL} = ?'.format(COL=column), (query_value,))
+        else:
+            statement = None
+
+        return statement
+
+    def filter_table(self, df):
+        """
+        Use the parameter value to filter a dataframe.
+        """
+        dtype = self.dtype
+        column = self.name
+
+        if not self.has_value():
+            return df
+
+        if df.empty:
+            return df
+
+        try:
+            col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
+        except Exception as e:
+            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+                             .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
+            col_values = df[column]
+
+        value = self.value
+        param_value = value.date()
+
+        logger.debug('DataParameter {NAME}: filtering table on values {VAL}'
+                     .format(NAME=self.name, VAL=value.strftime(settings.date_format)))
+        df = df[col_values.dt.date == param_value]
+
+        return df
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+
+        value = self.value
+        if is_datetime_dtype(value):
+            return True
+        else:
+            return False
+
+
+# Independent functions
 def fetch_parameter(parameters, identifier, by_key: bool = False, by_type: bool = False):
     """
     Fetch a parameter from a list of parameters by name, event key, or parameter type.
@@ -2057,6 +2294,8 @@ def initialize_parameter(name, entry):
         param_class = DataParameterCombo
     elif etype in ('input', 'date', 'text'):
         param_class = DataParameterInput
+#    elif etype in ('datetime', 'date', 'dt'):
+#        param_class = DataParameterDate
     elif etype in ('range', 'date_range'):
         param_class = DataParameterRange
     elif etype == 'conditional':
@@ -2064,7 +2303,7 @@ def initialize_parameter(name, entry):
     elif etype in ('checkbox', 'check', 'bool', 'tf'):
         param_class = DataParameterCheckbox
     elif etype in ('selection', 'multiple', 'mc'):
-        param_class = DataParameterSelection
+        param_class = DataParameterMultiple
     else:
         msg = 'unknown element type {TYPE} provided to parameter entry {NAME}'.format(TYPE=etype, NAME=name)
 
