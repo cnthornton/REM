@@ -1091,16 +1091,16 @@ def database_importer_window(win_size: tuple = None):
 
     dtype_map = {}
     for i in int_types:
-        dtype_map[i] = int
+        dtype_map[i] = np.int64
 
     for i in float_types:
-        dtype_map[i] = float
+        dtype_map[i] = np.float64
 
     for i in bool_types:
-        dtype_map[i] = bool
+        dtype_map[i] = np.bool_
 
     for i in date_types + str_types + cat_dtypes:
-        dtype_map[i] = str
+        dtype_map[i] = np.object_
 
     field_col = 'Record Field'
     def_value_col = 'Value'
@@ -1320,21 +1320,21 @@ def database_importer_window(win_size: tuple = None):
 
                     continue
                 else:
-                    converters = {row[file_col]: dtype_map.get(row[dtype_col], str) for i, row in map_df.iterrows()}
+                    converters = {row[file_col]: dtype_map.get(row[dtype_col], np.object_) for i, row in map_df.iterrows()}
 
                     # Import spreadsheet into dataframe
                     file_format = values['-FORMAT-']
                     if file_format == 'xls':
                         formatting_options = {'convert_float': values['-INTS-'], 'parse_dates': False,
                                               'skiprows': skiptop, 'skipfooter': skipbottom, 'header': header_row,
-                                              'thousands': thousands_sep, 'converters': converters}
+                                              'thousands': thousands_sep, 'dtype': converters}
                         reader = pd.read_excel
                     else:
                         formatting_options = {'sep': values['-FSEP-'], 'skiprows': skiptop,
                                               'skipfooter': skipbottom, 'header': header_row,
                                               'thousands': thousands_sep, 'encoding': 'utf-8',
                                               'error_bad_lines': False, 'parse_dates': False,
-                                              'skip_blank_lines': True, 'converters': converters}
+                                              'skip_blank_lines': True, 'dtype': converters}
                         reader = pd.read_csv
 
                     logger.debug('formatting import file options: {}'.format(formatting_options))
@@ -1371,8 +1371,6 @@ def database_importer_window(win_size: tuple = None):
 
                     # Subset the imported data on the selected static and mapping columns
                     selected_columns = req_df[field_col].append(map_df[field_col])
-                    print('all selected columns:')
-                    print(selected_columns)
                     final_df = import_df[selected_columns]
 
                     # Set column data types
@@ -1412,8 +1410,6 @@ def database_importer_window(win_size: tuple = None):
 
                                 break
 
-                        print('formatted column {} has values:'.format(selected_column))
-                        print(formatted_values)
                         final_df.loc[:, selected_column] = formatted_values
 
                     if not dtypes_set:
