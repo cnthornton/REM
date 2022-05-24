@@ -304,10 +304,6 @@ class SettingsManager:
     Arguments:
 
         cnfg: Parsed YAML file
-
-    Attributes:
-
-        language (str): Display language. Default: EN.
     """
 
     def __init__(self, cnfg, dirname):
@@ -328,8 +324,8 @@ class SettingsManager:
         self.supported_modifiers = ['ImportUnsavedReferences']
 
         # Supported localization parameters
-        #        self._locales = ['en_US', 'en_UK', 'th_TH']
-        self._locales = {'English': 'en', 'Thai': 'th'}
+        self._locales = {'en_US': 'English', 'en_UK': 'English', 'th_TH': 'Thai'}
+        #self._locales = {'English': 'en', 'Thai': 'th'}
         self.supported_display_date_formats = ['YYYY-MM-DD', 'YY-MM-DD', 'DD-MM-YYYY', 'DD-MM-YY', 'MM-DD-YY',
                                                'MM-DD-YYYY']
 
@@ -341,16 +337,17 @@ class SettingsManager:
             self.username = 'username'
 
         # Localization parameters
-        try:
-            self.language = cnfg['localization']['language']
-        except KeyError:
-            self.language = 'en'
+        #try:
+        #    self.language = cnfg['localization']['language']
+        #except KeyError:
+        #    self.language = 'en'
         try:
             cnfg_locale = cnfg['localization']['locale']
         except KeyError:
-            cnfg_locale = 'English'
-        #        self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
-        self.locale = cnfg_locale if cnfg_locale in self._locales else 'English'
+            #cnfg_locale = 'English'
+            cnfg_locale = 'en_US'
+        self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
+        #self.locale = cnfg_locale if cnfg_locale in self._locales else 'English'
         try:
             logger.info('settings locale to {}'.format(self.locale))
             locale.setlocale(locale.LC_ALL, self.locale)
@@ -570,9 +567,9 @@ class SettingsManager:
         """
         Modify a settings attribute.
         """
-        if attr == 'language':
-            self.language = value
-        elif attr == 'locale':
+        #if attr == 'language':
+        #    self.language = value
+        if attr == 'locale':
             self.locale = value
         elif attr == 'template':
             self.report_template = value
@@ -763,14 +760,14 @@ class SettingsManager:
                   sg.Col([
                       [sg.Frame('Localization', [
                           [sg.Col([[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)],
-                                   [sg.Text('Language:', pad=(0, (0, pad_el)), font=main_font, background_color=bg_col)],
+                                   #[sg.Text('Language:', pad=(0, (0, pad_el)), font=main_font, background_color=bg_col)],
                                    [sg.Text('Locale:', pad=(0, (0, pad_el)), font=main_font, background_color=bg_col)],
                                    [sg.Text('Display Date Format:', pad=(0, (0, pad_el)), font=main_font,
                                             background_color=bg_col)]],
                                   pad=(pad_v, pad_el), background_color=bg_col),
                            sg.Col([[sg.Canvas(size=(dcol2_w, 0), background_color=bg_col)],
-                                   [sg.Combo(list(self._locales.values()), key='-LANGUAGE-', pad=(0, (0, pad_el)),
-                                             default_value=self.language, background_color=in_col)],
+                                   #[sg.Combo(list(self._locales.values()), key='-LANGUAGE-', pad=(0, (0, pad_el)),
+                                   #          default_value=self.language, background_color=in_col)],
                                    [sg.Combo(list(self._locales), key='-LOCALE-', pad=(0, (0, pad_el)),
                                              default_value=self.locale, background_color=in_col)],
                                    [sg.Combo(display_date_formats, key='-DISPLAY_DATE-',
@@ -825,19 +822,20 @@ class SettingsManager:
         """
         Translate application text based on supplied locale.
         """
-        language = self.language
+        #language = self.language
         localdir = self.localedir
         domain = self.domain
+        language = self._locales[self.locale]
 
         #        if language not in [i.split('_')[0] for i in self._locales]:
         #            raise NameError
-        if language not in self._locales.values():
-            raise NameError
+        #if language not in self._locales.values():
+        #    raise NameError
 
         try:
             trans = gettext.translation(domain, localedir=localdir, languages=[language])
         except Exception as e:
-            logger.warning('unable to find translations for locale {LANG} - {ERR}'.format(LANG=language, ERR=e))
+            logger.warning('unable to find translations for {LANG} - {ERR}'.format(LANG=language, ERR=e))
             trans = gettext
 
         return trans
@@ -995,7 +993,8 @@ class SettingsManager:
         """
         current_locale = self.locale
 
-        if current_locale == 'Thai':
+        #if current_locale == 'Thai':
+        if current_locale == 'th_TH':
             offset = 543
         else:
             offset = 0
