@@ -58,8 +58,8 @@ def login_window():
 
     bg_col = mod_const.DEFAULT_BG_COLOR
     input_col = mod_const.ELEMENT_COLOR
-    login_col = mod_const.LOGIN_BUTTON_COL
-    cancel_col = mod_const.CANCEL_BUTTON_COL
+    login_col = mod_const.LOGIN_BUTTON_COLOR
+    cancel_col = mod_const.CANCEL_BUTTON_COLOR
     def_text_col = mod_const.DEFAULT_TEXT_COLOR
     text_col = mod_const.WHITE_TEXT_COLOR
     help_col = mod_const.HELP_TEXT_COLOR
@@ -566,7 +566,7 @@ def parameter_window(definitions, win_size: tuple = None):
     window[width_key].set_size(size=(int(win_w), None))
     for pgroup in params:
         for param in params[pgroup]:
-            param.resize(window, size=(int(win_w - 40), None), pixels=True)
+            param.resize(window, size=(int(win_w - 40), None))
 
     window = align_window(window)
     current_w, current_h = [int(i) for i in window.size]
@@ -593,7 +593,7 @@ def parameter_window(definitions, win_size: tuple = None):
 
             for pgroup in params:
                 for param in params[pgroup]:
-                    param.resize(window, size=(int(win_w - 40), None), pixels=True)
+                    param.resize(window, size=(int(win_w - 40), None))
 
             current_w, current_h = (win_w, win_h)
 

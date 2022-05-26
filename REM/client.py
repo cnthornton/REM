@@ -1201,7 +1201,7 @@ class SettingsManager:
 
         return value_fmt
 
-    def format_as_iso(self, value):
+    def format_as_iso(self, value, sep: str = '-'):
         """
         Set a date string to be in ISO format.
 
@@ -1216,12 +1216,12 @@ class SettingsManager:
         for index, char in enumerate(value):
             if index == 3:
                 if len(value) != 4:
-                    buff.append('{}-'.format(char))
+                    buff.append('{CHAR}{SEP}'.format(CHAR=char, SEP=sep))
                 else:
                     buff.append(char)
             elif index == 5:
                 if len(value) != 6:
-                    buff.append('{}-'.format(char))
+                    buff.append('{CHAR}{SEP}'.format(CHAR=char, SEP=sep))
                 else:
                     buff.append(char)
             else:

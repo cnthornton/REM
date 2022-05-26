@@ -1830,7 +1830,7 @@ class DataTable(RecordElement):
             window[col3width_key].set_size(size=(col3_w, None))
 
             for param in self.parameters:
-                param.resize(window, size=(param_w, None), pixels=True)
+                param.resize(window, size=(param_w, None))
 
         window[self.key_lookup('Notes')].expand(expand_x=True)
 
