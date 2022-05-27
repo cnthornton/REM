@@ -163,7 +163,11 @@ class BankRule:
         Bind panel-element hotkeys.
         """
         # Bind events to element keys
-        logger.debug('BankRule {NAME}: binding record element hotkeys'.format(NAME=self.name))
+        logger.debug('BankRule {NAME}: binding panel element hotkeys'.format(NAME=self.name))
+
+        # Bind parameter hotkeys
+        for parameter in self.parameters:
+            parameter.bind_keys(window)
 
         # Bind account table hotkeys
         for acct in self.accts:
@@ -1575,7 +1579,7 @@ class BankAccount:
         try:
             self.association_type = entry['AssociationType']
         except KeyError:
-            msg = 'ReferenceBox {NAME}: missing required parameter "AssociationType"'.format(NAME=self.name)
+            msg = 'BankAccount {NAME}: missing required parameter "AssociationType"'.format(NAME=self.name)
             logger.error(msg)
 
             raise AttributeError(msg)
@@ -1611,13 +1615,6 @@ class BankAccount:
                 continue
 
             self.ref_map[column] = ref_map[column]
-
-        #try:
-        #    self._col_map = entry['ColumnMap']
-        #except KeyError:
-        #    self._col_map = {'TransactionCode': 'TransactionCode', 'TransactionType': 'TransactionType',
-        #                     'Notes': 'Notes', 'Withdrawal': 'Withdrawal', 'Deposit': 'Deposit'
-        #                     }
 
         try:
             transactions = entry['Transactions']
@@ -1741,7 +1738,6 @@ class BankAccount:
         """
         pd.set_option('display.max_columns', None)
 
-        #colmap = self._col_map
         table = self.get_table()
         table_keys = table.bindings
 
@@ -1787,7 +1783,7 @@ class BankAccount:
                         if record is None:
                             msg = 'unable to update references for record at index {IND} - no record was returned' \
                                 .format(IND=index)
-                            logger.error('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                             return {}
 
@@ -1806,11 +1802,7 @@ class BankAccount:
                                 # Update the reference entry dataframe to reflect changes made to an entry through the
                                 # record window
                                 ref_values = record.export_associations(association_rule=assoc_type)
-                                #updated_refs = self.update_references(ref_values)
                                 reference_indices = self.update_references(ref_values)
-
-                                #if not updated_refs.empty:
-                                    #reference_event = True
 
                                 self.update_display(window)
 
@@ -1822,12 +1814,10 @@ class BankAccount:
                 indices = table.get_index(select_row_indices)
 
                 # Get record IDs for the selected rows
-                record_ids = table.row_ids(indices=indices)
+                record_ids = pd.Series(table.row_ids(indices=indices), name='RecordID')
 
                 try:
-                    #reference_indices = self.approve(record_ids)
-                    #reference_indices = self.update_reference_field('IsApproved', True, record_ids=record_ids)
-                    reference_indices = self.update_reference_field('IsApproved', True, on=pd.Series(record_ids, name='RecordID'))
+                    reference_indices = self.update_reference_field('IsApproved', True, on=record_ids)
                 except Exception as e:
                     msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
                     logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -1860,9 +1850,6 @@ class BankAccount:
                 except Exception as e:
                     msg = 'failed to reset record references at table indices {INDS}'.format(INDS=indices)
                     logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                #else:
-                #    if len(reference_indices) > 0:
-                #        reference_event = True
 
                 # Deselect selected rows
                 table.deselect(window)

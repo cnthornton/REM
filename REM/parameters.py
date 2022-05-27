@@ -154,6 +154,12 @@ class DataParameter:
 
         return key
 
+    def bind_keys(self, window):
+        """
+        Set hotkey bindings.
+        """
+        pass
+
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.DEFAULT_BG_COLOR,
                auto_size_desc: bool = True, hidden: bool = None, justification: str = None, border: bool = False):
         """

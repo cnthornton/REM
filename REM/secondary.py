@@ -556,6 +556,10 @@ def parameter_window(definitions, win_size: tuple = None):
     # Bind keys to events
     window = settings.set_shortcuts(window)
 
+    for pgroup in params:
+        for parameter in params[pgroup]:
+            parameter.bind_keys(window)
+
     # Resize window
     screen_w, screen_h = window.get_screen_dimensions()
     wh_ratio = 0.75  # window width to height ratio

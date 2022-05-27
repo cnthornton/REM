@@ -759,6 +759,7 @@ class DataTable(RecordElement):
             else:
                 param.run_event(window, event, values)
 
+        # Event belongs to a table element
         try:
             element_event = self.bindings[event]
         except KeyError:
@@ -1078,12 +1079,16 @@ class DataTable(RecordElement):
 
     def bind_keys(self, window):
         """
-        Add hotkey bindings to the table element.
+        Set hotkey bindings.
         """
-
         elem_key = self.key_lookup('Element')
         window[elem_key].bind('<Control-f>', '+FILTER+')
 
+        # Bind parameter hotkeys
+        for parameter in self.parameters:
+            parameter.bind_keys(window)
+
+        # Bind table element hotkeys
         level = self.level
         if level < 2:
             if self.modifiers['open']:

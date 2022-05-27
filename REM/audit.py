@@ -188,7 +188,11 @@ class AuditRule:
         Bind panel-element hotkeys.
         """
         # Bind events to element keys
-        logger.debug('AuditRule {NAME}: binding record element hotkeys'.format(NAME=self.name))
+        logger.debug('AuditRule {NAME}: binding panel element hotkeys'.format(NAME=self.name))
+
+        # Bind parameter hotkeys
+        for parameter in self.parameters:
+            parameter.bind_keys(window)
 
         # Bind transaction table hotkeys
         for transaction_tab in self.transactions:
