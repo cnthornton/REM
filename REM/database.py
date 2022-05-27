@@ -311,7 +311,7 @@ def prepare_sql_update(table, columns, values, where_clause, filter_values, stat
     return statements
 
 
-def prepare_sql_upsert(table, columns, values, conditionals, statements: dict = None):
+def prepare_sql_upsert(table, columns, values, on, statements: dict = None):
     """
     Prepare a statement and parameters for inserting or updating an existing entry in an ODBC database, depending
     on whether it currently exists in the database or not.
@@ -323,15 +323,15 @@ def prepare_sql_upsert(table, columns, values, conditionals, statements: dict = 
 
         values (tuple): tuple or list of tuples containing column values for the table entry / entries.
 
-        conditionals (list): table column(s) used to match the existing table entries and the upsert entries.
+        on (list): table column(s) used to match the existing table entries and the upsert entries.
 
         statements (dict): dictionary of current transaction statements to add to.
     """
     if not statements:
         statements = {}
 
-    if isinstance(conditionals, str):
-        conditionals = [conditionals]
+    if isinstance(on, str):
+        on = [on]
 
     # Format parameters
     if isinstance(values, list):  # multiple updates requested
@@ -381,7 +381,7 @@ def prepare_sql_upsert(table, columns, values, conditionals, statements: dict = 
         raise SQLStatementError(msg)
 
     # Conditional statement
-    where_clause = ' AND '.join(['Target.{COL}=Source.{COL}'.format(COL=i) for i in conditionals])
+    where_clause = ' AND '.join(['Target.{COL}=Source.{COL}'.format(COL=i) for i in on])
 
     # Query terms of the command
     markers = '({})'.format(','.join(['?' for _ in columns]))

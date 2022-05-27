@@ -150,6 +150,8 @@ class DataParameter:
             msg = 'DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements' \
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
+            logger.exception(msg)
+            raise
             key = None
 
         return key
@@ -373,8 +375,13 @@ class DataParameter:
         """
         Toggle the parameter element on or off.
         """
-        for element_key in self.bindings:
-            window[element_key].update(disabled=off)
+        elements = self.elements
+        bindings = self.bindings
+
+        for element in elements:
+            element_key = elements[element]
+            if element_key in bindings:
+                window[element_key].update(disabled=off)
 
 
 # Single value data parameters
@@ -763,9 +770,14 @@ class DataParameterDate(DataParameter):
     def __init__(self, name, entry):
         super().__init__(name, entry)
 
+        # Additional bindings and events
         calendar_key = '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM='Calendar')
         self.elements['Calendar'] = calendar_key
         self.bindings[calendar_key] = 'Calendar'
+
+        elem_key = self.key_lookup('Element')
+        click_key = '{}+LCLICK+'.format(elem_key)
+        self.bindings[click_key] = 'Click'
 
         # Enforce supported data types for the parameter
         supported_dtypes = settings.supported_date_dtypes
@@ -807,8 +819,8 @@ class DataParameterDate(DataParameter):
         logger.debug('DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
                      .format(PARAM=self.name, VAL=value))
 
-        if value == '' or pd.isna(value):
-            return ''
+        if pd.isna(value):
+            value = ''
 
         # Remove separator from the input
         raw_value = list(self._value)
@@ -867,6 +879,14 @@ class DataParameterDate(DataParameter):
 
         return display_value
 
+    def bind_keys(self, window):
+        """
+        Set hotkey bindings.
+        """
+        elem_key = self.key_lookup('Element')
+        if self.editable and not self.hidden:
+            window[elem_key].bind('<Button-1>', '+LCLICK+')
+
     def run_event(self, window, event, values):
         """
         Run a window event associated with the parameter.
@@ -876,15 +896,23 @@ class DataParameterDate(DataParameter):
         except KeyError:
             param_event = None
 
-        if param_event == 'Element':
-            input_value = values[self.key_lookup('Element')]
+        print('running parameter binding {} with event {}'.format(event, param_event))
+        if param_event == 'Click':
+            print('parameter was clicked')
+            print('parameter has raw value: {}'.format(self._value))
+            if self._value == '':
+                window[self.key_lookup('Element')].update(select=True)
+        elif param_event == 'Element':
+            elem_key = self.key_lookup('Element')
+            print('running parameter event')
+            input_value = values[elem_key]
             display_value = self._enforce_formatting(input_value)
             if display_value == '':
                 display_value = self.help_text
                 text_color = mod_const.DISABLED_TEXT_COLOR
             else:
                 text_color = mod_const.DEFAULT_TEXT_COLOR
-            window[event].update(value=display_value, text_color=text_color)
+            window[elem_key].update(value=display_value, text_color=text_color)
 
     def reset(self, window):
         """
@@ -947,6 +975,54 @@ class DataParameterDate(DataParameter):
 
         return layout
 
+    def format_value(self, values):
+        """
+        Set the value of the data element from user input.
+
+        Arguments:
+            values: GUI element values or a single input value.
+        """
+        if isinstance(values, dict):
+            elem_key = self.key_lookup('Element')
+            try:
+                input_value = values[elem_key]
+            except KeyError:
+                logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                               .format(NAME=self.name))
+
+                return self.value
+        else:
+            input_value = values
+
+        if input_value == '' or pd.isna(input_value):
+            self.value = None
+
+            return None
+
+        try:
+            value_fmt = pd.to_datetime(input_value, format=self._format, utc=False).to_pydatetime()
+            #value_fmt = settings.format_as_datetime(input_value, date_format='YYYY/MM/DD')
+        except ValueError:
+            logger.warning('DataParameter {NAME}: failed to format input value {VAL} as a datetime object'
+                           .format(NAME=self.name, VAL=input_value))
+
+            return self.value
+
+        self.value = value_fmt
+
+        return value_fmt
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        if not self.has_value():
+            return ''
+
+        display_value = self.value.strftime(self._format)
+
+        return display_value
+
     def update_display(self, window):
         """
         Update the parameter display.
@@ -963,17 +1039,6 @@ class DataParameterDate(DataParameter):
 
         window[elem_key].set_tooltip(display_value)
         window[elem_key].update(value=display_value, text_color=text_color)
-
-    def format_display(self):
-        """
-        Format the parameter's value for displaying.
-        """
-        if not self.has_value():
-            return ''
-
-        display_value = self.value.strftime(self._format)
-
-        return display_value
 
     def query_statement(self, column):
         """
@@ -1024,7 +1089,7 @@ class DataParameterDate(DataParameter):
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
 
         value = self.value
-        if is_datetime_dtype(value):
+        if is_datetime_dtype(value) or isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
             return True
         else:
             return False

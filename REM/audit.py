@@ -216,22 +216,37 @@ class AuditRule:
 
         return tab
 
-    def fetch_parameter(self, element, by_key: bool = False):
+    def fetch_parameter(self, identifier, by_key: bool = False):
         """
-        Fetch a GUI parameter element by name or event key.
+        Fetch an audit parameter by name or event key.
         """
-        if by_key is True:
-            element_type = element[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.parameters]
-        else:
-            element_names = [i.name for i in self.parameters]
+        parameters = self.parameters
 
-        if element in element_names:
-            index = element_names.index(element)
-            parameter = self.parameters[index]
+        if by_key is True:
+            match = re.match(r'-(.*?)-', identifier)
+            if not match:
+                raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
+            identifier = match.group(0)  # identifier returned if match
+            element_key = match.group(1)  # element key part of the identifier after removing any binding
+
+            element_type = element_key.split('_')[-1]
+            element_names = []
+            for parameter in parameters:
+                try:
+                    element_name = parameter.key_lookup(element_type)
+                except KeyError:
+                    element_name = None
+
+                element_names.append(element_name)
+        else:
+            element_names = [i.name for i in parameters]
+
+        if identifier in element_names:
+            index = element_names.index(identifier)
+            parameter = parameters[index]
         else:
             raise KeyError('element {ELEM} not found in list of {NAME} data elements'
-                           .format(ELEM=element, NAME=self.name))
+                           .format(ELEM=identifier, NAME=self.name))
 
         return parameter
 
@@ -258,7 +273,7 @@ class AuditRule:
             try:
                 tab = self.fetch_tab(tab_key)
             except KeyError:
-                logger.error('AuditRule {NAME}: unable to find the transaction associated with tab key "{KEY}"'
+                logger.exception('AuditRule {NAME}: unable to find the transaction associated with tab key "{KEY}"'
                              .format(NAME=self.name, KEY=tab_key))
             else:
                 # Run the tab event
@@ -312,12 +327,14 @@ class AuditRule:
         # Run parameter events
         param_keys = [i for param in self.parameters for i in param.bindings]
         if event in param_keys:
+            print('running audit rule event {}'.format(event))
             try:
                 param = self.fetch_parameter(event, by_key=True)
             except KeyError:
-                logger.error('AuditRule {NAME}: unable to find parameter associated with event key {KEY}'
+                logger.exception('AuditRule {NAME}: unable to find parameter associated with event key {KEY}'
                              .format(NAME=self.name, KEY=event))
             else:
+                print('audit rule event {} is from parameter {}'.format(event, param.name))
                 param.run_event(window, event, values)
 
             return current_rule
@@ -351,10 +368,9 @@ class AuditRule:
 
                 if not param.has_value():
                     param_desc = param.description
-                    msg = 'Parameter {} requires correctly formatted input'.format(param_desc)
+                    msg = 'parameter {} requires correctly formatted input'.format(param_desc)
                     mod_win2.popup_notice(msg)
-                    logger.warning('AuditRule {NAME}: failed to start audit - parameter {PARAM} requires correctly '
-                                   'formatted input'.format(NAME=self.name, PARAM=param_desc))
+                    logger.warning('AuditRule {NAME}: failed to start audit - {MSG}'.format(NAME=self.name, MSG=msg))
                     inputs.append(False)
                 else:
                     inputs.append(True)

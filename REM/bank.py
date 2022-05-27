@@ -7,6 +7,7 @@ from random import randint
 
 import pandas as pd
 import PySimpleGUI as sg
+import re
 
 import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
@@ -203,22 +204,37 @@ class BankRule:
 
         return account
 
-    def fetch_parameter(self, element, by_key: bool = False):
+    def fetch_parameter(self, identifier, by_key: bool = False):
         """
         Fetch a GUI parameter element by name or event key.
         """
-        if by_key is True:
-            element_type = element[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in self.parameters]
-        else:
-            element_names = [i.name for i in self.parameters]
+        parameters = self.parameters
 
-        if element in element_names:
-            index = element_names.index(element)
-            parameter = self.parameters[index]
+        if by_key is True:
+            match = re.match(r'-(.*?)-', identifier)
+            if not match:
+                raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
+            identifier = match.group(0)  # identifier returned if match
+            element_key = match.group(1)  # element key part of the identifier after removing any binding
+
+            element_type = element_key.split('_')[-1]
+            element_names = []
+            for parameter in self.parameters:
+                try:
+                    element_name = parameter.key_lookup(element_type)
+                except KeyError:
+                    element_name = None
+
+                element_names.append(element_name)
+        else:
+            element_names = [i.name for i in parameters]
+
+        if identifier in element_names:
+            index = element_names.index(identifier)
+            parameter = parameters[index]
         else:
             raise KeyError('element {ELEM} not found in list of {NAME} data elements'
-                           .format(ELEM=element, NAME=self.name))
+                           .format(ELEM=identifier, NAME=self.name))
 
         return parameter
 

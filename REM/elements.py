@@ -8,6 +8,7 @@ from random import randint
 
 import PySimpleGUI as sg
 import pandas as pd
+import re
 
 import REM.data_collections as mod_col
 import REM.constants as mod_const
@@ -689,8 +690,21 @@ class DataTable(RecordElement):
             parameters = self.actions
 
         if by_key is True:
-            element_type = identifier[1:-1].split('_')[-1]
-            element_names = [i.key_lookup(element_type) for i in parameters]
+            match = re.match(r'-(.*?)-', identifier)
+            if not match:
+                raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
+            identifier = match.group(0)  # identifier returned if match
+            element_key = match.group(1)  # element key part of the identifier after removing any binding
+
+            element_type = element_key.split('_')[-1]
+            element_names = []
+            for parameter in parameters:
+                try:
+                    element_name = parameter.key_lookup(element_type)
+                except KeyError:
+                    element_name = None
+
+                element_names.append(element_name)
         else:
             element_names = [i.name for i in parameters]
 

@@ -1184,7 +1184,8 @@ class SettingsManager:
 
         if isinstance(value, str):
             try:
-                value_fmt = pd.to_datetime(value, format=date_format)
+                #value_fmt = pd.to_datetime(value, format=date_format)
+                value_fmt = pd.to_datetime(value, format=date_format, utc=False)
             except (ValueError, TypeError):
                 msg = 'unable to parse the provided date format'.format(VAL=value, TYPE=type(value))
 
