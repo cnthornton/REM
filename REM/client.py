@@ -325,29 +325,22 @@ class SettingsManager:
 
         # Supported localization parameters
         self._locales = {'en_US': 'English', 'en_UK': 'English', 'th_TH': 'Thai'}
-        #self._locales = {'English': 'en', 'Thai': 'th'}
         self.supported_display_date_formats = ['YYYY-MM-DD', 'YY-MM-DD', 'DD-MM-YYYY', 'DD-MM-YY', 'MM-DD-YY',
                                                'MM-DD-YYYY']
 
         # CONFIGURABLE PARAMETERS
         # User parameters
         try:
-            self.username = cnfg['user']['username']
+            self.username = str(cnfg['user']['username'])
         except KeyError:
-            self.username = 'username'
+            self.username = None
 
         # Localization parameters
-        #try:
-        #    self.language = cnfg['localization']['language']
-        #except KeyError:
-        #    self.language = 'en'
         try:
             cnfg_locale = cnfg['localization']['locale']
         except KeyError:
-            #cnfg_locale = 'English'
             cnfg_locale = 'en_US'
         self.locale = cnfg_locale if cnfg_locale in self._locales else 'en_US'
-        #self.locale = cnfg_locale if cnfg_locale in self._locales else 'English'
         try:
             logger.info('settings locale to {}'.format(self.locale))
             locale.setlocale(locale.LC_ALL, self.locale)

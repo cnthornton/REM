@@ -61,8 +61,8 @@ def login_window():
     login_col = mod_const.LOGIN_BUTTON_COLOR
     cancel_col = mod_const.CANCEL_BUTTON_COLOR
     def_text_col = mod_const.DEFAULT_TEXT_COLOR
+    disabled_text_col = mod_const.DISABLED_TEXT_COLOR
     text_col = mod_const.WHITE_TEXT_COLOR
-    help_col = mod_const.HELP_TEXT_COLOR
     bold_text = mod_const.BOLD_FONT
 
     lock_icon = mod_const.LOCK_ICON
@@ -74,29 +74,43 @@ def login_window():
     main_font = mod_const.MAIN_FONT
     small_font = mod_const.SMALL_FONT
 
-    logo = settings.logo_icon
+    username = settings.username
+    default_user_text = '<user name>'
+    default_pass_text = '<password>'
+
+    if username:
+        user_text_color = def_text_col
+        user_text = username
+    else:
+        user_text_color = disabled_text_col
+        user_text = default_user_text
+
+    password = ''
 
     # GUI layout
+    logo = settings.logo_icon
     if logo:
         img_layout = [sg.Image(filename=logo, background_color=bg_col, pad=(pad_frame, (pad_frame, pad_el)))]
     else:
         img_layout = [sg.Text('', background_color=bg_col, pad=(pad_frame, (pad_frame, pad_el)))]
 
+    user_key = '-USER-'
+    pass_key = '-PASSWORD-'
     column_layout = [img_layout,
                      [sg.Text('', pad=(pad_frame, pad_el), background_color=bg_col)],
                      [sg.Frame('', [[sg.Image(data=username_icon, background_color=input_col, pad=((pad_el, pad_h), 0)),
-                                     sg.Input(default_text=settings.username, key='-USER-', size=(isize - 2, 1),
-                                              pad=((0, 2), 0), text_color=help_col, border_width=0, do_not_clear=True,
-                                              background_color=input_col, enable_events=True,
+                                     sg.Input(default_text=user_text, key=user_key, size=(isize - 2, 1),
+                                              pad=((0, 2), 0), text_color=user_text_color, border_width=0,
+                                              do_not_clear=True, background_color=input_col, enable_events=True,
                                               tooltip='Input account username')]],
                                background_color=input_col, pad=(pad_frame, pad_el), relief='sunken')],
                      [sg.Frame('', [[sg.Image(data=lock_icon, pad=((pad_el, pad_h), 0), background_color=input_col),
-                                     sg.Input(default_text='password', key='-PASSWORD-', size=(isize - 2, 1),
-                                              pad=((0, 2), 0), password_char='*', text_color=help_col,
+                                     sg.Input(default_text=default_pass_text, key=pass_key, size=(isize - 2, 1),
+                                              pad=((0, 2), 0), password_char=None, text_color=disabled_text_col,
                                               background_color=input_col, border_width=0, do_not_clear=True,
                                               enable_events=True, tooltip='Input account password')]],
                                background_color=input_col, pad=(pad_frame, pad_el), relief='sunken')],
-                     [sg.Text('', key='-SUCCESS-', size=(20, 6), pad=(pad_frame, pad_frame), font=small_font,
+                     [sg.Text('', key='-HELP-', size=(20, 6), pad=(pad_frame, pad_frame), font=small_font,
                               justification='center', text_color='Red', background_color=bg_col)],
                      [sg.Button('Sign In', key='-LOGIN-', size=(bsize, 1), pad=(pad_frame, pad_el), font=bold_text,
                                 button_color=(text_col, login_col))],
@@ -112,9 +126,19 @@ def login_window():
     window['-USER-'].update(select=True)
     window.refresh()
 
+    # Bind events to keys
     return_keys = ('Return:36', '\r')
 
-    #    pass_list = []
+    user_in_key = '-USER-+IN+'
+    user_out_key = '-USER-+OUT+'
+    window[user_key].bind('<Button-1>', '+IN+')
+    window[user_key].bind('<FocusOut>', '+OUT+')
+
+    pass_in_key = '-PASSWORD-+IN+'
+    pass_out_key = '-PASSWORD-+OUT+'
+    window[pass_key].bind('<Button-1>', '+IN+')
+    window[pass_key].bind('<FocusOut>', '+OUT+')
+
     # Event window
     while True:
         event, values = window.read()
@@ -122,33 +146,61 @@ def login_window():
         if event in (sg.WIN_CLOSED, '-CANCEL-'):  # selected close-window
             break
 
-        if event == '-USER-':
-            window['-USER-'].update(text_color=def_text_col)
-            window['-SUCCESS-'].update(value='')
+        # Focus moved to password or username field
+        if event == user_in_key:
+            if not username:  # highlight all text
+                window[user_key].update(select=True)
 
-        if event == '-PASSWORD-':
-            window['-PASSWORD-'].update(text_color=def_text_col)
-            window['-SUCCESS-'].update(value='')
+        if event == pass_in_key:
+            if not password:  # highlight all text
+                window[pass_key].update(select=True)
+
+        # Focus moved from password or username field
+        if event == user_out_key:
+            if not username:  # Set default text and color
+                window[user_key].update(text_color=disabled_text_col, value=default_user_text)
+            else:
+                window[user_key].update(text_color=def_text_col)
+
+        if event == pass_out_key:
+            if not password:  # Set default text and color
+                window[pass_key].update(text_color=disabled_text_col, value=default_pass_text, password_char='')
+            else:
+                window[pass_key].update(text_color=def_text_col, password_char='*')
+
+        # Input field event
+        if event == user_key:
+            new_value = values[user_key]
+            if new_value != default_user_text:
+                username = new_value
+                window[user_key].update(text_color=def_text_col)
+
+                window['-HELP-'].update(value='')
+
+        if event == pass_key:
+            new_value = values[pass_key]
+            if new_value != default_pass_text:
+                password = new_value
+                window[pass_key].update(text_color=def_text_col, password_char='*')
+
+                window['-HELP-'].update(value='')
 
         if event in return_keys:
             window['-LOGIN-'].Click()
 
         if event == '-LOGIN-':
-            uname = values['-USER-']
-            pwd = values['-PASSWORD-']
-
             # Verify values for username and password fields
-            if not uname:
+            if not username:
                 msg = 'username is required'
-                window['-SUCCESS-'].update(value=msg)
-            elif not pwd:
+                window['-HELP-'].update(value=msg)
+            elif not password:
                 msg = 'password is required'
-                window['-SUCCESS-'].update(value=msg)
+                window['-HELP-'].update(value=msg)
             else:
                 try:
-                    login_success = user.login(uname, pwd)
+                    login_success = user.login(username, password)
                 except Exception as e:
-                    window['-SUCCESS-'].update(value=e)
+                    window['-HELP-'].update(value=e)
                     logger.error('login failed - {}'.format(e))
                 else:
                     if login_success:
