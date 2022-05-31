@@ -3050,8 +3050,6 @@ class DatabaseRecord:
                      .format(NAME=self.name, NEW=('new ' if is_new else ''), LEVEL=level))
 
         editable = False if view_only is True else True
-        #editable = False if (view_only is True and is_new is False) or (level > 1) else True
-        #user_priv = user.access_permissions()
 
         # Element parameters
         bg_col = mod_const.DEFAULT_BG_COLOR
@@ -3099,7 +3097,9 @@ class DatabaseRecord:
         for tab_name in tabs:
             tab_entry = tabs[tab_name]
 
-            tab_title = '{:^40}'.format(tab_entry['Title'])
+            tab_title = '{:^40}'.format(tab_entry.get('Title', tab_name))
+            tab_icon = tab_entry.get('Icon', None)
+            tab_icon_path = None if tab_icon is None else settings.get_icon_path(tab_icon)
 
             tab_sections = tab_entry['Sections']
             if len(tab_sections) < 1:
@@ -3118,7 +3118,6 @@ class DatabaseRecord:
                     continue
 
                 section_title = section_entry['Title']
-
                 section_bttn_key = self.key_lookup('{}Bttn'.format(section_name))
                 header_left = [
                     sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
@@ -3154,7 +3153,6 @@ class DatabaseRecord:
                 for element_name in section_elements:
                     element = self.fetch_element(element_name)
 
-                    #can_edit = editable and element.permissions in user_priv
                     can_edit = editable
                     element_layout = [
                         element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
@@ -3173,7 +3171,7 @@ class DatabaseRecord:
                                                     pad=(0, pad_v), background_color=bg_col,
                                                     scrollable=True, vertical_scroll_only=True, vertical_alignment='t',
                                                     element_justification='l', expand_x=True, expand_y=True)]],
-                                key=tab_key, background_color=bg_col)
+                                key=tab_key, image_source=tab_icon_path, background_color=bg_col)
             tab_group.append(tab_layout)
 
         main_layout = sg.TabGroup([tab_group], key=self.key_lookup('TG'),
