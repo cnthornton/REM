@@ -22,6 +22,7 @@ PASS_COLOR = '#ACFBAF'  # light-medium green
 APPROVE_COLOR = '#CCE7CD'  # medium-dark green
 WARNING_COLOR = '#FFD740'  # medium orange-yellow
 FAIL_COLOR = NOTE_COLOR = '#F4B3B3'  # light-medium red
+ERROR_COLOR = '#F44336'  # vibrant red
 
 TBL_ALT_COLOR = '#E5F4FD'  # default table alternate row color: light blue
 TBL_BG_COLOR = '#FFFFFF'  # default table background color: white

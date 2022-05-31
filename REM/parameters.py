@@ -151,7 +151,6 @@ class DataParameter:
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
             logger.exception(msg)
-            raise
             key = None
 
         return key
@@ -444,13 +443,13 @@ class DataParameterInput(DataParameter):
             self.default = value_fmt
             self.value = value_fmt
 
-        self._value = None
+        self._value = ''
 
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
-    def _enforce_formatting(self, window, value):
+    def _enforce_formatting(self, value):
         """
         Enforce the correct formatting of user input into the parameter element.
         """
@@ -462,24 +461,31 @@ class DataParameterInput(DataParameter):
         logger.debug('DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
                      .format(PARAM=self.name, VAL=value))
 
-        if value == '' or pd.isna(value):
-            return ''
+        if pd.isna(value):
+            value = ''
 
-        elem_key = self.key_lookup('Element')
+        raw_value = self._value
 
-        if dtype in settings.supported_float_dtypes and dtype == 'money':
-            current_value = list(window[elem_key].metadata['value'])
+        if dtype == 'money':
+            current_value = list(raw_value)
+            current_len = len(current_value)
 
             # Remove currency and grouping separator
             new_value = list(value.replace(group_sep, ''))
+            new_len = len(new_value)
 
-            if len(current_value) > len(new_value):  # user removed a character
-                # Remove the decimal separator if last character is decimal
-                if new_value[-1] == dec_sep:
-                    current_value = new_value[0:-1]
-                else:
+            if current_len > new_len:  # user removed one or more characters
+                try:
+                    last_char = new_value[-1]
+                except IndexError:  # user deleted all input
                     current_value = new_value
-            elif len(current_value) < len(new_value):  # user added new character
+                else:
+                    # Remove the decimal separator if last character is decimal
+                    if last_char == dec_sep:
+                        current_value = new_value[0:-1]
+                    else:
+                        current_value = new_value
+            elif current_len < new_len:  # user added a new character
                 # Find the character and location of the user input
                 new_char = new_value[-1]  # defaults to the last character
                 new_index = len(new_value)  # defaults to the end of the string
@@ -489,6 +495,7 @@ class DataParameterInput(DataParameter):
                         new_char = character
                         new_index = index
                         break
+                print('the character {} was added at index {}'.format(new_char, new_index))
 
                 # Validate added character
                 if new_char.isnumeric():  # can add integers
@@ -516,15 +523,22 @@ class DataParameterInput(DataParameter):
                     current_value.insert(new_index, new_char)
 
             current_value = ''.join(current_value)
-            if current_value[0] in ('-', '+'):  # sign of the number
-                numeric_sign = current_value[0]
-                current_value = current_value[1:]
-            else:
+            try:
+                first_char = current_value[0]
+            except IndexError:
                 numeric_sign = ''
+            else:
+                if first_char in ('-', '+'):  # sign of the number
+                    numeric_sign = first_char
+                    current_value = current_value[1:]
+                else:
+                    numeric_sign = ''
+
             if dec_sep in current_value:
                 integers, decimals = current_value.split(dec_sep)
                 decimals = decimals[0:2]
-                current_value = numeric_sign + integers + dec_sep + decimals[0:2]
+                #current_value = numeric_sign + integers + dec_sep + decimals[0:2]
+                new_value = numeric_sign + integers + dec_sep + decimals[0:2]
                 display_value = '{SIGN}{VAL}{SEP}{DEC}' \
                     .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
                                                             enumerate(integers[::-1])][::-1]).lstrip(','),
@@ -533,34 +547,40 @@ class DataParameterInput(DataParameter):
                 display_value = '{SIGN}{VAL}' \
                     .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
                                                             enumerate(current_value[::-1])][::-1]).lstrip(','))
-                current_value = numeric_sign + current_value
+                #current_value = numeric_sign + current_value
+                new_value = numeric_sign + current_value
 
-            window[elem_key].metadata['value'] = current_value
+            #window[elem_key].metadata['value'] = current_value
 
-        elif dtype in settings.supported_float_dtypes and dtype != 'money':
-            current_value = window[elem_key].metadata['value']
+        elif dtype in settings.supported_float_dtypes:  # all other float types besides money
+            #current_value = window[elem_key].metadata['value']
             try:
                 float(value)
-            except ValueError:
-                display_value = current_value
+            except ValueError:  # attempted to add an unsupported character
+                display_value = raw_value
             else:
                 display_value = value
 
-            window[elem_key].metadata['value'] = display_value
+            #window[elem_key].metadata['value'] = display_value
+            new_value = display_value
 
-        elif dtype in settings.supported_int_dtypes:
-            current_value = window[elem_key].metadata['value']
+        elif dtype in settings.supported_int_dtypes:  # all integer data types
+            #current_value = window[elem_key].metadata['value']
             try:
                 new_value = int(value)
-            except ValueError:
-                display_value = current_value
+            except ValueError:  # attempted to add an unsupported character
+                display_value = raw_value
             else:
                 display_value = str(new_value)
 
-            window[elem_key].metadata['value'] = display_value
+            #window[elem_key].metadata['value'] = display_value
+            new_value = display_value
 
-        else:
+        else:  # string or character data types
             display_value = value
+            new_value = display_value
+
+        self._value = new_value
 
         return display_value
 
@@ -570,6 +590,7 @@ class DataParameterInput(DataParameter):
         """
         default_value = self.default
         self.value = default_value
+        self._value = ''
 
         # Update the parameter window element
         if self.hidden is False:
@@ -681,6 +702,7 @@ class DataParameterInput(DataParameter):
 
         # Layout
         elem_key = self.key_lookup('Element')
+
         display_value = self.format_display()
         layout = [sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), pad=pad_el, enable_events=True,
                            disabled=disabled, font=font, background_color=in_col, text_color=text_col,
@@ -940,7 +962,9 @@ class DataParameterDate(DataParameter):
         pad_el = mod_const.ELEM_PAD * 2
 
         # Parameter settings
-        display_value = self._enforce_formatting(self._value)
+        default_value = self.default
+        default_display = '' if pd.isna(default_value) else self.value.strftime(self._format)
+        display_value = self._enforce_formatting(default_display)
         if display_value == '':
             display_value = self.help_text
             text_col = mod_const.DISABLED_TEXT_COLOR
@@ -1732,7 +1756,7 @@ class DataParameterRange(DataParameterComp):
 
         if param_event == 'Element':
             self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
-                                                     date_format='YYYY-MM-DD', location=window.mouse_location())
+                                                     location=window.mouse_location())
 
             display_value = self.format_display()
             window[event].update(value=display_value)

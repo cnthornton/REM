@@ -149,11 +149,13 @@ def login_window():
         # Focus moved to password or username field
         if event == user_in_key:
             if not username:  # highlight all text
-                window[user_key].update(select=True)
+                #window[user_key].update(select=True)
+                window[user_key].update(value='')
 
         if event == pass_in_key:
             if not password:  # highlight all text
-                window[pass_key].update(select=True)
+                #window[pass_key].update(select=True)
+                window[pass_key].update(value='')
 
         # Focus moved from password or username field
         if event == user_out_key:
@@ -2182,7 +2184,7 @@ def edit_settings(win_size: tuple = None):
     gc.collect()
 
 
-def range_value_window(dtype, current: list = None, title: str = None, date_format: str = None, location: tuple = None):
+def range_value_window(dtype, current: list = None, title: str = None, location: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
@@ -2191,47 +2193,23 @@ def range_value_window(dtype, current: list = None, title: str = None, date_form
     # Element settings
     pad_el = mod_const.ELEM_PAD
     pad_frame = mod_const.FRAME_PAD
-
-    date_ico = mod_const.CALENDAR_ICON
-    font = mod_const.LARGE_FONT
     bold_font = mod_const.BOLD_LARGE_FONT
-
-    in_col = mod_const.ELEMENT_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
 
-    # Keyboard shortcuts
-    hotkeys = settings.hotkeys
-    save_shortcut = hotkeys['-HK_ENTER-'][2]
+    # Component parameters
+    orig_val1, orig_val2 = value_range
+    etype = 'input' if dtype not in settings.supported_date_dtypes else 'date'
+
+    param1_entry = {'Description': '', 'ElementType': etype, 'DataType': dtype, 'DefaultValue': orig_val1}
+    param1 = mod_param.initialize_parameter('First', param1_entry)
+
+    param2_entry = {'Description': '', 'ElementType': etype, 'DataType': dtype, 'DefaultValue': orig_val2}
+    param2 = mod_param.initialize_parameter('Second', param2_entry)
 
     # Layout
-    orig_val1, orig_val2 = value_range
-    if dtype in settings.supported_date_dtypes:
-        elem_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
-                                pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
-                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                       sg.CalendarButton('', target='-R1-', format='%Y-%m-%d', image_data=date_ico, font=font,
-                                         border_width=0, tooltip='Select date from calendar menu'),
-                       sg.Text('  -  ', font=bold_font),
-                       sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
-                                pad=((0, pad_el * 2), 0), font=font, background_color=in_col, disabled=False,
-                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                       sg.CalendarButton('', target='-R2-', format='%Y-%m-%d', image_data=date_ico, font=font,
-                                         border_width=0, tooltip='Select date from calendar menu')
-                       ]
-    else:
-        elem_layout = [sg.Input(orig_val1, key='-R1-', enable_events=True, size=(14, 1),
-                                pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                       sg.Text('  -  ', font=bold_font),
-                       sg.Input(orig_val2, key='-R2-', enable_events=True, size=(14, 1),
-                                pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                                tooltip='Input date as YYYY-MM-DD or use the calendar button to select date'),
-                       ]
-
+    elem_layout = param1.layout() + [sg.Text('  -  ', font=bold_font)] + param2.layout()
     bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0),
-                              tooltip='Save value range ({})'.format(save_shortcut))]]
-
+                              bind_return_key=True, pad=(pad_el, 0))]]
     layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
                       expand_x=True)],
               [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
@@ -2257,6 +2235,9 @@ def range_value_window(dtype, current: list = None, title: str = None, date_form
     # Bind keys to events
     window = settings.set_shortcuts(window)
 
+    for parameter in (param1, param2):
+        parameter.bind_keys(window)
+
     # Start event loop
     while True:
         event, values = window.read()
@@ -2264,12 +2245,20 @@ def range_value_window(dtype, current: list = None, title: str = None, date_form
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
             break
 
+        if event in param1.bindings:
+            param1.run_event(window, event, values)
+
+            continue
+
+        if event in param2.bindings:
+            param2.run_event(window, event, values)
+
+            continue
+
         if event in ('-SAVE-', '-HK_ENTER-'):
-            val1 = values['-R1-']
-            val2 = values['-R2-']
             try:
-                value_range[0] = settings.format_value(val1, dtype, date_format=date_format)
-                value_range[1] = settings.format_value(val2, dtype, date_format=date_format)
+                value_range[0] = param1.format_value(values)
+                value_range[1] = param2.format_value(values)
             except ValueError:
                 msg = 'failed to format values as "{DTYPE}"'.format(DTYPE=dtype)
                 popup_error(msg)
@@ -2287,6 +2276,109 @@ def range_value_window(dtype, current: list = None, title: str = None, date_form
 
 
 def conditional_value_window(dtype, current: list = None, title: str = None, location: tuple = None):
+    """
+    Display window for obtaining values for a ranged parameter.
+    """
+    saved_value = current if current and len(current) == 2 else [None, None]
+    operators = ['>', '<', '>=', '<=', '=']
+
+    # Element settings
+    pad_el = mod_const.ELEM_PAD
+    pad_frame = mod_const.FRAME_PAD
+
+    font = mod_const.LARGE_FONT
+
+    in_col = mod_const.ELEMENT_COLOR
+    bg_col = mod_const.DEFAULT_BG_COLOR
+    text_col = mod_const.DEFAULT_TEXT_COLOR
+
+    # Component parameter
+    current_oper, current_value = saved_value
+    etype = 'input' if dtype not in settings.supported_date_dtypes else 'date'
+
+    param_entry = {'Description': '', 'ElementType': etype, 'DataType': dtype, 'DefaultValue': current_value}
+    param = mod_param.initialize_parameter('Value', param_entry)
+
+    # Layout
+    oper_key = '-OPERATOR-'
+    elem_layout = [sg.Combo(operators, default_value=current_oper, key=oper_key, enable_events=True, size=(4, 1),
+                            pad=((0, pad_el), 0), font=font, background_color=in_col, text_color=text_col,
+                            disabled=False)]
+    elem_layout += param.layout()
+
+    bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                              bind_return_key=True, pad=(pad_el, 0))]]
+
+    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
+              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+
+    window = sg.Window(title, layout, modal=True, resizable=False)
+    window.finalize()
+
+    win_w, win_h = window.size
+    if isinstance(location, tuple) and len(location) == 2:
+        coord_x, coord_y = location
+        try:
+            pos_x = int(coord_x - 0.5 * win_w)
+            pos_y = int(coord_y + 2)
+        except ValueError:
+            pos_xy = None
+        else:
+            pos_xy = (pos_x, pos_y)
+    else:
+        pos_xy = None
+
+    window = align_window(window, location=pos_xy)
+
+    # Bind keys to events
+    window = settings.set_shortcuts(window)
+    param.bind_keys(window)
+
+    # Start event loop
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
+            break
+
+        if event in param.bindings:
+            param.run_event(window, event, values)
+
+            continue
+
+        if event == oper_key:
+            window[oper_key].Widget.configure(foreground=text_col)
+
+            continue
+
+        if event in ('-SAVE-', '-HK_ENTER-'):
+            operator = values[oper_key]
+            if operator not in operators:
+                # Highlight the operator element red to indicate that the value is not supported
+                window[oper_key].Widget.configure(foreground=mod_const.ERROR_COLOR)
+
+                continue
+
+            try:
+                saved_value[0] = operator
+                saved_value[1] = param.format_value(values)
+            except ValueError:
+                msg = 'failed to format values as "{DTYPE}"'.format(DTYPE=dtype)
+                popup_error(msg)
+
+                continue
+
+            break
+
+    window.close()
+    layout = None
+    window = None
+    gc.collect()
+
+    return saved_value
+
+
+def conditional_value_window_old(dtype, current: list = None, title: str = None, location: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
