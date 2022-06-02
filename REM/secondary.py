@@ -131,12 +131,12 @@ def login_window():
 
     user_in_key = '-USER-+IN+'
     user_out_key = '-USER-+OUT+'
-    window[user_key].bind('<Button-1>', '+IN+')
+    window[user_key].bind('<FocusIn>', '+IN+')
     window[user_key].bind('<FocusOut>', '+OUT+')
 
     pass_in_key = '-PASSWORD-+IN+'
     pass_out_key = '-PASSWORD-+OUT+'
-    window[pass_key].bind('<Button-1>', '+IN+')
+    window[pass_key].bind('<FocusIn>', '+IN+')
     window[pass_key].bind('<FocusOut>', '+OUT+')
 
     # Event window
@@ -2362,96 +2362,6 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
             try:
                 saved_value[0] = operator
                 saved_value[1] = param.format_value(values)
-            except ValueError:
-                msg = 'failed to format values as "{DTYPE}"'.format(DTYPE=dtype)
-                popup_error(msg)
-
-                continue
-
-            break
-
-    window.close()
-    layout = None
-    window = None
-    gc.collect()
-
-    return saved_value
-
-
-def conditional_value_window_old(dtype, current: list = None, title: str = None, location: tuple = None):
-    """
-    Display window for obtaining values for a ranged parameter.
-    """
-    saved_value = current if current and len(current) == 2 else [None, None]
-    operators = ['>', '<', '>=', '<=', '=']
-
-    # Element settings
-    pad_el = mod_const.ELEM_PAD
-    pad_frame = mod_const.FRAME_PAD
-
-    font = mod_const.LARGE_FONT
-
-    in_col = mod_const.ELEMENT_COLOR
-    bg_col = mod_const.DEFAULT_BG_COLOR
-
-    # Keyboard shortcuts
-    hotkeys = settings.hotkeys
-    save_shortcut = hotkeys['-HK_ENTER-'][2]
-
-    # Layout
-    current_oper, current_value = saved_value
-    elem_layout = [sg.Combo(operators, default_value=current_oper, key='-OPER-', enable_events=True, size=(4, 1),
-                            pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                            tooltip='Select valid operator'),
-                   sg.Input(current_value, key='-VAL-', enable_events=True, size=(14, 1),
-                            pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                            tooltip='Input value'),
-                   ]
-
-    bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0),
-                              tooltip='Save value range ({})'.format(save_shortcut))]]
-
-    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
-              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
-
-    window = sg.Window(title, layout, modal=True, resizable=False)
-    window.finalize()
-
-    win_w, win_h = window.size
-    if isinstance(location, tuple) and len(location) == 2:
-        coord_x, coord_y = location
-        try:
-            pos_x = int(coord_x - 0.5 * win_w)
-            pos_y = int(coord_y + 2)
-        except ValueError:
-            pos_xy = None
-        else:
-            pos_xy = (pos_x, pos_y)
-    else:
-        pos_xy = None
-
-    window = align_window(window, location=pos_xy)
-
-    # Bind keys to events
-    window = settings.set_shortcuts(window)
-
-    # Start event loop
-    while True:
-        event, values = window.read()
-
-        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
-            break
-
-        if event in ('-SAVE-', '-HK_ENTER-'):
-            operator = values['-OPER-']
-            if operator not in operators:
-                continue
-
-            value = values['-VAL-']
-            try:
-                saved_value[0] = operator
-                saved_value[1] = settings.format_value(value, dtype)
             except ValueError:
                 msg = 'failed to format values as "{DTYPE}"'.format(DTYPE=dtype)
                 popup_error(msg)

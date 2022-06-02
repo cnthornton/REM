@@ -133,6 +133,7 @@ class DataParameter:
             self.bg_col = mod_const.DEFAULT_BG_COLOR
 
         self.auto_size = False
+        self.disabled = self.editable
 
     def key_lookup(self, component, rev: bool = False):
         """
@@ -180,7 +181,7 @@ class DataParameter:
         relief = 'flat' if not border else None
 
         # Parameter settings
-        desc = '{}:'.format(self.description)
+        desc = '{}:'.format(self.description) if self.description else ''
 
         # Parameter size
         if size:  # set to fixed size (characters)
@@ -377,10 +378,13 @@ class DataParameter:
         elements = self.elements
         bindings = self.bindings
 
-        for element in elements:
-            element_key = elements[element]
-            if element_key in bindings:
-                window[element_key].update(disabled=off)
+        if self.editable:
+            self.disabled = off
+
+            for element in elements:
+                element_key = elements[element]
+                if element_key in bindings:
+                    window[element_key].update(disabled=off)
 
 
 # Single value data parameters
@@ -435,15 +439,18 @@ class DataParameterInput(DataParameter):
 
         # Dynamic attributes
         try:
-            value_fmt = format_value(entry['DefaultValue'], self.dtype)
+            default_value = entry['DefaultValue']
         except (KeyError, ValueError):
+            self._default = ''
             self.default = None
             self.value = None
         else:
+            self._default = str(default_value)  # raw default value
+            value_fmt = format_value(default_value, self.dtype)
             self.default = value_fmt
             self.value = value_fmt
 
-        self._value = ''
+        self._value = ''  # raw value
 
         logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
@@ -495,7 +502,6 @@ class DataParameterInput(DataParameter):
                         new_char = character
                         new_index = index
                         break
-                print('the character {} was added at index {}'.format(new_char, new_index))
 
                 # Validate added character
                 if new_char.isnumeric():  # can add integers
@@ -537,7 +543,6 @@ class DataParameterInput(DataParameter):
             if dec_sep in current_value:
                 integers, decimals = current_value.split(dec_sep)
                 decimals = decimals[0:2]
-                #current_value = numeric_sign + integers + dec_sep + decimals[0:2]
                 new_value = numeric_sign + integers + dec_sep + decimals[0:2]
                 display_value = '{SIGN}{VAL}{SEP}{DEC}' \
                     .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
@@ -547,13 +552,9 @@ class DataParameterInput(DataParameter):
                 display_value = '{SIGN}{VAL}' \
                     .format(SIGN=numeric_sign, VAL=''.join([group_sep * (n % 3 == 2) + i for n, i in
                                                             enumerate(current_value[::-1])][::-1]).lstrip(','))
-                #current_value = numeric_sign + current_value
                 new_value = numeric_sign + current_value
 
-            #window[elem_key].metadata['value'] = current_value
-
         elif dtype in settings.supported_float_dtypes:  # all other float types besides money
-            #current_value = window[elem_key].metadata['value']
             try:
                 float(value)
             except ValueError:  # attempted to add an unsupported character
@@ -561,11 +562,9 @@ class DataParameterInput(DataParameter):
             else:
                 display_value = value
 
-            #window[elem_key].metadata['value'] = display_value
             new_value = display_value
 
         elif dtype in settings.supported_int_dtypes:  # all integer data types
-            #current_value = window[elem_key].metadata['value']
             try:
                 new_value = int(value)
             except ValueError:  # attempted to add an unsupported character
@@ -573,7 +572,6 @@ class DataParameterInput(DataParameter):
             else:
                 display_value = str(new_value)
 
-            #window[elem_key].metadata['value'] = display_value
             new_value = display_value
 
         else:  # string or character data types
@@ -590,7 +588,7 @@ class DataParameterInput(DataParameter):
         """
         default_value = self.default
         self.value = default_value
-        self._value = ''
+        self._enforce_formatting(self._default)
 
         # Update the parameter window element
         if self.hidden is False:
@@ -687,6 +685,7 @@ class DataParameterInput(DataParameter):
         font = mod_const.LARGE_FONT
         bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
         in_col = mod_const.ELEMENT_COLOR if not disabled else bg_col
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
         text_col = mod_const.DEFAULT_TEXT_COLOR
         pad_el = mod_const.ELEM_PAD
 
@@ -703,11 +702,11 @@ class DataParameterInput(DataParameter):
         # Layout
         elem_key = self.key_lookup('Element')
 
-        display_value = self.format_display()
+        display_value = self._enforce_formatting(self._default)
         layout = [sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), pad=pad_el, enable_events=True,
                            disabled=disabled, font=font, background_color=in_col, text_color=text_col,
-                           tooltip='Input value for {}'.format(self.description),
-                           metadata={'value': display_value, 'disabled': disabled})]
+                           disabled_readonly_text_color=disabled_text_col, disabled_readonly_background_color=in_col,
+                           tooltip='Input value for {}'.format(self.description))]
 
         return layout
 
@@ -798,8 +797,9 @@ class DataParameterDate(DataParameter):
         self.bindings[calendar_key] = 'Calendar'
 
         elem_key = self.key_lookup('Element')
-        click_key = '{}+LCLICK+'.format(elem_key)
-        self.bindings[click_key] = 'Click'
+        for special_event in ('In', 'Out'):
+            event_key = '{ELEM}+{KEY}+'.format(ELEM=elem_key, KEY=special_event.upper())
+            self.bindings[event_key] = special_event
 
         # Enforce supported data types for the parameter
         supported_dtypes = settings.supported_date_dtypes
@@ -907,7 +907,8 @@ class DataParameterDate(DataParameter):
         """
         elem_key = self.key_lookup('Element')
         if self.editable and not self.hidden:
-            window[elem_key].bind('<Button-1>', '+LCLICK+')
+            window[elem_key].bind('<FocusIn>', '+IN+')
+            window[elem_key].bind('<FocusOut>', '+OUT+')
 
     def run_event(self, window, event, values):
         """
@@ -918,23 +919,17 @@ class DataParameterDate(DataParameter):
         except KeyError:
             param_event = None
 
-        print('running parameter binding {} with event {}'.format(event, param_event))
-        if param_event == 'Click':
-            print('parameter was clicked')
-            print('parameter has raw value: {}'.format(self._value))
+        elem_key = self.key_lookup('Element')
+        if param_event == 'In' and not self.disabled:
             if self._value == '':
-                window[self.key_lookup('Element')].update(select=True)
+                window[elem_key].update(value='')
+        elif param_event == 'Out' and not self.disabled:
+            if self._value == '':
+                window[elem_key].update(value=self.help_text, text_color=mod_const.DISABLED_TEXT_COLOR)
         elif param_event == 'Element':
-            elem_key = self.key_lookup('Element')
-            print('running parameter event')
             input_value = values[elem_key]
             display_value = self._enforce_formatting(input_value)
-            if display_value == '':
-                display_value = self.help_text
-                text_color = mod_const.DISABLED_TEXT_COLOR
-            else:
-                text_color = mod_const.DEFAULT_TEXT_COLOR
-            window[elem_key].update(value=display_value, text_color=text_color)
+            window[elem_key].update(value=display_value, text_color=mod_const.DEFAULT_TEXT_COLOR)
 
     def reset(self, window):
         """
@@ -959,6 +954,7 @@ class DataParameterDate(DataParameter):
         font = mod_const.LARGE_FONT
         bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
         in_col = mod_const.ELEMENT_COLOR if not disabled else bg_col
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
         pad_el = mod_const.ELEM_PAD * 2
 
         # Parameter settings
@@ -993,8 +989,10 @@ class DataParameterDate(DataParameter):
                                                    disabled=disabled,
                                                    tooltip='Select date from calendar menu'),
                                  sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), border_width=0,
-                                          background_color=in_col, text_color=text_col, enable_events=True,
-                                          disabled=disabled)]],
+                                          background_color=in_col, text_color=text_col,
+                                          disabled_readonly_text_color=disabled_text_col,
+                                          disabled_readonly_background_color=in_col,
+                                          enable_events=True, disabled=disabled, use_readonly_for_disable=True)]],
                            background_color=in_col, border_width=1, expand_x=True)]
 
         return layout
@@ -1025,7 +1023,6 @@ class DataParameterDate(DataParameter):
 
         try:
             value_fmt = pd.to_datetime(input_value, format=self._format, utc=False).to_pydatetime()
-            #value_fmt = settings.format_as_datetime(input_value, date_format='YYYY/MM/DD')
         except ValueError:
             logger.warning('DataParameter {NAME}: failed to format input value {VAL} as a datetime object'
                            .format(NAME=self.name, VAL=input_value))
@@ -1069,7 +1066,6 @@ class DataParameterDate(DataParameter):
         Generate the filter clause for SQL querying.
         """
         if self.has_value():
-            # query_value = self.value.strftime(settings.date_format)
             query_value = self.value
             statement = ('{COL} = ?'.format(COL=column), (query_value,))
         else:
@@ -2040,13 +2036,10 @@ class DataParameterCondition(DataParameterComp):
         """
         Format the parameter's value for displaying.
         """
-        operator, value = self.value
-
         if not self.has_value():  # no parameter value + operator combo set
             return ''
 
-        logger.debug('DataParameter {NAME}: editable {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
+        operator, value = self.value
 
         logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
                      .format(NAME=self.name, VAL=value))
@@ -2058,15 +2051,11 @@ class DataParameterCondition(DataParameterComp):
         """
         Generate the filter clause for SQL querying.
         """
-        try:
+        if self.has_value():
             operator, value = self.value
-        except ValueError:
-            statement = None
+            statement = ('{COL} {OPER} ?'.format(COL=column, OPER=operator), (value,))
         else:
-            if self.has_value():
-                statement = ('{COL} {OPER} ?'.format(COL=column, OPER=operator), (value,))
-            else:
-                statement = None
+            statement = None
 
         return statement
 
