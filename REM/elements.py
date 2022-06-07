@@ -2480,7 +2480,7 @@ class RecordTable(DataTable):
             search_dtype = columns[search_col]
             search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
                             'DataType': search_dtype, 'DefaultValue': search_val}
-            search_params = [mod_param.DataParameterInput(search_col, search_entry)]
+            search_params = [mod_param.InputFieldText(search_col, search_entry)]
         else:
             search_params = None
 
@@ -2628,7 +2628,7 @@ class ComponentTable(RecordTable):
             search_dtype = columns[search_col]
             search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
                             'DataType': search_dtype, 'DefaultValue': search_val}
-            search_params = [mod_param.DataParameterInput(search_col, search_entry)]
+            search_params = [mod_param.InputFieldText(search_col, search_entry)]
         else:
             search_params = None
 
@@ -4269,16 +4269,15 @@ class DataVariable(DataUnit):
 
         record_elements = ('Edit', 'Save', 'Cancel', 'Update', 'Auxiliary')
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
+        self.bindings = {self.elements[i]: i for i in ('Element', 'Edit', 'Save', 'Cancel')}
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-        lclick_event = '{}+LCLICK+'.format(elem_key)
-        return_key = '{}+RETURN+'.format(elem_key)
-        escape_key = '{}+ESCAPE+'.format(elem_key)
-        event_elements = ('Element', 'Edit', 'Save', 'Cancel')
 
-        self.bindings = {self.elements[i]: i for i in event_elements}
-        self.bindings.update({lclick_event: 'Edit', return_key: 'Save', escape_key: 'Cancel'})
+        special_bindings = {'LCLICK': 'Edit', 'IN': 'Edit', 'RETURN': 'Save', 'Out': 'Save', 'ESCAPE': 'Cancel'}
+        for special_event in special_bindings:
+            event_key = '{ELEM}+{EVENT}+'.format(ELEM=elem_key, EVENT=special_event)
+            self.bindings[event_key] = special_bindings[special_event]
 
         # Dynamic variables
         self.edit_mode = False
@@ -4317,7 +4316,9 @@ class DataVariable(DataUnit):
             elem_key = self.key_lookup('Element')
 
             window[elem_key].bind('<Button-1>', '+LCLICK+')
+            window[elem_key].bind('<FocusIn>', '+IN+')
             window[elem_key].bind('<Return>', '+RETURN+')
+            window[elem_key].bind('<FocusOut>', '+OUT+')
             window[elem_key].bind('<Key-Escape>', '+ESCAPE+')
 
     def format_value(self, values):
