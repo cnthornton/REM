@@ -4267,13 +4267,15 @@ class DataVariable(DataUnit):
         super().__init__(name, entry, parent)
         self.etype = 'text'
 
-        record_elements = ('Edit', 'Save', 'Cancel', 'Update', 'Auxiliary')
+        #record_elements = ('Edit', 'Save', 'Cancel', 'Update', 'Auxiliary')
+        #self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
+        #self.bindings = {self.elements[i]: i for i in ('Element', 'Edit', 'Save', 'Cancel')}
+        record_elements = ('Auxiliary',)
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
-        self.bindings = {self.elements[i]: i for i in ('Element', 'Edit', 'Save', 'Cancel')}
+        self.bindings = {self.elements[i]: i for i in ('Element',)}
 
         # Element-specific bindings
         elem_key = self.key_lookup('Element')
-
         special_bindings = {'LCLICK': 'Edit', 'IN': 'Edit', 'RETURN': 'Save', 'Out': 'Save', 'ESCAPE': 'Cancel'}
         for special_event in special_bindings:
             event_key = '{ELEM}+{EVENT}+'.format(ELEM=elem_key, EVENT=special_event)
@@ -4348,6 +4350,25 @@ class DataVariable(DataUnit):
         Reset record element to default.
         """
         elem_key = self.key_lookup('Element')
+        aux_key = self.key_lookup('Auxiliary')
+
+        # Reset element value to its default
+        self.value.reset()
+
+        # Reset element editing
+        self.edited = False
+        self.edit_mode = False
+        window[aux_key].update(visible=False)
+        window[elem_key].update(disabled=True)
+
+        # Update the element display
+        self.update_display(window)
+
+    def reset_old(self, window):
+        """
+        Reset record element to default.
+        """
+        elem_key = self.key_lookup('Element')
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
         aux_key = self.key_lookup('Auxiliary')
@@ -4374,11 +4395,96 @@ class DataVariable(DataUnit):
         disabled_text_col = mod_const.DISABLED_TEXT_COLOR
 
         elem_key = self.key_lookup('Element')
+        aux_key = self.key_lookup('Auxiliary')
+
+        editing = self.edit_mode
+        update_event = False
+        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
+
+        try:
+            element_event = self.bindings[event]
+        except KeyError:  # possible manual event passed
+            element_event = event
+
+        logger.debug(self.format_log('running event {EVENT}'.format(EVENT=element_event)))
+
+        # Set focus to the element and enable edit mode
+        if element_event == 'Edit' and not editing:
+            window[elem_key].set_focus()
+
+            if self.disabled:
+                return triggers
+
+            # Update element to show any current unformatted data
+            value_fmt = self.format_display(editing=True)
+
+            # Enable element editing and update colors
+            window[elem_key].update(disabled=False, value=value_fmt)
+            window[aux_key].update(visible=True)
+
+            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
+                window[elem_key].update(text_color=text_col)
+
+            self.edit_mode = True
+
+        # Set element to inactive mode and update the element value
+        elif element_event == 'Save' and editing:
+            # Update value of the data element
+            try:
+                value = values[elem_key]
+            except KeyError:
+                logger.warning(self.format_log('unable to locate values for element key "{KEY}"'
+                                               .format(NAME=self.name, KEY=elem_key)))
+            else:
+                try:
+                    edited = self.update_value(value)
+                except Exception as e:
+                    msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
+                    logger.exception(self.format_log(msg, err=e))
+                    mod_win2.popup_error(msg)
+
+                else:
+                    if edited:
+                        self.edited = True
+                        update_event = True
+
+                self.update_display(window)
+
+            # Disable element editing and update colors
+            window[elem_key].update(disabled=True)
+            window[aux_key].update(visible=False)
+            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
+                window[elem_key].update(text_color=disabled_text_col)
+
+            self.edit_mode = False
+
+        elif element_event == 'Cancel' and editing:
+            # Disable element editing and update colors
+            window[elem_key].update(disabled=True)
+            window[aux_key].update(visible=False)
+            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
+                window[elem_key].update(text_color=disabled_text_col)
+
+            self.edit_mode = False
+            self.update_display(window)
+
+        triggers['ValueEvent'] = update_event
+
+        return triggers
+
+    def run_event_old(self, window, event, values):
+        """
+        Run a record element event.
+        """
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
+
+        elem_key = self.key_lookup('Element')
         edit_key = self.key_lookup('Edit')
         update_key = self.key_lookup('Update')
         aux_key = self.key_lookup('Auxiliary')
 
-        currently_editing = self.edit_mode
+        editing = self.edit_mode
         update_event = False
         triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
 
@@ -4393,7 +4499,7 @@ class DataVariable(DataUnit):
             logger.debug(self.format_log('running variable event {EVENT}'.format(EVENT=element_event)))
 
         # Set focus to the element and enable edit mode
-        if element_event == 'Edit' and not currently_editing:
+        if element_event == 'Edit' and not editing:
             window[elem_key].set_focus()
 
             if self.disabled:
@@ -4414,7 +4520,7 @@ class DataVariable(DataUnit):
             self.edit_mode = True
 
         # Set element to inactive mode and update the element value
-        elif element_event == 'Save' and currently_editing:
+        elif element_event == 'Save' and editing:
             # Update value of the data element
             try:
                 value = values[elem_key]
@@ -4446,7 +4552,7 @@ class DataVariable(DataUnit):
 
             self.edit_mode = False
 
-        elif element_event == 'Cancel' and currently_editing:
+        elif element_event == 'Cancel' and editing:
             # Disable element editing and update colors
             window[edit_key].update(disabled=False)
             window[elem_key].update(disabled=True)
@@ -4463,6 +4569,97 @@ class DataVariable(DataUnit):
         return triggers
 
     def layout(self, padding: tuple = None, size: tuple = None, tooltip: str = None, editable: bool = True,
+               overwrite: bool = False, level: int = 0, bg_color: str = None):
+        """
+        GUI layout for the record element.
+        """
+        modifiers = self.modifiers
+
+        if not self.disabled:  # some variables are intrinsically un-editable (i.e. dependent variables, text, etc.)
+            is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
+            self.disabled = is_disabled
+
+        is_required = modifiers['require']
+        hidden = modifiers['hide']
+
+        size = self._dimensions if not size else size
+        width, height = size
+        self._dimensions = (width * 10, mod_const.VARIABLE_HEIGHT_PX)
+
+        background = self.bg_col if bg_color is None else bg_color
+        tooltip = tooltip if tooltip else self.tooltip
+
+        # Layout options
+        pad_el = mod_const.ELEM_PAD
+        pad = padding if padding and isinstance(padding, tuple) else self.padding
+        self.padding = pad
+
+        bold_font = mod_const.BOLD_HEADING_FONT
+
+        bg_col = mod_const.DEFAULT_BG_COLOR if background is None else background
+        self.bg_col = background
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+
+        # Element Icon, if provided
+        icon = self.icon
+        icon_w = 24 + pad_el  # image size (24 pixels) plus padding
+        if icon is not None:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+            else:
+                icon_layout = []
+        else:
+            icon_layout = []
+
+        # Required symbol
+        req_w = 11 + pad_el  # size of asterisk plus padding
+        if is_required is True:
+            required_layout = [sg.Text('*', pad=((0, pad_el), 0), font=bold_font, background_color=bg_col,
+                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
+        else:
+            required_layout = []
+
+        # Element description
+        desc_key = self.key_lookup('Description')
+
+        annotation = self.annotate_display()
+        if annotation:
+            rule = self.annotation_rules[annotation]
+            desc_bg_col = rule['BackgroundColor']
+            tooltip = rule['Description']
+        else:
+            desc_bg_col = bg_col
+
+        desc = self.description if self.arrangement == 'v' else '{}:'.format(self.description)
+        desc_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), background_color=desc_bg_col,
+                               font=bold_font, auto_size_text=True, tooltip=tooltip)]
+
+        # Element value layout
+        element_layout = self._value_layout(size=(width, 1))
+
+        # Element layout
+        width_key = self.key_lookup('Width')
+        row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)]
+        if self.arrangement == 'v':
+            offset = 2  # width of the value frame
+            row2 = icon_layout + desc_layout + required_layout
+            row3 = element_layout
+            components = [row1, row2, row3]
+        else:
+            offset = icon_w + req_w + 2  # icon, and asterisks width plus width of the value frame
+            row2 = icon_layout + desc_layout + element_layout + required_layout
+            components = [row1, row2]
+
+        frame_key = self.key_lookup('Frame')
+        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden),
+                        element_justification=self.justification)
+
+        self._offset += offset
+
+        return layout
+
+    def layout_old(self, padding: tuple = None, size: tuple = None, tooltip: str = None, editable: bool = True,
                overwrite: bool = False, level: int = 0, bg_color: str = None):
         """
         GUI layout for the record element.
@@ -4959,13 +5156,10 @@ class DependentVariable(DataVariable):
 
         try:
             element_event = self.bindings[event]
-        except KeyError:
-            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
-            logger.warning(self.format_log(msg))
+        except KeyError:  # possible manual event passed
+            element_event = event
 
-            return triggers
-        else:
-            logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
+        logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
 
         if element_event == 'Element':
             edited = self.format_value(values)
@@ -4974,219 +5168,6 @@ class DependentVariable(DataVariable):
                 self.update_display(window)
 
         return triggers
-
-    def format_value(self, values):
-        """
-        Set the value of the element reference from user input.
-
-        Arguments:
-            values (dict): single value or dictionary of element values.
-        """
-        # Update element display value
-        logger.debug(self.format_log('setting the value of the dependent variable'))
-        if isinstance(values, dict):  # dictionary of referenced element values
-            try:
-                input_value = mod_dm.evaluate_operation(values, self.operation)
-            except Exception as e:
-                msg = self.format_log('failed to set the value of the dependent variable', err=e)
-                logger.error(msg)
-                input_value = None
-
-        else:  # single value provided
-            input_value = values
-
-        if input_value == '' or pd.isna(input_value):
-            return None
-
-        edited = self.update_value(input_value)
-
-        return edited
-
-
-class DependentVariableOld(DataUnit):
-    """
-    Record element that is dependent on the values of other record elements.
-
-    Attributes:
-
-        name (str): data element configuration name.
-
-        elements (list): list of data element GUI keys.
-
-        operation (str): reference operation.
-    """
-
-    def __init__(self, name, entry, parent=None):
-        """
-        Class attributes.
-
-        Arguments:
-            name (str): name of the configured element.
-
-            entry (dict): configuration entry for the data storage element.
-
-            parent (str): name of the parent element.
-        """
-        super().__init__(name, entry, parent)
-
-        self.etype = 'dependent'
-        record_elements = ('Description', 'Frame', 'Width')
-        self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
-
-        # Element-specific bindings
-        self.bindings = {self.elements['Element']: 'Element'}
-
-        # Data type check
-        supported_dtypes = settings.supported_int_dtypes + settings.supported_float_dtypes + \
-                           settings.supported_bool_dtypes
-        if entry['DataType'] not in supported_dtypes:
-            msg = self.format_log('unsupported data type provided for the "{ETYPE}" parameter. Supported data types '
-                                  'are {DTYPES}'.format(ETYPE=self.etype, DTYPES=', '.join(supported_dtypes)))
-            logger.error(msg)
-
-            raise AttributeError(msg)
-
-        # Reference parameter information
-        try:
-            self.operation = entry['Operation']
-        except KeyError:
-            msg = self.format_log('reference element is missing required parameter "Operation".'.format(NAME=name))
-            logger.error(msg)
-
-            raise AttributeError(msg)
-
-    def reset(self, window):
-        """
-        Reset record element to default.
-        """
-        # Reset to default
-        self.value.reset()
-        self.edited = False
-
-        # Update the element display
-        self.update_display(window)
-
-    def bind_keys(self, window):
-        """
-        Add hotkey bindings to the element.
-        """
-        # elem_key = self.key_lookup('Element')
-        # window[elem_key].bind('<Button-1>', '+LCLICK+')
-        pass
-
-    def run_event(self, window, event, values):
-        """
-        Run a record element event.
-        """
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
-
-        try:
-            element_event = self.bindings[event]
-        except KeyError:
-            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
-            logger.warning(self.format_log(msg))
-
-            return triggers
-        else:
-            logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
-
-        if element_event == 'Element':
-            edited = self.format_value(values)
-            if edited:
-                self.edited = True
-                self.update_display(window)
-
-        return triggers
-
-    def layout(self, padding: tuple = None, size: tuple = None, tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0, bg_color: str = None):
-        """
-        GUI layout for the record element.
-        """
-        modifiers = self.modifiers
-
-        is_disabled = False if overwrite is True or (editable is True and level < 1) else True
-        self.disabled = is_disabled
-        is_required = modifiers['require']
-        hidden = modifiers['hide']
-
-        size = self._dimensions if not size else size
-        width, height = size
-        self._dimensions = size
-
-        tooltip = tooltip if tooltip else self.tooltip
-
-        # Layout options
-        pad_el = mod_const.ELEM_PAD
-        pad_h = mod_const.HORZ_PAD
-        pad = padding if padding and isinstance(padding, tuple) else self.padding
-        self.padding = pad
-
-        font = mod_const.LARGE_FONT
-        bold_font = mod_const.BOLD_HEADING_FONT
-
-        bg_col = self.bg_col if bg_color is None else bg_color
-        self.bg_col = bg_col
-        text_col = mod_const.DISABLED_TEXT_COLOR
-
-        # Element Icon, if provided
-        icon = self.icon
-        if icon is not None:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-        else:
-            icon_layout = []
-
-        # Required symbol
-        if is_required is True:
-            required_layout = [sg.Text('*', pad=(pad_el, 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
-        else:
-            required_layout = []
-
-        # Element description and actions
-        desc_key = self.key_lookup('Description')
-        display_value = self.format_display()
-        annotation = self.annotate_display()
-        if annotation:
-            rule = self.annotation_rules[annotation]
-            desc_bg_col = rule['BackgroundColor']
-            tooltip = rule['Description']
-        else:
-            desc_bg_col = bg_col
-
-        desc = self.description if self.arrangement == 'v' else '{}:'.format(self.description)
-        description_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_h), 0), background_color=desc_bg_col,
-                                      font=bold_font, auto_size_text=True, tooltip=tooltip)]
-
-        # Element layout
-        content_width_key = self.key_lookup('ContentWidth')
-        elem_key = self.key_lookup('Element')
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1), 'BW': 1,
-                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': is_disabled, 'Tooltip': tooltip}
-        element_layout = [sg.Col([[sg.Canvas(key=content_width_key, size=(1, 0), background_color=bg_col)],
-                                  mod_lo.generate_layout('text', layout_attrs)],
-                                 background_color=bg_col)]
-
-        # Layout
-        width_key = self.key_lookup('Width')
-        row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color='blue')]
-        if self.arrangement == 'v':
-            row2 = icon_layout + description_layout + required_layout
-            row3 = element_layout
-            components = [row1, row2, row3]
-        else:
-            row2 = required_layout + icon_layout + description_layout + element_layout
-            components = [row1, row2]
-
-        frame_key = self.key_lookup('Frame')
-        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden),
-                        element_justification=self.justification)
-
-        return layout
 
     def format_value(self, values):
         """

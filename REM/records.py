@@ -2186,7 +2186,8 @@ class DatabaseRecord:
                              'changes'.format(NAME=self.name, ID=self.record_id(), PARAM=record_element.name))
 
                 # Attempt to save the data element value
-                record_element.run_event(window, record_element.key_lookup('Save'), values)
+                #record_element.run_event(window, record_element.key_lookup('Save'), values)
+                record_element.run_event(window, 'Save', values)
             else:  # edited element is still in focus
                 break
 
@@ -2251,7 +2252,8 @@ class DatabaseRecord:
                 pass
             else:
                 for record_element in element_references:
-                    record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
+                    #record_element.run_event(window, record_element.key_lookup('Element'), record_values.to_dict())
+                    record_element.run_event(window, 'Element', record_values.to_dict())
 
         return True
 
