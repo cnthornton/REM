@@ -6,7 +6,7 @@ REM constants and other program settings.
 # Element Color Constants
 DEFAULT_BG_COLOR = WHITE_TEXT_COLOR = '#FFFFFF'  # white
 FRAME_COLOR = '#F5F5F5'  # light grey
-DISABLED_BG_COLOR = '#DEDEDE'  # very light grey
+DISABLED_BG_COLOR = '#EDEDED'  # very light grey
 DISABLED_TEXT_COLOR = '#A6A6A6'  # medium-dark grey
 BUTTON_COLOR = '#64B5F6'  # vibrant blue
 DISABLED_BUTTON_COLOR = '#C9DDEE'  # grey-blue
@@ -14,7 +14,8 @@ LOGIN_BUTTON_COLOR = '#94FA92'  # green
 CANCEL_BUTTON_COLOR = '#FF6C5C'  # red
 DEFAULT_TEXT_COLOR = '#000000'  # black
 SELECTED_BG_COLOR = SELECTED_TEXT_COLOR = '#2A9DF4'  # blue
-HELP_TEXT_COLOR = '#616161'  # grey
+LABEL_COLOR = '#616161'  # mid-dark grey
+FIELD_COLOR = '#A3A3A3'  # medium grey
 HIGHLIGHT_COLOR = '#E5E5E5'  # light grey-white / off-white
 HEADER_COLOR = ELEMENT_COLOR = '#F8FAFC'  # light blue-grey
 BUTTON_TEXT_COLOR = BORDER_COLOR = '#767676'  # dark grey
@@ -71,6 +72,10 @@ TITLE_WIDTH = 300
 TITLE_HEIGHT = 60
 SCROLL_WIDTH = 18
 BTTN_HEIGHT = 70
+
+# Input fields
+IF_SIZE_PX = (300, 25)  # standard input field with label at the left
+IFT2_HEIGHT_PX = (260, 35)  # type 2 input field with label at the top
 
 # Data Table Elements
 TBL_WIDTH = 120  # default table width in characters

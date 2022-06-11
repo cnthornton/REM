@@ -3951,7 +3951,7 @@ class DataUnit(RecordElement):
             parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
-        record_elements = ('Frame', 'Description', 'Width', 'ContentWidth')
+        record_elements = ('Frame', 'Description', 'Width', 'ContainerWidth', 'Container', 'Border')
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Parameters that modify the record element's behavior
@@ -4030,7 +4030,7 @@ class DataUnit(RecordElement):
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
         width_key = self.key_lookup('Width')
-        content_width_key = self.key_lookup('ContentWidth')
+        container_width_key = self.key_lookup('ContainerWidth')
         pad_w, pad_h = self.pad_offset()
 
         current_w, current_h = self.dimensions()
@@ -4062,7 +4062,7 @@ class DataUnit(RecordElement):
         window[elem_key].set_size(size=(1, None))
         window[width_key].set_size(size=(new_w, None))
 
-        window[content_width_key].set_size(size=(elem_w_px, None))
+        window[container_width_key].set_size(size=(elem_w_px, None))
         window[elem_key].expand(expand_x=True)
 
         window.refresh()
@@ -4084,7 +4084,7 @@ class DataUnit(RecordElement):
         """
         elem_key = self.key_lookup('Element')
         width_key = self.key_lookup('Width')
-        content_width_key = self.key_lookup('ContentWidth')
+        container_width_key = self.key_lookup('ContainerWidth')
         pad_w, pad_h = self.pad_offset()
 
         current_w, current_h = self.dimensions()
@@ -4099,16 +4099,16 @@ class DataUnit(RecordElement):
 
         content_w = new_w - self._offset
         window[width_key].set_size(size=(new_w, None))
-        window[content_width_key].set_size(size=(content_w, None))
+        window[container_width_key].set_size(size=(content_w, None))
         window[elem_key].expand(expand_x=True, expand_row=True)
 
         self._dimensions = (new_w, new_h)
 
         window.refresh()
-        #print('resizing record element {}'.format(self.name, new_w))
-        #print('desired width of record element {}: {}'.format(self.name, new_w))
-        #print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
-        #print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
+        # print('resizing record element {}'.format(self.name, new_w))
+        # print('desired width of record element {}: {}'.format(self.name, new_w))
+        # print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        # print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         return window[self.key_lookup('Frame')].get_size()
 
@@ -4267,23 +4267,67 @@ class DataVariable(DataUnit):
         super().__init__(name, entry, parent)
         self.etype = 'text'
 
-        #record_elements = ('Edit', 'Save', 'Cancel', 'Update', 'Auxiliary')
-        #self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
-        #self.bindings = {self.elements[i]: i for i in ('Element', 'Edit', 'Save', 'Cancel')}
         record_elements = ('Auxiliary',)
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
         self.bindings = {self.elements[i]: i for i in ('Element',)}
 
-        # Element-specific bindings
+        # Special bindings
         elem_key = self.key_lookup('Element')
         special_bindings = {'LCLICK': 'Edit', 'IN': 'Edit', 'RETURN': 'Save', 'Out': 'Save', 'ESCAPE': 'Cancel'}
         for special_event in special_bindings:
             event_key = '{ELEM}+{EVENT}+'.format(ELEM=elem_key, EVENT=special_event)
             self.bindings[event_key] = special_bindings[special_event]
 
+        # Element-specific attributes
+        self._border = True
+
+        self._border_color = mod_const.FIELD_COLOR
+        self._error_color = mod_const.ERROR_COLOR
+        self._focus_color = mod_const.SELECTED_BG_COLOR
+
         # Dynamic variables
         self.edit_mode = False
         self.disabled = True
+
+    def _set_state(self, window, state: str = 'inactive'):
+        """
+        Change the border of the input field to match its current state: focus, inactive, or error.
+        """
+        if state == 'focus':
+            editing = True
+            border_color = self._focus_color
+        elif state == 'error':
+            border_color = self._error_color
+
+            focus_element = window.find_element_with_focus().Key
+            editing = True if focus_element in self.bindings else False
+        else:
+            editing = False
+            border_color = self._border_color
+
+        if editing:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+        else:
+            text_col = mod_const.DISABLED_TEXT_COLOR
+
+        self.edit_mode = editing
+
+        # Update container border to indicate the current state of the element
+        container_key = self.key_lookup('Container')
+        window[container_key].ParentRowFrame.config(background=border_color)
+
+        border_key = self.key_lookup('Border')
+        element = window[border_key]
+        element.Widget.config(background=border_color)
+        element.Widget.config(highlightbackground=border_color)
+        element.Widget.config(highlightcolor=border_color)
+
+        # Update the element value to display state-appropriate text
+        value_fmt = self.format_display(editing=editing)
+
+        # Enable/disable element editing
+        elem_key = self.key_lookup('Element')
+        window[elem_key].update(disabled=(not editing), value=value_fmt, text_color=text_col)
 
     def _value_layout(self, size: tuple = None):
         """
@@ -4291,22 +4335,20 @@ class DataVariable(DataUnit):
         """
         font = mod_const.LARGE_FONT
         text_col = mod_const.DISABLED_TEXT_COLOR
-        bg_col = self.bg_col
-        value_col = mod_const.DEFAULT_BG_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
-        aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=self.bg_col, visible=False))]
-
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
-                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('text', layout_attrs)
 
-        content_width_key = self.key_lookup('ContentWidth')
-        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
-                          element_layout + aux_layout], background_color=bg_col)]
+        container_width_key = self.key_lookup('ContainerWidth')
+        container_key = self.key_lookup('Container')
+        layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+                         element_layout],
+                        key=container_key, pad=(1, 1), background_color=bg_col)
 
         return layout
 
@@ -4349,40 +4391,12 @@ class DataVariable(DataUnit):
         """
         Reset record element to default.
         """
-        elem_key = self.key_lookup('Element')
-        aux_key = self.key_lookup('Auxiliary')
-
         # Reset element value to its default
+        self.edited = False
         self.value.reset()
 
         # Reset element editing
-        self.edited = False
-        self.edit_mode = False
-        window[aux_key].update(visible=False)
-        window[elem_key].update(disabled=True)
-
-        # Update the element display
-        self.update_display(window)
-
-    def reset_old(self, window):
-        """
-        Reset record element to default.
-        """
-        elem_key = self.key_lookup('Element')
-        edit_key = self.key_lookup('Edit')
-        update_key = self.key_lookup('Update')
-        aux_key = self.key_lookup('Auxiliary')
-
-        # Reset element value to its default
-        self.value.reset()
-
-        # Reset element editing
-        self.edited = False
-        self.edit_mode = False
-        window[edit_key].update(disabled=False)
-        window[update_key].update(visible=False)
-        window[aux_key].update(visible=False)
-        window[elem_key].update(disabled=True)
+        self._set_state(window, 'inactive')
 
         # Update the element display
         self.update_display(window)
@@ -4391,11 +4405,7 @@ class DataVariable(DataUnit):
         """
         Run a record element event.
         """
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
-
         elem_key = self.key_lookup('Element')
-        aux_key = self.key_lookup('Auxiliary')
 
         editing = self.edit_mode
         update_event = False
@@ -4415,19 +4425,7 @@ class DataVariable(DataUnit):
             if self.disabled:
                 return triggers
 
-            # Update element to show any current unformatted data
-            value_fmt = self.format_display(editing=True)
-
-            # Enable element editing and update colors
-            window[elem_key].update(disabled=False, value=value_fmt)
-            window[aux_key].update(visible=True)
-
-            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
-                window[elem_key].update(text_color=text_col)
-
-            self.edit_mode = True
-
-        # Set element to inactive mode and update the element value
+            self._set_state(window, state='focus')
         elif element_event == 'Save' and editing:
             # Update value of the data element
             try:
@@ -4435,15 +4433,16 @@ class DataVariable(DataUnit):
             except KeyError:
                 logger.warning(self.format_log('unable to locate values for element key "{KEY}"'
                                                .format(NAME=self.name, KEY=elem_key)))
+                success = True
             else:
                 try:
                     edited = self.update_value(value)
                 except Exception as e:
+                    success = False
                     msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
                     logger.exception(self.format_log(msg, err=e))
-                    mod_win2.popup_error(msg)
-
                 else:
+                    success = True
                     if edited:
                         self.edited = True
                         update_event = True
@@ -4451,117 +4450,12 @@ class DataVariable(DataUnit):
                 self.update_display(window)
 
             # Disable element editing and update colors
-            window[elem_key].update(disabled=True)
-            window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
-                window[elem_key].update(text_color=disabled_text_col)
-
-            self.edit_mode = False
-
-        elif element_event == 'Cancel' and editing:
-            # Disable element editing and update colors
-            window[elem_key].update(disabled=True)
-            window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
-                window[elem_key].update(text_color=disabled_text_col)
-
-            self.edit_mode = False
-            self.update_display(window)
-
-        triggers['ValueEvent'] = update_event
-
-        return triggers
-
-    def run_event_old(self, window, event, values):
-        """
-        Run a record element event.
-        """
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
-
-        elem_key = self.key_lookup('Element')
-        edit_key = self.key_lookup('Edit')
-        update_key = self.key_lookup('Update')
-        aux_key = self.key_lookup('Auxiliary')
-
-        editing = self.edit_mode
-        update_event = False
-        triggers = {'ValueEvent': False, 'ResizeEvent': False, 'DisplayEvent': False}
-
-        try:
-            element_event = self.bindings[event]
-        except KeyError:
-            msg = 'GUI event {EVENT} is not a {NAME} event'.format(EVENT=event, NAME=self.name)
-            logger.warning(self.format_log(msg))
-
-            return triggers
-        else:
-            logger.debug(self.format_log('running variable event {EVENT}'.format(EVENT=element_event)))
-
-        # Set focus to the element and enable edit mode
-        if element_event == 'Edit' and not editing:
-            window[elem_key].set_focus()
-
-            if self.disabled:
-                return triggers
-
-            # Update element to show any current unformatted data
-            value_fmt = self.format_display(editing=True)
-
-            # Enable element editing and update colors
-            window[edit_key].update(disabled=True)
-            window[elem_key].update(disabled=False, value=value_fmt)
-            window[update_key].update(visible=True)
-            window[aux_key].update(visible=True)
-
-            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
-                window[elem_key].update(text_color=text_col)
-
-            self.edit_mode = True
-
-        # Set element to inactive mode and update the element value
-        elif element_event == 'Save' and editing:
-            # Update value of the data element
-            try:
-                value = values[elem_key]
-            except KeyError:
-                logger.warning(self.format_log('unable to locate values for element key "{KEY}"'
-                                               .format(NAME=self.name, KEY=elem_key)))
+            if success:
+                self._set_state(window, state='inactive')
             else:
-                try:
-                    edited = self.update_value(value)
-                except Exception as e:
-                    msg = 'failed to save changes to {DESC}'.format(DESC=self.description)
-                    logger.exception(self.format_log(msg, err=e))
-                    mod_win2.popup_error(msg)
-
-                else:
-                    if edited:
-                        self.edited = True
-                        update_event = True
-
-                self.update_display(window)
-
-            # Disable element editing and update colors
-            window[edit_key].update(disabled=False)
-            window[elem_key].update(disabled=True)
-            window[update_key].update(visible=False)
-            window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
-                window[elem_key].update(text_color=disabled_text_col)
-
-            self.edit_mode = False
-
+                self._set_state(window, state='error')
         elif element_event == 'Cancel' and editing:
-            # Disable element editing and update colors
-            window[edit_key].update(disabled=False)
-            window[elem_key].update(disabled=True)
-            window[update_key].update(visible=False)
-            window[aux_key].update(visible=False)
-            if self.etype in ('input', 'multiline', 'text', 'checkbox'):
-                window[elem_key].update(text_color=disabled_text_col)
-
-            self.edit_mode = False
+            self._set_state(window, state='inactive')
             self.update_display(window)
 
         triggers['ValueEvent'] = update_event
@@ -4598,31 +4492,34 @@ class DataVariable(DataUnit):
 
         bg_col = mod_const.DEFAULT_BG_COLOR if background is None else background
         self.bg_col = background
-        text_col = mod_const.DEFAULT_TEXT_COLOR
+        #text_col = mod_const.DEFAULT_TEXT_COLOR
+        border_color = self._border_color if self._border is True else bg_col
 
         # Element Icon, if provided
         icon = self.icon
-        icon_w = 24 + pad_el  # image size (24 pixels) plus padding
         if icon is not None:
+            icon_w = 24 + pad_el  # image size (24 pixels) plus padding
             icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+                # icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
+                icon_layout = [sg.Image(filename=icon_path, background_color=border_color, expand_y=True,
+                                        tooltip=self.description)]
             else:
                 icon_layout = []
         else:
+            icon_w = 0
             icon_layout = []
 
         # Required symbol
-        req_w = 11 + pad_el  # size of asterisk plus padding
+        #req_w = 11 + pad_el  # size of asterisk plus padding
+        req_w = 11  # size of asterisk
         if is_required is True:
-            required_layout = [sg.Text('*', pad=((0, pad_el), 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
+            required_layout = [sg.Text('*', font=bold_font, background_color=bg_col, text_color=mod_const.NOTE_COLOR,
+                                       tooltip='required')]
         else:
             required_layout = []
 
         # Element description
-        desc_key = self.key_lookup('Description')
-
         annotation = self.annotate_display()
         if annotation:
             rule = self.annotation_rules[annotation]
@@ -4631,138 +4528,39 @@ class DataVariable(DataUnit):
         else:
             desc_bg_col = bg_col
 
-        desc = self.description if self.arrangement == 'v' else '{}:'.format(self.description)
-        desc_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), background_color=desc_bg_col,
-                               font=bold_font, auto_size_text=True, tooltip=tooltip)]
+        if self.arrangement == 'v':
+            label = self.description
+            label_font = mod_const.BOLD_MID_FONT
+            label_color = mod_const.LABEL_COLOR
+        else:
+            label = '{}:'.format(self.description) if self.align else self.description
+            label_font = mod_const.BOLD_LARGE_FONT
+            label_color = mod_const.DEFAULT_TEXT_COLOR
+
+        desc_key = self.key_lookup('Description')
+        desc_layout = [sg.Text(label, key=desc_key, pad=((0, pad_el), 0), background_color=desc_bg_col,
+                               text_color=label_color, font=label_font, auto_size_text=True, tooltip=tooltip)]
 
         # Element value layout
-        element_layout = self._value_layout(size=(width, 1))
+        # element_layout = self._value_layout(size=(width, 1))
+        border_key = self.key_lookup('Border')
+        element_layout = [sg.Frame('', [icon_layout + [self._value_layout(size=(width, 1))]],
+                                   key=border_key, background_color=border_color, border_width=0,
+                                   expand_x=True, vertical_alignment='c', relief='flat')]
 
         # Element layout
         width_key = self.key_lookup('Width')
         row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)]
         if self.arrangement == 'v':
             offset = 2  # width of the value frame
-            row2 = icon_layout + desc_layout + required_layout
+            # row2 = icon_layout + desc_layout + required_layout
+            row2 = required_layout + desc_layout
             row3 = element_layout
             components = [row1, row2, row3]
         else:
             offset = icon_w + req_w + 2  # icon, and asterisks width plus width of the value frame
-            row2 = icon_layout + desc_layout + element_layout + required_layout
-            components = [row1, row2]
-
-        frame_key = self.key_lookup('Frame')
-        layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden),
-                        element_justification=self.justification)
-
-        self._offset += offset
-
-        return layout
-
-    def layout_old(self, padding: tuple = None, size: tuple = None, tooltip: str = None, editable: bool = True,
-               overwrite: bool = False, level: int = 0, bg_color: str = None):
-        """
-        GUI layout for the record element.
-        """
-        modifiers = self.modifiers
-
-        if not self.disabled:  # some variables are intrinsically un-editable (i.e. dependent variables, text, etc.)
-            is_disabled = False if (overwrite or (editable and modifiers['edit'])) and level < 2 else True
-            self.disabled = is_disabled
-        else:
-            is_disabled = True
-
-        is_required = modifiers['require']
-        hidden = modifiers['hide']
-
-        size = self._dimensions if not size else size
-        width, height = size
-        self._dimensions = (width * 10, mod_const.VARIABLE_HEIGHT_PX)
-
-        background = self.bg_col if bg_color is None else bg_color
-        tooltip = tooltip if tooltip else self.tooltip
-
-        # Layout options
-        pad_el = mod_const.ELEM_PAD
-        pad = padding if padding and isinstance(padding, tuple) else self.padding
-        self.padding = pad
-
-        bold_font = mod_const.BOLD_HEADING_FONT
-
-        bg_col = mod_const.DEFAULT_BG_COLOR if background is None else background
-        self.bg_col = background
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-
-        # Element Icon, if provided
-        icon = self.icon
-        icon_w = 24 + pad_el  # image size (24 pixels) plus padding
-        if icon is not None:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-        else:
-            icon_layout = []
-
-        # Required symbol
-        req_w = 11 + pad_el  # size of asterisk plus padding
-        if is_required is True:
-            required_layout = [sg.Text('*', pad=((0, pad_el), 0), font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
-        else:
-            required_layout = []
-
-        # Element description
-        desc_key = self.key_lookup('Description')
-
-        annotation = self.annotate_display()
-        if annotation:
-            rule = self.annotation_rules[annotation]
-            desc_bg_col = rule['BackgroundColor']
-            tooltip = rule['Description']
-        else:
-            desc_bg_col = bg_col
-
-        desc = self.description if self.arrangement == 'v' else '{}:'.format(self.description)
-        desc_layout = [sg.Text(desc, key=desc_key, pad=((0, pad_el), 0), background_color=desc_bg_col,
-                               font=bold_font, auto_size_text=True, tooltip=tooltip)]
-
-        # Element action buttons
-        edit_key = self.key_lookup('Edit')
-        update_key = self.key_lookup('Update')
-        save_key = self.key_lookup('Save')
-        cancel_key = self.key_lookup('Cancel')
-
-        bttn_w = 16 * 3 + pad_el * 2
-        bttn_vis = False if is_disabled else True
-        bttn_layout = [sg.Button(image_data=mod_const.EDIT_ICON, key=edit_key, pad=(pad_el, 0),
-                                 button_color=(text_col, bg_col), visible=bttn_vis, disabled=is_disabled,
-                                 border_width=0, tooltip='Edit value'),
-                       sg.pin(
-                           sg.Col([[sg.Button(image_data=mod_const.SAVE_CHANGE_ICON, key=save_key,
-                                              pad=(0, 0), button_color=(text_col, bg_col),
-                                              border_width=0, tooltip='Save changes'),
-                                    sg.Button(image_data=mod_const.CANCEL_CHANGE_ICON, key=cancel_key,
-                                              pad=(0, 0), button_color=(text_col, bg_col),
-                                              border_width=0, tooltip='Cancel changes')
-                                    ]],
-                                  key=update_key, pad=(0, 0), visible=False, background_color=bg_col))]
-
-        # Element value layout
-        element_layout = self._value_layout(size=(width, 1))
-
-        # Element layout
-        width_key = self.key_lookup('Width')
-        row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)]
-        if self.arrangement == 'v':
-            offset = bttn_w + 2  # button width plus width of the value frame
-            row2 = icon_layout + desc_layout + required_layout
-            row3 = element_layout + bttn_layout
-            components = [row1, row2, row3]
-        else:
-            offset = icon_w + req_w + bttn_w + 2  # icon, button, and asterisks width plus width of the value frame
-            row2 = icon_layout + desc_layout + element_layout + bttn_layout + required_layout
+            # row2 = icon_layout + desc_layout + element_layout + required_layout
+            row2 = required_layout + desc_layout + element_layout
             components = [row1, row2]
 
         frame_key = self.key_lookup('Frame')
@@ -4799,10 +4597,10 @@ class DataVariableInput(DataVariable):
         super().__init__(name, entry, parent)
         self.etype = 'input'
 
-        if entry['DataType'] in settings.supported_date_dtypes:
-            calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
-            self.elements['Calendar'] = calendar_key
-            self.bindings[calendar_key] = 'Calendar'
+        #if entry['DataType'] in settings.supported_date_dtypes:
+        #    calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
+        #    self.elements['Calendar'] = calendar_key
+        #    self.bindings[calendar_key] = 'Calendar'
 
         self.disabled = False
 
@@ -4811,10 +4609,111 @@ class DataVariableInput(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
+
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
+
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        element_layout = mod_lo.generate_layout('input', layout_attrs)
+
+        container_width_key = self.key_lookup('ContainerWidth')
+        container_key = self.key_lookup('Container')
+        layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+                         element_layout],
+                        key=container_key, pad=(1, 1), background_color=bg_col, vertical_alignment='c', expand_y=True,
+                        expand_x=True)
+
+        return layout
+
+
+class DataVariableDate(DataVariable):
+    """
+    Input-style data variable element.
+
+    Attributes:
+
+        name (str): record element configuration name.
+
+        elements (list): list of element GUI keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize the record element attributes.
+
+        Arguments:
+            name (str): record element configuration name.
+
+            entry (dict): configuration entry for the record element.
+
+            parent (str): name of the parent record.
+        """
+        super().__init__(name, entry, parent)
+        self.etype = 'input'
+
+        if entry['DataType'] in settings.supported_date_dtypes:
+            calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
+            self.elements['Calendar'] = calendar_key
+            self.bindings[calendar_key] = 'Calendar'
+
+        self.disabled = False
+
+    def _set_state(self, window, state: str = 'inactive'):
+        """
+        Change the border of the input field to match its current state: focus, inactive, or error.
+        """
+        if state == 'focus':
+            border_color = self._focus_color
+
+            editing = True
+        elif state == 'error':
+            border_color = self._error_color
+
+            focus_element = window.find_element_with_focus().Key
+            editing = True if focus_element in self.bindings else False
+        else:
+            border_color = self._border_color
+            editing = False
+
+        if editing:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+        else:
+            text_col = mod_const.DISABLED_TEXT_COLOR
+
+        self.edit_mode = editing
+
+        # Update container border to indicate the current state of the element
+        container_key = self.key_lookup('Container')
+        window[container_key].ParentRowFrame.config(background=border_color)
+
+        border_key = self.key_lookup('Border')
+        element = window[border_key]
+        element.Widget.config(background=border_color)
+        element.Widget.config(highlightbackground=border_color)
+        element.Widget.config(highlightcolor=border_color)
+
+        # Update the element value to display state-appropriate text
+        value_fmt = self.format_display(editing=editing)
+
+        # Enable/disable element editing
+        elem_key = self.key_lookup('Element')
+        window[elem_key].update(disabled=(not editing), value=value_fmt, text_color=text_col)
+
+        aux_key = self.key_lookup('Auxiliary')
+        window[aux_key].update(visible=editing)
+
+    def _value_layout(self, size: tuple = None):
+        """
+        Configure the attributes for the record element's GUI layout.
+        """
+        font = mod_const.LARGE_FONT
         pad_el = mod_const.ELEM_PAD
         text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = self.bg_col
-        value_col = mod_const.DEFAULT_BG_COLOR
+        default_bg_col = mod_const.DEFAULT_BG_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
@@ -4827,20 +4726,25 @@ class DataVariableInput(DataVariable):
         else:
             date_bttn = [sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d', pad=(pad_el, 0),
                                            image_data=mod_const.CALENDAR_ICON, disabled=False,
-                                           button_color=(text_col, value_col), border_width=0,
+                                           button_color=(text_col, default_bg_col), border_width=0,
                                            tooltip='Select the date from the calendar menu')]
 
         aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([date_bttn], key=aux_key, background_color=value_col, visible=False))]
+        aux_layout = [sg.pin(sg.Col([date_bttn], key=aux_key, background_color=default_bg_col, visible=False))]
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
-                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('input', layout_attrs)
 
-        content_width_key = self.key_lookup('ContentWidth')
-        layout = [sg.Frame('', [[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
-                                element_layout + aux_layout],
-                           background_color=bg_col, relief='sunken', border_width=1)]
+        container_width_key = self.key_lookup('ContainerWidth')
+        # layout = [sg.Frame('', [[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+        #                        element_layout + aux_layout],
+        #                   background_color=bg_col, relief='sunken', border_width=1)]
+        container_key = self.key_lookup('Container')
+        layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+                         element_layout + aux_layout],
+                        key=container_key, pad=(1, 1), background_color=bg_col, vertical_alignment='c', expand_y=True,
+                        expand_x=True)
 
         return layout
 
@@ -4900,14 +4804,50 @@ class DataVariableCombo(DataVariable):
 
         self.disabled = False
 
+    def _set_state(self, window, state: str = 'inactive'):
+        """
+        Change the border of the input field to match its current state: focus, inactive, or error.
+        """
+        if state == 'focus':
+            border_color = self._focus_color
+
+            editing = True
+        elif state == 'error':
+            border_color = self._error_color
+
+            focus_element = window.find_element_with_focus().Key
+            editing = True if focus_element in self.bindings else False
+        else:
+            border_color = self._border_color
+
+            editing = False
+
+        self.edit_mode = editing
+
+        # Update container border to indicate the current state of the element
+        container_key = self.key_lookup('Container')
+        window[container_key].ParentRowFrame.config(background=border_color)
+
+        border_key = self.key_lookup('Border')
+        element = window[border_key]
+        element.Widget.config(background=border_color)
+        element.Widget.config(highlightbackground=border_color)
+        element.Widget.config(highlightcolor=border_color)
+
+        # Update the element value to display state-appropriate text
+        value_fmt = self.format_display(editing=editing)
+
+        # Enable/disable element editing
+        elem_key = self.key_lookup('Element')
+        window[elem_key].update(disabled=(not editing), value=value_fmt)
+
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = self.bg_col
-        value_col = mod_const.DEFAULT_BG_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
@@ -4923,17 +4863,17 @@ class DataVariableCombo(DataVariable):
             for option in values:
                 display_values.append(self.format_display(value=option))
 
-        aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=value_col, visible=False))]
-
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'ComboValues': display_values}
         element_layout = mod_lo.generate_layout('dropdown', layout_attrs)
 
-        content_width_key = self.key_lookup('ContentWidth')
-        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
-                           element_layout + aux_layout], background_color=bg_col)]
+        container_width_key = self.key_lookup('ContainerWidth')
+        container_key = self.key_lookup('Container')
+        layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+                         element_layout],
+                        key=container_key, pad=(1, 1), background_color=bg_col, vertical_alignment='c',
+                        expand_y=True, expand_x=True)
 
         return layout
 
@@ -4989,24 +4929,25 @@ class DataVariableMultiline(DataVariable):
         """
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = self.bg_col
-        value_col = mod_const.DEFAULT_BG_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
         nrow = self.nrow
 
         aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=value_col, visible=False))]
+        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
 
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
-                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'NRow': nrow}
         element_layout = mod_lo.generate_layout('multiline', layout_attrs)
 
-        content_width_key = self.key_lookup('ContentWidth')
-        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
-                          element_layout + aux_layout], background_color=bg_col)]
+        container_width_key = self.key_lookup('ContainerWidth')
+        container_key = self.key_lookup('Container')
+        layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+                         element_layout + aux_layout],
+                        key=container_key, pad=(1, 1), background_color=bg_col)
 
         return layout
 
@@ -5049,7 +4990,33 @@ class DataVariableCheckbox(DataVariable):
             raise AttributeError(msg)
 
         self.arrangement = 'h'
+        self._border = False
         self.disabled = False
+
+    def _set_state(self, window, state: str = 'inactive'):
+        """
+        Change the border of the input field to match its current state: focus, inactive, or error.
+        """
+        if state == 'focus':
+            bg_color = mod_const.DEFAULT_BG_COLOR
+            editing = True
+        elif state == 'error':
+            bg_color = self._error_color
+
+            focus_element = window.find_element_with_focus().Key
+            editing = True if focus_element in self.bindings else False
+        else:  # inactive
+            bg_color = mod_const.DISABLED_BG_COLOR
+            editing = False
+
+        self.edit_mode = editing
+
+        # Update the element value to display state-appropriate text
+        value_fmt = self.format_display(editing=editing)
+
+        # Enable/disable element editing and update border color to reflect state
+        elem_key = self.key_lookup('Element')
+        window[elem_key].update(disabled=(not editing), value=value_fmt, checkbox_color=bg_color)
 
     def _value_layout(self, size: tuple = None):
         """
@@ -5057,21 +5024,26 @@ class DataVariableCheckbox(DataVariable):
         """
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = self.bg_col
+        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
-        aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
+        #aux_key = self.key_lookup('Auxiliary')
+        #aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('checkbox', layout_attrs)
 
-        content_width_key = self.key_lookup('ContentWidth')
-        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
-                          element_layout + aux_layout], background_color=bg_col)]
+        container_width_key = self.key_lookup('ContainerWidth')
+        container_key = self.key_lookup('Container')
+        layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+                         element_layout],
+                        key=container_key, pad=(0, 0), background_color=bg_col)
+        #layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+        #                 element_layout + aux_layout],
+        #                key=container_key, pad=(1, 1), background_color=bg_col)
 
         return layout
 
@@ -5138,13 +5110,17 @@ class DependentVariable(DataVariable):
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
 
-        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
+        # layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
+        #                'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+        layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
                         'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('text', layout_attrs)
 
-        content_width_key = self.key_lookup('ContentWidth')
-        layout = [sg.Col([[sg.Canvas(key=content_width_key, background_color=bg_col, size=(1, 0))],
-                          element_layout], background_color=bg_col)]
+        container_width_key = self.key_lookup('ContainerWidth')
+        container_key = self.key_lookup('Container')
+        layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
+                         element_layout],
+                        key=container_key, pad=(2, 2), background_color=bg_col)
 
         return layout
 
@@ -5310,10 +5286,11 @@ class DataConstant(DataUnit):
 
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': (width, 1),
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
-        content_width_key = self.key_lookup('ContentWidth')
-        elem_layout = [sg.Col([[sg.Canvas(key=content_width_key, size=(1, 0), background_color=bg_col)],
-                                mod_lo.generate_layout('text', layout_attrs)],
-                              background_color=bg_col)]
+        container_width_key = self.key_lookup('ContainerWidth')
+        container_key = self.key_lookup('Container')
+        elem_layout = [sg.Col([[sg.Canvas(key=container_width_key, size=(1, 0), background_color=bg_col)],
+                               mod_lo.generate_layout('text', layout_attrs)],
+                              key=container_key, background_color=bg_col)]
 
         # Layout
         frame_key = self.key_lookup('Frame')

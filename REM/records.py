@@ -1657,41 +1657,10 @@ class DatabaseRecord:
                 else:
                     used_elements.append(element_name)
 
+                # Initialize the record element
                 elem_entry = record_elements[element_name]
                 try:
-                    etype = elem_entry['ElementType']
-                except KeyError:
-                    raise AttributeError('record element "{NAME}" is missing the required field "ElementType"'
-                                         .format(NAME=element_name))
-
-                # Set the object type of the record element.
-                if etype in ('data_table', 'table'):
-                    element_class = mod_elem.DataTable
-                elif etype in ('component_table', 'components'):
-                    element_class = mod_elem.ComponentTable
-                elif etype in ('data_list', 'list'):
-                    element_class = mod_elem.DataList
-                elif etype in ('reference_list', 'reference'):
-                    element_class = mod_elem.ReferenceList
-                elif etype in ('dependent_variable', 'dependent'):
-                    element_class = mod_elem.DependentVariable
-                elif etype in ('text_variable', 'text'):
-                    element_class = mod_elem.DataVariable
-                elif etype in ('input_variable', 'date_variable', 'input', 'date'):
-                    element_class = mod_elem.DataVariableInput
-                elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
-                    element_class = mod_elem.DataVariableCombo
-                elif etype in ('multiline_variable', 'multiline', 'multi'):
-                    element_class = mod_elem.DataVariableMultiline
-                elif etype in ('checkbox', 'check'):
-                    element_class = mod_elem.DataVariableCheckbox
-                else:
-                    raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
-                                         .format(ETYPE=etype, ELEM=element_name))
-
-                # Initialize the record element
-                try:
-                    elem_obj = element_class(element_name, elem_entry, parent=self.name)
+                    elem_obj = initialize_element(self.name, element_name, elem_entry)
                 except Exception as e:
                     raise AttributeError('failed to initialize {NAME} element {ELEM} - {ERR}'
                                          .format(NAME=self.name, ELEM=element_name, ERR=e))
@@ -3294,3 +3263,49 @@ def replace_nth(s, sub, new, ns):
         new_s = before + after
 
     return new_s
+
+
+def initialize_element(parent, name, entry):
+    """
+    Initialize a record element based on the element's configured element type.
+    """
+    try:
+        etype = entry['ElementType']
+    except KeyError:
+        raise AttributeError('element entry is missing the required field "ElementType"'.format(NAME=name))
+
+    # Set the object type of the record element.
+    if etype in ('data_table', 'table'):
+        element_class = mod_elem.DataTable
+    elif etype in ('component_table', 'components'):
+        element_class = mod_elem.ComponentTable
+    elif etype in ('data_list', 'list'):
+        element_class = mod_elem.DataList
+    elif etype in ('reference_list', 'reference'):
+        element_class = mod_elem.ReferenceList
+    elif etype in ('dependent_variable', 'dependent'):
+        element_class = mod_elem.DependentVariable
+    elif etype in ('text_variable', 'text'):
+        element_class = mod_elem.DataVariable
+    elif etype in ('input_variable', 'input'):
+        element_class = mod_elem.DataVariableInput
+    elif etype in ('date_variable', 'date'):
+        element_class = mod_elem.DataVariableDate
+    elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
+        element_class = mod_elem.DataVariableCombo
+    elif etype in ('multiline_variable', 'multiline', 'multi'):
+        element_class = mod_elem.DataVariableMultiline
+    elif etype in ('checkbox', 'check'):
+        element_class = mod_elem.DataVariableCheckbox
+    else:
+        raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
+                             .format(ETYPE=etype, ELEM=name))
+
+    # Initialize the record element
+    try:
+        element = element_class(name, entry, parent=parent)
+    except Exception as e:
+        raise AttributeError('failed to initialize element {ELEM} - {ERR}'
+                             .format(ELEM=name, ERR=e))
+
+    return element
