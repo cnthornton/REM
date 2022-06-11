@@ -78,8 +78,6 @@ def input_layout(attributes):
     bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
     text_col = attributes.get('TextColor', mod_const.DEFAULT_TEXT_COLOR)
 
-    disabled_text_col = mod_const.DISABLED_TEXT_COLOR
-
     disabled = attributes.get('Disabled', False)
     tooltip = attributes.get('Tooltip', None)
 
@@ -88,9 +86,8 @@ def input_layout(attributes):
     display_value = attributes.get('DisplayValue', '')
     layout = [sg.Input(display_value, key=elem_key, enable_events=True, disabled=disabled, size=size, pad=pad,
                        font=font, background_color=bg_col, text_color=text_col, border_width=bw,
-                       disabled_readonly_background_color=bg_col,
-                       disabled_readonly_text_color=disabled_text_col, tooltip=tooltip,
-                       metadata={'disabled': disabled})]
+                       disabled_readonly_background_color=bg_col, disabled_readonly_text_color=text_col,
+                       tooltip=tooltip, metadata={'disabled': disabled})]
 
     return layout
 

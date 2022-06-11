@@ -4333,9 +4333,11 @@ class DataVariable(DataUnit):
         """
         Configure the attributes for the record element's GUI layout.
         """
+        editable = self.modifiers['edit']
+
         font = mod_const.LARGE_FONT
-        text_col = mod_const.DISABLED_TEXT_COLOR
-        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
+        text_col = mod_const.DISABLED_TEXT_COLOR if editable is True else mod_const.DEFAULT_TEXT_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if editable is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
@@ -4597,27 +4599,24 @@ class DataVariableInput(DataVariable):
         super().__init__(name, entry, parent)
         self.etype = 'input'
 
-        #if entry['DataType'] in settings.supported_date_dtypes:
-        #    calendar_key = '-{NAME}_{ID}_Calendar-'.format(NAME=self.name, ID=self.id)
-        #    self.elements['Calendar'] = calendar_key
-        #    self.bindings[calendar_key] = 'Calendar'
-
         self.disabled = False
 
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
+        editable = self.modifiers['edit']
+        element_type = 'input' if editable else 'text'
+
         font = mod_const.LARGE_FONT
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
+        text_col = mod_const.DISABLED_TEXT_COLOR if editable is True else mod_const.DEFAULT_TEXT_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if editable is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
-
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
-        element_layout = mod_lo.generate_layout('input', layout_attrs)
+        element_layout = mod_lo.generate_layout(element_type, layout_attrs)
 
         container_width_key = self.key_lookup('ContainerWidth')
         container_key = self.key_lookup('Container')
@@ -4709,37 +4708,34 @@ class DataVariableDate(DataVariable):
         """
         Configure the attributes for the record element's GUI layout.
         """
-        font = mod_const.LARGE_FONT
-        pad_el = mod_const.ELEM_PAD
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        default_bg_col = mod_const.DEFAULT_BG_COLOR
-        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
+        editable = self.modifiers['edit']
+        element_type = 'input' if editable else 'text'
 
-        elem_key = self.key_lookup('Element')
-        tooltip = display_value = self.format_display()
+        pad_el = mod_const.ELEM_PAD
+        default_bg_col = mod_const.DEFAULT_BG_COLOR
+
+        font = mod_const.LARGE_FONT
+        text_col = mod_const.DISABLED_TEXT_COLOR if editable is True else mod_const.DEFAULT_TEXT_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if editable is True else mod_const.DISABLED_BG_COLOR
 
         # Add auxiliary elements to the layout, such as a calendar button for datetime elements.
-        try:
-            date_key = self.key_lookup('Calendar')
-        except KeyError:
-            date_bttn = []
-        else:
-            date_bttn = [sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d', pad=(pad_el, 0),
-                                           image_data=mod_const.CALENDAR_ICON, disabled=False,
-                                           button_color=(text_col, default_bg_col), border_width=0,
-                                           tooltip='Select the date from the calendar menu')]
+        elem_key = self.key_lookup('Element')
+        date_key = self.key_lookup('Calendar')
+        date_bttn = [sg.CalendarButton('', key=date_key, target=elem_key, format='%Y-%m-%d', pad=(pad_el, 0),
+                                       image_data=mod_const.CALENDAR_ICON, disabled=False,
+                                       button_color=(text_col, default_bg_col), border_width=0,
+                                       tooltip='Select the date from the calendar menu')]
 
         aux_key = self.key_lookup('Auxiliary')
         aux_layout = [sg.pin(sg.Col([date_bttn], key=aux_key, background_color=default_bg_col, visible=False))]
 
+        # Create the type-specific layout of the input field
+        tooltip = display_value = self.format_display()
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
-        element_layout = mod_lo.generate_layout('input', layout_attrs)
+        element_layout = mod_lo.generate_layout(element_type, layout_attrs)
 
         container_width_key = self.key_lookup('ContainerWidth')
-        # layout = [sg.Frame('', [[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
-        #                        element_layout + aux_layout],
-        #                   background_color=bg_col, relief='sunken', border_width=1)]
         container_key = self.key_lookup('Container')
         layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
                          element_layout + aux_layout],
@@ -4822,6 +4818,11 @@ class DataVariableCombo(DataVariable):
 
             editing = False
 
+        if editing:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+        else:
+            text_col = mod_const.DISABLED_TEXT_COLOR
+
         self.edit_mode = editing
 
         # Update container border to indicate the current state of the element
@@ -4845,12 +4846,12 @@ class DataVariableCombo(DataVariable):
         """
         Configure the attributes for the record element's GUI layout.
         """
+        editable = self.modifiers['edit']
+        element_type = 'dropdown' if editable else 'text'
+
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
-
-        elem_key = self.key_lookup('Element')
-        tooltip = display_value = self.format_display()
+        bg_col = mod_const.DEFAULT_BG_COLOR if editable is True else mod_const.DISABLED_BG_COLOR
 
         try:
             values = self.combo_values
@@ -4863,10 +4864,12 @@ class DataVariableCombo(DataVariable):
             for option in values:
                 display_values.append(self.format_display(value=option))
 
+        elem_key = self.key_lookup('Element')
+        tooltip = display_value = self.format_display()
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'ComboValues': display_values}
-        element_layout = mod_lo.generate_layout('dropdown', layout_attrs)
+        element_layout = mod_lo.generate_layout(element_type, layout_attrs)
 
         container_width_key = self.key_lookup('ContainerWidth')
         container_key = self.key_lookup('Container')
@@ -4927,17 +4930,15 @@ class DataVariableMultiline(DataVariable):
         """
         Configure the attributes for the record element's GUI layout.
         """
+        editable = self.modifiers['edit']
+
         font = mod_const.LARGE_FONT
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
+        text_col = mod_const.DISABLED_TEXT_COLOR if editable is True else mod_const.DEFAULT_TEXT_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if editable is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
         nrow = self.nrow
-
-        aux_key = self.key_lookup('Auxiliary')
-        aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
-
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip,
                         'NRow': nrow}
@@ -4946,7 +4947,7 @@ class DataVariableMultiline(DataVariable):
         container_width_key = self.key_lookup('ContainerWidth')
         container_key = self.key_lookup('Container')
         layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
-                         element_layout + aux_layout],
+                         element_layout],
                         key=container_key, pad=(1, 1), background_color=bg_col)
 
         return layout
@@ -5022,16 +5023,14 @@ class DataVariableCheckbox(DataVariable):
         """
         Configure the attributes for the record element's GUI layout.
         """
+        editable = self.modifiers['edit']
+
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
-        bg_col = mod_const.DEFAULT_BG_COLOR if self.modifiers['edit'] is True else mod_const.DISABLED_BG_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if editable is True else mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
-
-        #aux_key = self.key_lookup('Auxiliary')
-        #aux_layout = [sg.pin(sg.Col([[]], key=aux_key, background_color=bg_col, visible=False))]
-
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size,
                         'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('checkbox', layout_attrs)
@@ -5041,9 +5040,6 @@ class DataVariableCheckbox(DataVariable):
         layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
                          element_layout],
                         key=container_key, pad=(0, 0), background_color=bg_col)
-        #layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
-        #                 element_layout + aux_layout],
-        #                key=container_key, pad=(1, 1), background_color=bg_col)
 
         return layout
 
@@ -5103,17 +5099,13 @@ class DependentVariable(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         font = mod_const.LARGE_FONT
-        text_col = mod_const.DISABLED_TEXT_COLOR
-        bg_col = self.bg_col
-        value_col = mod_const.DEFAULT_BG_COLOR
+        text_col = mod_const.DEFAULT_TEXT_COLOR
+        bg_col = mod_const.DISABLED_BG_COLOR
 
         elem_key = self.key_lookup('Element')
         tooltip = display_value = self.format_display()
-
-        # layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 1,
-        #                'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         layout_attrs = {'Key': elem_key, 'DisplayValue': display_value, 'Font': font, 'Size': size, 'BW': 0,
-                        'BackgroundColor': value_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
+                        'BackgroundColor': bg_col, 'TextColor': text_col, 'Disabled': True, 'Tooltip': tooltip}
         element_layout = mod_lo.generate_layout('text', layout_attrs)
 
         container_width_key = self.key_lookup('ContainerWidth')
