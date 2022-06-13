@@ -3031,7 +3031,8 @@ class DatabaseRecord:
         text_col = mod_const.DEFAULT_TEXT_COLOR
         inactive_col = mod_const.DISABLED_BG_COLOR
         select_col = mod_const.SELECTED_TEXT_COLOR
-        frame_col = mod_const.FRAME_COLOR
+        headings_bg_col = mod_const.PANELBAR_COLOR
+        headings_text_col = mod_const.WHITE_TEXT_COLOR
 
         bold_font = mod_const.HEADING_FONT
         main_font = mod_const.MAIN_FONT
@@ -3044,7 +3045,7 @@ class DatabaseRecord:
         pad_w, pad_h = padding
 
         scroll_w = mod_const.SCROLL_WIDTH
-        bar_h = 40
+        bar_h = 32
         header_h = 50
 
         min_h = header_h + bar_h
@@ -3095,10 +3096,11 @@ class DatabaseRecord:
                 section_title = section_entry['Title']
                 section_bttn_key = self.key_lookup('{}Bttn'.format(section_name))
                 header_left = [
-                    sg.Text(section_title, pad=((0, pad_el * 2), 0), background_color=frame_col, font=bold_font)]
+                    sg.Text(section_title, text_color=headings_text_col, background_color=headings_bg_col,
+                            font=bold_font)]
                 header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
-                                          button_color=(text_col, frame_col), border_width=0, visible=True,
-                                          metadata={'visible': True, 'disabled': False})]
+                                          button_color=(headings_text_col, headings_bg_col), border_width=0,
+                                          visible=True, metadata={'visible': True, 'disabled': False})]
 
                 if 'HeadingElement' in section_entry:
                     heading_element_name = section_entry['HeadingElement']
@@ -3108,7 +3110,7 @@ class DatabaseRecord:
                         heading_element.align = False  # disable forced alignment with other elements
                         heading_element.justification = 'r'  # force right justification of element components
                         heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
-                                                                        bg_color=frame_col, editable=False)
+                                                                        bg_color=headings_bg_col, editable=False)
                         header_right.insert(0, heading_element_layout)
                     else:
                         logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type '
@@ -3116,12 +3118,13 @@ class DatabaseRecord:
                                        .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
 
                 section_w_key = self.key_lookup('{}Width'.format(section_name))
-                section_header = [sg.Col([[sg.Canvas(key=section_w_key, size=(sec_w, 0), background_color=frame_col)],
-                                          [sg.Canvas(size=(0, bar_h), background_color=frame_col),
+                section_header = [sg.Col([[sg.Canvas(key=section_w_key, size=(sec_w, 0),
+                                                     background_color=headings_bg_col)],
+                                          [sg.Canvas(size=(0, bar_h), background_color=headings_bg_col),
                                            sg.Col([header_left], justification='l', expand_x=True,
-                                                  background_color=frame_col),
-                                           sg.Col([header_right], justification='r', background_color=frame_col)
-                                           ]], background_color=frame_col, expand_x=True)]
+                                                  background_color=headings_bg_col),
+                                           sg.Col([header_right], justification='r', background_color=headings_bg_col)
+                                           ]], background_color=headings_bg_col, expand_x=True)]
                 sections_layout.append(section_header)
 
                 section_layout = []
