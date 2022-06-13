@@ -2006,7 +2006,11 @@ class DatabaseRecord:
             pass
         else:
             for record_element in element_references:
-                record_element.format_value(record_values)
+                try:
+                    record_element.format_value(record_values)
+                except Exception as e:
+                    logger.warning('RecordType {NAME}: failed to set the value for dependent variable {ELEM} - {ERR}'
+                                   .format(NAME=self.name, ELEM=record_element.name, ERR=e))
 
     def reset(self, window):
         """
@@ -3126,7 +3130,9 @@ class DatabaseRecord:
 
                     can_edit = editable
                     element_layout = [
-                        element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
+                        #element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
+                        #               level=level)]
+                        element.layout(padding=(0, 0), editable=can_edit, overwrite=is_new,
                                        level=level)]
                     section_layout.append(element_layout)
 
@@ -3201,7 +3207,7 @@ class DatabaseRecord:
         #print('setting record {} width to {}'.format(self.name, width))
         for record_element in self.components:
             elem_h = None
-            if record_element.is_type('collection'):  # table or list
+            if record_element.is_type('collection') or record_element.is_type('multiline'):  # table, list, multiline
                 elem_w = width - (pad_w * 2 + scroll_w)
             else:  # data variable
                 if record_element.align:

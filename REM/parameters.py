@@ -2,7 +2,6 @@
 REM parameter element classes.
 """
 import datetime
-import sys
 from random import randint
 
 import numpy as np
@@ -14,7 +13,7 @@ import REM.secondary as mod_win2
 from REM.client import logger, settings
 
 
-class DataParameter:
+class InputField:
     """
     Data input parameter element.
 
@@ -28,7 +27,7 @@ class DataParameter:
 
         description (str): display name of the data element.
 
-        etype (str): GUI element type. Can be dropdown, input, range, or checkbox.
+        etype (str): GUI element type. Can be dropdown, input, date, range, conditional, multiple, or checkbox.
 
         dtype (str): data type of the parameter's data storage elements [Default: string].
 
@@ -39,6 +38,8 @@ class DataParameter:
         required (bool): parameter value is required for an event.
 
         icon (str): file name of the parameter's icon [Default: None].
+
+        placeholder (str): text to use in the display value field when the parameter does not have a value set.
     """
 
     def __init__(self, name, entry):
@@ -53,9 +54,15 @@ class DataParameter:
         self.name = name
         self.id = randint(0, 1000000000)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'Description', 'Frame', 'Header', 'Value', 'Width', 'Height')}
+                         ('Element', 'Description', 'Frame', 'Header', 'Container', 'ValueFrame', 'Value', 'Width',
+                          'Height')}
 
         self.bindings = {self.key_lookup(i): i for i in ('Element',)}
+
+        elem_key = self.key_lookup('Element')
+        for focus_event in ('In', 'Out'):
+            event_key = '{ELEM}+{KEY}+'.format(ELEM=elem_key, KEY=focus_event.upper())
+            self.bindings[event_key] = focus_event
 
         try:
             self.description = entry['Description']
@@ -65,10 +72,10 @@ class DataParameter:
         try:
             self.etype = entry['ElementType']
         except KeyError:
-            msg = 'Configuration Error: DataParameter {NAME}: missing required parameter "ElementType".' \
-                .format(NAME=name)
-            mod_win2.popup_error(msg)
-            sys.exit(1)
+            msg = 'Configuration Error: missing required parameter "ElementType"'
+            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
 
         try:
             dtype = entry['DataType']
@@ -77,7 +84,7 @@ class DataParameter:
         else:
             supported_dtypes = settings.get_supported_dtypes()
             if dtype not in supported_dtypes:
-                logger.warning('DataElement {NAME}: "DataType" is not a supported data type - supported data types '
+                logger.warning('InputField {NAME}: "DataType" is not a supported data type - supported data types '
                                'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
                 self.dtype = None
             else:
@@ -88,9 +95,10 @@ class DataParameter:
         except KeyError:
             self.editable = True
         except ValueError:
-            mod_win2.popup_error('Configuration Error: DataParameter {NAME}: "IsEditable" must be either 0 '
-                                 '(False) or 1 (True)'.format(NAME=self.name))
-            sys.exit(1)
+            msg = 'Configuration Error: "IsEditable" must be either 0 (False) or 1 (True)'
+            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
         else:
             self.editable = editable
 
@@ -99,9 +107,10 @@ class DataParameter:
         except KeyError:
             self.hidden = False
         except ValueError:
-            mod_win2.popup_error('Configuration Error: DataParameter {NAME}: "IsHidden" must be either 0 '
-                                 '(False) or 1 (True)'.format(NAME=self.name))
-            sys.exit(1)
+            msg = 'Configuration Error: "IsHidden" must be either 0 (False) or 1 (True)'
+            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
         else:
             self.hidden = hidden
 
@@ -110,18 +119,14 @@ class DataParameter:
         except KeyError:
             self.required = False
         except ValueError:
-            mod_win2.popup_error('Configuration Error: DataParameter {NAME}: "IsRequired" must be either 0 '
-                                 '(False) or 1 (True)'.format(NAME=self.name))
-            sys.exit(1)
+            msg = 'Configuration Error: "IsRequired" must be either 0 (False) or 1 (True)'
+            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
         else:
             self.required = required
 
         # Layout attributes
-        try:
-            self.icon = entry['Icon']
-        except KeyError:
-            self.icon = None
-
         try:
             self.justification = entry['Justification']
         except KeyError:
@@ -132,8 +137,48 @@ class DataParameter:
         except KeyError:
             self.bg_col = mod_const.DEFAULT_BG_COLOR
 
-        self.auto_size = False
-        self.disabled = self.editable
+        try:
+            self.placeholder = entry['PlaceholderText']
+        except KeyError:
+            self.placeholder = None
+
+        try:
+            self.help = entry['HelpText']
+        except KeyError:
+            self.help = None
+
+        try:
+            self.auto_size = bool(int(entry['AlignField']))
+        except KeyError:
+            self.auto_size = False
+        except ValueError:
+            msg = 'Configuration Error: "AlignField" must be either 0 (False) or 1 (True)'
+            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
+
+        self.disabled = not self.editable
+
+    def _set_state(self, window, state: str = 'inactive'):
+        """
+        Change the border of the input field to match its current state: focus, inactive, or error.
+
+        """
+        if state == 'focus':
+            color = mod_const.SELECTED_BG_COLOR
+        elif state == 'error':
+            color = mod_const.ERROR_COLOR
+        else:
+            color = mod_const.FIELD_COLOR
+
+        frame_key = self.key_lookup('ValueFrame')
+        window[frame_key].ParentRowFrame.config(background=color)
+
+        container_key = self.key_lookup('Container')
+        element = window[container_key]
+        element.Widget.config(background=color)
+        element.Widget.config(highlightbackground=color)
+        element.Widget.config(highlightcolor=color)
 
     def key_lookup(self, component, rev: bool = False):
         """
@@ -148,7 +193,7 @@ class DataParameter:
         try:
             key = key_map[component]
         except KeyError:
-            msg = 'DataParameter {NAME}: parameter element {COMP} not found in list of parameter elements' \
+            msg = 'InputField {NAME}: parameter element {COMP} not found in list of parameter elements' \
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
             logger.exception(msg)
@@ -160,17 +205,25 @@ class DataParameter:
         """
         Set hotkey bindings.
         """
-        pass
+        if self.editable and not self.hidden:
+            elem_key = self.key_lookup('Element')
+            window[elem_key].bind('<FocusIn>', '+IN+')
+            window[elem_key].bind('<FocusOut>', '+OUT+')
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = mod_const.DEFAULT_BG_COLOR,
-               auto_size_desc: bool = True, hidden: bool = None, justification: str = None, border: bool = False):
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = None, justification: str = None,
+               border: bool = False, auto_size_desc: bool = True, hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
         if bg_col:  # set custom background different from configuration or default
             self.bg_col = bg_col
+        else:
+            bg_col = self.bg_col
 
-        justification = justification if justification else self.justification
+        if justification:  # set custom justification of the description label different from configured
+            self.justification = justification
+        else:  # use configured justification
+            justification = self.justification
 
         is_required = self.required
         visible = not hidden if hidden is not None else not self.hidden
@@ -181,7 +234,7 @@ class DataParameter:
         relief = 'flat' if not border else None
 
         # Parameter settings
-        desc = '{}:'.format(self.description) if self.description else ''
+        desc = self.description if self.description else ''
 
         # Parameter size
         if size:  # set to fixed size (characters)
@@ -209,17 +262,6 @@ class DataParameter:
 
         self.auto_size = auto_size_desc
 
-        # Icon layout
-        icon = self.icon
-        if icon is None:
-            icon_layout = []
-        else:
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
-            else:
-                icon_layout = []
-
         # Required symbol
         if is_required is True:
             required_layout = [sg.Text('*', font=bold_font, background_color=bg_col,
@@ -234,28 +276,34 @@ class DataParameter:
 
         header_key = self.key_lookup('Header')
         header_layout = sg.Col([[sg.Canvas(key=header_key, size=(desc_w, 0), background_color=bg_col)],
-                                required_layout + icon_layout + desc_layout],
+                                required_layout + desc_layout],
                                pad=(0, (0, pad_el)), background_color=bg_col, element_justification=justification,
                                expand_y=True)
 
+        container_key = self.key_lookup('Container')
+        element_layout = [sg.Frame('', [[self.element_layout(size=param_size)]],
+                                   key=container_key, background_color=mod_const.FIELD_COLOR, border_width=0,
+                                   expand_x=True, vertical_alignment='c', relief='flat', tooltip=self.placeholder)]
+
         value_key = self.key_lookup('Value')
         param_layout = sg.Col([[sg.Canvas(key=value_key, size=(value_w, 0), background_color=bg_col)],
-                               self.element_layout(size=param_size, bg_col=bg_col)],
+                               element_layout],
                               background_color=bg_col, vertical_alignment='c')
 
         height_key = self.key_lookup('Height')
-        elem_layout = [sg.Canvas(key=height_key, size=(0, height_px), background_color=bg_col), header_layout, param_layout]
+        elem_layout = [sg.Canvas(key=height_key, size=(0, height_px), background_color=bg_col), header_layout,
+                       param_layout]
 
         width_key = self.key_lookup('Width')
         frame_key = self.key_lookup('Frame')
         layout = [sg.Frame('', [[sg.Canvas(key=width_key, size=(layout_w, 0), background_color=bg_col)],
                                 elem_layout],
-                           key=frame_key, pad=padding, visible=visible, background_color=bg_col, relief=relief,
-                           border_width=1, vertical_alignment='c')]
+                           key=frame_key, pad=padding, visible=visible, background_color=bg_col, border_width=0,
+                           relief=relief, vertical_alignment='c', tooltip=self.description)]
 
         return layout
 
-    def element_layout(self, size: tuple = None, bg_col: str = None):
+    def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -334,7 +382,7 @@ class DataParameter:
             try:
                 new_value = float(value)
             except ValueError:
-                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
             else:
@@ -344,7 +392,7 @@ class DataParameter:
             try:
                 new_value = int(value)
             except ValueError:
-                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
             else:
@@ -354,7 +402,7 @@ class DataParameter:
             try:
                 display_value = settings.format_display_date(value)
             except ValueError:
-                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
 
@@ -362,7 +410,7 @@ class DataParameter:
             try:
                 display_value = int(value)
             except ValueError:
-                logger.warning('DataParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
 
@@ -388,9 +436,9 @@ class DataParameter:
 
 
 # Single value data parameters
-class DataParameterInput(DataParameter):
+class InputFieldStandard(InputField):
     """
-    Data parameter of standard input type.
+    Parent class for standard text-style input fields.
 
     Attributes:
 
@@ -398,44 +446,12 @@ class DataParameterInput(DataParameter):
 
         elements (list): list of data element GUI keys.
 
-        pattern_matching (bool): query parameter using pattern matching [Default: False]
-
         value: value of the parameter's data storage elements.
     """
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
         format_value = settings.format_value
-
-        # Enforce supported data types for the input parameter
-        supported_dtypes = settings.supported_str_dtypes + settings.supported_cat_dtypes + \
-                           settings.supported_int_dtypes + settings.supported_float_dtypes
-        if not self.dtype or self.dtype not in supported_dtypes:
-            msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
-                  '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: configuration warning - {MSG}'.format(PARAM=name, MSG=msg))
-
-            self.dtype = 'varchar'
-
-        # Parameter-type specific attributes
-        try:  # optional pattern matching flag for string and character data types
-            pattern = bool(int(entry['PatternMatching']))
-        except KeyError:
-            self.pattern_matching = False
-        except ValueError:
-            msg = 'DataParameter {NAME}: configuration error - "PatternMatching" must be either 0 (False) or 1 (True)' \
-                .format(NAME=self.name)
-            logger.error(msg)
-
-            raise AttributeError(msg)
-        else:
-            supported_dtypes = settings.supported_str_dtypes + settings.supported_cat_dtypes
-            if self.dtype in supported_dtypes:
-                self.pattern_matching = pattern
-            else:  # only allow pattern matching for string-like data types
-                logger.warning('DataParameter {NAME}: configuration warning - pattern matching is only allowed when '
-                               'dtype is set to a supported string or category type'.format(NAME=self.name))
-                self.pattern_matching = False
 
         # Dynamic attributes
         try:
@@ -452,9 +468,105 @@ class DataParameterInput(DataParameter):
 
         self._value = ''  # raw value
 
-        logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+        logger.debug('InputField {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        default_value = self.default
+        self.value = default_value
+        self._enforce_formatting(self._default)
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.update_display(window)
+
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
+        elem_key = self.key_lookup('Element')
+        if param_event == 'In' and not self.disabled:
+            self._set_state(window, state='focus')
+
+            if self._value == '':
+                window[elem_key].update(value='')
+        elif param_event == 'Out' and not self.disabled:
+            self._set_state(window, state='inactive')
+
+            if self._value == '':
+                window[elem_key].update(value=self.placeholder, text_color=mod_const.DISABLED_TEXT_COLOR)
+        elif param_event == 'Element':
+            input_value = values[elem_key]
+            display_value = self._enforce_formatting(input_value)
+            window[elem_key].update(value=display_value, text_color=mod_const.DEFAULT_TEXT_COLOR)
+
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        elem_key = self.key_lookup('Element')
+
+        # Update element text
+        display_value = self.format_display()
+        display_text = self.placeholder if display_value == '' else display_value
+        window[elem_key].update(value=display_text)
+
+
+class InputFieldText(InputFieldStandard):
+    """
+    For standard text input with no accessory elements.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        elements (list): list of data element GUI keys.
+
+        pattern_matching (bool): query parameter using pattern matching [Default: False]
+
+        value: value of the parameter's data storage elements.
+    """
+
+    def __init__(self, name, entry):
+        super().__init__(name, entry)
+        # Enforce supported data types for the input parameter
+        supported_dtypes = settings.supported_str_dtypes + settings.supported_cat_dtypes + \
+                           settings.supported_int_dtypes + settings.supported_float_dtypes
+        if not self.dtype or self.dtype not in supported_dtypes:
+            msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
+                  '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
+            logger.warning('InputField {PARAM}: configuration warning - {MSG}'.format(PARAM=name, MSG=msg))
+
+            self.dtype = 'varchar'
+
+        # Parameter-type specific attributes
+        try:  # optional pattern matching flag for string and character data types
+            pattern = bool(int(entry['PatternMatching']))
+        except KeyError:
+            self.pattern_matching = False
+        except ValueError:
+            msg = 'InputField {NAME}: configuration error - "PatternMatching" must be either 0 (False) or 1 (True)' \
+                .format(NAME=self.name)
+            logger.error(msg)
+
+            raise AttributeError(msg)
+        else:
+            supported_dtypes = settings.supported_str_dtypes + settings.supported_cat_dtypes
+            if self.dtype in supported_dtypes:
+                self.pattern_matching = pattern
+            else:  # only allow pattern matching for string-like data types
+                logger.warning('InputField {NAME}: configuration warning - pattern matching is only allowed when '
+                               'dtype is set to a supported string or category type'.format(NAME=self.name))
+                self.pattern_matching = False
 
     def _enforce_formatting(self, value):
         """
@@ -465,7 +577,7 @@ class DataParameterInput(DataParameter):
 
         dtype = self.dtype
 
-        logger.debug('DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
+        logger.debug('InputField {PARAM}: enforcing correct formatting of input value {VAL}'
                      .format(PARAM=self.name, VAL=value))
 
         if pd.isna(value):
@@ -582,43 +694,6 @@ class DataParameterInput(DataParameter):
 
         return display_value
 
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        default_value = self.default
-        self.value = default_value
-        self._enforce_formatting(self._default)
-
-        # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
-
-    def update_display(self, window):
-        """
-        Update the parameter display.
-        """
-        elem_key = self.key_lookup('Element')
-
-        # Update element text
-        display_value = self.format_display()
-        window[elem_key].set_tooltip(display_value)
-        window[elem_key].update(value=display_value)
-
-    def run_event(self, window, event, values):
-        """
-        Run a window event associated with the parameter.
-        """
-        try:
-            param_event = self.bindings[event]
-        except KeyError:
-            param_event = None
-
-        if param_event == 'Element':
-            input_value = values[self.key_lookup('Element')]
-            display_value = self._enforce_formatting(input_value)
-            window[event].update(value=display_value)
-
     def format_value(self, values):
         """
         Set the value of the data element from user input.
@@ -633,7 +708,7 @@ class DataParameterInput(DataParameter):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
@@ -648,7 +723,7 @@ class DataParameterInput(DataParameter):
         try:
             value_fmt = settings.format_value(input_value, dtype)
         except ValueError:
-            logger.warning('DataParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
+            logger.warning('InputField {NAME}: failed to format input value {VAL} as {DTYPE}'
                            .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
             return self.value
@@ -667,15 +742,15 @@ class DataParameterInput(DataParameter):
             return ''
 
         display_value = self.format_display_value(value)
-        logger.debug('DataParameter {NAME}: editable {EDIT}; hidden {VIS}'
+        logger.debug('InputField {NAME}: editable {EDIT}; hidden {VIS}'
                      .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
 
-        logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+        logger.debug('InputField {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
         return display_value
 
-    def element_layout(self, size: tuple = None, bg_col: str = None):
+    def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -683,11 +758,9 @@ class DataParameterInput(DataParameter):
 
         # Element settings
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
-        in_col = mod_const.ELEMENT_COLOR if not disabled else bg_col
+        bg_col = mod_const.DEFAULT_BG_COLOR
         disabled_text_col = mod_const.DISABLED_TEXT_COLOR
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        pad_el = mod_const.ELEM_PAD
+        disabled_bg_col = mod_const.DISABLED_BG_COLOR
 
         # Parameter size
         if size:
@@ -699,14 +772,23 @@ class DataParameterInput(DataParameter):
         else:
             elem_w, elem_h = mod_const.PARAM_SIZE_CHAR
 
+        # Parameter settings
+        display_value = self._enforce_formatting(self._default)
+        if display_value == '':
+            display_value = self.placeholder
+            text_col = mod_const.DISABLED_TEXT_COLOR
+        else:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+
         # Layout
         elem_key = self.key_lookup('Element')
-
-        display_value = self._enforce_formatting(self._default)
-        layout = [sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), pad=pad_el, enable_events=True,
-                           disabled=disabled, font=font, background_color=in_col, text_color=text_col,
-                           disabled_readonly_text_color=disabled_text_col, disabled_readonly_background_color=in_col,
-                           tooltip='Input value for {}'.format(self.description))]
+        frame_key = self.key_lookup('ValueFrame')
+        layout = sg.Col([[sg.Input(display_value, key=elem_key, disabled=disabled, enable_events=True,
+                                   size=(elem_w, elem_h), border_width=0, font=font,
+                                   background_color=bg_col, text_color=text_col,
+                                   disabled_readonly_text_color=disabled_text_col,
+                                   disabled_readonly_background_color=disabled_bg_col)]],
+                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
 
         return layout
 
@@ -751,11 +833,11 @@ class DataParameterInput(DataParameter):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+        logger.debug('InputField {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
         if match_pattern is True:
             df = df[col_values.str.contains(param_value, case=False, regex=True)]
@@ -775,9 +857,9 @@ class DataParameterInput(DataParameter):
             return True
 
 
-class DataParameterDate(DataParameter):
+class InputFieldDate(InputFieldStandard):
     """
-    Data parameter split date element.
+    For date input.
 
     Attributes:
 
@@ -796,17 +878,12 @@ class DataParameterDate(DataParameter):
         self.elements['Calendar'] = calendar_key
         self.bindings[calendar_key] = 'Calendar'
 
-        elem_key = self.key_lookup('Element')
-        for special_event in ('In', 'Out'):
-            event_key = '{ELEM}+{KEY}+'.format(ELEM=elem_key, KEY=special_event.upper())
-            self.bindings[event_key] = special_event
-
         # Enforce supported data types for the parameter
         supported_dtypes = settings.supported_date_dtypes
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'datetime'
 
@@ -816,21 +893,7 @@ class DataParameterDate(DataParameter):
         except (KeyError, ValueError):
             self.localize = False
 
-        try:
-            self.help_text = entry['HelpText']
-        except KeyError:
-            self.help_text = 'YYYY/MM/DD'
-
         self._format = '%Y/%m/%d'
-
-        # Parameters of the split-date type do not accept default values
-        self.default = None
-        self.value = None
-        self._value = ''  # raw unformatted value
-
-        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-                     '{DEF}, and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
     def _enforce_formatting(self, value):
         """
@@ -838,7 +901,7 @@ class DataParameterDate(DataParameter):
         """
         strptime = datetime.datetime.strptime
 
-        logger.debug('DataParameter {PARAM}: enforcing correct formatting of input value {VAL}'
+        logger.debug('InputField {PARAM}: enforcing correct formatting of input value {VAL}'
                      .format(PARAM=self.name, VAL=value))
 
         if pd.isna(value):
@@ -855,7 +918,7 @@ class DataParameterDate(DataParameter):
             except ValueError:  # date is incorrectly formatted
                 msg = '{} is not a valid date format'.format(''.join(new_value))
                 mod_win2.popup_notice(msg)
-                logger.warning('DataParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 display_value = format_display_date(raw_value, sep='/')
             else:
@@ -901,50 +964,7 @@ class DataParameterDate(DataParameter):
 
         return display_value
 
-    def bind_keys(self, window):
-        """
-        Set hotkey bindings.
-        """
-        elem_key = self.key_lookup('Element')
-        if self.editable and not self.hidden:
-            window[elem_key].bind('<FocusIn>', '+IN+')
-            window[elem_key].bind('<FocusOut>', '+OUT+')
-
-    def run_event(self, window, event, values):
-        """
-        Run a window event associated with the parameter.
-        """
-        try:
-            param_event = self.bindings[event]
-        except KeyError:
-            param_event = None
-
-        elem_key = self.key_lookup('Element')
-        if param_event == 'In' and not self.disabled:
-            if self._value == '':
-                window[elem_key].update(value='')
-        elif param_event == 'Out' and not self.disabled:
-            if self._value == '':
-                window[elem_key].update(value=self.help_text, text_color=mod_const.DISABLED_TEXT_COLOR)
-        elif param_event == 'Element':
-            input_value = values[elem_key]
-            display_value = self._enforce_formatting(input_value)
-            window[elem_key].update(value=display_value, text_color=mod_const.DEFAULT_TEXT_COLOR)
-
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
-                     .format(NAME=self.name, VAL=self.value, DEF=self.default))
-        self.value = None
-        self._value = ''
-
-        # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
-
-    def element_layout(self, size: tuple = None, bg_col: str = None):
+    def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -952,9 +972,9 @@ class DataParameterDate(DataParameter):
 
         # Element settings
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
-        in_col = mod_const.ELEMENT_COLOR if not disabled else bg_col
+        bg_col = mod_const.DEFAULT_BG_COLOR
         disabled_text_col = mod_const.DISABLED_TEXT_COLOR
+        disabled_bg_col = mod_const.DISABLED_BG_COLOR
         pad_el = mod_const.ELEM_PAD * 2
 
         # Parameter settings
@@ -962,14 +982,10 @@ class DataParameterDate(DataParameter):
         default_display = '' if pd.isna(default_value) else self.value.strftime(self._format)
         display_value = self._enforce_formatting(default_display)
         if display_value == '':
-            display_value = self.help_text
+            display_value = self.placeholder
             text_col = mod_const.DISABLED_TEXT_COLOR
         else:
             text_col = mod_const.DEFAULT_TEXT_COLOR
-
-        elem_key = self.key_lookup('Element')
-        calendar_key = self.key_lookup('Calendar')
-        date_ico = mod_const.CALENDAR_ICON
 
         # Parameter size
         if size:
@@ -983,17 +999,21 @@ class DataParameterDate(DataParameter):
             elem_w = 10 + 2  # number of characters in the date format plus 2
 
         # Layout
-        layout = [sg.Frame('', [[sg.CalendarButton('', target=elem_key, key=calendar_key, format=self._format,
-                                                   image_data=date_ico, font=font, pad=(pad_el, 0),
-                                                   button_color=(text_col, in_col), border_width=0,
-                                                   disabled=disabled,
-                                                   tooltip='Select date from calendar menu'),
-                                 sg.Input(display_value, key=elem_key, size=(elem_w, elem_h), border_width=0,
-                                          background_color=in_col, text_color=text_col,
-                                          disabled_readonly_text_color=disabled_text_col,
-                                          disabled_readonly_background_color=in_col,
-                                          enable_events=True, disabled=disabled, use_readonly_for_disable=True)]],
-                           background_color=in_col, border_width=1, expand_x=True)]
+        elem_key = self.key_lookup('Element')
+        calendar_key = self.key_lookup('Calendar')
+        frame_key = self.key_lookup('ValueFrame')
+        date_ico = mod_const.CALENDAR_ICON
+        layout = sg.Col([[sg.CalendarButton('', target=elem_key, key=calendar_key, format=self._format,
+                                            image_data=date_ico, font=font, pad=(pad_el, 0),
+                                            button_color=(text_col, bg_col),
+                                            border_width=0, disabled=disabled),
+                          sg.Input(display_value, key=elem_key, enable_events=True, disabled=disabled,
+                                   size=(elem_w, elem_h), border_width=0, font=font,
+                                   background_color=bg_col, text_color=text_col,
+                                   disabled_readonly_text_color=disabled_text_col,
+                                   disabled_readonly_background_color=disabled_bg_col,
+                                   use_readonly_for_disable=True)]],
+                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
 
         return layout
 
@@ -1009,7 +1029,7 @@ class DataParameterDate(DataParameter):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
@@ -1024,7 +1044,7 @@ class DataParameterDate(DataParameter):
         try:
             value_fmt = pd.to_datetime(input_value, format=self._format, utc=False).to_pydatetime()
         except ValueError:
-            logger.warning('DataParameter {NAME}: failed to format input value {VAL} as a datetime object'
+            logger.warning('InputField {NAME}: failed to format input value {VAL} as a datetime object'
                            .format(NAME=self.name, VAL=input_value))
 
             return self.value
@@ -1043,23 +1063,6 @@ class DataParameterDate(DataParameter):
         display_value = self.value.strftime(self._format)
 
         return display_value
-
-    def update_display(self, window):
-        """
-        Update the parameter display.
-        """
-        elem_key = self.key_lookup('Element')
-
-        # Update element text
-        display_value = self.format_display()
-        if display_value == '':
-            display_value = self.help_text
-            text_color = mod_const.DISABLED_TEXT_COLOR
-        else:
-            text_color = mod_const.DEFAULT_TEXT_COLOR
-
-        window[elem_key].set_tooltip(display_value)
-        window[elem_key].update(value=display_value, text_color=text_color)
 
     def query_statement(self, column):
         """
@@ -1089,14 +1092,14 @@ class DataParameterDate(DataParameter):
         try:
             col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
         value = self.value
         param_value = value.date()
 
-        logger.debug('DataParameter {NAME}: filtering table on values {VAL}'
+        logger.debug('InputField {NAME}: filtering table on values {VAL}'
                      .format(NAME=self.name, VAL=value.strftime(settings.date_format)))
         df = df[col_values.dt.date == param_value]
 
@@ -1115,9 +1118,9 @@ class DataParameterDate(DataParameter):
             return False
 
 
-class DataParameterCombo(DataParameter):
+class InputFieldCombo(InputField):
     """
-    Dropdown-type data parameter.
+    For selection input.
 
     Attributes:
         combo_values (list): list of possible values for the dropdown menu.
@@ -1135,7 +1138,7 @@ class DataParameterCombo(DataParameter):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'varchar'
 
@@ -1155,7 +1158,7 @@ class DataParameterCombo(DataParameter):
         except KeyError:
             msg = 'missing required parameter "Values" for data parameters of type "{ETYPE}"'.format(ETYPE=self.etype)
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             combo_values = []
 
@@ -1166,7 +1169,7 @@ class DataParameterCombo(DataParameter):
             except ValueError:
                 msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
                 mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             else:
                 self.combo_values.append(value_fmt)
 
@@ -1183,7 +1186,7 @@ class DataParameterCombo(DataParameter):
             self.default = value_fmt
             self.value = value_fmt
 
-        logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+        logger.debug('InputField {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -1206,14 +1209,21 @@ class DataParameterCombo(DataParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].set_tooltip(display_value)
         window[elem_key].update(value=display_value)
 
     def run_event(self, window, event, values):
         """
         Run a window event associated with the parameter.
         """
-        pass
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
+        if param_event == 'In' and not self.disabled:
+            self._set_state(window, state='focus')
+        elif param_event == 'Out' and not self.disabled:
+            self._set_state(window, state='inactive')
 
     def format_value(self, values):
         """
@@ -1230,7 +1240,7 @@ class DataParameterCombo(DataParameter):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
@@ -1249,7 +1259,7 @@ class DataParameterCombo(DataParameter):
             try:
                 value_fmt = settings.format_value(input_value, dtype)
             except ValueError:
-                logger.warning('DataParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
+                logger.warning('InputField {NAME}: failed to format input value {VAL} as {DTYPE}'
                                .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
                 return self.value
@@ -1273,15 +1283,15 @@ class DataParameterCombo(DataParameter):
         except KeyError:
             display_value = self.format_display_value(value)
 
-        logger.debug('DataParameter {NAME}: editable {EDIT}; hidden {VIS}'
+        logger.debug('InputField {NAME}: editable {EDIT}; hidden {VIS}'
                      .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
 
-        logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+        logger.debug('InputField {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
         return display_value
 
-    def element_layout(self, size: tuple = None, bg_col: str = None):
+    def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -1289,8 +1299,7 @@ class DataParameterCombo(DataParameter):
 
         # Element settings
         font = mod_const.LARGE_FONT
-        bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
-        in_col = mod_const.ELEMENT_COLOR if not disabled else bg_col
+        bg_col = mod_const.DEFAULT_BG_COLOR
         text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Parameter settings
@@ -1312,9 +1321,13 @@ class DataParameterCombo(DataParameter):
 
         # Layout
         elem_key = self.key_lookup('Element')
-        layout = [sg.Combo(values, default_value=display_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                           background_color=in_col, text_color=text_col, enable_events=True, disabled=disabled,
-                           tooltip='Select a value for {}'.format(self.description))]
+        frame_key = self.key_lookup('ValueFrame')
+        layout = sg.Col([[sg.Combo(values, default_value=display_value, key=elem_key, size=(elem_w, elem_h),
+                                   font=font, background_color=bg_col, text_color=text_col,
+                                   button_arrow_color=mod_const.FIELD_COLOR,
+                                   button_background_color=bg_col,
+                                   enable_events=True, disabled=disabled)]],
+                        pad=(1, 1), key=frame_key, background_color=bg_col, vertical_alignment='c', expand_x=True)
 
         return layout
 
@@ -1364,11 +1377,11 @@ class DataParameterCombo(DataParameter):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+        logger.debug('InputField {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
         df = df[col_values == param_value]
 
@@ -1385,9 +1398,9 @@ class DataParameterCombo(DataParameter):
             return True
 
 
-class DataParameterCheckbox(DataParameter):
+class InputFieldCheckbox(InputField):
     """
-    Checkbox parameter element object.
+    For true / false input.
 
     Attributes:
 
@@ -1409,7 +1422,7 @@ class DataParameterCheckbox(DataParameter):
         if self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'bool'
 
@@ -1424,7 +1437,7 @@ class DataParameterCheckbox(DataParameter):
             self.default = self.value = False
 
         # Dynamic attributes
-        logger.debug('DataParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+        logger.debug('InputField {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -1438,9 +1451,11 @@ class DataParameterCheckbox(DataParameter):
         """
         Reset the parameter's values.
         """
+        default_value = self.default
+        self.value = default_value
+
         # Update the parameter window element
         if self.hidden is False:
-            self.value = self.default
             self.update_display(window)
 
     def resize(self, window, size: tuple = None):
@@ -1472,10 +1487,9 @@ class DataParameterCheckbox(DataParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].set_tooltip(display_value)
         window[elem_key].update(value=display_value)
 
-    def element_layout(self, size: tuple = None, bg_col: str = None):
+    def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -1483,8 +1497,7 @@ class DataParameterCheckbox(DataParameter):
         disabled = False if self.editable is True else True
 
         # Element settings
-        bg_col = mod_const.DEFAULT_BG_COLOR if bg_col is None else bg_col
-        box_col = bg_col if not disabled else mod_const.DISABLED_BG_COLOR
+        bg_col = mod_const.DEFAULT_BG_COLOR if not disabled else mod_const.DISABLED_BG_COLOR
 
         # Parameter size
         width, height = size
@@ -1494,10 +1507,14 @@ class DataParameterCheckbox(DataParameter):
         # Parameter settings
         display_value = self.format_display()
 
+        # Layout
         elem_key = self.key_lookup('Element')
-        layout = [sg.Checkbox('', default=display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True,
-                              disabled=disabled, background_color=bg_col, checkbox_color=box_col,
-                              metadata={'value': display_value, 'disabled': disabled})]
+        frame_key = self.key_lookup('ValueFrame')
+        layout = sg.Col(
+            [[sg.Checkbox('', default=display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True,
+                          disabled=disabled, background_color=bg_col, checkbox_color=bg_col,
+                          tooltip=self.placeholder)]],
+            key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
 
         return layout
 
@@ -1515,14 +1532,12 @@ class DataParameterCheckbox(DataParameter):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('DataParameter {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
         else:
             input_value = values
-
-        print('parameter {} has initial input value: {}'.format(self.name, input_value))
 
         if input_value == '' or pd.isna(input_value):
             self.value = None
@@ -1532,7 +1547,7 @@ class DataParameterCheckbox(DataParameter):
         try:
             value_fmt = settings.format_value(input_value, dtype)
         except ValueError:
-            logger.warning('DataParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
+            logger.warning('InputField {NAME}: failed to format input value {VAL} as {DTYPE}'
                            .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
             return self.value
@@ -1551,11 +1566,7 @@ class DataParameterCheckbox(DataParameter):
             return ''
 
         display_value = self.format_display_value(value)
-
-        logger.debug('DataParameter {NAME}: editable {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
-
-        logger.debug('DataParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+        logger.debug('InputField {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
         return display_value
@@ -1581,7 +1592,7 @@ class DataParameterCheckbox(DataParameter):
         except ValueError:
             msg = 'unable to format parameter value {VAL} for querying - unsupported value type "{TYPE}" provided' \
                 .format(VAL=value, TYPE=type(value))
-            logger.error('DataParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             query_value = None
 
@@ -1608,11 +1619,11 @@ class DataParameterCheckbox(DataParameter):
         try:
             col_values = df[column].fillna(False).astype(np.bool_, errors='raise')
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {NAME} to parameter data type bool - {ERR}'
+            logger.exception('InputField {NAME}: unable to set column {NAME} to parameter data type bool - {ERR}'
                              .format(NAME=column, ERR=e))
             col_values = df[column]
 
-        logger.debug('DataParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+        logger.debug('InputField {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
         df = df[col_values == param_value]
 
@@ -1620,9 +1631,9 @@ class DataParameterCheckbox(DataParameter):
 
 
 # Multiple component data parameters
-class DataParameterComp(DataParameter):
+class InputFieldComp(InputField):
     """
-    Parent class for data parameters where the element value is split into components.
+    Parent class for input fields with the element value split into two or more components.
 
     Attributes:
         name (str): data element configuration name.
@@ -1641,7 +1652,7 @@ class DataParameterComp(DataParameter):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'float'
 
@@ -1656,9 +1667,11 @@ class DataParameterComp(DataParameter):
         """
         Reset the parameter's values.
         """
+        default_value = self.default
+        self.value = default_value
+
         # Update the parameter window element
         if self.hidden is False:
-            self.value = self.default
             self.update_display(window)
 
     def update_display(self, window):
@@ -1669,10 +1682,9 @@ class DataParameterComp(DataParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].set_tooltip(display_value)
         window[elem_key].update(value=display_value)
 
-    def element_layout(self, size: tuple = None, bg_col: str = None):
+    def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -1680,9 +1692,9 @@ class DataParameterComp(DataParameter):
         disabled = False if self.editable is True else True
 
         # Element settings
-        font = mod_const.LARGE_FONT
-        bg_col = self.bg_col if bg_col is None else bg_col
-        in_col = mod_const.ELEMENT_COLOR
+        #font = mod_const.LARGE_FONT
+        font = mod_const.SMALL_FONT
+        bg_col = mod_const.DEFAULT_BG_COLOR
         text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Parameter size
@@ -1694,22 +1706,27 @@ class DataParameterComp(DataParameter):
         display_value = self.format_display()
 
         elem_key = self.key_lookup('Element')
-        if not disabled:
-            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h),
-                              font=font, background_color=in_col, text_color=text_col, relief='ridge',
-                              tooltip='Set value range for {}'.format(self.description), enable_events=True,
-                              justification='c', metadata={'value': [], 'disabled': disabled})]
-        else:
-            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                              background_color=bg_col, text_color=text_col, border_width=1, justification='c',
-                              metadata={'value': [], 'disabled': disabled})]
+        frame_key = self.key_lookup('ValueFrame')
+        layout = sg.Col([[sg.Button(display_value, key=elem_key, disabled=disabled, border_width=1, font=font,
+                                    button_color=(text_col, bg_col), tooltip=display_value)]],
+                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
+        #if not disabled:
+        #    layout = sg.Col([[sg.Text(display_value, key=elem_key, size=(elem_w, elem_h),
+        #                              font=font, background_color=bg_col, text_color=text_col, relief='ridge',
+        #                              enable_events=True, justification='c', tooltip=self.description)]],
+        #                    key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
+        #else:
+        #    layout = sg.Col([[sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
+        #                              background_color=bg_col, text_color=text_col, border_width=1, justification='c',
+        #                              tooltip=self.placeholder)]],
+        #                    key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
 
         return layout
 
 
-class DataParameterRange(DataParameterComp):
+class InputFieldRange(InputFieldComp):
     """
-    Data parameter with a range-picking element.
+    For ranged value inputs.
 
     Attributes:
 
@@ -1737,7 +1754,7 @@ class DataParameterRange(DataParameterComp):
         except ValueError:
             self.default = self.value = (None, None)
 
-        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+        logger.debug('InputField {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -1750,12 +1767,21 @@ class DataParameterRange(DataParameterComp):
         except KeyError:
             param_event = None
 
-        if param_event == 'Element':
+        if param_event == 'In' and not self.disabled:
+            print('setting outline to blue')
+            self._set_state(window, state='focus')
+        elif param_event == 'Out' and not self.disabled:
+            print('setting outline to gray')
+            self._set_state(window, state='inactive')
+        elif param_event == 'Element' and not self.disabled:
+            elem_key = self.key_lookup('Element')
+
             self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
                                                      location=window.mouse_location())
 
             display_value = self.format_display()
-            window[event].update(value=display_value)
+            #window[event].update(value=display_value)
+            window[elem_key].update(text=display_value)
 
     def format_value(self, values):
         """
@@ -1770,7 +1796,7 @@ class DataParameterRange(DataParameterComp):
             try:
                 input_values = values[self.key_lookup('Element')]
             except KeyError:
-                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(
+                msg = 'InputField {NAME}: unable to find window values for parameter to update'.format(
                     NAME=self.name)
                 logger.warning(msg)
 
@@ -1786,7 +1812,7 @@ class DataParameterRange(DataParameterComp):
         try:
             in1_fmt = format_value(in1, self.dtype)
         except ValueError as e:
-            msg = 'DataParameter {NAME}: unable set datatype for the first value - {ERR}'.format(NAME=self.name, ERR=e)
+            msg = 'InputField {NAME}: unable set datatype for the first value - {ERR}'.format(NAME=self.name, ERR=e)
             logger.warning(msg)
 
             in1_fmt = None
@@ -1794,7 +1820,7 @@ class DataParameterRange(DataParameterComp):
         try:
             in2_fmt = format_value(in2, self.dtype)
         except ValueError as e:
-            msg = 'DataParameter {NAME}: unable set datatype for the second value - {ERR}'.format(NAME=self.name, ERR=e)
+            msg = 'InputField {NAME}: unable set datatype for the second value - {ERR}'.format(NAME=self.name, ERR=e)
             logger.warning(msg)
 
             in2_fmt = None
@@ -1860,7 +1886,7 @@ class DataParameterRange(DataParameterComp):
         try:
             from_value, to_value = param_values
         except ValueError:
-            logger.error('DataParameter {NAME}: ranged parameters require exactly two values'
+            logger.error('InputField {NAME}: ranged parameters require exactly two values'
                          .format(NAME=self.name))
             return df
 
@@ -1876,40 +1902,40 @@ class DataParameterRange(DataParameterComp):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
         if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
-            logger.debug('DataParameter {NAME}: filtering table on values {VAL1} and {VAL2}'
+            logger.debug('InputField {NAME}: filtering table on values {VAL1} and {VAL2}'
                          .format(NAME=self.name, VAL1=from_value, VAL2=to_value))
             try:
                 df = df[(col_values >= from_value) & (col_values <= to_value)]
             except KeyError:
-                logger.warning('DataParameter {NAME}: parameter name not found in the table header'
+                logger.warning('InputField {NAME}: parameter name not found in the table header'
                                .format(NAME=self.name))
             except SyntaxError:
-                logger.warning('DataParameter {TBL}: unable to filter table on parameter values {VAL1} and {VAL2}'
+                logger.warning('InputField {TBL}: unable to filter table on parameter values {VAL1} and {VAL2}'
                                .format(TBL=self.name, VAL1=from_value, VAL2=to_value))
         elif from_value not in (None, '') and to_value in (None, ''):  # rows equal to from component
-            logger.debug('DataParameter {NAME}: filtering table on parameter value {VAL}'
+            logger.debug('InputField {NAME}: filtering table on parameter value {VAL}'
                          .format(NAME=self.name, VAL=from_value))
             try:
                 df = df[col_values == from_value]
             except KeyError:
-                logger.warning('DataParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
+                logger.warning('InputField {NAME}: parameter not found in the table header'.format(NAME=self.name))
             except SyntaxError:
-                logger.warning('DataParameter {NAME}: unable to filter table on parameter value {VAL}'
+                logger.warning('InputField {NAME}: unable to filter table on parameter value {VAL}'
                                .format(NAME=self.name, VAL=from_value))
         elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
-            logger.debug('DataParameter {NAME}: filtering table on parameter value {VAL}'
+            logger.debug('InputField {NAME}: filtering table on parameter value {VAL}'
                          .format(NAME=self.name, VAL=to_value))
             try:
                 df = df[col_values == to_value]
             except KeyError:
-                logger.warning('DataParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
+                logger.warning('InputField {NAME}: parameter not found in the table header'.format(NAME=self.name))
             except SyntaxError:
-                logger.warning('DataParameter {NAME}: unable to filter table on parameter value {VAL}'
+                logger.warning('InputField {NAME}: unable to filter table on parameter value {VAL}'
                                .format(NAME=self.name, VAL=to_value))
 
         return df
@@ -1930,9 +1956,9 @@ class DataParameterRange(DataParameterComp):
         return any(values_set)
 
 
-class DataParameterCondition(DataParameterComp):
+class InputFieldCondition(InputFieldComp):
     """
-    Data parameter with a condition-picking element.
+    For conditional value inputs.
 
     Attributes:
 
@@ -1961,7 +1987,7 @@ class DataParameterCondition(DataParameterComp):
         except ValueError:
             self.default = self.value = (oper, None)
 
-        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+        logger.debug('InputField {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -1974,12 +2000,19 @@ class DataParameterCondition(DataParameterComp):
         except KeyError:
             param_event = None
 
-        if param_event == 'Element':
+        if param_event == 'In' and not self.disabled:
+            self._set_state(window, state='focus')
+        elif param_event == 'Out' and not self.disabled:
+            self._set_state(window, state='inactive')
+        elif param_event == 'Element' and not self.disabled:
+            elem_key = self.key_lookup('Element')
+
             self.value = mod_win2.conditional_value_window(self.dtype, current=self.value, title=self.description,
                                                            location=window.mouse_location())
 
             display_value = self.format_display()
-            window[event].update(value=display_value)
+            #window[event].update(value=display_value)
+            window[elem_key].update(text=display_value)
 
     def format_value(self, values):
         """
@@ -1994,7 +2027,7 @@ class DataParameterCondition(DataParameterComp):
             try:
                 input_values = values[self.key_lookup('Element')]
             except KeyError:
-                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(
+                msg = 'InputField {NAME}: unable to find window values for parameter to update'.format(
                     NAME=self.name)
                 logger.warning(msg)
 
@@ -2005,14 +2038,14 @@ class DataParameterCondition(DataParameterComp):
         try:
             oper, value = input_values
         except ValueError:
-            msg = 'DataParameter {NAME}: input value should be a list or tuple of exactly two components' \
+            msg = 'InputField {NAME}: input value should be a list or tuple of exactly two components' \
                 .format(NAME=self.name)
             logger.warning(msg)
 
             return self.value
 
         if oper not in operators:
-            msg = 'DataParameter {NAME}: unknown operator "{OPER}" provided as the first component of the value set' \
+            msg = 'InputField {NAME}: unknown operator "{OPER}" provided as the first component of the value set' \
                 .format(NAME=self.name, OPER=oper)
             logger.warning(msg)
 
@@ -2021,7 +2054,7 @@ class DataParameterCondition(DataParameterComp):
         try:
             value_fmt = settings.format_value(value, self.dtype)
         except ValueError as e:
-            msg = 'DataParameter {NAME}: unable set datatype for the conditional value - {ERR}' \
+            msg = 'InputField {NAME}: unable set datatype for the conditional value - {ERR}' \
                 .format(NAME=self.name, ERR=e)
             logger.warning(msg)
 
@@ -2041,7 +2074,7 @@ class DataParameterCondition(DataParameterComp):
 
         operator, value = self.value
 
-        logger.debug('DataParameter {NAME}: formatting parameter value "{VAL}" for display'
+        logger.debug('InputField {NAME}: formatting parameter value "{VAL}" for display'
                      .format(NAME=self.name, VAL=value))
         display_value = self.format_display_value(value)
 
@@ -2081,11 +2114,11 @@ class DataParameterCondition(DataParameterComp):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('DataParameter {NAME}: filtering table on values {OPER} {VAL}'
+        logger.debug('InputField {NAME}: filtering table on values {OPER} {VAL}'
                      .format(NAME=self.name, OPER=operator, VAL=value))
         try:
             if operator == '<':  # column values are less than value
@@ -2099,7 +2132,7 @@ class DataParameterCondition(DataParameterComp):
             elif operator == '<=':  # column values are less than or equal to value
                 df = df[col_values <= value]
         except SyntaxError:
-            logger.warning('DataParameter {TBL}: unable to filter table on values {OPER} {VAL}'
+            logger.warning('InputField {TBL}: unable to filter table on values {OPER} {VAL}'
                            .format(TBL=self.name, OPER=operator, VAL=value))
 
         return df
@@ -2119,9 +2152,9 @@ class DataParameterCondition(DataParameterComp):
 
 
 # Special data parameters
-class DataParameterMultiple(DataParameter):
+class InputFieldMultiple(InputField):
     """
-    Data parameter multiple selection element.
+    For multiple selection inputs.
 
     Attributes:
 
@@ -2141,7 +2174,7 @@ class DataParameterMultiple(DataParameter):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'varchar'
 
@@ -2162,7 +2195,7 @@ class DataParameterMultiple(DataParameter):
         except KeyError:
             msg = 'missing required parameter "Values" for data parameters of type "{ETYPE}"'.format(ETYPE=self.etype)
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-            logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             menu_values = []
 
@@ -2173,7 +2206,7 @@ class DataParameterMultiple(DataParameter):
             except ValueError:
                 msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=menu_value, DTYPE=self.dtype)
                 mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                logger.warning('DataParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             else:
                 self.menu_values.append(value_fmt)
 
@@ -2185,7 +2218,7 @@ class DataParameterMultiple(DataParameter):
 
         self.default = self.value = [format_value(i, self.dtype) for i in default_values if i in menu_values]
 
-        logger.debug('DataParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+        logger.debug('InputField {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -2198,21 +2231,26 @@ class DataParameterMultiple(DataParameter):
         except KeyError:
             param_event = None
 
-        if param_event == 'Element':
+        if param_event == 'In' and not self.disabled:
+            self._set_state(window, state='focus')
+        elif param_event == 'Out' and not self.disabled:
+            self._set_state(window, state='inactive')
+        elif param_event == 'Element' and not self.disabled:
+            elem_key = self.key_lookup('Element')
+
             options = self.format_display_components(self.menu_values)
             current_values = self.format_display_components(self.value)
             selected = mod_win2.select_value_window(options, current=current_values, title=self.description,
                                                     location=window.mouse_location())
 
-            element_key = self.key_lookup('Element')
-            self.format_value({element_key: selected})
+            self.format_value({elem_key: selected})
             self.update_display(window)
 
     def reset(self, window):
         """
         Reset the parameter's values.
         """
-        logger.debug('DataParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+        logger.debug('InputField {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
                      .format(NAME=self.name, VAL=self.value, DEF=self.default))
         self.value = [i for i in self.default]
 
@@ -2220,7 +2258,7 @@ class DataParameterMultiple(DataParameter):
         if self.hidden is False:
             self.update_display(window)
 
-    def element_layout(self, size: tuple = None, bg_col: str = None):
+    def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -2228,11 +2266,9 @@ class DataParameterMultiple(DataParameter):
         disabled = False if self.editable is True else True
 
         # Element settings
-        font = mod_const.LARGE_FONT
-        bg_col = self.bg_col if bg_col is None else bg_col
-        in_col = mod_const.ELEMENT_COLOR
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        bttn_text_col = mod_const.DISABLED_TEXT_COLOR
+        font = mod_const.SMALL_FONT
+        bg_col = mod_const.DEFAULT_BG_COLOR
+        text_col = mod_const.DISABLED_TEXT_COLOR
 
         # Parameter size
         width, height = size
@@ -2241,19 +2277,15 @@ class DataParameterMultiple(DataParameter):
 
         # Parameter settings
         display_value = self.format_display()
+        nselect = len(self.value)
+        bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
 
+        # Layout
         elem_key = self.key_lookup('Element')
-        if not disabled:
-            nselect = len(self.value)
-            text_font = mod_const.SMALL_FONT
-            bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
-            layout = [sg.Button(bttn_text, key=elem_key, border_width=1, font=text_font,
-                                button_color=(bttn_text_col, in_col), tooltip=display_value)]
-
-        else:
-            layout = [sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
-                              background_color=bg_col, text_color=text_col, border_width=0, justification='c',
-                              metadata={'value': [], 'disabled': disabled})]
+        frame_key = self.key_lookup('ValueFrame')
+        layout = sg.Col([[sg.Button(bttn_text, key=elem_key, disabled=disabled, border_width=1, font=font,
+                                    button_color=(text_col, bg_col), tooltip=display_value)]],
+                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
 
         return layout
 
@@ -2273,7 +2305,7 @@ class DataParameterMultiple(DataParameter):
             try:
                 selected_values = values[self.key_lookup('Element')]
             except KeyError:
-                msg = 'DataParameter {NAME}: unable to find window values for parameter to update'.format(
+                msg = 'InputField {NAME}: unable to find window values for parameter to update'.format(
                     NAME=self.name)
                 logger.warning(msg)
 
@@ -2292,7 +2324,7 @@ class DataParameterMultiple(DataParameter):
             try:
                 formatted_values = [format_value(i, dtype) for i in selected_values]
             except ValueError:
-                logger.warning('DataParameter {NAME}: failed to format selected value {VAL} as {DTYPE}'
+                logger.warning('InputField {NAME}: failed to format selected value {VAL} as {DTYPE}'
                                .format(NAME=self.name, VAL=selected_values, DTYPE=dtype))
                 return current_values
 
@@ -2338,10 +2370,8 @@ class DataParameterMultiple(DataParameter):
         elem_key = self.key_lookup('Element')
 
         # Update element text
-        display_value = self.format_display()
         nselect = len(self.value)
         bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
-        window[elem_key].set_tooltip(display_value)
         window[elem_key].Widget.configure(text=bttn_text)
 
     def query_statement(self, column):
@@ -2383,11 +2413,11 @@ class DataParameterMultiple(DataParameter):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('DataParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('DataParameter {NAME}: filtering table on values {VAL}'.format(NAME=self.name, VAL=values))
+        logger.debug('InputField {NAME}: filtering table on values {VAL}'.format(NAME=self.name, VAL=values))
 
         df = df[col_values.isin(values)]
 
@@ -2467,19 +2497,19 @@ def initialize_parameter(name, entry):
     """
     etype = entry['ElementType']
     if etype in ('dropdown', 'dd', 'combo', 'combobox'):
-        param_class = DataParameterCombo
+        param_class = InputFieldCombo
     elif etype in ('input', 'text'):
-        param_class = DataParameterInput
+        param_class = InputFieldText
     elif etype in ('datetime', 'date', 'dt'):
-        param_class = DataParameterDate
+        param_class = InputFieldDate
     elif etype in ('range', 'date_range'):
-        param_class = DataParameterRange
+        param_class = InputFieldRange
     elif etype == 'conditional':
-        param_class = DataParameterCondition
+        param_class = InputFieldCondition
     elif etype in ('checkbox', 'check', 'bool', 'tf'):
-        param_class = DataParameterCheckbox
+        param_class = InputFieldCheckbox
     elif etype in ('selection', 'multiple', 'mc'):
-        param_class = DataParameterMultiple
+        param_class = InputFieldMultiple
     else:
         msg = 'unknown element type {TYPE} provided to parameter entry {NAME}'.format(TYPE=etype, NAME=name)
 

@@ -4044,14 +4044,18 @@ class DataUnit(RecordElement):
                 desc_w = int(desc_w_px / 9)  # convert to characters for resizing
                 window[desc_key].set_size(size=(desc_w, None))
             else:
-                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+                #desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, self.description)
             elem_w_px = new_w - self._offset - int(desc_w_px)
         else:  # auto size the element based on the content
             new_h = current_h
 
             font = mod_const.LARGE_FONT
 
-            desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+            if self.align:
+                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+            else:
+                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, self.description)
             display_value = self.format_display()
             print('display value for element {}:'.format(self.name))
             print(display_value)
@@ -4267,7 +4271,7 @@ class DataVariable(DataUnit):
         super().__init__(name, entry, parent)
         self.etype = 'text'
 
-        record_elements = ('Auxiliary',)
+        record_elements = ('Auxiliary', 'Message')
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
         self.bindings = {self.elements[i]: i for i in ('Element',)}
 
@@ -4285,6 +4289,21 @@ class DataVariable(DataUnit):
         self._error_color = mod_const.ERROR_COLOR
         self._focus_color = mod_const.SELECTED_BG_COLOR
 
+        try:
+            self.placeholder = entry['PlaceholderText']
+        except KeyError:
+            self.placeholder = None
+
+        try:
+            self.help_text = entry['HelpText']
+        except KeyError:
+            self.help_text = ''
+
+        try:
+            self.error_text = entry['ErrorText']
+        except KeyError:
+            self.error_text = 'Incorrect format for {DESC}'.format(DESC=self.description)
+
         # Dynamic variables
         self.edit_mode = False
         self.disabled = True
@@ -4294,26 +4313,31 @@ class DataVariable(DataUnit):
         Change the border of the input field to match its current state: focus, inactive, or error.
         """
         if state == 'focus':
-            editing = True
             border_color = self._focus_color
+            help_text = self.help_text
         elif state == 'error':
             border_color = self._error_color
+            help_text = self.error_text
+        else:  # inactive
+            # Check if the display value passes any annotations rules
+            annotation = self.annotate_display()
+            if annotation:
+                rule = self.annotation_rules[annotation]
+                border_color = rule['BackgroundColor']
+                help_text = rule['Description']
+            else:
+                help_text = self.help_text
+                border_color = self._border_color
 
-            focus_element = window.find_element_with_focus().Key
-            editing = True if focus_element in self.bindings else False
+        # Update the message text
+        container_key = self.key_lookup('Container')
+        if self.arrangement == 'v':
+            help_key = self.key_lookup('Message')
+            window[help_key].update(value=help_text, text_color=border_color)
         else:
-            editing = False
-            border_color = self._border_color
-
-        if editing:
-            text_col = mod_const.DEFAULT_TEXT_COLOR
-        else:
-            text_col = mod_const.DISABLED_TEXT_COLOR
-
-        self.edit_mode = editing
+            window[container_key].SetTooltip(help_text)
 
         # Update container border to indicate the current state of the element
-        container_key = self.key_lookup('Container')
         window[container_key].ParentRowFrame.config(background=border_color)
 
         border_key = self.key_lookup('Border')
@@ -4323,11 +4347,11 @@ class DataVariable(DataUnit):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        value_fmt = self.format_display(editing=editing)
+        value_fmt = self.format_display(editing=False)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
-        window[elem_key].update(disabled=(not editing), value=value_fmt, text_color=text_col)
+        window[elem_key].update(value=value_fmt)
 
     def _value_layout(self, size: tuple = None):
         """
@@ -4494,16 +4518,14 @@ class DataVariable(DataUnit):
 
         bg_col = mod_const.DEFAULT_BG_COLOR if background is None else background
         self.bg_col = background
-        #text_col = mod_const.DEFAULT_TEXT_COLOR
         border_color = self._border_color if self._border is True else bg_col
 
         # Element Icon, if provided
         icon = self.icon
         if icon is not None:
-            icon_w = 24 + pad_el  # image size (24 pixels) plus padding
+            icon_w = 24  # image size (24 pixels)
             icon_path = settings.get_icon_path(icon)
             if icon_path is not None:
-                # icon_layout = [sg.Image(filename=icon_path, pad=((0, pad_el), 0), background_color=bg_col)]
                 icon_layout = [sg.Image(filename=icon_path, background_color=border_color, expand_y=True,
                                         tooltip=self.description)]
             else:
@@ -4513,12 +4535,12 @@ class DataVariable(DataUnit):
             icon_layout = []
 
         # Required symbol
-        #req_w = 11 + pad_el  # size of asterisk plus padding
-        req_w = 11  # size of asterisk
         if is_required is True:
+            req_w = 11  # size of asterisk
             required_layout = [sg.Text('*', font=bold_font, background_color=bg_col, text_color=mod_const.NOTE_COLOR,
                                        tooltip='required')]
         else:
+            req_w = 0
             required_layout = []
 
         # Element description
@@ -4544,34 +4566,50 @@ class DataVariable(DataUnit):
                                text_color=label_color, font=label_font, auto_size_text=True, tooltip=tooltip)]
 
         # Element value layout
-        # element_layout = self._value_layout(size=(width, 1))
         border_key = self.key_lookup('Border')
         element_layout = [sg.Frame('', [icon_layout + [self._value_layout(size=(width, 1))]],
                                    key=border_key, background_color=border_color, border_width=0,
                                    expand_x=True, vertical_alignment='c', relief='flat')]
 
+        # Validation / help message
+        help_key = self.key_lookup('Message')
+        help_font = mod_const.HELP_FONT
+        help_text = self.help_text
+        help_vis = True if self.arrangement == 'v' else False
+        help_layout = [sg.Col([[sg.Canvas(size=(0, 10), background_color=bg_col),
+                                sg.Text(help_text, key=help_key, font=help_font, text_color=border_color,
+                                        background_color=bg_col, visible=True, expand_x=True)]],
+                              pad=(pad_el, 0), background_color=bg_col, vertical_alignment='c', expand_x=True,
+                              visible=help_vis)]
+
         # Element layout
         width_key = self.key_lookup('Width')
         row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)]
         if self.arrangement == 'v':
-            offset = 2  # width of the value frame
-            # row2 = icon_layout + desc_layout + required_layout
+            offset = icon_w + pad_el  # icon width
             row2 = required_layout + desc_layout
             row3 = element_layout
-            components = [row1, row2, row3]
+            row4 = help_layout
+            components = [row1, row2, row3, row4]
         else:
-            offset = icon_w + req_w + 2  # icon, and asterisks width plus width of the value frame
-            # row2 = icon_layout + desc_layout + element_layout + required_layout
+            offset = icon_w + req_w  # icon and asterisks width
             row2 = required_layout + desc_layout + element_layout
-            components = [row1, row2]
+            row3 = help_layout
+            components = [row1, row2, row3]
 
         frame_key = self.key_lookup('Frame')
         layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden),
-                        element_justification=self.justification)
+                        element_justification=self.justification, vertical_alignment='c')
 
         self._offset += offset
 
         return layout
+
+    def update_display(self, window):
+        """
+        Format element for display.
+        """
+        self._set_state(window, 'inactive')
 
 
 class DataVariableInput(DataVariable):
@@ -4601,12 +4639,74 @@ class DataVariableInput(DataVariable):
 
         self.disabled = False
 
+    def _set_state(self, window, state: str = 'inactive'):
+        """
+        Change the border of the input field to match its current state: focus, inactive, or error.
+        """
+        if state == 'focus':
+            border_color = self._focus_color
+            select_text = True
+            help_text = self.help_text
+
+            editing = True
+        elif state == 'error':
+            border_color = self._error_color
+            select_text = True
+            help_text = self.error_text
+
+            focus_element = window.find_element_with_focus().Key
+            editing = True if focus_element in self.bindings else False
+        else:
+            editing = False
+            select_text = False
+
+            # Check if the display value passes any annotations rules
+            annotation = self.annotate_display()
+            if annotation:
+                rule = self.annotation_rules[annotation]
+                border_color = rule['BackgroundColor']
+                help_text = rule['Description']
+            else:
+                help_text = self.help_text
+                border_color = self._border_color
+
+        if editing:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+        else:
+            text_col = mod_const.DISABLED_TEXT_COLOR
+
+        self.edit_mode = editing
+
+        # Update the message text
+        container_key = self.key_lookup('Container')
+        if self.arrangement == 'v':
+            help_key = self.key_lookup('Message')
+            window[help_key].update(value=help_text, text_color=border_color)
+        else:
+            window[container_key].SetTooltip(help_text)
+
+        # Update container border to indicate the current state of the element
+        window[container_key].ParentRowFrame.config(background=border_color)
+
+        border_key = self.key_lookup('Border')
+        element = window[border_key]
+        element.Widget.config(background=border_color)
+        element.Widget.config(highlightbackground=border_color)
+        element.Widget.config(highlightcolor=border_color)
+
+        # Update the element value to display state-appropriate text
+        value_fmt = self.format_display(editing=editing)
+
+        # Enable/disable element editing
+        elem_key = self.key_lookup('Element')
+        window[elem_key].update(disabled=(not editing), value=value_fmt, text_color=text_col, select=select_text)
+
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
         """
         editable = self.modifiers['edit']
-        element_type = 'input' if editable else 'text'
+        element_type = 'input'
 
         font = mod_const.LARGE_FONT
         text_col = mod_const.DISABLED_TEXT_COLOR if editable is True else mod_const.DEFAULT_TEXT_COLOR
@@ -4666,16 +4766,30 @@ class DataVariableDate(DataVariable):
         """
         if state == 'focus':
             border_color = self._focus_color
+            select_text = True
+            help_text = self.help_text
 
             editing = True
         elif state == 'error':
             border_color = self._error_color
+            select_text = True
+            help_text = self.error_text
 
             focus_element = window.find_element_with_focus().Key
             editing = True if focus_element in self.bindings else False
         else:
-            border_color = self._border_color
             editing = False
+            select_text = False
+
+            # Check if the display value passes any annotations rules
+            annotation = self.annotate_display()
+            if annotation:
+                rule = self.annotation_rules[annotation]
+                border_color = rule['BackgroundColor']
+                help_text = rule['Description']
+            else:
+                help_text = self.help_text
+                border_color = self._border_color
 
         if editing:
             text_col = mod_const.DEFAULT_TEXT_COLOR
@@ -4683,6 +4797,10 @@ class DataVariableDate(DataVariable):
             text_col = mod_const.DISABLED_TEXT_COLOR
 
         self.edit_mode = editing
+
+        # Update the message text
+        help_key = self.key_lookup('Message')
+        window[help_key].update(value=help_text, text_color=border_color)
 
         # Update container border to indicate the current state of the element
         container_key = self.key_lookup('Container')
@@ -4699,7 +4817,7 @@ class DataVariableDate(DataVariable):
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
-        window[elem_key].update(disabled=(not editing), value=value_fmt, text_color=text_col)
+        window[elem_key].update(disabled=(not editing), value=value_fmt, text_color=text_col, select=select_text)
 
         aux_key = self.key_lookup('Auxiliary')
         window[aux_key].update(visible=editing)
@@ -4709,7 +4827,7 @@ class DataVariableDate(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         editable = self.modifiers['edit']
-        element_type = 'input' if editable else 'text'
+        element_type = 'input'
 
         pad_el = mod_const.ELEM_PAD
         default_bg_col = mod_const.DEFAULT_BG_COLOR
@@ -4806,27 +4924,39 @@ class DataVariableCombo(DataVariable):
         """
         if state == 'focus':
             border_color = self._focus_color
+            help_text = self.help_text
 
             editing = True
         elif state == 'error':
             border_color = self._error_color
+            help_text = self.error_text
 
             focus_element = window.find_element_with_focus().Key
             editing = True if focus_element in self.bindings else False
         else:
-            border_color = self._border_color
-
             editing = False
 
-        if editing:
-            text_col = mod_const.DEFAULT_TEXT_COLOR
-        else:
-            text_col = mod_const.DISABLED_TEXT_COLOR
+            # Check if the display value passes any annotations rules
+            annotation = self.annotate_display()
+            if annotation:
+                rule = self.annotation_rules[annotation]
+                border_color = rule['BackgroundColor']
+                help_text = rule['Description']
+            else:
+                help_text = self.help_text
+                border_color = self._border_color
 
         self.edit_mode = editing
 
-        # Update container border to indicate the current state of the element
+        # Update the message text
         container_key = self.key_lookup('Container')
+        if self.arrangement == 'v':
+            help_key = self.key_lookup('Message')
+            window[help_key].update(value=help_text, text_color=border_color)
+        else:
+            window[container_key].SetTooltip(help_text)
+
+        # Update container border to indicate the current state of the element
         window[container_key].ParentRowFrame.config(background=border_color)
 
         border_key = self.key_lookup('Border')
@@ -4847,7 +4977,7 @@ class DataVariableCombo(DataVariable):
         Configure the attributes for the record element's GUI layout.
         """
         editable = self.modifiers['edit']
-        element_type = 'dropdown' if editable else 'text'
+        element_type = 'dropdown'
 
         font = mod_const.LARGE_FONT
         text_col = mod_const.DEFAULT_TEXT_COLOR
@@ -4926,6 +5056,64 @@ class DataVariableMultiline(DataVariable):
 
         self.disabled = False
 
+    def _set_state(self, window, state: str = 'inactive'):
+        """
+        Change the border of the input field to match its current state: focus, inactive, or error.
+        """
+        if state == 'focus':
+            editing = True
+            border_color = self._focus_color
+            help_text = self.help_text
+        elif state == 'error':
+            border_color = self._error_color
+            help_text = self.error_text
+
+            focus_element = window.find_element_with_focus().Key
+            editing = True if focus_element in self.bindings else False
+        else:  # inactive
+            editing = False
+
+            # Check if the display value passes any annotations rules
+            annotation = self.annotate_display()
+            if annotation:
+                rule = self.annotation_rules[annotation]
+                border_color = rule['BackgroundColor']
+                help_text = rule['Description']
+            else:
+                help_text = self.help_text
+                border_color = self._border_color
+
+        if editing:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+        else:
+            text_col = mod_const.DISABLED_TEXT_COLOR
+
+        self.edit_mode = editing
+
+        # Update the message text
+        container_key = self.key_lookup('Container')
+        if self.arrangement == 'v':
+            help_key = self.key_lookup('Message')
+            window[help_key].update(value=help_text, text_color=border_color)
+        else:
+            window[container_key].SetTooltip(help_text)
+
+        # Update container border to indicate the current state of the element
+        window[container_key].ParentRowFrame.config(background=border_color)
+
+        border_key = self.key_lookup('Border')
+        element = window[border_key]
+        element.Widget.config(background=border_color)
+        element.Widget.config(highlightbackground=border_color)
+        element.Widget.config(highlightcolor=border_color)
+
+        # Update the element value to display state-appropriate text
+        value_fmt = self.format_display(editing=editing)
+
+        # Enable/disable element editing
+        elem_key = self.key_lookup('Element')
+        window[elem_key].update(disabled=(not editing), value=value_fmt, text_color=text_col)
+
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
@@ -5001,16 +5189,35 @@ class DataVariableCheckbox(DataVariable):
         if state == 'focus':
             bg_color = mod_const.DEFAULT_BG_COLOR
             editing = True
+            help_text = self.help_text
         elif state == 'error':
             bg_color = self._error_color
+            help_text = self.error_text
 
             focus_element = window.find_element_with_focus().Key
             editing = True if focus_element in self.bindings else False
         else:  # inactive
-            bg_color = mod_const.DISABLED_BG_COLOR
             editing = False
 
+            # Check if the display value passes any annotations rules
+            annotation = self.annotate_display()
+            if annotation:
+                rule = self.annotation_rules[annotation]
+                bg_color = rule['BackgroundColor']
+                help_text = rule['Description']
+            else:
+                help_text = self.help_text
+                bg_color = self._border_color
+
         self.edit_mode = editing
+
+        # Update the message text
+        container_key = self.key_lookup('Container')
+        if self.arrangement == 'v':
+            help_key = self.key_lookup('Message')
+            window[help_key].update(value=help_text, text_color=bg_color)
+        else:
+            window[container_key].SetTooltip(help_text)
 
         # Update the element value to display state-appropriate text
         value_fmt = self.format_display(editing=editing)
@@ -5112,7 +5319,7 @@ class DependentVariable(DataVariable):
         container_key = self.key_lookup('Container')
         layout = sg.Col([[sg.Canvas(key=container_width_key, background_color=bg_col, size=(1, 0))],
                          element_layout],
-                        key=container_key, pad=(2, 2), background_color=bg_col)
+                        key=container_key, pad=(1, 1), background_color=bg_col)
 
         return layout
 
@@ -5130,10 +5337,17 @@ class DependentVariable(DataVariable):
         logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
 
         if element_event == 'Element':
-            edited = self.format_value(values)
-            if edited:
-                self.edited = True
-                self.update_display(window)
+            try:
+                edited = self.format_value(values)
+            except Exception as e:
+                msg = self.format_log('failed to set the value of the dependent variable', err=e)
+                logger.error(msg)
+                self._set_state(window, 'error')
+            else:
+                self._set_state(window, 'inactive')
+                if edited:
+                    self.edited = True
+                    self.update_display(window)
 
         return triggers
 
@@ -5147,13 +5361,7 @@ class DependentVariable(DataVariable):
         # Update element display value
         logger.debug(self.format_log('setting the value of the dependent variable'))
         if isinstance(values, dict):  # dictionary of referenced element values
-            try:
-                input_value = mod_dm.evaluate_operation(values, self.operation)
-            except Exception as e:
-                msg = self.format_log('failed to set the value of the dependent variable', err=e)
-                logger.error(msg)
-                input_value = None
-
+            input_value = mod_dm.evaluate_operation(values, self.operation)
         else:  # single value provided
             input_value = values
 

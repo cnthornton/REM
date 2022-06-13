@@ -112,6 +112,7 @@ def combo_layout(attributes):
     layout = [sg.Combo(values, default_value=display_value, key=elem_key, enable_events=True, size=size, pad=pad,
                        font=font, text_color=text_col, background_color=bg_col,
                        button_arrow_color=mod_const.FIELD_COLOR, button_background_color=bg_col,
+                       expand_x=True, expand_y=True,
                        disabled=disabled, tooltip=tooltip, metadata={'disabled': disabled})]
 
     return layout

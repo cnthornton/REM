@@ -587,7 +587,8 @@ def main():
                    text_element_background_color=default_col,
                    input_elements_background_color=default_col,
                    button_color=(text_col, default_col),
-                   tooltip_font=mod_const.TOOLTIP_FONT)
+                   tooltip_font=mod_const.TOOLTIP_FONT,
+                   )
 
     # Original window size
     logger.debug('determining screen size')
