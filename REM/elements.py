@@ -1180,7 +1180,7 @@ class DataTable(RecordElement):
                 configured annotation rules.
         """
         is_float_dtype = pd.api.types.is_float_dtype
-        highlight_col = mod_const.SELECTED_BG_COLOR
+        highlight_col = mod_const.SELECTED_COLOR
         white_text_col = mod_const.WHITE_TEXT_COLOR
         def_bg_col = mod_const.DEFAULT_BG_COLOR
         text_col = mod_const.DEFAULT_TEXT_COLOR
@@ -1505,7 +1505,7 @@ class DataTable(RecordElement):
         row_col = self.bg_col  # default primary table color is white
         header_col = mod_const.TBL_HEADER_COLOR if bg_color is None else bg_color  # color of the header background
         frame_col = mod_const.FRAME_COLOR  # background color of the table frames
-        border_col = mod_const.BORDER_COLOR  # background color of the collapsible bars and the table frame
+        border_col = mod_const.PANELBAR_COLOR  # background color of the collapsible bars and the table frame
 
         pad = padding if padding and isinstance(padding, tuple) else self.padding
         self.padding = pad
@@ -1537,8 +1537,8 @@ class DataTable(RecordElement):
 
         isize = mod_const.IN1_WIDTH
 
-        header_col_size = 200
-        min_col_size = 10
+        header_col_w = 200
+        min_col_w = 10
 
         bar_h = 26  # height of the title and totals bars in pixels
         cbar_h = 22  # height of the collapsible panel bars in pixels
@@ -1549,7 +1549,7 @@ class DataTable(RecordElement):
 
         # Row layouts
 
-        # Table filter parameters layout
+        # Table filter parameter panel
         filter_params = self.parameters
         if len(filter_params) <= 2 or len(filter_params) == 4:
             use_center = False
@@ -1632,53 +1632,45 @@ class DataTable(RecordElement):
                               visible=False, expand_x=True, vertical_alignment='c',
                               metadata={'visible': False, 'disabled': filter_disabled}))]
 
-        # Table title
-        title_bar = [sg.Canvas(size=(0, bar_h), background_color=header_col)]
+        # Table header
+        title_bar = []
         if modifiers['search'] and search_field is not None:
-            search_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
-                             [sg.Canvas(size=(0, bar_h), background_color=header_col),
-                              sg.Frame('', [
-                                  [sg.Image(data=mod_const.SEARCH_ICON, background_color=row_col, pad=((0, pad_h), 0)),
-                                   sg.Input(default_text='', key=search_key, size=(isize - 2, 1),
-                                            border_width=0, do_not_clear=True, background_color=row_col,
-                                            enable_events=True, tooltip='Search table')]],
-                                       background_color=row_col, relief='sunken')]]
+            search_layout = sg.Frame('', [
+                [sg.Image(data=mod_const.SEARCH_ICON, background_color=row_col, pad=((0, pad_h), 0)),
+                 sg.Input(default_text='', key=search_key, size=(isize - 2, 1),
+                          border_width=0, do_not_clear=True, background_color=row_col,
+                          enable_events=True, tooltip='Search table')]],
+                                     size=(header_col_w, bar_h), background_color=row_col, relief='sunken',
+                                     vertical_alignment='c', element_justification='l')
         else:
-            search_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
-                             [sg.Canvas(size=(0, bar_h), background_color=header_col)]]
-
-        title_bar.append(sg.Col(search_layout, justification='l', element_justification='l', vertical_alignment='c',
-                                background_color=header_col))
+            search_layout = sg.Canvas(size=(header_col_w, bar_h), background_color=header_col)
+        title_bar.append(search_layout)
+        title_bar.append(sg.Push(background_color=header_col))
 
         if table_name is not None:
-            tb_layout = [[sg.Canvas(size=(0, bar_h), background_color=header_col),
-                          sg.Text(table_name, font=title_font, background_color=header_col)]]
-        else:
-            tb_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
-                         [sg.Canvas(size=(0, bar_h), background_color=header_col)]]
-
-        title_bar.append(sg.Col(tb_layout, justification='c', element_justification='c', vertical_alignment='c',
-                                background_color=header_col, expand_x=True))
+            title_bar.append(sg.Push(background_color=header_col))
+            title_layout = sg.Text(table_name, font=title_font, background_color=header_col)
+            title_bar.append(title_layout)
+            title_bar.append(sg.Push(background_color=header_col))
 
         if any([modifiers['fill'], modifiers['sort'], modifiers['export']]):
-            options_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
-                              [sg.Canvas(size=(0, bar_h), background_color=header_col),
-                               sg.Button('', key=options_key, image_data=mod_const.SETTINGS_ICON, border_width=0,
-                                         button_color=(text_col, header_col),
-                                         tooltip='Show additional table options ({})'.format(options_shortcut))]]
+            options_layout = sg.Frame('', [
+                [sg.Button('', key=options_key, image_data=mod_const.SETTINGS_ICON, border_width=0,
+                           button_color=(text_col, header_col),
+                           tooltip='Show additional table options ({})'.format(options_shortcut))]],
+                                      size=(header_col_w, bar_h), background_color=header_col, border_width=0,
+                                      vertical_alignment='c', element_justification='r')
         else:
-            options_layout = [[sg.Canvas(size=(header_col_size, 0), background_color=header_col)],
-                              [sg.Canvas(size=(0, bar_h), background_color=header_col)]]
-
-        title_bar.append(sg.Col(options_layout, justification='r', element_justification='r', vertical_alignment='c',
-                                background_color=header_col))
+            options_layout = sg.Canvas(size=(header_col_w, bar_h), background_color=header_col)
+        title_bar.append(sg.Push(background_color=header_col))
+        title_bar.append(options_layout)
 
         row3 = [sg.Col([title_bar], key=self.key_lookup('TitleBar'), background_color=header_col, expand_x=True,
-                       expand_y=True, vertical_alignment='c')]
+                       vertical_alignment='c')]
 
         height_offset += bar_h  # height of the title bar
 
-        # Data table
+        # Table data
         row4 = []
 
         display_header = self._display_header()
@@ -1691,7 +1683,7 @@ class DataTable(RecordElement):
             else:
                 vis_map.append(False)
 
-        min_w = scroll_w + border_w + len(display_header) * min_col_size
+        min_w = scroll_w + border_w + len(display_header) * min_col_w
         tbl_width = width - scroll_w - border_w if width >= min_w else min_w - scroll_w - border_w
         col_widths = self._calc_column_widths(display_header, width=tbl_width, size=font_size, pixels=False,
                                               widths=self.widths)
@@ -1706,7 +1698,7 @@ class DataTable(RecordElement):
                              vertical_scroll_only=False, select_mode=select_mode,
                              metadata={'disabled': not events, 'visible': True}))
 
-        # Table option
+        # Table options panel
         options = [[sg.Col([[sg.Text('Options', text_color=select_text_col, background_color=border_col)]],
                            pad=(0, (0, int(pad_v / 2))), background_color=border_col, vertical_alignment='c',
                            element_justification='c', expand_x=True)]]
@@ -1732,7 +1724,7 @@ class DataTable(RecordElement):
         row4.append(sg.Col(options, key=self.key_lookup('OptionsFrame'), background_color=frame_col,
                            justification='r', expand_y=True, visible=False, metadata={'visible': False}))
 
-        # Annotation display panel
+        # Annotation message
         if len(self.annotation_rules) > 0:
             annot_vis = True
             height_offset += annot_h  # height of the collapsible bar
@@ -4044,7 +4036,7 @@ class DataUnit(RecordElement):
                 desc_w = int(desc_w_px / 9)  # convert to characters for resizing
                 window[desc_key].set_size(size=(desc_w, None))
             else:
-                #desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
+                # desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
                 desc_w_px = window[desc_key].string_width_in_pixels(bold_font, self.description)
             elem_w_px = new_w - self._offset - int(desc_w_px)
         else:  # auto size the element based on the content
@@ -4285,9 +4277,9 @@ class DataVariable(DataUnit):
         # Element-specific attributes
         self._border = True
 
-        self._border_color = mod_const.FIELD_COLOR
+        self._border_color = mod_const.BORDER_COLOR
         self._error_color = mod_const.ERROR_COLOR
-        self._focus_color = mod_const.SELECTED_BG_COLOR
+        self._focus_color = mod_const.SELECTED_COLOR
 
         try:
             self.placeholder = entry['PlaceholderText']
@@ -5590,7 +5582,7 @@ class TableButton:
 
         # Element settings
         text_col = mod_const.DEFAULT_TEXT_COLOR  # standard text color
-        highlight_col = mod_const.HIGHLIGHT_COLOR
+        highlight_col = mod_const.BUTTON_HOVER_COLOR
 
         # Parameter size
         width, height = size
