@@ -57,7 +57,7 @@ def login_window():
     pad_el = mod_const.ELEM_PAD
 
     bg_col = mod_const.DEFAULT_BG_COLOR
-    input_col = mod_const.ELEMENT_COLOR
+    input_col = mod_const.FIELD_BG_COLOR
     login_col = mod_const.LOGIN_BUTTON_COLOR
     cancel_col = mod_const.CANCEL_BUTTON_COLOR
     def_text_col = mod_const.DEFAULT_TEXT_COLOR
@@ -753,7 +753,7 @@ def add_note_window(note: str = None):
     bttn_text_col = mod_const.BUTTON_TEXT_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     frame_col = mod_const.DISABLED_BG_COLOR
-    bttn_col = (mod_const.WHITE_TEXT_COLOR, mod_const.BUTTON_COLOR)
+    bttn_col = (mod_const.WHITE_TEXT_COLOR, mod_const.BUTTON_BG_COLOR)
     highlight_cols = (mod_const.DISABLED_TEXT_COLOR, mod_const.DISABLED_BUTTON_COLOR)
 
     # Window layout
@@ -767,11 +767,7 @@ def add_note_window(note: str = None):
                     sg.Button('Cancel', key=cancel_key, image_size=mod_const.BTTN_SIZE, border_width=0,
                               button_color=(bttn_text_col, bg_col))]]
 
-    # width_key = '-WIDTH-'
     elem_key = '-NOTE-'
-    # elem_layout = [[sg.Canvas(key=width_key, size=(width, 0), background_color=bg_col)],
-    #               [sg.Multiline('', key=elem_key, size=(width, nrow), font=font,
-    #                             background_color=bg_col, text_color=text_col, border_width=1)]]
     elem_layout = [[sg.Multiline(note_text, key=elem_key, size=(width, nrow), font=font, background_color=bg_col,
                                  text_color=text_col, border_width=1)]]
 
@@ -787,9 +783,6 @@ def add_note_window(note: str = None):
 
     # Resize window to initial size
     screen_w, screen_h = window.get_screen_dimensions()
-    win_w = int(screen_w * 0.5)
-
-    # window[width_key].set_size((win_w, None))
     window[elem_key].expand(expand_x=True, expand_y=True)
 
     window = align_window(window)
@@ -811,7 +804,6 @@ def add_note_window(note: str = None):
             logger.debug('new window size is {W} x {H}'.format(W=win_w, H=win_h))
 
             # Update sizable elements
-            # window[width_key].set_size((win_w, None))
             window[elem_key].expand(expand_x=True, expand_y=True)
 
             current_w, current_h = (win_w, win_h)
@@ -821,7 +813,6 @@ def add_note_window(note: str = None):
         # Save parameter settings
         if event in (save_key, '-HK_ENTER-'):
             note = values[elem_key].strip()
-            # note = note_text if note_text != '' else None
 
             break
 
@@ -1928,7 +1919,7 @@ def import_window(table, params: list = None):
     pad_frame = mod_const.FRAME_PAD
 
     bttn_text_col = mod_const.WHITE_TEXT_COLOR
-    bttn_bg_col = mod_const.BUTTON_COLOR
+    bttn_bg_col = mod_const.BUTTON_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     header_col = mod_const.HEADER_COLOR
 
@@ -2288,7 +2279,7 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
 
     font = mod_const.LARGE_FONT
 
-    in_col = mod_const.ELEMENT_COLOR
+    in_col = mod_const.FIELD_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     text_col = mod_const.DEFAULT_TEXT_COLOR
 
@@ -2398,7 +2389,7 @@ def select_value_window(values, current: list = None, title: str = None, locatio
 
     font = mod_const.LARGE_FONT
 
-    in_col = mod_const.ELEMENT_COLOR
+    in_col = mod_const.FIELD_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
 
     # Keyboard shortcuts
@@ -2549,7 +2540,7 @@ def edit_row_window(row, edit_columns: dict = None, header_map: dict = None, win
     pad_v = mod_const.VERT_PAD
 
     header_col = mod_const.TBL_HEADER_COLOR
-    in_col = mod_const.ELEMENT_COLOR
+    in_col = mod_const.FIELD_BG_COLOR
 
     # GUI layout
 

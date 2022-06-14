@@ -703,7 +703,7 @@ class SettingsManager:
         pad_v = mod_const.VERT_PAD
 
         bg_col = mod_const.DEFAULT_BG_COLOR
-        in_col = mod_const.ELEMENT_COLOR
+        in_col = mod_const.FIELD_BG_COLOR
         select_col = mod_const.SELECTED_TEXT_COLOR
 
         bwidth = 1
@@ -753,14 +753,11 @@ class SettingsManager:
                   sg.Col([
                       [sg.Frame('Localization', [
                           [sg.Col([[sg.Canvas(size=(dcol1_w, 0), background_color=bg_col)],
-                                   #[sg.Text('Language:', pad=(0, (0, pad_el)), font=main_font, background_color=bg_col)],
                                    [sg.Text('Locale:', pad=(0, (0, pad_el)), font=main_font, background_color=bg_col)],
                                    [sg.Text('Display Date Format:', pad=(0, (0, pad_el)), font=main_font,
                                             background_color=bg_col)]],
                                   pad=(pad_v, pad_el), background_color=bg_col),
                            sg.Col([[sg.Canvas(size=(dcol2_w, 0), background_color=bg_col)],
-                                   #[sg.Combo(list(self._locales.values()), key='-LANGUAGE-', pad=(0, (0, pad_el)),
-                                   #          default_value=self.language, background_color=in_col)],
                                    [sg.Combo(list(self._locales), key='-LOCALE-', pad=(0, (0, pad_el)),
                                              default_value=self.locale, background_color=in_col)],
                                    [sg.Combo(display_date_formats, key='-DISPLAY_DATE-',

@@ -3082,8 +3082,10 @@ class DataList(RecordElement):
 
         if size:
             width, height = size
-            new_h = None if height is None else height - border_w * 2 - pad_h
-            new_w = current_w if width is None else width - border_w * 2 - pad_w
+            new_h = None if height is None else height - pad_h
+            #new_h = None if height is None else height - border_w * 2 - pad_h
+            #new_w = current_w if width is None else width - border_w * 2 - pad_w
+            new_w = current_w if width is None else width - pad_w
         else:
             new_h = None  # base height on number of configured "rows"
             new_w = current_w
@@ -3943,7 +3945,7 @@ class DataUnit(RecordElement):
             parent (str): name of the parent record.
         """
         super().__init__(name, entry, parent)
-        record_elements = ('Frame', 'Description', 'Width', 'ContainerWidth', 'Container', 'Border')
+        record_elements = ('Frame', 'Description', 'Width', 'ContainerWidth', 'LabelWidth', 'Container', 'Border')
         self.elements.update({i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in record_elements})
 
         # Parameters that modify the record element's behavior
@@ -3999,14 +4001,22 @@ class DataUnit(RecordElement):
         except KeyError:
             self.align = True
         except ValueError:
-            logger.warning(self.format_log('the "align" parameter must be either 0 (False) or 1 (True)'))
+            logger.warning(self.format_log('the "Align" parameter must be either 0 (False) or 1 (True)'))
             self.align = True
+
+        try:  # hide the field label
+            self.hide_label = bool(int(entry['HideLabel']))
+        except KeyError:
+            self.hide_label = False
+        except ValueError:
+            logger.warning(self.format_log('the "HideLabel" parameter must be either 0 (False) or 1 (True)'))
+            self.hide_label = False
 
         # Dynamic variables
         self._offset = 0
         self.value = mod_col.DataVector(name, entry)
         self._dimensions = (mod_const.VARIABLE_WIDTH_PX, mod_const.VARIABLE_HEIGHT_PX)
-        self.disabled = False
+        self.disabled = self.modifiers['edit']
 
     def _resize_h(self, window, size: tuple = None):
         """
@@ -4017,42 +4027,35 @@ class DataUnit(RecordElement):
 
             size (tuple): new width and height of the element [Default: set to size of the value + description].
         """
-        bold_font = mod_const.BOLD_HEADING_FONT
-
         elem_key = self.key_lookup('Element')
         desc_key = self.key_lookup('Description')
-        width_key = self.key_lookup('Width')
-        container_width_key = self.key_lookup('ContainerWidth')
-        pad_w, pad_h = self.pad_offset()
 
+        width_key = self.key_lookup('Width')
+        label_w_key = self.key_lookup('LabelWidth')
+        container_width_key = self.key_lookup('ContainerWidth')
+
+        pad_w, pad_h = self.pad_offset()
         current_w, current_h = self.dimensions()
 
         if size:  # set element to a set size
             width, height = size
             new_h = current_h if height is None else height - pad_h
             new_w = current_w if width is None else width - pad_w
+
             if self.align:
                 desc_w_px = int(new_w * 0.4)  # description is 40% of total width
-                desc_w = int(desc_w_px / 9)  # convert to characters for resizing
-                window[desc_key].set_size(size=(desc_w, None))
+                window[label_w_key].set_size(size=(desc_w_px, None))
             else:
-                # desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
-                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, self.description)
+                desc_w_px = window[desc_key].get_size()[0]
+
             elem_w_px = new_w - self._offset - int(desc_w_px)
         else:  # auto size the element based on the content
             new_h = current_h
 
-            font = mod_const.LARGE_FONT
-
-            if self.align:
-                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, '{}:'.format(self.description))
-            else:
-                desc_w_px = window[desc_key].string_width_in_pixels(bold_font, self.description)
-            display_value = self.format_display()
-            print('display value for element {}:'.format(self.name))
-            print(display_value)
-            value_w = window[desc_key].string_width_in_pixels(font, display_value) + mod_const.SCROLL_WIDTH + pad_w
+            desc_w_px = window[desc_key].get_size()[0]
+            value_w = desc_w_px + mod_const.SCROLL_WIDTH + pad_w
             elem_w_px = value_w if value_w >= mod_const.VARIABLE_WIDTH_PX else mod_const.VARIABLE_WIDTH_PX
+
             new_w = desc_w_px + elem_w_px + self._offset
 
         window[elem_key].set_size(size=(1, None))
@@ -4298,7 +4301,6 @@ class DataVariable(DataUnit):
 
         # Dynamic variables
         self.edit_mode = False
-        self.disabled = True
 
     def _set_state(self, window, state: str = 'inactive'):
         """
@@ -4506,62 +4508,64 @@ class DataVariable(DataUnit):
         pad = padding if padding and isinstance(padding, tuple) else self.padding
         self.padding = pad
 
-        bold_font = mod_const.BOLD_HEADING_FONT
-
         bg_col = mod_const.DEFAULT_BG_COLOR if background is None else background
         self.bg_col = background
-        border_color = self._border_color if self._border is True else bg_col
 
-        # Element Icon, if provided
-        icon = self.icon
-        if icon is not None:
-            icon_w = 24  # image size (24 pixels)
-            icon_path = settings.get_icon_path(icon)
-            if icon_path is not None:
-                icon_layout = [sg.Image(filename=icon_path, background_color=border_color, expand_y=True,
-                                        tooltip=self.description)]
-            else:
-                icon_layout = []
-        else:
-            icon_w = 0
-            icon_layout = []
-
-        # Required symbol
-        if is_required is True:
-            req_w = 11  # size of asterisk
-            required_layout = [sg.Text('*', font=bold_font, background_color=bg_col, text_color=mod_const.NOTE_COLOR,
-                                       tooltip='required')]
-        else:
-            req_w = 0
-            required_layout = []
-
-        # Element description
         annotation = self.annotate_display()
         if annotation:
             rule = self.annotation_rules[annotation]
-            desc_bg_col = rule['BackgroundColor']
+            border_color = rule['BackgroundColor']
             tooltip = rule['Description']
         else:
-            desc_bg_col = bg_col
+            border_color = self._border_color if self._border is True else bg_col
 
-        if self.arrangement == 'v':
+        # Field label
+        label_position = self.arrangement
+        if label_position == 'v':
             label = self.description
             label_font = mod_const.BOLD_MID_FONT
-            label_color = mod_const.LABEL_COLOR
+            label_color = mod_const.LABEL_TEXT_COLOR
         else:
             label = '{}:'.format(self.description) if self.align else self.description
             label_font = mod_const.BOLD_LARGE_FONT
             label_color = mod_const.DEFAULT_TEXT_COLOR
 
-        desc_key = self.key_lookup('Description')
-        desc_layout = [sg.Text(label, key=desc_key, pad=((0, pad_el), 0), background_color=desc_bg_col,
-                               text_color=label_color, font=label_font, auto_size_text=True, tooltip=tooltip)]
+        desc_layout = [sg.Text(label, background_color=bg_col, text_color=label_color, font=label_font,
+                               auto_size_text=True, tooltip=tooltip)]
+        if is_required is True:
+            required_layout = [sg.Text('*', font=label_font, background_color=bg_col, text_color=mod_const.ERROR_COLOR,
+                                       tooltip='required')]
+        else:
+            required_layout = []
 
-        # Element value layout
+        label_vis = not self.hide_label
+        desc_key = self.key_lookup('Description')
+        label_w_key = self.key_lookup('LabelWidth')
+        label_layout = [sg.Frame('', [[sg.Canvas(key=label_w_key, size=(1, 0), background_color=bg_col)],
+                                      required_layout + desc_layout],
+                                 key=desc_key, pad=((0, pad_el), 0),
+                                 background_color=bg_col, border_width=0, visible=label_vis,
+                                 element_justification=self.justification)]
+
+        # Field value container
+        icon = self.icon
+        if icon is not None:
+            icon_path = settings.get_icon_path(icon)
+            if icon_path is not None:
+                icon_w = 24  # image size (24 pixels)
+                icon_layout = [sg.Image(filename=icon_path, background_color=border_color, expand_y=True,
+                                        tooltip=self.description)]
+            else:
+                icon_w = 0
+                icon_layout = []
+        else:
+            icon_w = 0
+            icon_layout = []
+
         border_key = self.key_lookup('Border')
-        element_layout = [sg.Frame('', [icon_layout + [self._value_layout(size=(width, 1))]],
-                                   key=border_key, background_color=border_color, border_width=0,
-                                   expand_x=True, vertical_alignment='c', relief='flat')]
+        element_layout = [icon_layout + [self._value_layout(size=(width, 1))]]
+        container_layout = [sg.Frame('', element_layout, key=border_key, background_color=border_color, border_width=0,
+                                     expand_x=True, vertical_alignment='c', relief='flat')]
 
         # Validation / help message
         help_key = self.key_lookup('Message')
@@ -4577,21 +4581,21 @@ class DataVariable(DataUnit):
         # Element layout
         width_key = self.key_lookup('Width')
         row1 = [sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)]
-        if self.arrangement == 'v':
+        if self.arrangement == 'v':  # label is positioned above the input field
             offset = icon_w + pad_el  # icon width
-            row2 = required_layout + desc_layout
-            row3 = element_layout
+            row2 = label_layout
+            row3 = container_layout
             row4 = help_layout
             components = [row1, row2, row3, row4]
-        else:
-            offset = icon_w + req_w  # icon and asterisks width
-            row2 = required_layout + desc_layout + element_layout
+        else:  # label is positioned to the left of the input field
+            offset = icon_w + pad_el  # icon width
+            row2 = label_layout + container_layout
             row3 = help_layout
             components = [row1, row2, row3]
 
         frame_key = self.key_lookup('Frame')
         layout = sg.Col(components, key=frame_key, pad=pad, background_color=bg_col, visible=(not hidden),
-                        element_justification=self.justification, vertical_alignment='c')
+                        vertical_alignment='c')
 
         self._offset += offset
 
@@ -4662,7 +4666,7 @@ class DataVariableInput(DataVariable):
                 help_text = self.help_text
                 border_color = self._border_color
 
-        if editing:
+        if editing or self.disabled:
             text_col = mod_const.DEFAULT_TEXT_COLOR
         else:
             text_col = mod_const.DISABLED_TEXT_COLOR
@@ -4783,7 +4787,7 @@ class DataVariableDate(DataVariable):
                 help_text = self.help_text
                 border_color = self._border_color
 
-        if editing:
+        if editing or self.disabled:
             text_col = mod_const.DEFAULT_TEXT_COLOR
         else:
             text_col = mod_const.DISABLED_TEXT_COLOR
@@ -4964,6 +4968,10 @@ class DataVariableCombo(DataVariable):
         elem_key = self.key_lookup('Element')
         window[elem_key].update(disabled=(not editing), value=value_fmt)
 
+        if self.disabled:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+            window[elem_key].Widget.config(foreground=text_col)
+
     def _value_layout(self, size: tuple = None):
         """
         Configure the attributes for the record element's GUI layout.
@@ -5075,7 +5083,7 @@ class DataVariableMultiline(DataVariable):
                 help_text = self.help_text
                 border_color = self._border_color
 
-        if editing:
+        if editing or self.disabled:
             text_col = mod_const.DEFAULT_TEXT_COLOR
         else:
             text_col = mod_const.DISABLED_TEXT_COLOR

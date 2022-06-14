@@ -111,7 +111,7 @@ def combo_layout(attributes):
     display_value = attributes.get('DisplayValue', '')
     layout = [sg.Combo(values, default_value=display_value, key=elem_key, enable_events=True, size=size, pad=pad,
                        font=font, text_color=text_col, background_color=bg_col,
-                       button_arrow_color=mod_const.FIELD_COLOR, button_background_color=bg_col,
+                       button_arrow_color=mod_const.BORDER_COLOR, button_background_color=bg_col,
                        expand_x=True, expand_y=True,
                        disabled=disabled, tooltip=tooltip, metadata={'disabled': disabled})]
 
@@ -202,7 +202,7 @@ def nav_bttn(*args, **kwargs):
     """
     size = mod_const.BTTN_SIZE
     text_col = mod_const.DEFAULT_TEXT_COLOR
-    highlight_col = mod_const.HIGHLIGHT_COLOR
+    highlight_col = mod_const.BUTTON_HOVER_COLOR
 
     return sg.Button(*args, **kwargs, image_size=size, mouseover_colors=(text_col, highlight_col))
 
@@ -272,7 +272,7 @@ def importer_layout(win_size: tuple = None):
 
     # Layout settings
     header_col = mod_const.HEADER_COLOR
-    input_col = mod_const.ELEMENT_COLOR
+    input_col = mod_const.FIELD_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     frame_col = mod_const.FRAME_COLOR
     select_col = mod_const.SELECTED_TEXT_COLOR

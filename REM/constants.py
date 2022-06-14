@@ -4,21 +4,29 @@ REM constants and other program settings.
 
 
 # Element Color Constants
-DEFAULT_BG_COLOR = WHITE_TEXT_COLOR = '#FFFFFF'  # white
-FRAME_COLOR = '#F5F5F5'  # light grey
+DEFAULT_BG_COLOR = '#FFFFFF'  # white
+FIELD_BG_COLOR = '#FFFFFF'  # white
 DISABLED_BG_COLOR = '#EDEDED'  # very light grey
-DISABLED_TEXT_COLOR = '#A6A6A6'  # medium-dark grey
-BUTTON_COLOR = '#64B5F6'  # vibrant blue
+
+WHITE_TEXT_COLOR = '#FFFFFF'  # text color for on dark background: white
+DEFAULT_TEXT_COLOR = '#000000'  # standard text color on normal light background: black
+DISABLED_TEXT_COLOR = '#A6A6A6'  # text color for un-editable fields: medium-dark grey
+SELECTED_TEXT_COLOR = '#2A9DF4'  # color to indicate currently-selected text: vibrant blue
+BUTTON_TEXT_COLOR = '#767676'  # button text color on standard light background: dark grey
+LABEL_TEXT_COLOR = '#616161'  # field description color: mid-dark grey
+
+BUTTON_BG_COLOR = '#64B5F6'  # vibrant blue
 DISABLED_BUTTON_COLOR = '#C9DDEE'  # grey-blue
+BUTTON_HOVER_COLOR = '#E5E5E5'  # light grey-white / off-white
 LOGIN_BUTTON_COLOR = '#94FA92'  # green
 CANCEL_BUTTON_COLOR = '#FF6C5C'  # red
-DEFAULT_TEXT_COLOR = '#000000'  # black
-SELECTED_BG_COLOR = SELECTED_TEXT_COLOR = '#2A9DF4'  # blue
-LABEL_COLOR = '#616161'  # mid-dark grey
-FIELD_COLOR = '#A3A3A3'  # medium grey
-HIGHLIGHT_COLOR = '#E5E5E5'  # light grey-white / off-white
-HEADER_COLOR = ELEMENT_COLOR = '#F8FAFC'  # light blue-grey
-BUTTON_TEXT_COLOR = BORDER_COLOR = '#767676'  # dark grey
+SELECTED_COLOR = '#2A9DF4'  # color to indicate that the element is selected: vibrant blue
+
+BORDER_COLOR = '#A3A3A3'  # medium grey
+HEADER_COLOR = '#F8FAFC'  # light blue-grey
+FRAME_COLOR = '#F5F5F5'  # light grey
+PANELBAR_COLOR = '#767676'  # very dark grey
+
 PASS_COLOR = '#ACFBAF'  # light-medium green
 APPROVE_COLOR = '#CCE7CD'  # medium-dark green
 WARNING_COLOR = '#FFD740'  # medium orange-yellow
