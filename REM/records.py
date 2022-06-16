@@ -1681,7 +1681,7 @@ class DatabaseRecord:
 
             tabs = {}
 
-        for i, tab_name in enumerate(tabs):
+        for tab_name in tabs:
             _tab_entry = tabs[tab_name]
             tab_entry = {}
 
@@ -1738,30 +1738,6 @@ class DatabaseRecord:
                 used_section_elements.append(heading_element)
                 section_entry['HeadingElement'] = heading_element
 
-            #section_elements = []
-            #try:
-            #    _section_elements = _section_entry['Elements']
-            #except KeyError:
-            #    msg = 'no record elements defined for section layout {SEC}'.format(SEC=section)
-            #    logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            #    continue
-            #else:
-            #    for section_element in _section_elements:
-            #        if section_element in used_section_elements:
-            #            msg = 'unable to add record element {ELEM} to section layout {SEC} - element {ELEM} is ' \
-            #                  'already defined for a previous section'.format(ELEM=section_element, SEC=section)
-            #            logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            #            continue
-
-            #        section_elements.append(section_element)
-            #        used_section_elements.append(section_element)
-
-            #section_entry['Elements'] = section_elements
-
-            #self.sections[section] = section_entry
-
             try:
                 _section_layout = _section_entry['Layout']
             except KeyError:
@@ -1790,7 +1766,7 @@ class DatabaseRecord:
                             continue
 
                         if element_name == '' and column_num < 3:
-                            blank_name = 'Blank{ROW}.{COL}'.format(ROW=row_num, COL=column_num)
+                            blank_name = 'Blank{SEC}.{ROW}.{COL}'.format(SEC=i, ROW=row_num, COL=column_num)
                             print('adding blank element {} to row {}, column {} of section {}'.format(blank_name, row_num, column_num, section))
                             blank_element = mod_elem.BlankField(blank_name, parent=self.name)
 
@@ -2190,6 +2166,8 @@ class DatabaseRecord:
             logger.debug('RecordType {NAME}: searching record elements by name {KEY}'
                          .format(NAME=self.name, KEY=identifier))
             element_names = [i.name for i in elements]
+
+        print(element_names)
 
         element = [elements[i] for i, j in enumerate(element_names) if j == identifier]
         if len(element) == 0:
@@ -3217,7 +3195,9 @@ class DatabaseRecord:
 
                     row = []
                     for i, element_name in enumerate(row_elements):
+                        print('fetching element {}'.format(element_name))
                         element = self.fetch_element(element_name)
+                        print(element)
                         element_layout = element.layout(editable=editable, overwrite=is_new, level=level)
 
                         row.append(element_layout)
@@ -3475,27 +3455,23 @@ class DatabaseRecord:
             elem_h = None
             column_div = divmod(width - section_w_pad - elem_w_pad * 2, 3)
             column_w = column_div[0] + column_div[1]
+            print('each columns has width {}'.format(column_w))
 
             section_layout = section_entry['Layout']
             for row in section_layout:
                 row_elements = section_layout[row]
                 n_element = len(row_elements)
 
-                #if n_element == 1:  # row contains only one element
-                #    elem_w = width - section_w_pad
-                #elif n_element == 2:  # row contains two elements
-                #    divisor = divmod(width - section_w_pad - elem_w_pad, 2)
-                #    elem_w = divisor[0] + divisor[1]
-                #else:  # row contains 3 elements
-                #    divisor = divmod(width - section_w_pad - elem_w_pad * 2, 3)
-                #    elem_w = divisor[0] + divisor[1]
-
                 for i, element_name in enumerate(row_elements):
                     record_element = self.fetch_element(element_name)
+
                     if n_element == 1:  # row contains 1 columns spanning the entire row
                         elem_w = width - section_w_pad
                     elif n_element == 2:
-                        elem_w = column_w * 2
+                        if i == 0:  # first element in the row of two elements takes up two spaces
+                            elem_w = column_w * 2 + elem_w_pad
+                        else:  # last element in the row of two elements takes up only one space
+                            elem_w = column_w
                     else:  # row contains 3 columns of equal size
                         elem_w = column_w
 
