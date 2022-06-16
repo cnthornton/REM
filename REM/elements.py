@@ -4519,30 +4519,32 @@ class DataVariable(DataUnit):
             border_color = self._border_color if self._border is True else bg_col
 
         # Field label
+        label_vis = not self.hide_label
         label_position = self.arrangement
+
         if label_position == 'v':
             label = self.description
             label_font = mod_const.BOLD_MID_FONT
             label_color = mod_const.LABEL_TEXT_COLOR
+            pad_width = 0
         else:
             label = '{}:'.format(self.description) if self.align else self.description
             label_font = mod_const.BOLD_LARGE_FONT
             label_color = mod_const.DEFAULT_TEXT_COLOR
+            pad_width = 0 if (self.align or not label_vis) else pad_el
 
         desc_layout = [sg.Text(label, background_color=bg_col, text_color=label_color, font=label_font,
                                auto_size_text=True, tooltip=tooltip)]
-        if is_required is True and not is_disabled:
+        if is_required is True and not self.disabled:
             required_layout = [sg.Text('*', font=label_font, background_color=bg_col, text_color=mod_const.ERROR_COLOR,
                                        tooltip='required')]
         else:
             required_layout = []
 
-        label_vis = not self.hide_label
         desc_key = self.key_lookup('Description')
         label_w_key = self.key_lookup('LabelWidth')
         label_layout = [sg.Frame('', [[sg.Canvas(key=label_w_key, size=(1, 0), background_color=bg_col)],
-                                      required_layout + desc_layout],
-                                 key=desc_key, pad=((0, pad_el), 0),
+                                      required_layout + desc_layout], key=desc_key, pad=((0, pad_width), 0),
                                  background_color=bg_col, border_width=0, visible=label_vis,
                                  element_justification=self.justification)]
 
@@ -4587,7 +4589,7 @@ class DataVariable(DataUnit):
             row4 = help_layout
             components = [row1, row2, row3, row4]
         else:  # label is positioned to the left of the input field
-            offset = icon_w + pad_el  # icon width
+            offset = icon_w + pad_el + pad_width  # icon width
             row2 = label_layout + container_layout
             row3 = help_layout
             components = [row1, row2, row3]
@@ -5335,7 +5337,7 @@ class DependentVariable(DataVariable):
 
         logger.debug(self.format_log('running dependent variable event {EVENT}'.format(EVENT=element_event)))
 
-        if element_event == 'Element':
+        if element_event == 'Update':
             try:
                 edited = self.format_value(values)
             except Exception as e:

@@ -59,11 +59,12 @@ def text_layout(attributes):
     bg_col = attributes.get('BackgroundColor', mod_const.DEFAULT_BG_COLOR)
     text_col = attributes.get('TextColor', mod_const.DISABLED_TEXT_COLOR)
     tooltip = attributes.get('Tooltip', None)
+    events = not attributes.get('Disabled', False)
 
     # Element layout
     elem_key = attributes['Key']
     display_value = attributes.get('DisplayValue', None)
-    layout = [sg.Text(display_value, key=elem_key, enable_events=True, size=size, pad=pad, background_color=bg_col,
+    layout = [sg.Text(display_value, key=elem_key, enable_events=events, size=size, pad=pad, background_color=bg_col,
                       text_color=text_col, font=font, border_width=bw, relief='sunken', tooltip=tooltip)]
 
     return layout

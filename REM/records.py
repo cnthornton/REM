@@ -2241,7 +2241,7 @@ class DatabaseRecord:
         if record_element is not None:
             logger.debug('RecordType {NAME}: record event {EVENT} is in record element {ELEM}'
                          .format(NAME=self.name, EVENT=event, ELEM=record_element.name))
-            if record_element.etype == 'component':
+            if record_element.is_type('component'):
                 try:
                     add_bttn = record_element.fetch_parameter('Add', filters=False)
                     add_key, add_hkey = add_bttn.key_lookup()
@@ -2286,7 +2286,7 @@ class DatabaseRecord:
                 pass
             else:
                 for record_element in element_references:
-                    record_element.run_event(window, 'Element', record_values.to_dict())
+                    record_element.run_event(window, 'Update', record_values.to_dict())
 
         return True
 
