@@ -4531,7 +4531,7 @@ class DataVariable(DataUnit):
 
         desc_layout = [sg.Text(label, background_color=bg_col, text_color=label_color, font=label_font,
                                auto_size_text=True, tooltip=tooltip)]
-        if is_required is True:
+        if is_required is True and not is_disabled:
             required_layout = [sg.Text('*', font=label_font, background_color=bg_col, text_color=mod_const.ERROR_COLOR,
                                        tooltip='required')]
         else:
