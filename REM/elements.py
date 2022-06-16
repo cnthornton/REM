@@ -61,8 +61,6 @@ class RecordElement:
         self.parent = parent
         self.id = randint(0, 1000000000)
 
-        # self.elements = ['-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
-        #                 ('Element',)]
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ('Element',)}
 
@@ -201,7 +199,8 @@ class RecordElement:
                'multiline': ['variable', 'data_variable', 'record_variable', 'multiline', 'multiline_variable',
                              'multi'],
                'checkbox': ['variable', 'data_variable', 'record_variable', 'checkbox'],
-               'dependent': ['variable', 'data_variable', 'dependent', 'dependent_variable']
+               'dependent': ['variable', 'data_variable', 'dependent', 'dependent_variable'],
+               'blank': ['blank']
                }
 
         try:
@@ -5499,6 +5498,114 @@ class DataConstant(DataUnit):
         layout = sg.Col([[sg.Canvas(key=width_key, size=(1, 0), background_color=bg_col)], row1],
                         key=frame_key, pad=pad, background_color=bg_col, vertical_alignment='c',
                         element_justification=self.justification)
+
+        return layout
+
+
+class BlankField:
+    """
+    Blank field used for input field alignment.
+
+    Attributes:
+
+        name (str): data element configuration name.
+
+        elements (list): list of data element GUI keys.
+    """
+
+    def __init__(self, name, parent=None):
+        """
+        Initialize the record element attributes.
+
+        Arguments:
+            name (str): record element configuration name.
+
+            parent (str): name of the parent record.
+        """
+        self.name = name
+        self.parent = parent
+        self.id = randint(0, 1000000000)
+
+        self.etype = 'blank'
+        self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
+                         ('Element',)}
+
+        self._dimensions = (mod_const.VARIABLE_WIDTH_PX, mod_const.VARIABLE_HEIGHT_PX)
+
+    def is_type(self, etype):
+        """
+        Determine if a record element is of the given element type.
+        """
+        if etype == 'blank':
+            return True
+        else:
+            return False
+
+    def key_lookup(self, component, rev: bool = False):
+        """
+        Lookup a record element's GUI element key using the name of the component.
+
+        Arguments:
+            component (str): GUI component name (or key if rev is True) of the record element.
+
+            rev (bool): reverse the element lookup map so that element keys are dictionary keys.
+        """
+        key_map = self.elements if rev is False else {j: i for i, j in self.elements.items()}
+        try:
+            key = key_map[component]
+        except KeyError:
+            msg = 'BlankField {NAME}: component "{COMP}" not found in list of element components'\
+                .format(NAME=self.name, COMP=component)
+            logger.warning(msg)
+
+            raise KeyError(msg)
+
+        return key
+
+    def dimensions(self):
+        """
+        Return the current dimensions of the element.
+        """
+        return self._dimensions
+
+    def resize(self, window, size: tuple = None):
+        """
+        Resize the element display.
+        """
+        elem_key = self.key_lookup('Element')
+        current_w, current_h = self.dimensions()
+
+        if size:  # set element to a set size
+            width, height = size
+            new_h = current_h if height is None else height
+            new_w = current_w if width is None else width
+        else:  # auto size the element based on the content
+            new_h = current_h
+            new_w = current_w
+
+        new_size = (new_w, new_h)
+        window[elem_key].set_size(size=new_size)
+
+        return new_size
+
+    def layout(self, padding: tuple = None, size: tuple = None, tooltip: str = None, bg_color: str = None,
+               editable: bool = True, overwrite: bool = False, level: int = 0):
+        """
+        GUI layout for the record element.
+        """
+        if size:
+            width, height = size * 9
+            self._dimensions = (width, height)
+        else:  # rough convert to chars if size not set
+            width, height = self._dimensions
+
+        # Layout options
+        pad = padding if padding and isinstance(padding, tuple) else (0, 0)
+        bg_col = mod_const.DEFAULT_BG_COLOR if bg_color is None else bg_color
+
+        # Layout
+        elem_key = self.key_lookup('Element')
+        layout = sg.Canvas(key=elem_key, pad=pad, size=(width, height), background_color=bg_col, tooltip=tooltip)
 
         return layout
 
