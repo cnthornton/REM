@@ -13,7 +13,7 @@ import REM.secondary as mod_win2
 from REM.client import logger, settings
 
 
-class InputField:
+class InputParameter:
     """
     Data input parameter element.
 
@@ -73,7 +73,7 @@ class InputField:
             self.etype = entry['ElementType']
         except KeyError:
             msg = 'Configuration Error: missing required parameter "ElementType"'
-            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
 
@@ -84,7 +84,7 @@ class InputField:
         else:
             supported_dtypes = settings.get_supported_dtypes()
             if dtype not in supported_dtypes:
-                logger.warning('InputField {NAME}: "DataType" is not a supported data type - supported data types '
+                logger.warning('InputParameter {NAME}: "DataType" is not a supported data type - supported data types '
                                'are {TYPES}'.format(NAME=name, TYPES=', '.join(supported_dtypes)))
                 self.dtype = None
             else:
@@ -96,7 +96,7 @@ class InputField:
             self.editable = True
         except ValueError:
             msg = 'Configuration Error: "IsEditable" must be either 0 (False) or 1 (True)'
-            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
         else:
@@ -108,7 +108,7 @@ class InputField:
             self.hidden = False
         except ValueError:
             msg = 'Configuration Error: "IsHidden" must be either 0 (False) or 1 (True)'
-            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
         else:
@@ -120,7 +120,7 @@ class InputField:
             self.required = False
         except ValueError:
             msg = 'Configuration Error: "IsRequired" must be either 0 (False) or 1 (True)'
-            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
         else:
@@ -153,7 +153,7 @@ class InputField:
             self.auto_size = False
         except ValueError:
             msg = 'Configuration Error: "AlignField" must be either 0 (False) or 1 (True)'
-            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
 
@@ -165,11 +165,11 @@ class InputField:
 
         """
         if state == 'focus':
-            color = mod_const.SELECTED_BG_COLOR
+            color = mod_const.SELECTED_COLOR
         elif state == 'error':
             color = mod_const.ERROR_COLOR
         else:
-            color = mod_const.FIELD_COLOR
+            color = mod_const.BORDER_COLOR
 
         frame_key = self.key_lookup('ValueFrame')
         window[frame_key].ParentRowFrame.config(background=color)
@@ -193,7 +193,7 @@ class InputField:
         try:
             key = key_map[component]
         except KeyError:
-            msg = 'InputField {NAME}: parameter element {COMP} not found in list of parameter elements' \
+            msg = 'InputParameter {NAME}: parameter element {COMP} not found in list of parameter elements' \
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
             logger.exception(msg)
@@ -282,7 +282,7 @@ class InputField:
 
         container_key = self.key_lookup('Container')
         element_layout = [sg.Frame('', [[self.element_layout(size=param_size)]],
-                                   key=container_key, background_color=mod_const.FIELD_COLOR, border_width=0,
+                                   key=container_key, background_color=mod_const.BORDER_COLOR, border_width=0,
                                    expand_x=True, vertical_alignment='c', relief='flat', tooltip=self.placeholder)]
 
         value_key = self.key_lookup('Value')
@@ -382,7 +382,7 @@ class InputField:
             try:
                 new_value = float(value)
             except ValueError:
-                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
             else:
@@ -392,7 +392,7 @@ class InputField:
             try:
                 new_value = int(value)
             except ValueError:
-                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
             else:
@@ -402,7 +402,7 @@ class InputField:
             try:
                 display_value = settings.format_display_date(value)
             except ValueError:
-                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
 
@@ -410,7 +410,7 @@ class InputField:
             try:
                 display_value = int(value)
             except ValueError:
-                logger.warning('InputField {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
                                'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
 
@@ -436,7 +436,7 @@ class InputField:
 
 
 # Single value data parameters
-class InputFieldStandard(InputField):
+class InputParameterStandard(InputParameter):
     """
     Parent class for standard text-style input fields.
 
@@ -468,7 +468,7 @@ class InputFieldStandard(InputField):
 
         self._value = ''  # raw value
 
-        logger.debug('InputField {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+        logger.debug('InputParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -521,7 +521,7 @@ class InputFieldStandard(InputField):
         window[elem_key].update(value=display_text)
 
 
-class InputFieldText(InputFieldStandard):
+class InputParameterText(InputParameterStandard):
     """
     For standard text input with no accessory elements.
 
@@ -544,7 +544,7 @@ class InputFieldText(InputFieldStandard):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('InputField {PARAM}: configuration warning - {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: configuration warning - {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'varchar'
 
@@ -554,7 +554,7 @@ class InputFieldText(InputFieldStandard):
         except KeyError:
             self.pattern_matching = False
         except ValueError:
-            msg = 'InputField {NAME}: configuration error - "PatternMatching" must be either 0 (False) or 1 (True)' \
+            msg = 'InputParameter {NAME}: configuration error - "PatternMatching" must be either 0 (False) or 1 (True)' \
                 .format(NAME=self.name)
             logger.error(msg)
 
@@ -564,7 +564,7 @@ class InputFieldText(InputFieldStandard):
             if self.dtype in supported_dtypes:
                 self.pattern_matching = pattern
             else:  # only allow pattern matching for string-like data types
-                logger.warning('InputField {NAME}: configuration warning - pattern matching is only allowed when '
+                logger.warning('InputParameter {NAME}: configuration warning - pattern matching is only allowed when '
                                'dtype is set to a supported string or category type'.format(NAME=self.name))
                 self.pattern_matching = False
 
@@ -577,7 +577,7 @@ class InputFieldText(InputFieldStandard):
 
         dtype = self.dtype
 
-        logger.debug('InputField {PARAM}: enforcing correct formatting of input value {VAL}'
+        logger.debug('InputParameter {PARAM}: enforcing correct formatting of input value {VAL}'
                      .format(PARAM=self.name, VAL=value))
 
         if pd.isna(value):
@@ -708,7 +708,7 @@ class InputFieldText(InputFieldStandard):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
@@ -723,7 +723,7 @@ class InputFieldText(InputFieldStandard):
         try:
             value_fmt = settings.format_value(input_value, dtype)
         except ValueError:
-            logger.warning('InputField {NAME}: failed to format input value {VAL} as {DTYPE}'
+            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
                            .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
             return self.value
@@ -742,10 +742,10 @@ class InputFieldText(InputFieldStandard):
             return ''
 
         display_value = self.format_display_value(value)
-        logger.debug('InputField {NAME}: editable {EDIT}; hidden {VIS}'
+        logger.debug('InputParameter {NAME}: editable {EDIT}; hidden {VIS}'
                      .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
 
-        logger.debug('InputField {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+        logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
         return display_value
@@ -833,11 +833,11 @@ class InputFieldText(InputFieldStandard):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('InputField {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+        logger.debug('InputParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
         if match_pattern is True:
             df = df[col_values.str.contains(param_value, case=False, regex=True)]
@@ -857,7 +857,7 @@ class InputFieldText(InputFieldStandard):
             return True
 
 
-class InputFieldDate(InputFieldStandard):
+class InputParameterDate(InputParameterStandard):
     """
     For date input.
 
@@ -883,7 +883,7 @@ class InputFieldDate(InputFieldStandard):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'datetime'
 
@@ -901,7 +901,7 @@ class InputFieldDate(InputFieldStandard):
         """
         strptime = datetime.datetime.strptime
 
-        logger.debug('InputField {PARAM}: enforcing correct formatting of input value {VAL}'
+        logger.debug('InputParameter {PARAM}: enforcing correct formatting of input value {VAL}'
                      .format(PARAM=self.name, VAL=value))
 
         if pd.isna(value):
@@ -918,7 +918,7 @@ class InputFieldDate(InputFieldStandard):
             except ValueError:  # date is incorrectly formatted
                 msg = '{} is not a valid date format'.format(''.join(new_value))
                 mod_win2.popup_notice(msg)
-                logger.warning('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                logger.warning('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 display_value = format_display_date(raw_value, sep='/')
             else:
@@ -1029,7 +1029,7 @@ class InputFieldDate(InputFieldStandard):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
@@ -1044,7 +1044,7 @@ class InputFieldDate(InputFieldStandard):
         try:
             value_fmt = pd.to_datetime(input_value, format=self._format, utc=False).to_pydatetime()
         except ValueError:
-            logger.warning('InputField {NAME}: failed to format input value {VAL} as a datetime object'
+            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as a datetime object'
                            .format(NAME=self.name, VAL=input_value))
 
             return self.value
@@ -1092,14 +1092,14 @@ class InputFieldDate(InputFieldStandard):
         try:
             col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
         except Exception as e:
-            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
         value = self.value
         param_value = value.date()
 
-        logger.debug('InputField {NAME}: filtering table on values {VAL}'
+        logger.debug('InputParameter {NAME}: filtering table on values {VAL}'
                      .format(NAME=self.name, VAL=value.strftime(settings.date_format)))
         df = df[col_values.dt.date == param_value]
 
@@ -1118,7 +1118,7 @@ class InputFieldDate(InputFieldStandard):
             return False
 
 
-class InputFieldCombo(InputField):
+class InputParameterCombo(InputParameter):
     """
     For selection input.
 
@@ -1138,7 +1138,7 @@ class InputFieldCombo(InputField):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'varchar'
 
@@ -1158,7 +1158,7 @@ class InputFieldCombo(InputField):
         except KeyError:
             msg = 'missing required parameter "Values" for data parameters of type "{ETYPE}"'.format(ETYPE=self.etype)
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             combo_values = []
 
@@ -1169,7 +1169,7 @@ class InputFieldCombo(InputField):
             except ValueError:
                 msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=combo_value, DTYPE=self.dtype)
                 mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             else:
                 self.combo_values.append(value_fmt)
 
@@ -1186,7 +1186,7 @@ class InputFieldCombo(InputField):
             self.default = value_fmt
             self.value = value_fmt
 
-        logger.debug('InputField {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+        logger.debug('InputParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -1240,7 +1240,7 @@ class InputFieldCombo(InputField):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
@@ -1259,7 +1259,7 @@ class InputFieldCombo(InputField):
             try:
                 value_fmt = settings.format_value(input_value, dtype)
             except ValueError:
-                logger.warning('InputField {NAME}: failed to format input value {VAL} as {DTYPE}'
+                logger.warning('InputParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
                                .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
                 return self.value
@@ -1283,10 +1283,10 @@ class InputFieldCombo(InputField):
         except KeyError:
             display_value = self.format_display_value(value)
 
-        logger.debug('InputField {NAME}: editable {EDIT}; hidden {VIS}'
+        logger.debug('InputParameter {NAME}: editable {EDIT}; hidden {VIS}'
                      .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
 
-        logger.debug('InputField {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+        logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
         return display_value
@@ -1324,7 +1324,7 @@ class InputFieldCombo(InputField):
         frame_key = self.key_lookup('ValueFrame')
         layout = sg.Col([[sg.Combo(values, default_value=display_value, key=elem_key, size=(elem_w, elem_h),
                                    font=font, background_color=bg_col, text_color=text_col,
-                                   button_arrow_color=mod_const.FIELD_COLOR,
+                                   button_arrow_color=mod_const.BORDER_COLOR,
                                    button_background_color=bg_col,
                                    enable_events=True, disabled=disabled)]],
                         pad=(1, 1), key=frame_key, background_color=bg_col, vertical_alignment='c', expand_x=True)
@@ -1377,11 +1377,11 @@ class InputFieldCombo(InputField):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('InputField {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+        logger.debug('InputParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
         df = df[col_values == param_value]
 
@@ -1398,7 +1398,7 @@ class InputFieldCombo(InputField):
             return True
 
 
-class InputFieldCheckbox(InputField):
+class InputParameterCheckbox(InputParameter):
     """
     For true / false input.
 
@@ -1422,7 +1422,7 @@ class InputFieldCheckbox(InputField):
         if self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'bool'
 
@@ -1437,7 +1437,7 @@ class InputFieldCheckbox(InputField):
             self.default = self.value = False
 
         # Dynamic attributes
-        logger.debug('InputField {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
+        logger.debug('InputParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -1532,7 +1532,7 @@ class InputFieldCheckbox(InputField):
             try:
                 input_value = values[elem_key]
             except KeyError:
-                logger.warning('InputField {NAME}: unable to find window values for parameter to update'
+                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
                 return self.value
@@ -1547,7 +1547,7 @@ class InputFieldCheckbox(InputField):
         try:
             value_fmt = settings.format_value(input_value, dtype)
         except ValueError:
-            logger.warning('InputField {NAME}: failed to format input value {VAL} as {DTYPE}'
+            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
                            .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
 
             return self.value
@@ -1566,7 +1566,7 @@ class InputFieldCheckbox(InputField):
             return ''
 
         display_value = self.format_display_value(value)
-        logger.debug('InputField {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+        logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
 
         return display_value
@@ -1592,7 +1592,7 @@ class InputFieldCheckbox(InputField):
         except ValueError:
             msg = 'unable to format parameter value {VAL} for querying - unsupported value type "{TYPE}" provided' \
                 .format(VAL=value, TYPE=type(value))
-            logger.error('InputField {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             query_value = None
 
@@ -1619,11 +1619,11 @@ class InputFieldCheckbox(InputField):
         try:
             col_values = df[column].fillna(False).astype(np.bool_, errors='raise')
         except Exception as e:
-            logger.exception('InputField {NAME}: unable to set column {NAME} to parameter data type bool - {ERR}'
+            logger.exception('InputParameter {NAME}: unable to set column {NAME} to parameter data type bool - {ERR}'
                              .format(NAME=column, ERR=e))
             col_values = df[column]
 
-        logger.debug('InputField {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
+        logger.debug('InputParameter {NAME}: filtering table on value {VAL}'.format(NAME=self.name, VAL=param_value))
 
         df = df[col_values == param_value]
 
@@ -1631,7 +1631,7 @@ class InputFieldCheckbox(InputField):
 
 
 # Multiple component data parameters
-class InputFieldComp(InputField):
+class InputParameterComp(InputParameter):
     """
     Parent class for input fields with the element value split into two or more components.
 
@@ -1652,7 +1652,7 @@ class InputFieldComp(InputField):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'float'
 
@@ -1724,7 +1724,7 @@ class InputFieldComp(InputField):
         return layout
 
 
-class InputFieldRange(InputFieldComp):
+class InputParameterRange(InputParameterComp):
     """
     For ranged value inputs.
 
@@ -1754,7 +1754,7 @@ class InputFieldRange(InputFieldComp):
         except ValueError:
             self.default = self.value = (None, None)
 
-        logger.debug('InputField {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -1796,7 +1796,7 @@ class InputFieldRange(InputFieldComp):
             try:
                 input_values = values[self.key_lookup('Element')]
             except KeyError:
-                msg = 'InputField {NAME}: unable to find window values for parameter to update'.format(
+                msg = 'InputParameter {NAME}: unable to find window values for parameter to update'.format(
                     NAME=self.name)
                 logger.warning(msg)
 
@@ -1812,7 +1812,7 @@ class InputFieldRange(InputFieldComp):
         try:
             in1_fmt = format_value(in1, self.dtype)
         except ValueError as e:
-            msg = 'InputField {NAME}: unable set datatype for the first value - {ERR}'.format(NAME=self.name, ERR=e)
+            msg = 'InputParameter {NAME}: unable set datatype for the first value - {ERR}'.format(NAME=self.name, ERR=e)
             logger.warning(msg)
 
             in1_fmt = None
@@ -1820,7 +1820,7 @@ class InputFieldRange(InputFieldComp):
         try:
             in2_fmt = format_value(in2, self.dtype)
         except ValueError as e:
-            msg = 'InputField {NAME}: unable set datatype for the second value - {ERR}'.format(NAME=self.name, ERR=e)
+            msg = 'InputParameter {NAME}: unable set datatype for the second value - {ERR}'.format(NAME=self.name, ERR=e)
             logger.warning(msg)
 
             in2_fmt = None
@@ -1886,7 +1886,7 @@ class InputFieldRange(InputFieldComp):
         try:
             from_value, to_value = param_values
         except ValueError:
-            logger.error('InputField {NAME}: ranged parameters require exactly two values'
+            logger.error('InputParameter {NAME}: ranged parameters require exactly two values'
                          .format(NAME=self.name))
             return df
 
@@ -1902,40 +1902,40 @@ class InputFieldRange(InputFieldComp):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
         if from_value not in (None, '') and to_value not in (None, ''):  # select rows in range
-            logger.debug('InputField {NAME}: filtering table on values {VAL1} and {VAL2}'
+            logger.debug('InputParameter {NAME}: filtering table on values {VAL1} and {VAL2}'
                          .format(NAME=self.name, VAL1=from_value, VAL2=to_value))
             try:
                 df = df[(col_values >= from_value) & (col_values <= to_value)]
             except KeyError:
-                logger.warning('InputField {NAME}: parameter name not found in the table header'
+                logger.warning('InputParameter {NAME}: parameter name not found in the table header'
                                .format(NAME=self.name))
             except SyntaxError:
-                logger.warning('InputField {TBL}: unable to filter table on parameter values {VAL1} and {VAL2}'
+                logger.warning('InputParameter {TBL}: unable to filter table on parameter values {VAL1} and {VAL2}'
                                .format(TBL=self.name, VAL1=from_value, VAL2=to_value))
         elif from_value not in (None, '') and to_value in (None, ''):  # rows equal to from component
-            logger.debug('InputField {NAME}: filtering table on parameter value {VAL}'
+            logger.debug('InputParameter {NAME}: filtering table on parameter value {VAL}'
                          .format(NAME=self.name, VAL=from_value))
             try:
                 df = df[col_values == from_value]
             except KeyError:
-                logger.warning('InputField {NAME}: parameter not found in the table header'.format(NAME=self.name))
+                logger.warning('InputParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
             except SyntaxError:
-                logger.warning('InputField {NAME}: unable to filter table on parameter value {VAL}'
+                logger.warning('InputParameter {NAME}: unable to filter table on parameter value {VAL}'
                                .format(NAME=self.name, VAL=from_value))
         elif to_value not in (None, '') and from_value in (None, ''):  # rows equal to the to component
-            logger.debug('InputField {NAME}: filtering table on parameter value {VAL}'
+            logger.debug('InputParameter {NAME}: filtering table on parameter value {VAL}'
                          .format(NAME=self.name, VAL=to_value))
             try:
                 df = df[col_values == to_value]
             except KeyError:
-                logger.warning('InputField {NAME}: parameter not found in the table header'.format(NAME=self.name))
+                logger.warning('InputParameter {NAME}: parameter not found in the table header'.format(NAME=self.name))
             except SyntaxError:
-                logger.warning('InputField {NAME}: unable to filter table on parameter value {VAL}'
+                logger.warning('InputParameter {NAME}: unable to filter table on parameter value {VAL}'
                                .format(NAME=self.name, VAL=to_value))
 
         return df
@@ -1956,7 +1956,7 @@ class InputFieldRange(InputFieldComp):
         return any(values_set)
 
 
-class InputFieldCondition(InputFieldComp):
+class InputParameterCondition(InputParameterComp):
     """
     For conditional value inputs.
 
@@ -1987,7 +1987,7 @@ class InputFieldCondition(InputFieldComp):
         except ValueError:
             self.default = self.value = (oper, None)
 
-        logger.debug('InputField {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -2027,7 +2027,7 @@ class InputFieldCondition(InputFieldComp):
             try:
                 input_values = values[self.key_lookup('Element')]
             except KeyError:
-                msg = 'InputField {NAME}: unable to find window values for parameter to update'.format(
+                msg = 'InputParameter {NAME}: unable to find window values for parameter to update'.format(
                     NAME=self.name)
                 logger.warning(msg)
 
@@ -2038,14 +2038,14 @@ class InputFieldCondition(InputFieldComp):
         try:
             oper, value = input_values
         except ValueError:
-            msg = 'InputField {NAME}: input value should be a list or tuple of exactly two components' \
+            msg = 'InputParameter {NAME}: input value should be a list or tuple of exactly two components' \
                 .format(NAME=self.name)
             logger.warning(msg)
 
             return self.value
 
         if oper not in operators:
-            msg = 'InputField {NAME}: unknown operator "{OPER}" provided as the first component of the value set' \
+            msg = 'InputParameter {NAME}: unknown operator "{OPER}" provided as the first component of the value set' \
                 .format(NAME=self.name, OPER=oper)
             logger.warning(msg)
 
@@ -2054,7 +2054,7 @@ class InputFieldCondition(InputFieldComp):
         try:
             value_fmt = settings.format_value(value, self.dtype)
         except ValueError as e:
-            msg = 'InputField {NAME}: unable set datatype for the conditional value - {ERR}' \
+            msg = 'InputParameter {NAME}: unable set datatype for the conditional value - {ERR}' \
                 .format(NAME=self.name, ERR=e)
             logger.warning(msg)
 
@@ -2074,7 +2074,7 @@ class InputFieldCondition(InputFieldComp):
 
         operator, value = self.value
 
-        logger.debug('InputField {NAME}: formatting parameter value "{VAL}" for display'
+        logger.debug('InputParameter {NAME}: formatting parameter value "{VAL}" for display'
                      .format(NAME=self.name, VAL=value))
         display_value = self.format_display_value(value)
 
@@ -2114,11 +2114,11 @@ class InputFieldCondition(InputFieldComp):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('InputField {NAME}: filtering table on values {OPER} {VAL}'
+        logger.debug('InputParameter {NAME}: filtering table on values {OPER} {VAL}'
                      .format(NAME=self.name, OPER=operator, VAL=value))
         try:
             if operator == '<':  # column values are less than value
@@ -2132,7 +2132,7 @@ class InputFieldCondition(InputFieldComp):
             elif operator == '<=':  # column values are less than or equal to value
                 df = df[col_values <= value]
         except SyntaxError:
-            logger.warning('InputField {TBL}: unable to filter table on values {OPER} {VAL}'
+            logger.warning('InputParameter {TBL}: unable to filter table on values {OPER} {VAL}'
                            .format(TBL=self.name, OPER=operator, VAL=value))
 
         return df
@@ -2152,7 +2152,7 @@ class InputFieldCondition(InputFieldComp):
 
 
 # Special data parameters
-class InputFieldMultiple(InputField):
+class InputParamterMultiple(InputParameter):
     """
     For multiple selection inputs.
 
@@ -2174,7 +2174,7 @@ class InputFieldMultiple(InputField):
         if not self.dtype or self.dtype not in supported_dtypes:
             msg = 'unsupported data type {DTYPE} provided for the "{ETYPE}" parameter. Supported data types are ' \
                   '{DTYPES}'.format(ETYPE=self.etype, DTYPE=self.dtype, DTYPES=', '.join(supported_dtypes))
-            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             self.dtype = 'varchar'
 
@@ -2195,7 +2195,7 @@ class InputFieldMultiple(InputField):
         except KeyError:
             msg = 'missing required parameter "Values" for data parameters of type "{ETYPE}"'.format(ETYPE=self.etype)
             mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-            logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+            logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
 
             menu_values = []
 
@@ -2206,7 +2206,7 @@ class InputFieldMultiple(InputField):
             except ValueError:
                 msg = 'unable to format dropdown value "{VAL}" as {DTYPE}'.format(VAL=menu_value, DTYPE=self.dtype)
                 mod_win2.popup_notice('Configuration warning: {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
-                logger.warning('InputField {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
+                logger.warning('InputParameter {PARAM}: {MSG}'.format(PARAM=name, MSG=msg))
             else:
                 self.menu_values.append(value_fmt)
 
@@ -2218,7 +2218,7 @@ class InputFieldMultiple(InputField):
 
         self.default = self.value = [format_value(i, self.dtype) for i in default_values if i in menu_values]
 
-        logger.debug('InputField {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
@@ -2250,7 +2250,7 @@ class InputFieldMultiple(InputField):
         """
         Reset the parameter's values.
         """
-        logger.debug('InputField {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
+        logger.debug('InputParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
                      .format(NAME=self.name, VAL=self.value, DEF=self.default))
         self.value = [i for i in self.default]
 
@@ -2305,7 +2305,7 @@ class InputFieldMultiple(InputField):
             try:
                 selected_values = values[self.key_lookup('Element')]
             except KeyError:
-                msg = 'InputField {NAME}: unable to find window values for parameter to update'.format(
+                msg = 'InputParameter {NAME}: unable to find window values for parameter to update'.format(
                     NAME=self.name)
                 logger.warning(msg)
 
@@ -2324,7 +2324,7 @@ class InputFieldMultiple(InputField):
             try:
                 formatted_values = [format_value(i, dtype) for i in selected_values]
             except ValueError:
-                logger.warning('InputField {NAME}: failed to format selected value {VAL} as {DTYPE}'
+                logger.warning('InputParameter {NAME}: failed to format selected value {VAL} as {DTYPE}'
                                .format(NAME=self.name, VAL=selected_values, DTYPE=dtype))
                 return current_values
 
@@ -2413,11 +2413,11 @@ class InputFieldMultiple(InputField):
             else:
                 col_values = df[column].astype(np.object_, errors='raise')
         except Exception as e:
-            logger.exception('InputField {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
+            logger.exception('InputParameter {NAME}: unable to set column {COL} to parameter data type {DTYPE} - {ERR}'
                              .format(NAME=self.name, COL=column, DTYPE=dtype, ERR=e))
             col_values = df[column]
 
-        logger.debug('InputField {NAME}: filtering table on values {VAL}'.format(NAME=self.name, VAL=values))
+        logger.debug('InputParameter {NAME}: filtering table on values {VAL}'.format(NAME=self.name, VAL=values))
 
         df = df[col_values.isin(values)]
 
@@ -2497,19 +2497,19 @@ def initialize_parameter(name, entry):
     """
     etype = entry['ElementType']
     if etype in ('dropdown', 'dd', 'combo', 'combobox'):
-        param_class = InputFieldCombo
+        param_class = InputParameterCombo
     elif etype in ('input', 'text'):
-        param_class = InputFieldText
+        param_class = InputParameterText
     elif etype in ('datetime', 'date', 'dt'):
-        param_class = InputFieldDate
+        param_class = InputParameterDate
     elif etype in ('range', 'date_range'):
-        param_class = InputFieldRange
+        param_class = InputParameterRange
     elif etype == 'conditional':
-        param_class = InputFieldCondition
+        param_class = InputParameterCondition
     elif etype in ('checkbox', 'check', 'bool', 'tf'):
-        param_class = InputFieldCheckbox
+        param_class = InputParameterCheckbox
     elif etype in ('selection', 'multiple', 'mc'):
-        param_class = InputFieldMultiple
+        param_class = InputParamterMultiple
     else:
         msg = 'unknown element type {TYPE} provided to parameter entry {NAME}'.format(TYPE=etype, NAME=name)
 
