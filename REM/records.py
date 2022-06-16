@@ -3606,19 +3606,19 @@ def initialize_element(parent, name, entry):
     elif etype in ('reference_list', 'reference'):
         element_class = mod_elem.ReferenceList
     elif etype in ('dependent_variable', 'dependent'):
-        element_class = mod_elem.DependentVariable
+        element_class = mod_elem.DependentField
     elif etype in ('text_variable', 'text'):
-        element_class = mod_elem.DataVariable
+        element_class = mod_elem.InputField
     elif etype in ('input_variable', 'input'):
-        element_class = mod_elem.DataVariableInput
+        element_class = mod_elem.InputFieldInput
     elif etype in ('date_variable', 'date'):
-        element_class = mod_elem.DataVariableDate
+        element_class = mod_elem.InputFieldDate
     elif etype in ('dropdown_variable', 'combo_variable', 'combo', 'dropdown'):
-        element_class = mod_elem.DataVariableCombo
+        element_class = mod_elem.InputFieldCombo
     elif etype in ('multiline_variable', 'multiline', 'multi'):
-        element_class = mod_elem.DataVariableMultiline
+        element_class = mod_elem.InputFieldMultiline
     elif etype in ('checkbox', 'check'):
-        element_class = mod_elem.DataVariableCheckbox
+        element_class = mod_elem.InputFieldCheckbox
     else:
         raise AttributeError('unknown element type {ETYPE} provided to element {ELEM}'
                              .format(ETYPE=etype, ELEM=name))

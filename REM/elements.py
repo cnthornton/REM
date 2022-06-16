@@ -2471,7 +2471,7 @@ class RecordTable(DataTable):
             search_dtype = columns[search_col]
             search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
                             'DataType': search_dtype, 'DefaultValue': search_val}
-            search_params = [mod_param.InputFieldText(search_col, search_entry)]
+            search_params = [mod_param.InputParameterText(search_col, search_entry)]
         else:
             search_params = None
 
@@ -2619,7 +2619,7 @@ class ComponentTable(RecordTable):
             search_dtype = columns[search_col]
             search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
                             'DataType': search_dtype, 'DefaultValue': search_val}
-            search_params = [mod_param.InputFieldText(search_col, search_entry)]
+            search_params = [mod_param.InputParameterText(search_col, search_entry)]
         else:
             search_params = None
 
@@ -4238,7 +4238,7 @@ class DataUnit(RecordElement):
         return edited
 
 
-class DataVariable(DataUnit):
+class InputField(DataUnit):
     """
     Record element that holds information on a single data variable.
 
@@ -4609,7 +4609,7 @@ class DataVariable(DataUnit):
         self._set_state(window, 'inactive')
 
 
-class DataVariableInput(DataVariable):
+class InputFieldInput(InputField):
     """
     Input-style data variable element.
 
@@ -4725,7 +4725,7 @@ class DataVariableInput(DataVariable):
         return layout
 
 
-class DataVariableDate(DataVariable):
+class InputFieldDate(InputField):
     """
     Input-style data variable element.
 
@@ -4860,7 +4860,7 @@ class DataVariableDate(DataVariable):
         return layout
 
 
-class DataVariableCombo(DataVariable):
+class InputFieldCombo(InputField):
     """
     Dropdown-style data variable element.
 
@@ -5012,7 +5012,7 @@ class DataVariableCombo(DataVariable):
         return layout
 
 
-class DataVariableMultiline(DataVariable):
+class InputFieldMultiline(InputField):
     """
     Multiline-style data variable element.
 
@@ -5142,7 +5142,7 @@ class DataVariableMultiline(DataVariable):
         return layout
 
 
-class DataVariableCheckbox(DataVariable):
+class InputFieldCheckbox(InputField):
     """
     Checkbox-style data variable element.
 
@@ -5253,7 +5253,7 @@ class DataVariableCheckbox(DataVariable):
 
 
 # Element reference variable
-class DependentVariable(DataVariable):
+class DependentField(InputField):
     """
     Record element that is dependent on the values of other record elements.
 
