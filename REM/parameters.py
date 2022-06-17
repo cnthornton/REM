@@ -10,6 +10,7 @@ import PySimpleGUI as sg
 import pandas as pd
 
 import REM.constants as mod_const
+import REM.layouts as mod_lo
 import REM.secondary as mod_win2
 from REM.client import logger, settings
 
@@ -53,8 +54,8 @@ class InputParameter:
         self.name = name
         self.id = randint(0, 1000000000)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'Description', 'Frame', 'LabelWidth', 'Container', 'ValueFrame', 'ContainerWidth', 'Width',
-                          'Height')}
+                         ('Element', 'Description', 'Frame', 'LabelWidth', 'Border', 'Container',
+                          'Width', 'Height')}
 
         self.bindings = {self.key_lookup(i): i for i in ('Element',)}
 
@@ -172,11 +173,11 @@ class InputParameter:
         else:
             color = mod_const.BORDER_COLOR
 
-        frame_key = self.key_lookup('ValueFrame')
-        window[frame_key].ParentRowFrame.config(background=color)
-
         container_key = self.key_lookup('Container')
-        element = window[container_key]
+        window[container_key].ParentRowFrame.config(background=color)
+
+        border_key = self.key_lookup('Border')
+        element = window[border_key]
         element.Widget.config(background=color)
         element.Widget.config(highlightbackground=color)
         element.Widget.config(highlightcolor=color)
@@ -284,15 +285,10 @@ class InputParameter:
                               expand_y=True)
 
         # Parameter value container
-        container_key = self.key_lookup('Container')
-        element_layout = [sg.Frame('', [[self.element_layout(size=param_size)]],
-                                   key=container_key, background_color=mod_const.BORDER_COLOR, border_width=0,
-                                   expand_x=True, vertical_alignment='c', relief='flat', tooltip=self.placeholder)]
-
-        container_w_key = self.key_lookup('ContainerWidth')
-        param_layout = sg.Col([[sg.Canvas(key=container_w_key, size=(value_w, 0), background_color=bg_col)],
-                               element_layout],
-                              background_color=bg_col, vertical_alignment='c')
+        border_key = self.key_lookup('Border')
+        param_layout = sg.Frame('', [[self.element_layout()]],
+                                key=border_key, background_color=mod_const.BORDER_COLOR, border_width=0,
+                                vertical_alignment='c', relief='flat', tooltip=self.placeholder)
 
         # Parameter layout
         height_key = self.key_lookup('Height')
@@ -308,7 +304,7 @@ class InputParameter:
 
         return layout
 
-    def element_layout(self, size: tuple = None):
+    def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -318,20 +314,13 @@ class InputParameter:
         """
         Resize the parameter elements.
         """
-        if size:
+        if isinstance(size, tuple) and len(size) == 2:
             width, height = size
         else:
             width, height = mod_const.PARAM_SIZE_PX
 
-        if isinstance(height, int):
-            param_h = height
-        else:
-            param_h = mod_const.PARAM_SIZE_PX[1]
-
-        if isinstance(width, int):
-            param_w = width
-        else:
-            param_w = 1
+        param_w = width if isinstance(width, int) else 1
+        param_h = height if isinstance(height, int) else mod_const.PARAM_SIZE_PX[1]
 
         width_key = self.key_lookup('Width')
         window[width_key].set_size(size=(param_w, None))
@@ -346,11 +335,12 @@ class InputParameter:
             window[header_key].set_size(size=(desc_w, None))
 
             value_w = int(param_w * 0.6)
-            value_key = self.key_lookup('ContainerWidth')
-            window[value_key].set_size(size=(value_w, None))
+            value_h = param_h
+            container_key = self.key_lookup('Container')
+            mod_lo.set_size(window, container_key, (value_w, value_h))
 
         elem_key = self.key_lookup('Element')
-        window[elem_key].expand(expand_x=True)
+        window[elem_key].expand(expand_x=True, expand_y=True)
 
         window.refresh()
 
@@ -391,8 +381,9 @@ class InputParameter:
             try:
                 new_value = float(value)
             except ValueError:
-                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
-                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                logger.warning(
+                    'InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                    'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
             else:
                 display_value = str(new_value)
@@ -401,8 +392,9 @@ class InputParameter:
             try:
                 new_value = int(value)
             except ValueError:
-                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
-                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                logger.warning(
+                    'InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                    'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
             else:
                 display_value = str(new_value)
@@ -411,16 +403,18 @@ class InputParameter:
             try:
                 display_value = settings.format_display_date(value)
             except ValueError:
-                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
-                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                logger.warning(
+                    'InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                    'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
 
         elif dtype in settings.supported_bool_dtypes:
             try:
                 display_value = int(value)
             except ValueError:
-                logger.warning('InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
-                               'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
+                logger.warning(
+                    'InputParameter {NAME}: unsupported value of type {TYPE} provided to parameter with data '
+                    'type {DTYPE}'.format(NAME=self.name, TYPE=type(value), DTYPE=dtype))
                 display_value = ''
 
         else:
@@ -759,7 +753,7 @@ class InputParameterText(InputParameterStandard):
 
         return display_value
 
-    def element_layout(self, size: tuple = None):
+    def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -772,12 +766,8 @@ class InputParameterText(InputParameterStandard):
         disabled_bg_col = mod_const.DISABLED_BG_COLOR
 
         # Parameter size
-        if isinstance(size, tuple) and len(size) == 2:
-            width, height = size
-            elem_w = width if isinstance(width, int) else mod_const.PARAM_SIZE_CHAR[0]
-            elem_h = height if isinstance(height, int) else mod_const.PARAM_SIZE_CHAR[1]
-        else:
-            elem_w, elem_h = mod_const.PARAM_SIZE_CHAR
+        size = mod_const.FIELD_SIZE_PX
+        border = (1, 1)
 
         # Parameter settings
         display_value = self._enforce_formatting(self._default)
@@ -789,13 +779,12 @@ class InputParameterText(InputParameterStandard):
 
         # Layout
         elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('ValueFrame')
+        frame_key = self.key_lookup('Container')
         layout = sg.Col([[sg.Input(display_value, key=elem_key, disabled=disabled, enable_events=True,
-                                   size=(elem_w, elem_h), border_width=0, font=font,
-                                   background_color=bg_col, text_color=text_col,
+                                   border_width=0, font=font, background_color=bg_col, text_color=text_col,
                                    disabled_readonly_text_color=disabled_text_col,
-                                   disabled_readonly_background_color=disabled_bg_col)]],
-                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
+                                   disabled_readonly_background_color=disabled_bg_col, expand_x=True)]],
+                        key=frame_key, size=size, pad=border, background_color=bg_col, vertical_alignment='c')
 
         return layout
 
@@ -971,7 +960,7 @@ class InputParameterDate(InputParameterStandard):
 
         return display_value
 
-    def element_layout(self, size: tuple = None):
+    def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -995,32 +984,24 @@ class InputParameterDate(InputParameterStandard):
             text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Parameter size
-        if size:
-            elem_w, elem_h = size
-            if not isinstance(elem_w, int):
-                elem_w = 10 + 2
-            if not isinstance(elem_h, int):
-                elem_h = 1
-        else:
-            elem_h = 1
-            elem_w = 10 + 2  # number of characters in the date format plus 2
+        size = mod_const.FIELD_SIZE_PX
+        border = (1, 1)
 
         # Layout
         elem_key = self.key_lookup('Element')
         calendar_key = self.key_lookup('Calendar')
-        frame_key = self.key_lookup('ValueFrame')
+        frame_key = self.key_lookup('Container')
         date_ico = mod_const.CALENDAR_ICON
-        layout = sg.Col([[sg.CalendarButton('', target=elem_key, key=calendar_key, format=self._format,
-                                            image_data=date_ico, font=font, pad=(pad_el, 0),
-                                            button_color=(text_col, bg_col),
-                                            border_width=0, disabled=disabled),
-                          sg.Input(display_value, key=elem_key, enable_events=True, disabled=disabled,
-                                   size=(elem_w, elem_h), border_width=0, font=font,
-                                   background_color=bg_col, text_color=text_col,
-                                   disabled_readonly_text_color=disabled_text_col,
-                                   disabled_readonly_background_color=disabled_bg_col,
-                                   use_readonly_for_disable=True)]],
-                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
+        layout = sg.Frame('', [[sg.CalendarButton('', target=elem_key, key=calendar_key, format=self._format,
+                                                  image_data=date_ico, font=font, pad=(pad_el, 0),
+                                                  button_color=(text_col, bg_col),
+                                                  border_width=0, disabled=disabled),
+                                sg.Input(display_value, key=elem_key, enable_events=True, disabled=disabled,
+                                         border_width=0, font=font, background_color=bg_col, text_color=text_col,
+                                         disabled_readonly_text_color=disabled_text_col,
+                                         disabled_readonly_background_color=disabled_bg_col,
+                                         use_readonly_for_disable=True, expand_x=True)]],
+                          key=frame_key, size=size, pad=border, background_color=bg_col, vertical_alignment='c')
 
         return layout
 
@@ -1298,7 +1279,7 @@ class InputParameterCombo(InputParameter):
 
         return display_value
 
-    def element_layout(self, size: tuple = None):
+    def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -1319,22 +1300,19 @@ class InputParameterCombo(InputParameter):
             values.insert(0, '')
 
         # Parameter element size
-        if size:
-            elem_w, elem_h = size
-        else:
-            elem_h = 1
-            width = max([len(i) for i in values]) + 1
-            elem_w = width if width >= 10 else 10
+        size = mod_const.FIELD_SIZE_PX
+        border = (1, 1)
 
         # Layout
         elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('ValueFrame')
-        layout = sg.Col([[sg.Combo(values, default_value=display_value, key=elem_key, size=(elem_w, elem_h),
-                                   font=font, background_color=bg_col, text_color=text_col,
-                                   button_arrow_color=mod_const.BORDER_COLOR,
-                                   button_background_color=bg_col,
-                                   enable_events=True, disabled=disabled)]],
-                        pad=(1, 1), key=frame_key, background_color=bg_col, vertical_alignment='c', expand_x=True)
+        frame_key = self.key_lookup('Container')
+        layout = sg.Frame('', [[sg.Combo(values, default_value=display_value, key=elem_key, font=font,
+                                         background_color=bg_col, text_color=text_col,
+                                         button_arrow_color=mod_const.BORDER_COLOR,
+                                         button_background_color=bg_col,
+                                         enable_events=True, disabled=disabled)]],
+                          key=frame_key, size=size, pad=border, background_color=bg_col, border_width=0,
+                          vertical_alignment='c')
 
         return layout
 
@@ -1496,32 +1474,30 @@ class InputParameterCheckbox(InputParameter):
         display_value = self.format_display()
         window[elem_key].update(value=display_value)
 
-    def element_layout(self, size: tuple = None):
+    def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
         """
-        size = size if size else mod_const.PARAM_SIZE_CHAR
         disabled = False if self.editable is True else True
 
         # Element settings
         bg_col = mod_const.DEFAULT_BG_COLOR if not disabled else mod_const.DISABLED_BG_COLOR
 
         # Parameter size
-        width, height = size
-        elem_w = 0
-        elem_h = height
+        size = mod_const.FIELD_SIZE_PX
+        border = (0, 0)
 
         # Parameter settings
         display_value = self.format_display()
 
         # Layout
         elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('ValueFrame')
-        layout = sg.Col(
-            [[sg.Checkbox('', default=display_value, key=elem_key, size=(elem_w, elem_h), enable_events=True,
-                          disabled=disabled, background_color=bg_col, checkbox_color=bg_col,
-                          tooltip=self.placeholder)]],
-            key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
+        frame_key = self.key_lookup('Container')
+        layout = sg.Frame('', [[sg.Checkbox('', default=display_value, key=elem_key, enable_events=True,
+                                            disabled=disabled, background_color=bg_col, checkbox_color=bg_col,
+                                            tooltip=self.placeholder)]],
+                          key=frame_key, size=size, pad=border, border_width=0, background_color=bg_col,
+                          vertical_alignment='c')
 
         return layout
 
@@ -1691,7 +1667,7 @@ class InputParameterComp(InputParameter):
         display_value = self.format_display()
         window[elem_key].update(text=display_value)
 
-    def element_layout(self, size: tuple = None):
+    def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
         """
@@ -1705,11 +1681,16 @@ class InputParameterComp(InputParameter):
         # Parameter settings
         display_value = self.format_display()
 
+        # Parameter size
+        size = mod_const.FIELD_SIZE_PX
+        border = (1, 1)
+
         elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('ValueFrame')
-        layout = sg.Col([[sg.Button(display_value, key=elem_key, disabled=disabled, border_width=1, font=font,
-                                    button_color=(text_col, bg_col), tooltip=display_value)]],
-                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
+        frame_key = self.key_lookup('Container')
+        layout = sg.Frame('', [[sg.Button(display_value, key=elem_key, disabled=disabled, border_width=1, font=font,
+                                          button_color=(text_col, bg_col), tooltip=display_value)]],
+                          key=frame_key, size=size, pad=border, border_width=0, background_color=bg_col,
+                          vertical_alignment='c')
 
         return layout
 
@@ -1767,7 +1748,7 @@ class InputParameterRange(InputParameterComp):
             elem_key = self.key_lookup('Element')
             element = window[elem_key]
 
-            size = window[self.key_lookup('ValueFrame')].get_size()
+            size = window[self.key_lookup('Container')].get_size()
             location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
 
             self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
@@ -1813,7 +1794,8 @@ class InputParameterRange(InputParameterComp):
         try:
             in2_fmt = format_value(in2, self.dtype)
         except ValueError as e:
-            msg = 'InputParameter {NAME}: unable set datatype for the second value - {ERR}'.format(NAME=self.name, ERR=e)
+            msg = 'InputParameter {NAME}: unable set datatype for the second value - {ERR}'.format(NAME=self.name,
+                                                                                                   ERR=e)
             logger.warning(msg)
 
             in2_fmt = None
@@ -1999,7 +1981,7 @@ class InputParameterCondition(InputParameterComp):
             self._set_state(window, state='inactive')
         elif param_event == 'Element' and not self.disabled:
             elem_key = self.key_lookup('Element')
-            size = window[self.key_lookup('ValueFrame')].get_size()
+            size = window[self.key_lookup('Container')].get_size()
 
             element = window[elem_key]
             location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
@@ -2235,7 +2217,7 @@ class InputParamterMultiple(InputParameter):
             elem_key = self.key_lookup('Element')
             element = window[elem_key]
 
-            size = window[self.key_lookup('ValueFrame')].get_size()
+            size = window[self.key_lookup('Container')].get_size()
             location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
 
             options = self.format_display_components(self.menu_values)
@@ -2258,11 +2240,10 @@ class InputParamterMultiple(InputParameter):
         if self.hidden is False:
             self.update_display(window)
 
-    def element_layout(self, size: tuple = None):
+    def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
         """
-        size = size if size else mod_const.PARAM_SIZE_CHAR
         disabled = False if self.editable is True else True
 
         # Element settings
@@ -2270,22 +2251,22 @@ class InputParamterMultiple(InputParameter):
         bg_col = mod_const.DEFAULT_BG_COLOR
         text_col = mod_const.DISABLED_TEXT_COLOR
 
-        # Parameter size
-        width, height = size
-        elem_w = width
-        elem_h = height
-
         # Parameter settings
         display_value = self.format_display()
         nselect = len(self.value)
         bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
 
+        # Parameter size
+        size = mod_const.FIELD_SIZE_PX
+        border = (1, 1)
+
         # Layout
         elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('ValueFrame')
-        layout = sg.Col([[sg.Button(bttn_text, key=elem_key, disabled=disabled, border_width=1, font=font,
-                                    button_color=(text_col, bg_col), tooltip=display_value)]],
-                        key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
+        frame_key = self.key_lookup('Container')
+        layout = sg.Frame('', [[sg.Button(bttn_text, key=elem_key, disabled=disabled, border_width=1, font=font,
+                                          button_color=(text_col, bg_col), tooltip=display_value)]],
+                          key=frame_key, size=size, pad=border, border_width=0, background_color=bg_col,
+                          vertical_alignment='c')
 
         return layout
 
@@ -2474,8 +2455,8 @@ def fetch_parameter(parameters, identifier, by_key: bool = False, by_type: bool 
     Fetch a parameter from a list of parameters by name, event key, or parameter type.
     """
     if by_key:
-        #element_type = identifier[1:-1].split('_')[-1]
-        #identifiers = [i.key_lookup(element_type) for i in parameters]
+        # element_type = identifier[1:-1].split('_')[-1]
+        # identifiers = [i.key_lookup(element_type) for i in parameters]
         match = re.match(r'-(.*?)-', identifier)
         if not match:
             raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
