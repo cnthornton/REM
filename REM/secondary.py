@@ -2175,7 +2175,7 @@ def edit_settings(win_size: tuple = None):
     gc.collect()
 
 
-def range_value_window(dtype, current: list = None, title: str = None, location: tuple = None):
+def range_value_window(dtype, current: list = None, title: str = None, location: tuple = None, size: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
@@ -2183,7 +2183,6 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
-    pad_frame = mod_const.FRAME_PAD
     bold_font = mod_const.BOLD_LARGE_FONT
     bg_col = mod_const.DEFAULT_BG_COLOR
 
@@ -2197,31 +2196,38 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
     param2_entry = {'Description': '', 'ElementType': etype, 'DataType': dtype, 'DefaultValue': orig_val2}
     param2 = mod_param.initialize_parameter('Second', param2_entry)
 
-    # Layout
-    elem_layout = param1.layout() + [sg.Text('  -  ', font=bold_font)] + param2.layout()
-    bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0))]]
-    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c',
-                      expand_x=True)],
-              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+    # Window and element sizes
+    bttn_h = pad_el * 3 + mod_const.BTTN_SIZE[1]  # button height + top/bottom padding and button border
+    sep_w = 1 * 9 + pad_el * 2  # field separator character and spacing
 
-    window = sg.Window(title, layout, modal=True, resizable=False)
+    default_w = mod_const.FIELD_SIZE_PX[0] * 2 + sep_w
+    default_h = mod_const.FIELD_SIZE_PX[1] + bttn_h + 10
+
+    print('default size is: ({}, {})'.format(default_w, default_h))
+    print('provided size is: {}'.format(size))
+
+    if isinstance(size, tuple) and len(size) == 2:
+        width, height = size
+        win_w = width if (isinstance(width, int) and width >= default_w) else default_w
+        win_h = height if (isinstance(height, int) and height >= default_h) else default_h
+    else:
+        win_w = default_w
+        win_h = default_h
+
+    # Layout
+    elem_layout = param1.layout() + [sg.Text('-', pad=(pad_el, 0), font=bold_font)] + param2.layout()
+    bttn_layout = sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                            bind_return_key=True, pad=(0, pad_el))
+
+    layout = [[sg.Frame('', [elem_layout, [bttn_layout]], size=(win_w, win_h), background_color=bg_col,
+                        title_color=mod_const.BORDER_COLOR, element_justification='c', vertical_alignment='t')]]
+
+    win_title = title if title else 'range'
+    window = sg.Window(win_title, layout, modal=True, resizable=False, no_titlebar=True, location=location)
     window.finalize()
 
-    win_w, win_h = window.size
-    if isinstance(location, tuple) and len(location) == 2:
-        coord_x, coord_y = location
-        try:
-            pos_x = int(coord_x - 0.5 * win_w)
-            pos_y = int(coord_y + 2)
-        except ValueError:
-            pos_xy = None
-        else:
-            pos_xy = (pos_x, pos_y)
-    else:
-        pos_xy = None
-
-    window = align_window(window, location=pos_xy)
+    if not location:  # center window if no location provided
+        window = align_window(window)
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
@@ -2266,7 +2272,7 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
     return value_range
 
 
-def conditional_value_window(dtype, current: list = None, title: str = None, location: tuple = None):
+def conditional_value_window(dtype, current: list = None, title: str = None, location: tuple = None, size: tuple = None):
     """
     Display window for obtaining values for a ranged parameter.
     """
@@ -2275,10 +2281,7 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
-    pad_frame = mod_const.FRAME_PAD
-
     font = mod_const.LARGE_FONT
-
     in_col = mod_const.FIELD_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
     text_col = mod_const.DEFAULT_TEXT_COLOR
@@ -2290,6 +2293,24 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     param_entry = {'Description': '', 'ElementType': etype, 'DataType': dtype, 'DefaultValue': current_value}
     param = mod_param.initialize_parameter('Value', param_entry)
 
+    # Window and element sizes
+    bttn_h = pad_el * 3 + mod_const.BTTN_SIZE[1]  # button height + top/bottm padding and button border
+    oper_w = 4 * 9 + pad_el
+
+    default_w = oper_w + mod_const.FIELD_SIZE_PX[0]
+    default_h = mod_const.FIELD_SIZE_PX[1] + bttn_h + 10
+
+    print('default size is: ({}, {})'.format(default_w, default_h))
+    print('provided size is: {}'.format(size))
+
+    if isinstance(size, tuple) and len(size) == 2:
+        width, height = size
+        win_w = width if (isinstance(width, int) and width >= default_w) else default_w
+        win_h = height if (isinstance(height, int) and height >= default_h) else default_h
+    else:
+        win_w = default_w
+        win_h = default_h
+
     # Layout
     oper_key = '-OPERATOR-'
     elem_layout = [sg.Combo(operators, default_value=current_oper, key=oper_key, enable_events=True, size=(4, 1),
@@ -2297,39 +2318,34 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
                             disabled=False)]
     elem_layout += param.layout()
 
-    bttn_layout = [[sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0))]]
+    bttn_layout = sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                            bind_return_key=True, pad=(0, pad_el))
 
-    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
-              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+    layout = [[sg.Frame('', [elem_layout, [bttn_layout]], size=(win_w, win_h), background_color=bg_col,
+                        title_color=mod_const.BORDER_COLOR, element_justification='c', vertical_alignment='t')]]
 
-    window = sg.Window(title, layout, modal=True, resizable=False)
+    win_title = title if title else 'conditional selection'
+    window = sg.Window(win_title, layout, modal=True, resizable=False, no_titlebar=True, location=location)
     window.finalize()
 
-    win_w, win_h = window.size
-    if isinstance(location, tuple) and len(location) == 2:
-        coord_x, coord_y = location
-        try:
-            pos_x = int(coord_x - 0.5 * win_w)
-            pos_y = int(coord_y + 2)
-        except ValueError:
-            pos_xy = None
-        else:
-            pos_xy = (pos_x, pos_y)
-    else:
-        pos_xy = None
-
-    window = align_window(window, location=pos_xy)
+    if not location:  # center window if no location provided
+        window = align_window(window)
 
     # Bind keys to events
     window = settings.set_shortcuts(window)
     param.bind_keys(window)
 
+    window.refresh()
+    print('size of parameter is {}'.format(window[param.key_lookup('Frame')].get_size()))
+    print('size of combo is {}'.format(window['-OPERATOR-'].get_size()))
+    print('size of button is {}'.format(window['-SAVE-'].get_size()))
+
     # Start event loop
     while True:
         event, values = window.read()
+        print('event is {}'.format(event))
 
-        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-'):  # selected close-window or Cancel
+        if event in (sg.WIN_CLOSED, '-HK_ESCAPE-', None):  # selected close-window or Cancel
             break
 
         if event in param.bindings:
@@ -2369,7 +2385,7 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     return saved_value
 
 
-def select_value_window(values, current: list = None, title: str = None, location: tuple = None):
+def select_value_window(values, current: list = None, title: str = None, location: tuple = None, size: tuple = None):
     """
     Display window for obtaining one or more values from a list of possible choices.
     """
@@ -2385,10 +2401,7 @@ def select_value_window(values, current: list = None, title: str = None, locatio
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
-    pad_frame = mod_const.FRAME_PAD
-
     font = mod_const.LARGE_FONT
-
     in_col = mod_const.FIELD_BG_COLOR
     bg_col = mod_const.DEFAULT_BG_COLOR
 
@@ -2400,37 +2413,36 @@ def select_value_window(values, current: list = None, title: str = None, locatio
     nchar = max([len(i) for i in values])
     nvalues = len(values)
 
-    nrow = nvalues if nvalues <= 6 else 6
+    bttn_h = pad_el * 2 + mod_const.BTTN_SIZE[1]
+
+    default_w = nchar * 9 + pad_el
+    default_h = nvalues * 9 + bttn_h if nvalues <= 6 else 6 * 9 + bttn_h
+
+    if isinstance(size, tuple) and len(size) == 2:
+        width, height = size
+        win_w = width if width >= default_w else default_w
+        win_h = height if height >= default_h else default_h
+    else:
+        win_w = default_w
+        win_h = default_h
 
     # Layout
-    elem_layout = [sg.Listbox(values, default_values=current_values, key='-SELECT-', size=(nchar, nrow),
-                              pad=((0, pad_el), 0), font=font, background_color=in_col, disabled=False,
-                              select_mode='multiple', tooltip='Select one or more values from the list')]
+    elem_layout = sg.Listbox(values, default_values=current_values, key='-SELECT-', expand_x=True, expand_y=True,
+                             font=font, background_color=in_col, disabled=False, select_mode='multiple',
+                             tooltip='Select one or more values from the list')
 
-    bttn_layout = [[sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                              bind_return_key=True, pad=(pad_el, 0),
-                              tooltip='Accept selection ({})'.format(save_shortcut))]]
+    bttn_layout = sg.Button('', key='-OK-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                            bind_return_key=True, pad=(0, pad_el),
+                            tooltip='Accept selection ({})'.format(save_shortcut))
 
-    layout = [[sg.Col([elem_layout], pad=(pad_frame, pad_frame), background_color=bg_col, element_justification='c')],
-              [sg.Col(bttn_layout, justification='c', pad=(0, (0, pad_frame)))]]
+    layout = [[sg.Frame('', [[elem_layout], [bttn_layout]], size=(win_w, win_h), background_color=bg_col,
+                        title_color=mod_const.BORDER_COLOR, element_justification='c')]]
 
-    window = sg.Window(title, layout, modal=True, resizable=False)
+    window = sg.Window(title, layout, modal=True, resizable=False, no_titlebar=True, location=location)
     window.finalize()
 
-    win_w, win_h = window.size
-    if isinstance(location, tuple) and len(location) == 2:
-        coord_x, coord_y = location
-        try:
-            pos_x = int(coord_x - 0.5 * win_w)
-            pos_y = int(coord_y + 2)
-        except ValueError:
-            pos_xy = None
-        else:
-            pos_xy = (pos_x, pos_y)
-    else:
-        pos_xy = None
-
-    window = align_window(window, location=pos_xy)
+    if not location:  # center window if no location provided
+        window = align_window(window)
 
     # Bind keys to events
     window = settings.set_shortcuts(window)

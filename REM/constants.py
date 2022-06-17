@@ -82,9 +82,8 @@ TITLE_HEIGHT = 60
 SCROLL_WIDTH = 18
 BTTN_HEIGHT = 70
 
-# Input fields
-IF_SIZE_PX = (300, 25)  # standard input field with label at the left
-IFT2_HEIGHT_PX = (260, 35)  # type 2 input field with label at the top
+# Input and parameter fields
+FIELD_SIZE_PX = (120, 30)  # standard input field with label at the left
 
 # Data Table Elements
 TBL_WIDTH = 120  # default table width in characters

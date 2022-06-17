@@ -3,6 +3,7 @@ REM parameter element classes.
 """
 import datetime
 from random import randint
+import re
 
 import numpy as np
 import PySimpleGUI as sg
@@ -37,8 +38,6 @@ class InputParameter:
 
         required (bool): parameter value is required for an event.
 
-        icon (str): file name of the parameter's icon [Default: None].
-
         placeholder (str): text to use in the display value field when the parameter does not have a value set.
     """
 
@@ -54,7 +53,7 @@ class InputParameter:
         self.name = name
         self.id = randint(0, 1000000000)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'Description', 'Frame', 'Header', 'Container', 'ValueFrame', 'Value', 'Width',
+                         ('Element', 'Description', 'Frame', 'LabelWidth', 'Container', 'ValueFrame', 'ContainerWidth', 'Width',
                           'Height')}
 
         self.bindings = {self.key_lookup(i): i for i in ('Element',)}
@@ -159,6 +158,8 @@ class InputParameter:
 
         self.disabled = not self.editable
 
+        self.dimensions = None
+
     def _set_state(self, window, state: str = 'inactive'):
         """
         Change the border of the input field to match its current state: focus, inactive, or error.
@@ -198,6 +199,7 @@ class InputParameter:
             logger.warning(msg)
             logger.exception(msg)
             key = None
+            raise
 
         return key
 
@@ -230,7 +232,6 @@ class InputParameter:
 
         # Element settings
         pad_el = mod_const.ELEM_PAD
-        bold_font = mod_const.BOLD_FONT
         relief = 'flat' if not border else None
 
         # Parameter settings
@@ -249,12 +250,12 @@ class InputParameter:
             if isinstance(height, int):
                 height_px = height * 10
             else:
-                height_px = mod_const.PARAM_SIZE_PX[1]
+                height_px = mod_const.FIELD_SIZE_PX[1]
 
             param_size = (param_w, height)
         else:  # let parameter type determine the size
             desc_w = 1
-            height_px = mod_const.PARAM_SIZE_PX[1]
+            height_px = mod_const.FIELD_SIZE_PX[1]
             param_size = None
 
         value_w = 1
@@ -262,36 +263,40 @@ class InputParameter:
 
         self.auto_size = auto_size_desc
 
-        # Required symbol
-        if is_required is True:
-            required_layout = [sg.Text('*', font=bold_font, background_color=bg_col,
-                                       text_color=mod_const.NOTE_COLOR, tooltip='required')]
+        # Parameter label
+        label_font = mod_const.BOLD_FONT
+        label_color = mod_const.LABEL_TEXT_COLOR
+
+        if is_required is True and self.editable:
+            required_layout = [sg.Text('*', font=label_font, background_color=bg_col,
+                                       text_color=mod_const.ERROR_COLOR, tooltip='required')]
         else:
             required_layout = []
 
-        # Element layout
         desc_key = self.key_lookup('Description')
-        desc_layout = [sg.Text(desc, key=desc_key, auto_size_text=True, font=bold_font, background_color=bg_col,
+        desc_layout = [sg.Text(desc, key=desc_key, font=label_font, text_color=label_color, background_color=bg_col,
                                tooltip=self.description)]
 
-        header_key = self.key_lookup('Header')
-        header_layout = sg.Col([[sg.Canvas(key=header_key, size=(desc_w, 0), background_color=bg_col)],
-                                required_layout + desc_layout],
-                               pad=(0, (0, pad_el)), background_color=bg_col, element_justification=justification,
-                               expand_y=True)
+        label_w_key = self.key_lookup('LabelWidth')
+        label_layout = sg.Col([[sg.Canvas(key=label_w_key, size=(desc_w, 0), background_color=bg_col)],
+                               required_layout + desc_layout],
+                              pad=(0, (0, pad_el)), background_color=bg_col, element_justification=justification,
+                              expand_y=True)
 
+        # Parameter value container
         container_key = self.key_lookup('Container')
         element_layout = [sg.Frame('', [[self.element_layout(size=param_size)]],
                                    key=container_key, background_color=mod_const.BORDER_COLOR, border_width=0,
                                    expand_x=True, vertical_alignment='c', relief='flat', tooltip=self.placeholder)]
 
-        value_key = self.key_lookup('Value')
-        param_layout = sg.Col([[sg.Canvas(key=value_key, size=(value_w, 0), background_color=bg_col)],
+        container_w_key = self.key_lookup('ContainerWidth')
+        param_layout = sg.Col([[sg.Canvas(key=container_w_key, size=(value_w, 0), background_color=bg_col)],
                                element_layout],
                               background_color=bg_col, vertical_alignment='c')
 
+        # Parameter layout
         height_key = self.key_lookup('Height')
-        elem_layout = [sg.Canvas(key=height_key, size=(0, height_px), background_color=bg_col), header_layout,
+        elem_layout = [sg.Canvas(key=height_key, size=(0, height_px), background_color=bg_col), label_layout,
                        param_layout]
 
         width_key = self.key_lookup('Width')
@@ -337,15 +342,19 @@ class InputParameter:
         if not self.auto_size:
             # Resize description at 40% of total width and the value element to take up the remaining space
             desc_w = int(param_w * 0.4)
-            header_key = self.key_lookup('Header')
+            header_key = self.key_lookup('LabelWidth')
             window[header_key].set_size(size=(desc_w, None))
 
             value_w = int(param_w * 0.6)
-            value_key = self.key_lookup('Value')
+            value_key = self.key_lookup('ContainerWidth')
             window[value_key].set_size(size=(value_w, None))
 
         elem_key = self.key_lookup('Element')
         window[elem_key].expand(expand_x=True)
+
+        window.refresh()
+
+        self.dimensions = window[self.key_lookup('Frame')].get_size()
 
     def format_display_value(self, value):
         """
@@ -763,12 +772,10 @@ class InputParameterText(InputParameterStandard):
         disabled_bg_col = mod_const.DISABLED_BG_COLOR
 
         # Parameter size
-        if size:
-            elem_w, elem_h = size
-            if not isinstance(elem_w, int):
-                elem_w = mod_const.PARAM_SIZE_CHAR[0]
-            if not isinstance(elem_h, int):
-                elem_h = mod_const.PARAM_SIZE_CHAR[1]
+        if isinstance(size, tuple) and len(size) == 2:
+            width, height = size
+            elem_w = width if isinstance(width, int) else mod_const.PARAM_SIZE_CHAR[0]
+            elem_h = height if isinstance(height, int) else mod_const.PARAM_SIZE_CHAR[1]
         else:
             elem_w, elem_h = mod_const.PARAM_SIZE_CHAR
 
@@ -1476,7 +1483,7 @@ class InputParameterCheckbox(InputParameter):
         desc_w = width - 26
         desc_h = int(height / 10) if height else None
 
-        header_key = self.key_lookup('Header')
+        header_key = self.key_lookup('LabelWidth')
         window[header_key].set_size(size=(desc_w, desc_h))
 
     def update_display(self, window):
@@ -1682,25 +1689,18 @@ class InputParameterComp(InputParameter):
 
         # Update element text
         display_value = self.format_display()
-        window[elem_key].update(value=display_value)
+        window[elem_key].update(text=display_value)
 
     def element_layout(self, size: tuple = None):
         """
         Create the type-specific layout for the value element of the parameter.
         """
-        size = size if size else mod_const.PARAM_SIZE_CHAR
         disabled = False if self.editable is True else True
 
         # Element settings
-        #font = mod_const.LARGE_FONT
         font = mod_const.SMALL_FONT
         bg_col = mod_const.DEFAULT_BG_COLOR
         text_col = mod_const.DEFAULT_TEXT_COLOR
-
-        # Parameter size
-        width, height = size
-        elem_w = int(width * 0.7)
-        elem_h = height
 
         # Parameter settings
         display_value = self.format_display()
@@ -1710,16 +1710,6 @@ class InputParameterComp(InputParameter):
         layout = sg.Col([[sg.Button(display_value, key=elem_key, disabled=disabled, border_width=1, font=font,
                                     button_color=(text_col, bg_col), tooltip=display_value)]],
                         key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
-        #if not disabled:
-        #    layout = sg.Col([[sg.Text(display_value, key=elem_key, size=(elem_w, elem_h),
-        #                              font=font, background_color=bg_col, text_color=text_col, relief='ridge',
-        #                              enable_events=True, justification='c', tooltip=self.description)]],
-        #                    key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
-        #else:
-        #    layout = sg.Col([[sg.Text(display_value, key=elem_key, size=(elem_w, elem_h), font=font,
-        #                              background_color=bg_col, text_color=text_col, border_width=1, justification='c',
-        #                              tooltip=self.placeholder)]],
-        #                    key=frame_key, pad=(1, 1), background_color=bg_col, expand_x=True, vertical_alignment='c')
 
         return layout
 
@@ -1775,13 +1765,16 @@ class InputParameterRange(InputParameterComp):
             self._set_state(window, state='inactive')
         elif param_event == 'Element' and not self.disabled:
             elem_key = self.key_lookup('Element')
+            element = window[elem_key]
+
+            size = window[self.key_lookup('ValueFrame')].get_size()
+            location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
 
             self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
-                                                     location=window.mouse_location())
+                                                     location=location, size=size)
 
             display_value = self.format_display()
-            #window[event].update(value=display_value)
-            window[elem_key].update(text=display_value)
+            element.update(text=display_value)
 
     def format_value(self, values):
         """
@@ -2006,13 +1999,16 @@ class InputParameterCondition(InputParameterComp):
             self._set_state(window, state='inactive')
         elif param_event == 'Element' and not self.disabled:
             elem_key = self.key_lookup('Element')
+            size = window[self.key_lookup('ValueFrame')].get_size()
+
+            element = window[elem_key]
+            location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
 
             self.value = mod_win2.conditional_value_window(self.dtype, current=self.value, title=self.description,
-                                                           location=window.mouse_location())
+                                                           location=location, size=size)
 
             display_value = self.format_display()
-            #window[event].update(value=display_value)
-            window[elem_key].update(text=display_value)
+            element.update(text=display_value)
 
     def format_value(self, values):
         """
@@ -2237,11 +2233,15 @@ class InputParamterMultiple(InputParameter):
             self._set_state(window, state='inactive')
         elif param_event == 'Element' and not self.disabled:
             elem_key = self.key_lookup('Element')
+            element = window[elem_key]
+
+            size = window[self.key_lookup('ValueFrame')].get_size()
+            location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
 
             options = self.format_display_components(self.menu_values)
             current_values = self.format_display_components(self.value)
             selected = mod_win2.select_value_window(options, current=current_values, title=self.description,
-                                                    location=window.mouse_location())
+                                                    location=location, size=size)
 
             self.format_value({elem_key: selected})
             self.update_display(window)
@@ -2474,8 +2474,23 @@ def fetch_parameter(parameters, identifier, by_key: bool = False, by_type: bool 
     Fetch a parameter from a list of parameters by name, event key, or parameter type.
     """
     if by_key:
-        element_type = identifier[1:-1].split('_')[-1]
-        identifiers = [i.key_lookup(element_type) for i in parameters]
+        #element_type = identifier[1:-1].split('_')[-1]
+        #identifiers = [i.key_lookup(element_type) for i in parameters]
+        match = re.match(r'-(.*?)-', identifier)
+        if not match:
+            raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
+        identifier = match.group(0)  # identifier returned if match
+        element_key = match.group(1)  # element key part of the identifier after removing any binding
+
+        element_type = element_key.split('_')[-1]
+        identifiers = []
+        for parameter in parameters:
+            try:
+                element_name = parameter.key_lookup(element_type)
+            except KeyError:
+                element_name = None
+
+            identifiers.append(element_name)
     elif by_type:
         identifiers = [i.etype for i in parameters]
     else:
