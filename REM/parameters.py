@@ -54,8 +54,7 @@ class InputParameter:
         self.name = name
         self.id = randint(0, 1000000000)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'Description', 'Frame', 'LabelWidth', 'Border', 'Container',
-                          'Width', 'Height')}
+                         ('Element', 'Description', 'LabelWidth', 'Border', 'Container', 'Frame')}
 
         self.bindings = {self.key_lookup(i): i for i in ('Element',)}
 
@@ -200,7 +199,6 @@ class InputParameter:
             logger.warning(msg)
             logger.exception(msg)
             key = None
-            raise
 
         return key
 
@@ -239,28 +237,15 @@ class InputParameter:
         desc = self.description if self.description else ''
 
         # Parameter size
-        if size:  # set to fixed size (characters)
+        if isinstance(size, tuple) and len(size) == 2:  # set to fixed size (characters)
             width, height = size
             if auto_size_desc:
                 desc_w = 1
-                param_w = width - len(desc)
             else:
                 desc_w = int(width * 0.4) * 10
-                param_w = int(width * 0.6)
 
-            if isinstance(height, int):
-                height_px = height * 10
-            else:
-                height_px = mod_const.FIELD_SIZE_PX[1]
-
-            param_size = (param_w, height)
         else:  # let parameter type determine the size
             desc_w = 1
-            height_px = mod_const.FIELD_SIZE_PX[1]
-            param_size = None
-
-        value_w = 1
-        layout_w = 1
 
         self.auto_size = auto_size_desc
 
@@ -281,7 +266,7 @@ class InputParameter:
         label_w_key = self.key_lookup('LabelWidth')
         label_layout = sg.Col([[sg.Canvas(key=label_w_key, size=(desc_w, 0), background_color=bg_col)],
                                required_layout + desc_layout],
-                              pad=(0, (0, pad_el)), background_color=bg_col, element_justification=justification,
+                              pad=((0, pad_el), 0), background_color=bg_col, element_justification=justification,
                               expand_y=True)
 
         # Parameter value container
@@ -290,17 +275,12 @@ class InputParameter:
                                 key=border_key, background_color=mod_const.BORDER_COLOR, border_width=0,
                                 vertical_alignment='c', relief='flat', tooltip=self.placeholder)
 
-        # Parameter layout
-        height_key = self.key_lookup('Height')
-        elem_layout = [sg.Canvas(key=height_key, size=(0, height_px), background_color=bg_col), label_layout,
-                       param_layout]
+        # Layout
+        elem_layout = [[label_layout, param_layout]]
 
-        width_key = self.key_lookup('Width')
         frame_key = self.key_lookup('Frame')
-        layout = [sg.Frame('', [[sg.Canvas(key=width_key, size=(layout_w, 0), background_color=bg_col)],
-                                elem_layout],
-                           key=frame_key, pad=padding, visible=visible, background_color=bg_col, border_width=0,
-                           relief=relief, vertical_alignment='c', tooltip=self.description)]
+        layout = [sg.Frame('', elem_layout, key=frame_key, pad=padding, visible=visible, background_color=bg_col,
+                           border_width=0, relief=relief, vertical_alignment='c', tooltip=self.description)]
 
         return layout
 
@@ -314,37 +294,38 @@ class InputParameter:
         """
         Resize the parameter elements.
         """
+        default_w, default_h = mod_const.PARAM_SIZE_PX
+
         if isinstance(size, tuple) and len(size) == 2:
             width, height = size
         else:
-            width, height = mod_const.PARAM_SIZE_PX
+            width, height = (default_w, default_h)
 
-        param_w = width if isinstance(width, int) else 1
-        param_h = height if isinstance(height, int) else mod_const.PARAM_SIZE_PX[1]
-
-        width_key = self.key_lookup('Width')
-        window[width_key].set_size(size=(param_w, None))
-
-        height_key = self.key_lookup('Height')
-        window[height_key].set_size(size=(None, param_h))
+        param_w = width if (isinstance(width, int) and width >= default_w) else default_w
+        param_h = height if (isinstance(height, int) and height >= default_h) else default_h
 
         if not self.auto_size:
             # Resize description at 40% of total width and the value element to take up the remaining space
-            desc_w = int(param_w * 0.4)
+            label_div = divmod(param_w * 40, 100)
             header_key = self.key_lookup('LabelWidth')
-            window[header_key].set_size(size=(desc_w, None))
+            window[header_key].set_size(size=(label_div[0], None))
 
-            value_w = int(param_w * 0.6)
-            value_h = param_h
+            container_div = divmod(param_w * 60, 100)
+            container_w = container_div[0] + container_div[1] + label_div[1]
+            container_h = param_h
+
             container_key = self.key_lookup('Container')
-            mod_lo.set_size(window, container_key, (value_w, value_h))
+            mod_lo.set_size(window, container_key, (container_w, container_h))
 
         elem_key = self.key_lookup('Element')
         window[elem_key].expand(expand_x=True, expand_y=True)
 
         window.refresh()
 
-        self.dimensions = window[self.key_lookup('Frame')].get_size()
+        dimensions = window[self.key_lookup('Frame')].get_size()
+        self.dimensions = dimensions
+
+        return dimensions
 
     def format_display_value(self, value):
         """

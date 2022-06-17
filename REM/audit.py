@@ -524,7 +524,7 @@ class AuditRule:
 
         # Element parameters
         bttn_text_col = mod_const.WHITE_TEXT_COLOR
-        bttn_bg_col = mod_const.BUTTON_COLOR
+        bttn_bg_col = mod_const.BUTTON_BG_COLOR
         disabled_text_col = mod_const.DISABLED_TEXT_COLOR
         disabled_bg_col = mod_const.DISABLED_BUTTON_COLOR
         bg_col = mod_const.DEFAULT_BG_COLOR
@@ -544,17 +544,17 @@ class AuditRule:
         db_key = self.key_lookup('Database')
         db_size = (max([len(i) for i in settings.alt_dbs]), 1)
 
-        # Element sizes
+        # Panel component size
         title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
-        pad_h = 22  # horizontal bar with padding
-        bttn_h = mod_const.BTTN_HEIGHT
-        header_h = 52
+        hbar_h = 2 + pad_v * 2  # horizontal bar with top/bottom padding
+        bttn_h = mod_const.BTTN_HEIGHT  # height of the panel navigation buttons
+        header_h = 52  # height of the parameter bar
 
-        frame_w = width - pad_frame * 2  # width minus padding
-        frame_h = height - title_h - bttn_h  # height minus the title bar and buttons height
+        frame_w = width - pad_frame * 2  # layout width minus audit panel left/right padding
+        frame_h = height - title_h - bttn_h  # layout height minus the title bar and buttons height
 
         tab_w = frame_w  # same as the frame
-        tab_h = frame_h - header_h - pad_h  # frame height minus header and padding
+        tab_h = frame_h - header_h - hbar_h  # frame height minus header and padding
 
         # Layout elements
 
@@ -588,10 +588,15 @@ class AuditRule:
                                    tooltip='Start transaction audit')]]
 
         header_key = self.key_lookup('Header')
+        #header = [sg.Canvas(size=(0, header_h), background_color=bg_col),
+        #          sg.Col([param_elements], pad=(0, pad_v), background_color=bg_col, justification='l',
+        #                 vertical_alignment='c', expand_x=True),
+        #          sg.Col(start_layout, pad=(0, pad_v), background_color=bg_col, justification='r',
+        #                 element_justification='r', vertical_alignment='c')]
         header = [sg.Canvas(size=(0, header_h), background_color=bg_col),
-                  sg.Col([param_elements], pad=(0, pad_v), background_color=bg_col, justification='l',
+                  sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
                          vertical_alignment='c', expand_x=True),
-                  sg.Col(start_layout, pad=(0, pad_v), background_color=bg_col, justification='r',
+                  sg.Col(start_layout, pad=(0, 0), background_color=bg_col, justification='r',
                          element_justification='r', vertical_alignment='c')]
         header_layout = sg.Col([header], key=header_key, background_color=bg_col, expand_x=True, vertical_alignment='c',
                                element_justification='l')
@@ -670,6 +675,10 @@ class AuditRule:
 
         panels_key = self.key_lookup('Panels')
         mod_lo.set_size(window, panels_key, (tab_w, tab_h))
+
+        # Resize parameters
+        for parameter in self.parameters:
+            parameter.resize(window)
 
         # Resize transaction tabs
         transactions = self.transactions
