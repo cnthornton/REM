@@ -54,7 +54,7 @@ class InputParameter:
         self.name = name
         self.id = randint(0, 1000000000)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Element', 'Description', 'LabelWidth', 'Border', 'Container', 'Frame')}
+                         ('Element', 'Description', 'Border', 'Container', 'Frame')}
 
         self.bindings = {self.key_lookup(i): i for i in ('Element',)}
 
@@ -66,7 +66,7 @@ class InputParameter:
         try:
             self.description = entry['Description']
         except KeyError:
-            self.description = name
+            self.description = None
 
         try:
             self.etype = entry['ElementType']
@@ -146,19 +146,33 @@ class InputParameter:
         except KeyError:
             self.help = None
 
-        try:
-            self.auto_size = bool(int(entry['AlignField']))
-        except KeyError:
-            self.auto_size = False
-        except ValueError:
-            msg = 'Configuration Error: "AlignField" must be either 0 (False) or 1 (True)'
-            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise AttributeError(msg)
-
         self.disabled = not self.editable
 
+        self.default = None
+        self.value = None
         self.dimensions = None
+
+    def _field_size(self, window):
+        """
+        Calculate the optimal default size of the parameter input field in pixels.
+        """
+        size = mod_const.FIELD_SIZE
+
+        return size
+
+    def _label_size(self, window):
+        """
+        Calculate the optimal default size of the parameter label in pixels.
+        """
+        label_font = mod_const.BOLD_MID_FONT
+        description = self.description
+        desc_key = self.key_lookup('Description')
+
+        label = '*{}'.format(description) if (self.required and self.editable) else description
+        label_w = window[desc_key].string_width_in_pixels(label_font, label)
+        label_h = window[desc_key].char_height_in_pixels(label_font)
+
+        return (label_w, label_h)
 
     def _set_state(self, window, state: str = 'inactive'):
         """
@@ -211,11 +225,23 @@ class InputParameter:
             window[elem_key].bind('<FocusIn>', '+IN+')
             window[elem_key].bind('<FocusOut>', '+OUT+')
 
+    def reset(self, window):
+        """
+        Reset the parameter's values.
+        """
+        default_value = self.default
+        self.value = default_value
+
+        # Update the parameter window element
+        if self.hidden is False:
+            self.update_display(window)
+
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = None, justification: str = None,
-               border: bool = False, auto_size_desc: bool = True, hidden: bool = None):
+               hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
+        # Layout settings
         if bg_col:  # set custom background different from configuration or default
             self.bg_col = bg_col
         else:
@@ -229,33 +255,29 @@ class InputParameter:
         is_required = self.required
         visible = not hidden if hidden is not None else not self.hidden
 
-        # Element settings
-        pad_el = mod_const.ELEM_PAD
-        relief = 'flat' if not border else None
-
         # Parameter settings
         desc = self.description if self.description else ''
 
-        # Parameter size
-        if isinstance(size, tuple) and len(size) == 2:  # set to fixed size (characters)
+        # Layout size
+        default_w = mod_const.PARAM_SIZE[0]
+        default_h = mod_const.PARAM_SIZE[1] if desc else mod_const.PARAM_SIZE2[1]
+        if isinstance(size, tuple) and len(size) == 2:  # set to fixed size
             width, height = size
-            if auto_size_desc:
-                desc_w = 1
-            else:
-                desc_w = int(width * 0.4) * 10
-
+            width = width if (isinstance(width, int) and width >= default_w) else default_w
+            height = height if (isinstance(height, int) and height >= default_h) else default_h
         else:  # let parameter type determine the size
-            desc_w = 1
+            width = default_w
+            height = default_h
 
-        self.auto_size = auto_size_desc
+        print('parameter {} has size ({}, {})'.format(self.name, width, height))
 
         # Parameter label
-        label_font = mod_const.BOLD_FONT
+        label_font = mod_const.BOLD_MID_FONT
         label_color = mod_const.LABEL_TEXT_COLOR
 
         if is_required is True and self.editable:
-            required_layout = [sg.Text('*', font=label_font, background_color=bg_col,
-                                       text_color=mod_const.ERROR_COLOR, tooltip='required')]
+            required_layout = [sg.Text('*', font=label_font, background_color=bg_col, text_color=mod_const.ERROR_COLOR,
+                                       tooltip='required')]
         else:
             required_layout = []
 
@@ -263,24 +285,23 @@ class InputParameter:
         desc_layout = [sg.Text(desc, key=desc_key, font=label_font, text_color=label_color, background_color=bg_col,
                                tooltip=self.description)]
 
-        label_w_key = self.key_lookup('LabelWidth')
-        label_layout = sg.Col([[sg.Canvas(key=label_w_key, size=(desc_w, 0), background_color=bg_col)],
-                               required_layout + desc_layout],
-                              pad=((0, pad_el), 0), background_color=bg_col, element_justification=justification,
-                              expand_y=True)
+        label_layout = required_layout + desc_layout
 
         # Parameter value container
         border_key = self.key_lookup('Border')
-        param_layout = sg.Frame('', [[self.element_layout()]],
-                                key=border_key, background_color=mod_const.BORDER_COLOR, border_width=0,
-                                vertical_alignment='c', relief='flat', tooltip=self.placeholder)
+        param_layout = [sg.Frame('', [[self.element_layout()]],
+                                 key=border_key, background_color=mod_const.BORDER_COLOR, border_width=0,
+                                 vertical_alignment='c', relief='flat', tooltip=self.placeholder)]
 
         # Layout
-        elem_layout = [[label_layout, param_layout]]
+        elem_layout = [label_layout, param_layout]
 
         frame_key = self.key_lookup('Frame')
-        layout = [sg.Frame('', elem_layout, key=frame_key, pad=padding, visible=visible, background_color=bg_col,
-                           border_width=0, relief=relief, vertical_alignment='c', tooltip=self.description)]
+        layout = [sg.Frame('', elem_layout, key=frame_key, size=(width, height), pad=padding, visible=visible,
+                           border_width=0, background_color=bg_col, relief=None, vertical_alignment='c',
+                           tooltip=self.description)]
+
+        self.dimensions = (width, height)
 
         return layout
 
@@ -288,44 +309,130 @@ class InputParameter:
         """
         Create the type-specific layout for the value element of the parameter.
         """
-        return []
+        disabled = False if self.editable is True else True
+
+        # Element settings
+        font = mod_const.LARGE_FONT
+        bg_col = mod_const.DEFAULT_BG_COLOR
+        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
+        disabled_bg_col = mod_const.DISABLED_BG_COLOR
+
+        # Parameter size
+        size = mod_const.FIELD_SIZE
+        border = (1, 1)
+
+        # Parameter settings
+        display_value = self.format_display()
+        if display_value == '':
+            default_display = self.placeholder
+            text_col = mod_const.DISABLED_TEXT_COLOR
+        else:
+            text_col = mod_const.DEFAULT_TEXT_COLOR
+            default_display = display_value
+
+        # Layout
+        elem_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('Container')
+        layout = sg.Frame('', [[sg.Input(default_display, key=elem_key, disabled=disabled, enable_events=True,
+                                         border_width=0, font=font, background_color=bg_col, text_color=text_col,
+                                         disabled_readonly_text_color=disabled_text_col,
+                                         disabled_readonly_background_color=disabled_bg_col, expand_x=True)]],
+                          key=frame_key, size=size, pad=border, background_color=bg_col, vertical_alignment='c')
+
+        return layout
 
     def resize(self, window, size: tuple = None):
         """
         Resize the parameter elements.
         """
-        default_w, default_h = mod_const.PARAM_SIZE_PX
+        default_w, default_h = mod_const.FIELD_SIZE
+        current_w, current_h = self.dimensions
 
-        if isinstance(size, tuple) and len(size) == 2:
+        if isinstance(size, tuple) and len(size) == 2:  # set to exact dimensions given
             width, height = size
-        else:
-            width, height = (default_w, default_h)
+            width = width if isinstance(width, int) else current_w
+            height = height if isinstance(height, int) else current_h
+        else:  # adjust dimensions based on parameter content
+            # Find label size in pixels
+            label_w, label_h = self._label_size(window)
 
-        param_w = width if (isinstance(width, int) and width >= default_w) else default_w
-        param_h = height if (isinstance(height, int) and height >= default_h) else default_h
+            # Find optimal field size in pixels based on the parameter type
+            field_w, field_h = self._field_size(window)
 
-        if not self.auto_size:
-            # Resize description at 40% of total width and the value element to take up the remaining space
-            label_div = divmod(param_w * 40, 100)
-            header_key = self.key_lookup('LabelWidth')
-            window[header_key].set_size(size=(label_div[0], None))
+            # Determine which parameter component to base the width on
+            width = label_w if label_w >= field_w else field_w
+            height = current_h
 
-            container_div = divmod(param_w * 60, 100)
-            container_w = container_div[0] + container_div[1] + label_div[1]
-            container_h = param_h
+        frame_key = self.key_lookup('Frame')
+        mod_lo.set_size(window, frame_key, (width, height))
 
-            container_key = self.key_lookup('Container')
-            mod_lo.set_size(window, container_key, (container_w, container_h))
+        container_w = width if (isinstance(width, int) and width >= default_w) else default_w
+        container_key = self.key_lookup('Container')
+        mod_lo.set_size(window, container_key, (container_w, default_h))
 
         elem_key = self.key_lookup('Element')
         window[elem_key].expand(expand_x=True, expand_y=True)
 
-        window.refresh()
-
-        dimensions = window[self.key_lookup('Frame')].get_size()
+        dimensions = (width, height)
         self.dimensions = dimensions
 
         return dimensions
+
+    def format_value(self, values):
+        """
+        Set the value of the data element from user input.
+
+        Arguments:
+            values: GUI element values or a single input value.
+        """
+        dtype = self.dtype
+
+        if isinstance(values, dict):
+            elem_key = self.key_lookup('Element')
+            try:
+                input_value = values[elem_key]
+            except KeyError:
+                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
+                               .format(NAME=self.name))
+
+                return self.value
+        else:
+            input_value = values
+
+        if input_value == '' or pd.isna(input_value):
+            self.value = None
+
+            return None
+
+        try:
+            value_fmt = settings.format_value(input_value, dtype)
+        except ValueError:
+            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
+                           .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
+
+            return self.value
+
+        self.value = value_fmt
+
+        return value_fmt
+
+    def format_display(self):
+        """
+        Format the parameter's value for displaying.
+        """
+        value = self.value
+
+        if not self.has_value():
+            return ''
+
+        display_value = self.format_display_value(value)
+        logger.debug('InputParameter {NAME}: editable {EDIT}; hidden {VIS}'
+                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
+
+        logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
+                     .format(NAME=self.name, VAL=value, DISPLAY=display_value))
+
+        return display_value
 
     def format_display_value(self, value):
         """
@@ -403,6 +510,17 @@ class InputParameter:
 
         return display_value
 
+    def update_display(self, window):
+        """
+        Update the parameter display.
+        """
+        elem_key = self.key_lookup('Element')
+
+        # Update element text
+        display_value = self.format_display()
+        display_text = self.placeholder if display_value == '' else display_value
+        window[elem_key].update(value=display_text)
+
     def toggle(self, window, off: bool = False):
         """
         Toggle the parameter element on or off.
@@ -417,6 +535,16 @@ class InputParameter:
                 element_key = elements[element]
                 if element_key in bindings:
                     window[element_key].update(disabled=off)
+
+    def has_value(self):
+        """
+        Return True if element has a valid value else False
+        """
+        value = self.value
+        if pd.isna(value) or value == '':
+            return False
+        else:
+            return True
 
 
 # Single value data parameters
@@ -492,17 +620,6 @@ class InputParameterStandard(InputParameter):
             input_value = values[elem_key]
             display_value = self._enforce_formatting(input_value)
             window[elem_key].update(value=display_value, text_color=mod_const.DEFAULT_TEXT_COLOR)
-
-    def update_display(self, window):
-        """
-        Update the parameter display.
-        """
-        elem_key = self.key_lookup('Element')
-
-        # Update element text
-        display_value = self.format_display()
-        display_text = self.placeholder if display_value == '' else display_value
-        window[elem_key].update(value=display_text)
 
 
 class InputParameterText(InputParameterStandard):
@@ -678,62 +795,6 @@ class InputParameterText(InputParameterStandard):
 
         return display_value
 
-    def format_value(self, values):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-            values: GUI element values or a single input value.
-        """
-        dtype = self.dtype
-
-        if isinstance(values, dict):
-            elem_key = self.key_lookup('Element')
-            try:
-                input_value = values[elem_key]
-            except KeyError:
-                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
-                               .format(NAME=self.name))
-
-                return self.value
-        else:
-            input_value = values
-
-        if input_value == '' or pd.isna(input_value):
-            self.value = None
-
-            return None
-
-        try:
-            value_fmt = settings.format_value(input_value, dtype)
-        except ValueError:
-            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
-                           .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
-
-            return self.value
-
-        self.value = value_fmt
-
-        return value_fmt
-
-    def format_display(self):
-        """
-        Format the parameter's value for displaying.
-        """
-        value = self.value
-
-        if not self.has_value():
-            return ''
-
-        display_value = self.format_display_value(value)
-        logger.debug('InputParameter {NAME}: editable {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
-
-        logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
-                     .format(NAME=self.name, VAL=value, DISPLAY=display_value))
-
-        return display_value
-
     def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
@@ -747,7 +808,7 @@ class InputParameterText(InputParameterStandard):
         disabled_bg_col = mod_const.DISABLED_BG_COLOR
 
         # Parameter size
-        size = mod_const.FIELD_SIZE_PX
+        size = mod_const.FIELD_SIZE
         border = (1, 1)
 
         # Parameter settings
@@ -761,11 +822,11 @@ class InputParameterText(InputParameterStandard):
         # Layout
         elem_key = self.key_lookup('Element')
         frame_key = self.key_lookup('Container')
-        layout = sg.Col([[sg.Input(display_value, key=elem_key, disabled=disabled, enable_events=True,
-                                   border_width=0, font=font, background_color=bg_col, text_color=text_col,
-                                   disabled_readonly_text_color=disabled_text_col,
-                                   disabled_readonly_background_color=disabled_bg_col, expand_x=True)]],
-                        key=frame_key, size=size, pad=border, background_color=bg_col, vertical_alignment='c')
+        layout = sg.Frame('', [[sg.Input(display_value, key=elem_key, disabled=disabled, enable_events=True,
+                                         border_width=0, font=font, background_color=bg_col, text_color=text_col,
+                                         disabled_readonly_text_color=disabled_text_col,
+                                         disabled_readonly_background_color=disabled_bg_col, expand_x=True)]],
+                          key=frame_key, size=size, pad=border, background_color=bg_col, vertical_alignment='c')
 
         return layout
 
@@ -822,16 +883,6 @@ class InputParameterText(InputParameterStandard):
             df = df[col_values == param_value]
 
         return df
-
-    def has_value(self):
-        """
-        Return True if element has a valid value else False
-        """
-        value = self.value
-        if pd.isna(value) or value == '':
-            return False
-        else:
-            return True
 
 
 class InputParameterDate(InputParameterStandard):
@@ -965,7 +1016,7 @@ class InputParameterDate(InputParameterStandard):
             text_col = mod_const.DEFAULT_TEXT_COLOR
 
         # Parameter size
-        size = mod_const.FIELD_SIZE_PX
+        size = mod_const.FIELD_SIZE
         border = (1, 1)
 
         # Layout
@@ -1159,26 +1210,21 @@ class InputParameterCombo(InputParameter):
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
-    def reset(self, window):
+    def _field_size(self, window):
         """
-        Reset the parameter's values.
+        Calculate the optimal default size of the parameter input field in pixels.
         """
-        default_value = self.default
-        self.value = default_value
+        font = mod_const.LARGE_FONT
+        scroll_w = mod_const.SCROLL_WIDTH
 
-        # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
+        aliases = self.aliases
+        combo_values = self.combo_values
+        desc_key = self.key_lookup('Description')
 
-    def update_display(self, window):
-        """
-        Update the parameter display.
-        """
-        elem_key = self.key_lookup('Element')
+        max_len = max([window[desc_key].string_width_in_pixels(font, aliases.get(i, i)) for i in combo_values])
+        size = (max_len + scroll_w, mod_const.FIELD_SIZE[1])
 
-        # Update element text
-        display_value = self.format_display()
-        window[elem_key].update(value=display_value)
+        return size
 
     def run_event(self, window, event, values):
         """
@@ -1281,7 +1327,7 @@ class InputParameterCombo(InputParameter):
             values.insert(0, '')
 
         # Parameter element size
-        size = mod_const.FIELD_SIZE_PX
+        size = mod_const.FIELD_SIZE
         border = (1, 1)
 
         # Layout
@@ -1353,16 +1399,6 @@ class InputParameterCombo(InputParameter):
 
         return df
 
-    def has_value(self):
-        """
-        Return True if element has a valid value else False
-        """
-        value = self.value
-        if pd.isna(value) or value == '':
-            return False
-        else:
-            return True
-
 
 class InputParameterCheckbox(InputParameter):
     """
@@ -1413,47 +1449,41 @@ class InputParameterCheckbox(InputParameter):
         """
         pass
 
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        default_value = self.default
-        self.value = default_value
-
-        # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
-
     def resize(self, window, size: tuple = None):
         """
         Resize the checkbox parameter elements.
         """
-        if size:
+        current_w, current_h = self.dimensions
+
+        if isinstance(size, tuple) and len(size) == 2:
             width, height = size
+            width = width if isinstance(width, int) else current_w
+            height = height if isinstance(height, int) else current_h
         else:
-            width, height = mod_const.PARAM_SIZE_PX
+            # Find label size in pixels
+            description = self.description
+            label_font = mod_const.BOLD_MID_FONT
+            label = '*{}'.format(description) if (self.required and self.editable) else description
+            label_w = window[self.key_lookup('Description')].string_width_in_pixels(label_font, label)
 
-        # Set the parameter width
-        width_key = self.key_lookup('Width')
-        param_w = width
-        window[width_key].set_size(size=(param_w, None))
+            # Find optimal field size in pixels based on the parameter type
+            field_w, field_h = self._default_size()
 
-        # Resize description at 40% of total width and the value element to take up the remaining space
-        desc_w = width - 26
-        desc_h = int(height / 10) if height else None
+            # Determine which parameter component to base the width on
+            width = label_w + field_w
+            height = field_h
 
-        header_key = self.key_lookup('LabelWidth')
-        window[header_key].set_size(size=(desc_w, desc_h))
+        frame_key = self.key_lookup('Frame')
+        mod_lo.set_size(window, frame_key, (width, height))
 
-    def update_display(self, window):
-        """
-        Update the parameter display.
-        """
-        elem_key = self.key_lookup('Element')
+        # Resize description to consume all space except for the checkbox size
+        desc_key = self.key_lookup('Description')
+        window[desc_key].expand(expand_x=True, expand_y=True)
 
-        # Update element text
-        display_value = self.format_display()
-        window[elem_key].update(value=display_value)
+        dimensions = (width, height)
+        self.dimensions = dimensions
+
+        return dimensions
 
     def element_layout(self):
         """
@@ -1465,7 +1495,7 @@ class InputParameterCheckbox(InputParameter):
         bg_col = mod_const.DEFAULT_BG_COLOR if not disabled else mod_const.DISABLED_BG_COLOR
 
         # Parameter size
-        size = mod_const.FIELD_SIZE_PX
+        size = mod_const.FIELD_SIZE
         border = (0, 0)
 
         # Parameter settings
@@ -1519,31 +1549,6 @@ class InputParameterCheckbox(InputParameter):
         self.value = value_fmt
 
         return value_fmt
-
-    def format_display(self):
-        """
-        Format the parameter's value for displaying.
-        """
-        value = self.value
-
-        if not self.has_value():
-            return ''
-
-        display_value = self.format_display_value(value)
-        logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
-                     .format(NAME=self.name, VAL=value, DISPLAY=display_value))
-
-        return display_value
-
-    def has_value(self):
-        """
-        Return True if element has a valid value else False
-        """
-        value = self.value
-        if pd.isna(value) or value == '':
-            return False
-        else:
-            return True
 
     def query_statement(self, column):
         """
@@ -1627,17 +1632,6 @@ class InputParameterComp(InputParameter):
 
         self.default = self.value = default_values
 
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        default_value = self.default
-        self.value = default_value
-
-        # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
-
     def update_display(self, window):
         """
         Update the parameter display.
@@ -1663,7 +1657,7 @@ class InputParameterComp(InputParameter):
         display_value = self.format_display()
 
         # Parameter size
-        size = mod_const.FIELD_SIZE_PX
+        size = mod_const.FIELD_SIZE
         border = (1, 1)
 
         elem_key = self.key_lookup('Element')
@@ -2209,18 +2203,6 @@ class InputParamterMultiple(InputParameter):
             self.format_value({elem_key: selected})
             self.update_display(window)
 
-    def reset(self, window):
-        """
-        Reset the parameter's values.
-        """
-        logger.debug('InputParameter {NAME}: resetting parameter value "{VAL}" to "{DEF}"'
-                     .format(NAME=self.name, VAL=self.value, DEF=self.default))
-        self.value = [i for i in self.default]
-
-        # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
-
     def element_layout(self):
         """
         Create the type-specific layout for the value element of the parameter.
@@ -2238,7 +2220,7 @@ class InputParamterMultiple(InputParameter):
         bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
 
         # Parameter size
-        size = mod_const.FIELD_SIZE_PX
+        size = mod_const.FIELD_SIZE
         border = (1, 1)
 
         # Layout
@@ -2489,8 +2471,8 @@ def initialize_parameter(name, entry):
         param_class = InputParamterMultiple
     else:
         msg = 'unknown element type {TYPE} provided to parameter entry {NAME}'.format(TYPE=etype, NAME=name)
-
-        raise TypeError(msg)
+        logger.warning(msg)
+        param_class = InputParameter
 
     try:
         parameter = param_class(name, entry)

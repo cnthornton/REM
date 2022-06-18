@@ -75,7 +75,6 @@ B1_WIDTH = 20
 B2_WIDTH = 6
 IN1_WIDTH = 20
 BTTN_SIZE = (60, 30)
-PARAM_SIZE_PX = (300, 25)  # pixels
 PARAM_SIZE_CHAR = (20, 1)  # characters
 TITLE_WIDTH = 300
 TITLE_HEIGHT = 60
@@ -83,7 +82,9 @@ SCROLL_WIDTH = 18
 BTTN_HEIGHT = 70
 
 # Input and parameter fields
-FIELD_SIZE_PX = (120, 30)  # standard input field with label at the left
+FIELD_SIZE = (150, 25)  # standard input field size
+PARAM_SIZE = (150, 48)  # input parameter with label
+PARAM_SIZE2 = (150, 25)  # input parameter without label
 
 # Data Table Elements
 TBL_WIDTH = 120  # default table width in characters
