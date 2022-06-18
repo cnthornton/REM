@@ -3201,176 +3201,10 @@ class DatabaseRecord:
                         element_layout = element.layout(editable=editable, overwrite=is_new, level=level)
 
                         row.append(element_layout)
-                        if i != (n_elem - 1):
+                        if i != (n_elem - 1):  # don't add alignment element after the last element in the row
                             row.append(sg.Push(background_color=bg_col))
 
                     section_layout.append(row)
-
-                section_panel_key = self.key_lookup('{}Frame'.format(section_name))
-                sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key, pad=(0, (0, pad_v)),
-                                                      background_color=bg_col, visible=True, expand_x=True,
-                                                      metadata={'visible': True}),
-                                               expand_x=True)])
-
-            tab_key = self.key_lookup('{}Tab'.format(tab_name))
-            tab_frame_key = self.key_lookup('{}Col'.format(tab_name))
-            tab_layout = sg.Tab(tab_title, [[sg.Col(sections_layout, key=tab_frame_key, size=(tab_w, tab_h),
-                                                    pad=(0, pad_v), background_color=bg_col,
-                                                    scrollable=True, vertical_scroll_only=True, vertical_alignment='t',
-                                                    element_justification='l', expand_x=True, expand_y=True)]],
-                                key=tab_key, image_source=tab_icon_path, background_color=bg_col)
-            tab_group.append(tab_layout)
-
-        main_layout = sg.TabGroup([tab_group], key=self.key_lookup('TG'),
-                                  background_color=bg_col, tab_background_color=inactive_col,
-                                  selected_background_color=bg_col, selected_title_color=select_col,
-                                  title_color=text_col, border_width=0, tab_location='topleft', font=main_font)
-
-        # Pane elements must be columns
-        record_key = self.key_lookup('Element')
-        layout = [[sg.Col([[header_layout], [main_layout]], key=record_key, pad=padding,
-                          background_color=bg_col, expand_x=True, expand_y=True)]]
-
-        self._dimensions = size
-
-        return layout
-
-    def layout_old(self, size, padding: tuple = None, view_only: bool = False):
-        """
-        Generate a GUI layout for the database record.
-
-        Arguments:
-            size (tuple): size (width, height) of the record layout.
-
-            padding (tuple): padding around the record layout in pixels.
-
-            view_only (bool): disallow editing of record components [Default: False].
-        """
-        width, height = size
-
-        # Permissions
-        level = self.level
-        is_new = self.new
-
-        logger.debug('RecordType {NAME}: creating {NEW}record layout at level {LEVEL}'
-                     .format(NAME=self.name, NEW=('new ' if is_new else ''), LEVEL=level))
-
-        editable = False if view_only is True else True
-
-        # Element parameters
-        bg_col = mod_const.DEFAULT_BG_COLOR
-        text_col = mod_const.DEFAULT_TEXT_COLOR
-        inactive_col = mod_const.DISABLED_BG_COLOR
-        select_col = mod_const.SELECTED_TEXT_COLOR
-        headings_bg_col = mod_const.PANELBAR_COLOR
-        headings_text_col = mod_const.WHITE_TEXT_COLOR
-
-        bold_font = mod_const.HEADING_FONT
-        main_font = mod_const.MAIN_FONT
-
-        pad_el = mod_const.ELEM_PAD
-        pad_v = mod_const.VERT_PAD
-
-        padding = self._padding if not padding else padding
-        self._padding = padding
-        pad_w, pad_h = padding
-
-        scroll_w = mod_const.SCROLL_WIDTH
-        bar_h = 32
-        header_h = 50
-
-        min_h = header_h + bar_h
-        self._minimum_height = min_h
-
-        tab_w = width - pad_w * 2
-        tab_h = height - (header_h + bar_h + pad_h * 2)
-        sec_w = tab_w - scroll_w
-
-        # Layout elements
-
-        # Record header
-        headers = [sg.Canvas(size=(0, header_h), background_color=bg_col)]
-        headers.append(self._record_id.layout(size=(20, 1), padding=((0, pad_h), 0)))
-        headers.append(self._record_date.layout(size=(20, 1)))
-        header_key = self.key_lookup('Header')
-        header_layout = sg.Col([headers], key=header_key, expand_x=True, background_color=bg_col, justification='l',
-                               vertical_alignment='c')
-
-        # Create layout for the record tabs
-        tabs = self.tabs
-        sections = self.sections
-
-        tab_group = []
-        for tab_name in tabs:
-            tab_entry = tabs[tab_name]
-
-            tab_title = '{:^40}'.format(tab_entry.get('Title', tab_name))
-            tab_icon = tab_entry.get('Icon', None)
-            tab_icon_path = None if tab_icon is None else settings.get_icon_path(tab_icon)
-
-            tab_sections = tab_entry['Sections']
-            if len(tab_sections) < 1:
-                continue
-
-            # Create the layouts for the tab sections
-            sections_layout = []
-            for section_name in sections:
-                if section_name not in tab_sections:
-                    continue
-
-                section_entry = sections[section_name]
-
-                section_elements = section_entry['Elements']
-                if len(section_elements) < 1:
-                    continue
-
-                # Section header
-                section_title = section_entry['Title']
-                section_bttn_key = self.key_lookup('{}Bttn'.format(section_name))
-                header_left = [
-                    sg.Text(section_title, text_color=headings_text_col, background_color=headings_bg_col,
-                            font=bold_font)]
-                header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
-                                          button_color=(headings_text_col, headings_bg_col), border_width=0,
-                                          visible=True, metadata={'visible': True, 'disabled': False})]
-
-                if 'HeadingElement' in section_entry:
-                    heading_element_name = section_entry['HeadingElement']
-                    heading_element = self.fetch_element(heading_element_name)
-                    if heading_element.is_type('variable'):
-                        heading_element.arrangement = 'h'  # force horizontal layout
-                        heading_element.align = False  # disable forced alignment with other elements
-                        heading_element.justification = 'r'  # force right justification of element components
-                        heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
-                                                                        bg_color=headings_bg_col, editable=False)
-                        header_right.insert(0, heading_element_layout)
-                    else:
-                        logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type '
-                                       '{TYPE} is attempting to be used as a header element'
-                                       .format(NAME=self.name, ELEM=heading_element_name, TYPE=heading_element.etype))
-
-                section_w_key = self.key_lookup('{}Width'.format(section_name))
-                section_header = [sg.Col([[sg.Canvas(key=section_w_key, size=(sec_w, 0),
-                                                     background_color=headings_bg_col)],
-                                          [sg.Canvas(size=(0, bar_h), background_color=headings_bg_col),
-                                           sg.Col([header_left], justification='l', expand_x=True,
-                                                  background_color=headings_bg_col),
-                                           sg.Col([header_right], justification='r', background_color=headings_bg_col)
-                                           ]], background_color=headings_bg_col, expand_x=True)]
-                sections_layout.append(section_header)
-
-                # Section body layout
-                section_layout = []
-                for element_name in section_elements:
-                    element = self.fetch_element(element_name)
-
-                    can_edit = editable
-                    element_layout = [
-                        #element.layout(padding=(0, int(pad_v / 2)), editable=can_edit, overwrite=is_new,
-                        #               level=level)]
-                        element.layout(padding=(0, 0), editable=can_edit, overwrite=is_new,
-                                       level=level)]
-                    section_layout.append(element_layout)
 
                 section_panel_key = self.key_lookup('{}Frame'.format(section_name))
                 sections_layout.append([sg.pin(sg.Col(section_layout, key=section_panel_key, pad=(0, (0, pad_v)),
@@ -3415,8 +3249,8 @@ class DatabaseRecord:
 
         pad_w, pad_h = self._padding
         scroll_w = mod_const.SCROLL_WIDTH
-        section_w_pad = pad_w * 2 + scroll_w
-        elem_w_pad = mod_const.HORZ_PAD
+        section_w_pad = pad_w * 2 + scroll_w  # padding around the section column, including column scrollbar
+        spacer_w = mod_const.SPACER_W  # section column spacer width
         tab_h = 22
         header_h = 32
 
@@ -3453,23 +3287,28 @@ class DatabaseRecord:
 
             # Resize section body elements
             elem_h = None
-            column_div = divmod(width - section_w_pad - elem_w_pad * 2, 3)
+            column_div = divmod(width - section_w_pad - spacer_w * 2, 3)
             column_w = column_div[0] + column_div[1]
             print('each columns has width {}'.format(column_w))
 
             section_layout = section_entry['Layout']
             for row in section_layout:
                 row_elements = section_layout[row]
-                n_element = len(row_elements)
+                n_col = len(row_elements)
+
+                #column_div = divmod(width - section_w_pad - spacer_w * (n_col - 1), n_col)
+                #column_w = column_div[0] + column_div[1]
 
                 for i, element_name in enumerate(row_elements):
                     record_element = self.fetch_element(element_name)
 
-                    if n_element == 1:  # row contains 1 columns spanning the entire row
+                    if n_col == 1:  # row contains 1 columns spanning the entire row
                         elem_w = width - section_w_pad
-                    elif n_element == 2:
+                        #elem_w = column_w * n_col + spacer_w * (n_col - 1)
+                    elif n_col == 2:
                         if i == 0:  # first element in the row of two elements takes up two spaces
-                            elem_w = column_w * 2 + elem_w_pad
+                            #elem_w = column_w * 2 + spacer_w
+                            elem_w = column_w * n_col + spacer_w * (n_col - 1)
                         else:  # last element in the row of two elements takes up only one space
                             elem_w = column_w
                     else:  # row contains 3 columns of equal size
@@ -3478,63 +3317,6 @@ class DatabaseRecord:
                     elem_size = (elem_w, elem_h)
                     print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
                     record_element.resize(window, size=elem_size)
-
-        self._dimensions = (width, height)
-
-    def resize_old(self, window, size: tuple = None):
-        """
-        Resize the record elements.
-        """
-        width, height = size if size is not None else self._dimensions
-
-        logger.debug('Record {ID}: resizing display to {W}, {H}'.format(ID=self.record_id(), W=width, H=height))
-
-        # Expand the record containers
-        min_h = self._minimum_height
-        record_h = height if height > min_h else min_h
-
-        pad_w, pad_h = self._padding
-        scroll_w = mod_const.SCROLL_WIDTH
-        tab_h = 22
-        header_h = 32
-
-        # Set the size of the record container
-        record_w = width - pad_w * 2
-        record_size = (record_w, record_h)
-        mod_lo.set_size(window, self.key_lookup('Element'), record_size)
-
-        # Set the size of the tab containers and sections
-        bffr_h = tab_h + header_h + pad_h * 2
-        tab_size = (record_w, height - bffr_h)
-        for tab_name in self.tabs:
-            tab_key = self.key_lookup('{}Col'.format(tab_name))
-            mod_lo.set_size(window, tab_key, tab_size)
-            window[tab_key].expand(expand_x=True)
-
-        for section_name in self.sections:
-            section_w_key = self.key_lookup('{}Width'.format(section_name))
-            window[section_w_key].set_size(size=(record_w - scroll_w, None))
-
-        # Set the size of the header elements
-        for header in (self._record_id, self._record_date):
-            header.resize(window)
-
-        # Expand the size of the record elements
-        #print('setting record {} width to {}'.format(self.name, width))
-        for record_element in self.components:
-            elem_h = None
-            if record_element.is_type('collection') or record_element.is_type('multiline'):  # table, list, multiline
-                elem_w = width - (pad_w * 2 + scroll_w)
-            else:  # data variable
-                if record_element.align:
-                    elem_w = int(width * 0.7)
-                else:
-                    elem_w = None
-
-            elem_size = (elem_w, elem_h) if elem_w is not None else None
-
-            print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
-            record_element.resize(window, size=elem_size)
 
         self._dimensions = (width, height)
 

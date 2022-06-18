@@ -79,6 +79,7 @@ PARAM_SIZE_CHAR = (20, 1)  # characters
 TITLE_WIDTH = 300
 TITLE_HEIGHT = 60
 SCROLL_WIDTH = 18
+SPACER_W = 40  # space between parameter elements in pixels
 BTTN_HEIGHT = 70
 
 # Input and parameter fields
