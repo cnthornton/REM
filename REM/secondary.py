@@ -319,7 +319,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     # Record layout
     record_w = min_w
     record_h = min_h - bffr_h
-    record_layout = record.layout((record_w, record_h), padding=(pad_frame, pad_el), view_only=view_only)
+    record_layout = record.layout((record_w, record_h), padding=(pad_frame, pad_el))
 
     # Window layout
     layout = [[sg.Col(title_layout, key='-TITLE-', background_color=header_col, vertical_alignment='c', expand_x=True)],
@@ -571,8 +571,7 @@ def parameter_window(definitions, win_size: tuple = None):
 
                 continue
 
-            pgroup_layout.append(param.layout(padding=(0, pad_el), bg_col=bg_col, justification='left',
-                                              auto_size_desc=False))
+            pgroup_layout.append(param.layout(padding=(0, pad_el), bg_color=bg_col, justification='left'))
             try:
                 params[section_title].append(param)
             except KeyError:
@@ -1955,7 +1954,7 @@ def import_window(table, params: list = None):
     other_h = title_h + bttn_h + param_h
 
     tbl_size = (min_w - tbl_pad, min_h - other_h)
-    tbl_layout = [[table.layout(padding=(pad_frame, 0), size=tbl_size, tooltip='Select rows to import')]]
+    tbl_layout = [[table.layout(size=tbl_size, padding=(pad_frame, 0))]]
 
     layout = [[sg.Col(header_layout, key='-HEADER-', background_color=header_col, element_justification='l',
                       vertical_alignment='c', expand_x=True)],
@@ -2200,8 +2199,8 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
     bttn_h = pad_el * 3 + mod_const.BTTN_SIZE[1]  # button height + top/bottom padding and button border
     sep_w = 1 * 9 + pad_el * 2  # field separator character and spacing
 
-    default_w = mod_const.FIELD_SIZE_PX[0] * 2 + sep_w
-    default_h = mod_const.FIELD_SIZE_PX[1] + bttn_h + 10
+    default_w = mod_const.FIELD_SIZE[0] * 2 + sep_w
+    default_h = mod_const.FIELD_SIZE[1] + bttn_h + 10
 
     print('default size is: ({}, {})'.format(default_w, default_h))
     print('provided size is: {}'.format(size))
@@ -2297,8 +2296,8 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     bttn_h = pad_el * 3 + mod_const.BTTN_SIZE[1]  # button height + top/bottm padding and button border
     oper_w = 4 * 9 + pad_el
 
-    default_w = oper_w + mod_const.FIELD_SIZE_PX[0]
-    default_h = mod_const.FIELD_SIZE_PX[1] + bttn_h + 10
+    default_w = oper_w + mod_const.FIELD_SIZE[0]
+    default_h = mod_const.FIELD_SIZE[1] + bttn_h + 10
 
     print('default size is: ({}, {})'.format(default_w, default_h))
     print('provided size is: {}'.format(size))

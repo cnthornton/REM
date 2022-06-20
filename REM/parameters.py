@@ -236,16 +236,16 @@ class InputParameter:
         if self.hidden is False:
             self.update_display(window)
 
-    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_col: str = None, justification: str = None,
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_color: str = None, justification: str = None,
                hidden: bool = None):
         """
         Create a GUI layout for the parameter.
         """
         # Layout settings
-        if bg_col:  # set custom background different from configuration or default
-            self.bg_col = bg_col
+        if bg_color:  # set custom background different from configuration or default
+            self.bg_col = bg_color
         else:
-            bg_col = self.bg_col
+            bg_color = self.bg_col
 
         if justification:  # set custom justification of the description label different from configured
             self.justification = justification
@@ -257,10 +257,11 @@ class InputParameter:
 
         # Parameter settings
         desc = self.description if self.description else ''
+        label_vis = True if self.description else False
 
         # Layout size
         default_w = mod_const.PARAM_SIZE[0]
-        default_h = mod_const.PARAM_SIZE[1] if desc else mod_const.PARAM_SIZE2[1]
+        default_h = mod_const.PARAM_SIZE[1] if label_vis else mod_const.PARAM_SIZE2[1]
         if isinstance(size, tuple) and len(size) == 2:  # set to fixed size
             width, height = size
             width = width if (isinstance(width, int) and width >= default_w) else default_w
@@ -276,14 +277,14 @@ class InputParameter:
         label_color = mod_const.LABEL_TEXT_COLOR
 
         if is_required is True and self.editable:
-            required_layout = [sg.Text('*', font=label_font, background_color=bg_col, text_color=mod_const.ERROR_COLOR,
-                                       tooltip='required')]
+            required_layout = [sg.Text('*', visible=label_vis, font=label_font, background_color=bg_color,
+                                       text_color=mod_const.ERROR_COLOR, tooltip='required',)]
         else:
             required_layout = []
 
         desc_key = self.key_lookup('Description')
-        desc_layout = [sg.Text(desc, key=desc_key, font=label_font, text_color=label_color, background_color=bg_col,
-                               tooltip=self.description)]
+        desc_layout = [sg.Text(desc, key=desc_key, visible=label_vis, font=label_font, text_color=label_color,
+                               background_color=bg_color, tooltip=self.description)]
 
         label_layout = required_layout + desc_layout
 
@@ -298,7 +299,7 @@ class InputParameter:
 
         frame_key = self.key_lookup('Frame')
         layout = [sg.Frame('', elem_layout, key=frame_key, size=(width, height), pad=padding, visible=visible,
-                           border_width=0, background_color=bg_col, relief=None, vertical_alignment='c',
+                           border_width=0, background_color=bg_color, relief=None, vertical_alignment='c',
                            tooltip=self.description)]
 
         self.dimensions = (width, height)
