@@ -3250,7 +3250,7 @@ class DatabaseRecord:
         pad_w, pad_h = self._padding
         scroll_w = mod_const.SCROLL_WIDTH
         section_w_pad = pad_w * 2 + scroll_w  # padding around the section column, including column scrollbar
-        spacer_w = mod_const.SPACER_W  # section column spacer width
+        spacer_w = mod_const.SPACER_WIDTH  # field element column spacer width
         tab_h = 22
         header_h = 32
 

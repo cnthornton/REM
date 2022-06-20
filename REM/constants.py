@@ -79,8 +79,10 @@ PARAM_SIZE_CHAR = (20, 1)  # characters
 TITLE_WIDTH = 300
 TITLE_HEIGHT = 60
 SCROLL_WIDTH = 18
-SPACER_W = 40  # space between parameter elements in pixels
+BORDER_WIDTH = 2
+SPACER_WIDTH = 40  # space between parameter elements in pixels
 BTTN_HEIGHT = 70
+PANELBAR_HEIGHT = 22  # height of the collapsible panel bars
 
 # Input and parameter fields
 FIELD_SIZE = (150, 25)  # standard input field size
