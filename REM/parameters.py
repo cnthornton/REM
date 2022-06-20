@@ -270,8 +270,6 @@ class InputParameter:
             width = default_w
             height = default_h
 
-        print('parameter {} has size ({}, {})'.format(self.name, width, height))
-
         # Parameter label
         label_font = mod_const.BOLD_MID_FONT
         label_color = mod_const.LABEL_TEXT_COLOR
@@ -1444,11 +1442,114 @@ class InputParameterCheckbox(InputParameter):
                      'value {DEF}, and formatted value {VAL}'
                      .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
 
+    def _field_size(self, window):
+        """
+        Calculate the optimal default size of the parameter input field in pixels.
+        """
+        size = mod_const.CHECKBOX_SIZE
+
+        return size
+
     def run_event(self, window, event, values):
         """
         Run a window event associated with the parameter.
         """
         pass
+
+    def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_color: str = None, justification: str = None,
+               hidden: bool = None):
+        """
+        Create a GUI layout for the parameter.
+        """
+        # Layout settings
+        if bg_color:  # set custom background different from configuration or default
+            self.bg_col = bg_color
+        else:
+            bg_color = self.bg_col
+
+        if justification:  # set custom justification of the description label different from configured
+            self.justification = justification
+        else:  # use configured justification
+            justification = self.justification
+
+        is_required = self.required
+        visible = not hidden if hidden is not None else not self.hidden
+
+        # Parameter settings
+        desc = self.description if self.description else ''
+        label_vis = True if self.description else False
+
+        # Layout size
+        default_w = mod_const.PARAM_SIZE[0]
+        default_h = mod_const.PARAM_SIZE2[1]
+        if isinstance(size, tuple) and len(size) == 2:  # set to fixed size
+            width, height = size
+            width = width if (isinstance(width, int) and width >= default_w) else default_w
+            height = height if (isinstance(height, int) and height >= default_h) else default_h
+        else:  # let parameter type determine the size
+            width = default_w
+            height = default_h
+
+        # Parameter label
+        label_font = mod_const.BOLD_MID_FONT
+        label_color = mod_const.LABEL_TEXT_COLOR
+
+        if is_required is True and self.editable:
+            required_layout = [sg.Text('*', visible=label_vis, font=label_font, background_color=bg_color,
+                                       text_color=mod_const.ERROR_COLOR, tooltip='required',)]
+        else:
+            required_layout = []
+
+        desc_key = self.key_lookup('Description')
+        desc_layout = [sg.Text(desc, key=desc_key, visible=label_vis, font=label_font,
+                               text_color=label_color, background_color=bg_color, tooltip=self.description)]
+
+        label_layout = required_layout + desc_layout
+
+        # Parameter value container
+        border_key = self.key_lookup('Border')
+        param_layout = [sg.Frame('', [[self.element_layout()]],
+                                 key=border_key, background_color=mod_const.BORDER_COLOR, border_width=0,
+                                 vertical_alignment='c', relief='flat', tooltip=self.placeholder)]
+
+        # Layout
+        elem_layout = [label_layout + param_layout]
+
+        frame_key = self.key_lookup('Frame')
+        layout = [sg.Frame('', elem_layout, key=frame_key, size=(width, height), pad=padding, visible=visible,
+                           border_width=0, background_color=bg_color, relief=None, vertical_alignment='c',
+                           tooltip=self.description)]
+
+        self.dimensions = (width, height)
+
+        return layout
+
+    def element_layout(self):
+        """
+        Create the type-specific layout for the value element of the parameter.
+        """
+        disabled = False if self.editable is True else True
+
+        # Element settings
+        bg_col = mod_const.DEFAULT_BG_COLOR if not disabled else mod_const.DISABLED_BG_COLOR
+
+        # Parameter size
+        size = mod_const.CHECKBOX_SIZE
+        border = (0, 0)
+
+        # Parameter settings
+        display_value = self.format_display()
+
+        # Layout
+        elem_key = self.key_lookup('Element')
+        frame_key = self.key_lookup('Container')
+        layout = sg.Frame('', [[sg.Checkbox('', default=display_value, key=elem_key, enable_events=True,
+                                            disabled=disabled, background_color=bg_col, checkbox_color=bg_col,
+                                            tooltip=self.placeholder)]],
+                          key=frame_key, size=size, pad=border, border_width=0, background_color=bg_col,
+                          vertical_alignment='c')
+
+        return layout
 
     def resize(self, window, size: tuple = None):
         """
@@ -1468,7 +1569,7 @@ class InputParameterCheckbox(InputParameter):
             label_w = window[self.key_lookup('Description')].string_width_in_pixels(label_font, label)
 
             # Find optimal field size in pixels based on the parameter type
-            field_w, field_h = self._default_size()
+            field_w, field_h = self._field_size(window)
 
             # Determine which parameter component to base the width on
             width = label_w + field_w
@@ -1485,33 +1586,6 @@ class InputParameterCheckbox(InputParameter):
         self.dimensions = dimensions
 
         return dimensions
-
-    def element_layout(self):
-        """
-        Create the type-specific layout for the value element of the parameter.
-        """
-        disabled = False if self.editable is True else True
-
-        # Element settings
-        bg_col = mod_const.DEFAULT_BG_COLOR if not disabled else mod_const.DISABLED_BG_COLOR
-
-        # Parameter size
-        size = mod_const.FIELD_SIZE
-        border = (0, 0)
-
-        # Parameter settings
-        display_value = self.format_display()
-
-        # Layout
-        elem_key = self.key_lookup('Element')
-        frame_key = self.key_lookup('Container')
-        layout = sg.Frame('', [[sg.Checkbox('', default=display_value, key=elem_key, enable_events=True,
-                                            disabled=disabled, background_color=bg_col, checkbox_color=bg_col,
-                                            tooltip=self.placeholder)]],
-                          key=frame_key, size=size, pad=border, border_width=0, background_color=bg_col,
-                          vertical_alignment='c')
-
-        return layout
 
     def format_value(self, values):
         """

@@ -83,6 +83,7 @@ BORDER_WIDTH = 2
 SPACER_WIDTH = 40  # space between parameter elements in pixels
 BTTN_HEIGHT = 70
 PANELBAR_HEIGHT = 22  # height of the collapsible panel bars
+CHECKBOX_SIZE = (22, 22)
 
 # Input and parameter fields
 FIELD_SIZE = (150, 25)  # standard input field size
