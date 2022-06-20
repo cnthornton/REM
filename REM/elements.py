@@ -4639,6 +4639,7 @@ class InputFieldInput(InputField):
             help_text = self.help_text
 
             editing = True
+            value_fmt = self.format_display(editing=editing)
         elif state == 'error':
             border_color = self._error_color
             select_text = True
@@ -4646,9 +4647,12 @@ class InputFieldInput(InputField):
 
             focus_element = window.find_element_with_focus().Key
             editing = True if focus_element in self.bindings else False
+            value_fmt = self.format_display(editing=editing)
         else:
             editing = False
             select_text = False
+            display_value = self.format_display(editing=editing)
+            value_fmt = display_value if display_value != '' else self.placeholder
 
             # Check if the display value passes any annotations rules
             annotation = self.annotate_display()
@@ -4685,7 +4689,7 @@ class InputFieldInput(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        value_fmt = self.format_display(editing=editing)
+        #value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
@@ -4760,6 +4764,7 @@ class InputFieldDate(InputField):
             help_text = self.help_text
 
             editing = True
+            value_fmt = self.format_display(editing=editing)
         elif state == 'error':
             border_color = self._error_color
             select_text = True
@@ -4767,9 +4772,12 @@ class InputFieldDate(InputField):
 
             focus_element = window.find_element_with_focus().Key
             editing = True if focus_element in self.bindings else False
+            value_fmt = self.format_display(editing=editing)
         else:
             editing = False
             select_text = False
+            display_value = self.format_display(editing=editing)
+            value_fmt = display_value if display_value != '' else self.placeholder
 
             # Check if the display value passes any annotations rules
             annotation = self.annotate_display()
@@ -4803,7 +4811,7 @@ class InputFieldDate(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        value_fmt = self.format_display(editing=editing)
+        #value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
@@ -4917,14 +4925,18 @@ class InputFieldCombo(InputField):
             help_text = self.help_text
 
             editing = True
+            value_fmt = self.format_display(editing=editing)
         elif state == 'error':
             border_color = self._error_color
             help_text = self.error_text
 
             focus_element = window.find_element_with_focus().Key
             editing = True if focus_element in self.bindings else False
+            value_fmt = self.format_display(editing=editing)
         else:
             editing = False
+            display_value = self.format_display(editing=editing)
+            value_fmt = display_value if display_value != '' else self.placeholder
 
             # Check if the display value passes any annotations rules
             annotation = self.annotate_display()
@@ -4956,7 +4968,7 @@ class InputFieldCombo(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        value_fmt = self.format_display(editing=editing)
+        #value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
@@ -5058,14 +5070,18 @@ class InputFieldMultiline(InputField):
             editing = True
             border_color = self._focus_color
             help_text = self.help_text
+            value_fmt = self.format_display(editing=editing)
         elif state == 'error':
             border_color = self._error_color
             help_text = self.error_text
 
             focus_element = window.find_element_with_focus().Key
             editing = True if focus_element in self.bindings else False
+            value_fmt = self.format_display(editing=editing)
         else:  # inactive
             editing = False
+            display_value = self.format_display(editing=editing)
+            value_fmt = display_value if display_value != '' else self.placeholder
 
             # Check if the display value passes any annotations rules
             annotation = self.annotate_display()
@@ -5102,7 +5118,7 @@ class InputFieldMultiline(InputField):
         element.Widget.config(highlightcolor=border_color)
 
         # Update the element value to display state-appropriate text
-        value_fmt = self.format_display(editing=editing)
+        #value_fmt = self.format_display(editing=editing)
 
         # Enable/disable element editing
         elem_key = self.key_lookup('Element')
