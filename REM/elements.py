@@ -1558,7 +1558,6 @@ class DataTable(RecordElement):
             ncol = 3
         else:
             ncol = 4
-        #ncol = 2 if (n_param == 4 or n_param <= 2) else 3
 
         column_div = divmod(width - border_w - spacer_w * (ncol + 1), ncol)
         column_w = column_div[0] + column_div[1]
@@ -1571,7 +1570,6 @@ class DataTable(RecordElement):
         for parameter in filter_params:
             col_index += 1
 
-            print('adding filter parameter {} to the table layout'.format(parameter.name))
             param_layout = parameter.layout(size=(column_w, param_h), bg_color=frame_col)
             index_mod = col_index % ncol
             if index_mod == 0:  # number of parameters have reached the max per row
@@ -1584,15 +1582,12 @@ class DataTable(RecordElement):
                 current_row.append(sg.Push(background_color=frame_col))
 
         last_row_len = col_index % ncol
-        print('last row length: {}'.format(last_row_len))
-        nrow = len(filter_rows)
+        n_prev_row = len(filter_rows)
         if last_row_len > 0:  # not counting the push elements
             len_diff = ncol - last_row_len
-            print('length difference: {}'.format(len_diff))
             if len_diff > 0:
                 for blank_ind in range(len_diff):
-                    blank_name = 'Blank{ROW}.{COL}'.format(ROW=nrow + 1, COL=last_row_len + blank_ind + 1)
-                    print('adding blank field: {}'.format(blank_name))
+                    blank_name = 'Blank{ROW}.{COL}'.format(ROW=n_prev_row + 1, COL=last_row_len + blank_ind + 1)
                     blank_param = BlankField(blank_name, parent=self.name)
                     blank_layout = blank_param.layout(size=(column_w, param_h), bg_color=frame_col)
 
@@ -1613,7 +1608,6 @@ class DataTable(RecordElement):
                                    element_justification='l')])
 
         n_filter_rows = ceiling(col_index / ncol)
-        # frame_h = param_h * n_filter_rows + (ceiling(bttn_h / row_h) * row_h - bttn_h)
         frame_h = param_h * n_filter_rows + bttn_h
         if len(filter_params) > 0 and modifiers['filter'] is True:
             filter_disabled = False
@@ -4006,7 +4000,7 @@ class DataUnit(RecordElement):
         # Dynamic variables
         self._offset = 0
         self.value = mod_col.DataVector(name, entry)
-        self._dimensions = (mod_const.VARIABLE_WIDTH_PX, mod_const.VARIABLE_HEIGHT_PX)
+        self._dimensions = (mod_const.VARIABLE_WIDTH, mod_const.VARIABLE_HEIGHT)
         self.disabled = self.modifiers['edit']
 
     def _resize_h(self, window, size: tuple = None):
@@ -4045,7 +4039,7 @@ class DataUnit(RecordElement):
 
             desc_w_px = window[desc_key].get_size()[0]
             value_w = desc_w_px + mod_const.SCROLL_WIDTH + pad_w
-            elem_w_px = value_w if value_w >= mod_const.VARIABLE_WIDTH_PX else mod_const.VARIABLE_WIDTH_PX
+            elem_w_px = value_w if value_w >= mod_const.VARIABLE_WIDTH else mod_const.VARIABLE_WIDTH
 
             new_w = desc_w_px + elem_w_px + self._offset
 
@@ -4487,12 +4481,21 @@ class InputField(DataUnit):
         is_required = modifiers['require']
         hidden = modifiers['hide']
 
-        size = self._dimensions if not size else size
-        width, height = size
-        self._dimensions = (width * 10, mod_const.VARIABLE_HEIGHT_PX)
-
         background = self.bg_col if bg_color is None else bg_color
         tooltip = tooltip if tooltip else self.tooltip
+
+        # Layout size
+        default_w = mod_const.VARIABLE_WIDTH
+        default_h = mod_const.VARIABLE_HEIGHT if self.arrangement == 'v' else mod_const.VARIABLE_HEIGHT2
+        if isinstance(size, tuple) and len(size) == 2:  # set to fixed size
+            width, height = size
+            width = width if (isinstance(width, int) and width >= default_w) else default_w
+            height = height if (isinstance(height, int) and height >= default_h) else default_h
+        else:  # let parameter type determine the size
+            width = default_w
+            height = default_h
+
+        self._dimensions = (width, height)
 
         # Layout options
         pad_el = mod_const.ELEM_PAD
@@ -5541,7 +5544,7 @@ class BlankField:
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=name, ID=self.id, ELEM=i) for i in
                          ('Element',)}
 
-        self._dimensions = (mod_const.VARIABLE_WIDTH_PX, mod_const.VARIABLE_HEIGHT_PX)
+        self._dimensions = (mod_const.VARIABLE_WIDTH, mod_const.VARIABLE_HEIGHT)
 
     def is_type(self, etype):
         """
