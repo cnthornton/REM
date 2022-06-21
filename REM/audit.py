@@ -12,7 +12,6 @@ import REM.constants as mod_const
 import REM.data_manipulation as mod_dm
 import REM.elements as mod_elem
 import REM.layouts as mod_lo
-import REM.parameters as mod_param
 import REM.records as mod_records
 import REM.secondary as mod_win2
 from REM.client import logger, settings, user
@@ -58,11 +57,10 @@ class AuditRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Cancel', 'Start', 'Back', 'Next', 'Save', 'PanelWidth', 'PanelHeight', 'FrameHeight',
-                          'FrameWidth', 'TG', 'TransactionPanel', 'Panels', 'Buttons', 'Title', 'Frame', 'Header',
+                         ('Cancel', 'Start', 'Save', 'TG', 'TransactionPanel', 'Panels', 'Title', 'Frame', 'Header',
                           'Database')}
 
-        self.bindings = {self.elements[i]: i for i in ('Cancel', 'Start', 'Back', 'Next', 'Save', 'TG')}
+        self.bindings = {self.elements[i]: i for i in ('Cancel', 'Start', 'Save', 'TG')}
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -74,10 +72,6 @@ class AuditRule:
         except KeyError:
             self.menu_flags = None
 
-        #try:
-        #    self.permissions = entry['AccessPermissions']
-        #except KeyError:  # default permission for an audit rule is 'user'
-        #    self.permissions = 'user'
         try:
             permissions = entry['Permissions']
         except KeyError:
@@ -88,26 +82,35 @@ class AuditRule:
                                 'edit': permissions.get('Edit', None),
                                 }
 
+        # self.parameters = []
+        # try:
+        #    params = entry['RuleParameters']
+        # except KeyError:
+        #    msg = 'missing required parameter "RuleParameters"'
+        #    logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+        #    raise AttributeError(msg)
+
+        # for param_name in params:
+        #    param_entry = params[param_name]
+        #    try:
+        #        param = mod_param.initialize_parameter(param_name, param_entry)
+        #    except Exception as e:
+        #        logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
+
+        #        raise AttributeError(e)
+
+        #    self.parameters.append(param)
+        #    self.bindings.update(param.bindings)
+
         self.parameters = []
         try:
-            params = entry['RuleParameters']
+            self._param_def = entry['RuleParameters']
         except KeyError:
             msg = 'missing required parameter "RuleParameters"'
             logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
-
-        for param_name in params:
-            param_entry = params[param_name]
-            try:
-                param = mod_param.initialize_parameter(param_name, param_entry)
-            except Exception as e:
-                logger.error('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
-
-                raise AttributeError(e)
-
-            self.parameters.append(param)
-            self.bindings.update(param.bindings)
 
         self.transactions = []
         try:
@@ -191,8 +194,8 @@ class AuditRule:
         logger.debug('AuditRule {NAME}: binding panel element hotkeys'.format(NAME=self.name))
 
         # Bind parameter hotkeys
-        for parameter in self.parameters:
-            parameter.bind_keys(window)
+        # for parameter in self.parameters:
+        #    parameter.bind_keys(window)
 
         # Bind transaction table hotkeys
         for transaction_tab in self.transactions:
@@ -274,7 +277,7 @@ class AuditRule:
                 tab = self.fetch_tab(tab_key)
             except KeyError:
                 logger.exception('AuditRule {NAME}: unable to find the transaction associated with tab key "{KEY}"'
-                             .format(NAME=self.name, KEY=tab_key))
+                                 .format(NAME=self.name, KEY=tab_key))
             else:
                 # Run the tab event
                 event_results = tab.run_event(window, event, values)
@@ -324,21 +327,6 @@ class AuditRule:
 
             return current_rule
 
-        # Run parameter events
-        param_keys = [i for param in self.parameters for i in param.bindings]
-        if event in param_keys:
-            print('running audit rule event {}'.format(event))
-            try:
-                param = self.fetch_parameter(event, by_key=True)
-            except KeyError:
-                logger.exception('AuditRule {NAME}: unable to find parameter associated with event key {KEY}'
-                             .format(NAME=self.name, KEY=event))
-            else:
-                print('audit rule event {} is from parameter {}'.format(event, param.name))
-                param.run_event(window, event, values)
-
-            return current_rule
-
         # Run an audit rule panel event
         try:
             rule_event = self.bindings[event]
@@ -358,30 +346,22 @@ class AuditRule:
             else:
                 current_rule = self.reset_rule(window, current=False)
 
-        # Start button pressed
+        # Start button was pressed. Will open parameter settings window for user to input parameter values,
+        # then load the relevant account record data
         elif rule_event == 'Start' and not window[start_key].metadata['disabled']:
-            # Check for valid parameter values
-            params = self.parameters
-            inputs = []
-            for param in params:
-                param.format_value(values)
-
-                if not param.has_value():
-                    param_desc = param.description
-                    msg = 'parameter {} requires correctly formatted input'.format(param_desc)
-                    mod_win2.popup_notice(msg)
-                    logger.warning('AuditRule {NAME}: failed to start audit - {MSG}'.format(NAME=self.name, MSG=msg))
-                    inputs.append(False)
-                else:
-                    inputs.append(True)
+            # Get the parameter settings
+            param_def = {self.menu_title: self._param_def}
+            section_params = mod_win2.parameter_window(param_def, title=self.menu_title)
 
             # Load data from the database
-            if all(inputs):  # all rule parameters have input
+            if section_params:  # parameters were saved (selection not cancelled)
+                params = section_params[self.menu_title]
+
                 window[start_key].update(disabled=True)
                 window[start_key].metadata['disabled'] = True
 
                 # Verify that the audit has not already been performed with these parameters
-                audit_exists = self.load_record()
+                audit_exists = self.load_record(params)
                 if audit_exists is True:
                     msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
                           'audit records through the records menu'
@@ -397,14 +377,10 @@ class AuditRule:
                     tab_key = transaction_tab.key_lookup('Tab')
                     tab_keys.append(tab_key)
 
-                    # Set tab parameters
-                    database = values[self.key_lookup('Database')]
-                    transaction_tab.parameters = self.parameters
-                    transaction_tab.database = database
-
                     # Import tab data from the database
+                    database = values[self.key_lookup('Database')]
                     try:
-                        transaction_tab.load_data(database=database)
+                        transaction_tab.load_data(params, database=database)
                     except ImportError as e:
                         msg = 'failed to initialize the audit transactions'
                         logger.error('AuditRule {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -417,9 +393,6 @@ class AuditRule:
                 logger.info('AuditRule {NAME}: transaction audit in progress with parameters {PARAMS}'
                             .format(NAME=self.name, PARAMS=param_str))
                 self.in_progress = True
-
-                # Enable/Disable control buttons and parameter elements
-                self.toggle_parameters(window, 'disable')
 
                 for transaction_tab in self.transactions:
                     # Enable table element events
@@ -523,10 +496,6 @@ class AuditRule:
         width, height = size
 
         # Element parameters
-        bttn_text_col = mod_const.WHITE_TEXT_COLOR
-        bttn_bg_col = mod_const.BUTTON_BG_COLOR
-        disabled_text_col = mod_const.DISABLED_TEXT_COLOR
-        disabled_bg_col = mod_const.DISABLED_BUTTON_COLOR
         bg_col = mod_const.DEFAULT_BG_COLOR
         header_col = mod_const.HEADER_COLOR
         inactive_col = mod_const.DISABLED_BG_COLOR
@@ -534,13 +503,13 @@ class AuditRule:
         select_col = mod_const.SELECTED_TEXT_COLOR
 
         font_h = mod_const.HEADING_FONT
+        param_font = mod_const.XX_FONT
 
         pad_el = mod_const.ELEM_PAD
         pad_v = mod_const.VERT_PAD
         pad_frame = mod_const.FRAME_PAD
 
         # Rule parameters
-        params = self.parameters
         db_key = self.key_lookup('Database')
         db_size = (max([len(i) for i in settings.alt_dbs]), 1)
 
@@ -567,41 +536,20 @@ class AuditRule:
                               key=title_key, size=(title_w, title_h), background_color=header_col,
                               vertical_alignment='c', element_justification='l', justification='l', expand_x=True)
 
-        # Rule parameter elements
-        if len(params) > 1:
-            param_pad = ((0, pad_v), 0)
-        else:
-            param_pad = (0, 0)
-
-        param_elements = []
-        for param in params:
-            element_layout = param.layout(padding=param_pad, auto_size_desc=True)
-            param_elements.extend(element_layout)
-
-        start_key = self.key_lookup('Start')
-        start_layout = [[sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
-                                  pad=((0, pad_el * 2), 0), text_color=text_col, background_color=bg_col,
-                                  disabled=False, tooltip='Record database'),
-                         mod_lo.B2('Start', key=start_key, pad=(0, 0), disabled=False, use_ttk_buttons=True,
-                                   button_color=(bttn_text_col, bttn_bg_col), metadata={'disabled': False},
-                                   disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                   tooltip='Start transaction audit')]]
-
+        # Panel header
+        param_key = self.key_lookup('Start')
         header_key = self.key_lookup('Header')
-        #header = [sg.Canvas(size=(0, header_h), background_color=bg_col),
-        #          sg.Col([param_elements], pad=(0, pad_v), background_color=bg_col, justification='l',
-        #                 vertical_alignment='c', expand_x=True),
-        #          sg.Col(start_layout, pad=(0, pad_v), background_color=bg_col, justification='r',
-        #                 element_justification='r', vertical_alignment='c')]
-        header = [sg.Canvas(size=(0, header_h), background_color=bg_col),
-                  sg.Col([param_elements], pad=(0, 0), background_color=bg_col, justification='l',
-                         vertical_alignment='c', expand_x=True),
-                  sg.Col(start_layout, pad=(0, 0), background_color=bg_col, justification='r',
-                         element_justification='r', vertical_alignment='c')]
-        header_layout = sg.Col([header], key=header_key, background_color=bg_col, expand_x=True, vertical_alignment='c',
-                               element_justification='l')
+        header_layout = sg.Col([[sg.Canvas(size=(0, header_h), background_color=bg_col),
+                                 sg.Combo(settings.alt_dbs, default_value=settings.dbname, key=db_key, size=db_size,
+                                          pad=((0, pad_el * 2), 0), font=param_font, text_color=text_col,
+                                          background_color=bg_col, disabled=False, tooltip='Record database'),
+                                 sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
+                                           image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
+                                           metadata={'disabled': False}, tooltip='Parameter selection')
+                                 ]],
+                               key=header_key, background_color=bg_col, expand_x=True)
 
-        # Transaction panel layout
+        # Panel tab layouts
         transaction_tabs = []
         for i, tab in enumerate(self.transactions):
             if i == 0:
@@ -630,7 +578,6 @@ class AuditRule:
         # Standard elements
         cancel_key = self.key_lookup('Cancel')
         save_key = self.key_lookup('Save')
-        buttons_key = self.key_lookup('Buttons')
         bttn_h = mod_const.BTTN_HEIGHT
         bttn_layout = sg.Col([
             [sg.Canvas(size=(0, bttn_h)),
@@ -638,7 +585,7 @@ class AuditRule:
                              tooltip='Return to home screen'),
              mod_lo.nav_bttn('', key=save_key, image_data=mod_const.SAVE_ICON, pad=(0, 0), disabled=True,
                              tooltip='Save results', metadata={'disabled': True})
-             ]], key=buttons_key, vertical_alignment='c', element_justification='c', expand_x=True)
+             ]], vertical_alignment='c', element_justification='c', expand_x=True)
 
         frame_key = self.key_lookup('Frame')
         frame_layout = sg.Col([[header_layout],
@@ -677,8 +624,8 @@ class AuditRule:
         mod_lo.set_size(window, panels_key, (tab_w, tab_h))
 
         # Resize parameters
-        for parameter in self.parameters:
-            parameter.resize(window)
+        # for parameter in self.parameters:
+        #    parameter.resize(window)
 
         # Resize transaction tabs
         transactions = self.transactions
@@ -713,14 +660,10 @@ class AuditRule:
         tg_key = self.key_lookup('TG')
         window[tg_key].Widget.select(0)
 
-        # Reset rule item attributes and parameters.
-        self.reset_parameters(window)
-        self.toggle_parameters(window, 'enable')
+        # Reset rule parameters.
+        self.parameters = []
 
         # Reset the audit record
-        #db_record = settings.records.fetch_rule(self.record_type)
-        #self.record = mod_records.DatabaseRecord(self.record_type, db_record.record_layout, level=0)
-        #self.record_data = self.record.export_values()
         self.record_data = {}
 
         # Reset transactions
@@ -745,30 +688,13 @@ class AuditRule:
         else:
             return None
 
-    def reset_parameters(self, window):
-        """
-        Reset audit rule parameter values to default.
-        """
-        for param in self.parameters:
-            param.reset(window)
-
-    def toggle_parameters(self, window, value='enable'):
-        """
-        Enable / Disable audit rule parameter elements.
-        """
-        disabled = False if value == 'enable' else True
-        for param in self.parameters:
-            param.toggle(window, off=disabled)
-
-    def load_record(self):
+    def load_record(self, params):
         """
         Load previous audit (if exists) and IDs from the program database.
 
         Returns:
             success (bool): record importing was successful.
         """
-        params = self.parameters
-
         # Prepare the database query statement
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
@@ -815,6 +741,8 @@ class AuditRule:
 
                 for param in params:
                     self.record_data[param.name] = param.value
+
+                self.parameters = params
 
         return exists
 
@@ -1233,11 +1161,10 @@ class AuditTransaction:
 
         return list(failed_rows)
 
-    def load_data(self, database: str = None):
+    def load_data(self, parameters, database: str = None):
         """
         Load data from the database.
         """
-        parameters = self.parameters
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
@@ -1255,6 +1182,11 @@ class AuditTransaction:
         logger.info('AuditTransaction {NAME}: successfully loaded the transaction records from the database'
                     .format(NAME=self.name))
         self.table.append(df)
+
+        # Update parameter attributes
+        self.parameters = parameters
+        if database:
+            self.database = database
 
     def audit_transactions(self):
         """
