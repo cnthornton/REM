@@ -70,6 +70,8 @@ UNDERLINE_FONT = ('Arial', 12, 'underline')
 WIN_HEIGHT = 600  # support for 1024 x 768 screen resolution
 WIN_WIDTH = 800  # support for 1024 x 768 screen resolution
 
+PARAM_WIN_SIZE = (480, 600)
+
 # GUI Elements
 B1_WIDTH = 20
 B2_WIDTH = 6

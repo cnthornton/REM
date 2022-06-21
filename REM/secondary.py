@@ -1135,13 +1135,21 @@ def database_importer_window(win_size: tuple = None):
                         if coltype in date_types:  # need to strip the date offset, if any
                             try:
                                 if offset_oper == '+':
-                                    formatted_values = final_df[selected_column].apply(lambda x: (
-                                            strptime(x, date_format) - relativedelta(years=+date_offset)).strftime(
-                                        settings.date_format))
+                                    try:
+                                        formatted_values = final_df[selected_column].apply(lambda x: (
+                                                strptime(x, date_format) - relativedelta(years=+date_offset)).strftime(
+                                            settings.date_format))
+                                    except TypeError:
+                                        formatted_values = final_df[selected_column].apply(lambda x:
+                                            (x - relativedelta(years=+date_offset)).strftime(settings.date_format))
                                 else:
-                                    formatted_values = final_df[selected_column].apply(lambda x: (
-                                            strptime(x, date_format) + relativedelta(years=+date_offset)).strftime(
-                                        settings.date_format))
+                                    try:
+                                        formatted_values = final_df[selected_column].apply(lambda x: (
+                                                strptime(x, date_format) + relativedelta(years=+date_offset)).strftime(
+                                            settings.date_format))
+                                    except TypeError:
+                                        formatted_values = final_df[selected_column].apply(lambda x:
+                                               (x + relativedelta(years=+date_offset)).strftime(settings.date_format))
                             except Exception as e:
                                 msg = 'unable to convert values in column "{COL}" to a datetime format - {ERR}'.format(
                                     COL=selected_column, ERR=e)
