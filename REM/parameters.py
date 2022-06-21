@@ -1700,6 +1700,8 @@ class InputParameterComp(InputParameter):
 
             self.dtype = 'float'
 
+        self._function = None
+
         try:
             default_values = entry['DefaultValue']
         except KeyError:
@@ -1744,6 +1746,32 @@ class InputParameterComp(InputParameter):
 
         return layout
 
+    def run_event(self, window, event, values):
+        """
+        Run a window event associated with the parameter.
+        """
+        try:
+            param_event = self.bindings[event]
+        except KeyError:
+            param_event = None
+
+        if param_event == 'In' and not self.disabled:
+            self._set_state(window, state='focus')
+        elif param_event == 'Out' and not self.disabled:
+            self._set_state(window, state='inactive')
+        elif param_event == 'Element' and not self.disabled:
+            elem_key = self.key_lookup('Element')
+            element = window[elem_key]
+
+            size = window[self.key_lookup('Container')].get_size()
+            location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
+
+            self.value = self._function(self.dtype, current=self.value, title=self.description, location=location,
+                                        size=size)
+
+            display_value = self.format_display()
+            element.update(text=display_value)
+
 
 class InputParameterRange(InputParameterComp):
     """
@@ -1769,6 +1797,8 @@ class InputParameterRange(InputParameterComp):
         except ValueError:
             default1 = default2 = entry['DefaultValue']
 
+        self._function = mod_win2.range_value_window
+
         # Dynamic attributes
         try:
             self.default = self.value = [format_value(default1, self.dtype), format_value(default2, self.dtype)]
@@ -1778,34 +1808,6 @@ class InputParameterRange(InputParameterComp):
         logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-    def run_event(self, window, event, values):
-        """
-        Run a window event associated with the parameter.
-        """
-        try:
-            param_event = self.bindings[event]
-        except KeyError:
-            param_event = None
-
-        if param_event == 'In' and not self.disabled:
-            print('setting outline to blue')
-            self._set_state(window, state='focus')
-        elif param_event == 'Out' and not self.disabled:
-            print('setting outline to gray')
-            self._set_state(window, state='inactive')
-        elif param_event == 'Element' and not self.disabled:
-            elem_key = self.key_lookup('Element')
-            element = window[elem_key]
-
-            size = window[self.key_lookup('Container')].get_size()
-            location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
-
-            self.value = mod_win2.range_value_window(self.dtype, current=self.value, title=self.description,
-                                                     location=location, size=size)
-
-            display_value = self.format_display()
-            element.update(text=display_value)
 
     def format_value(self, values):
         """
@@ -2006,6 +2008,8 @@ class InputParameterCondition(InputParameterComp):
         if oper not in self._operators:
             oper = None
 
+        self._function = mod_win2.conditional_value_window
+
         # Dynamic attributes
         try:
             self.default = self.value = [oper, settings.format_value(default, self.dtype)]
@@ -2015,32 +2019,6 @@ class InputParameterCondition(InputParameterComp):
         logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
                      '{DEF}, and formatted value {VAL}'
                      .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-    def run_event(self, window, event, values):
-        """
-        Run a window event associated with the parameter.
-        """
-        try:
-            param_event = self.bindings[event]
-        except KeyError:
-            param_event = None
-
-        if param_event == 'In' and not self.disabled:
-            self._set_state(window, state='focus')
-        elif param_event == 'Out' and not self.disabled:
-            self._set_state(window, state='inactive')
-        elif param_event == 'Element' and not self.disabled:
-            elem_key = self.key_lookup('Element')
-            size = window[self.key_lookup('Container')].get_size()
-
-            element = window[elem_key]
-            location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
-
-            self.value = mod_win2.conditional_value_window(self.dtype, current=self.value, title=self.description,
-                                                           location=location, size=size)
-
-            display_value = self.format_display()
-            element.update(text=display_value)
 
     def format_value(self, values):
         """
@@ -2386,12 +2364,15 @@ class InputParamterMultiple(InputParameter):
         """
         Update the parameter display.
         """
-        elem_key = self.key_lookup('Element')
+        element = window[self.key_lookup('Element')]
 
         # Update element text
+        display_value = self.format_display()
         nselect = len(self.value)
         bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
-        window[elem_key].Widget.configure(text=bttn_text)
+
+        element.update(text=bttn_text)
+        element.set_tooltip(display_value)
 
     def query_statement(self, column):
         """
