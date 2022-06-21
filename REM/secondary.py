@@ -506,12 +506,14 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     return record
 
 
-def parameter_window(definitions, win_size: tuple = None):
+def parameter_window(definitions, title: str = None, win_size: tuple = None):
     """
     Display the parameter selection window for a bank reconciliation rule.
 
     Arguments:
         definitions (dict): dictionary of parameter definitions grouped by section.
+
+        title (str): title of the parameter window.
 
         win_size (tuple): optional window size parameters (width, height).
     """
@@ -519,7 +521,7 @@ def parameter_window(definitions, win_size: tuple = None):
     if win_size:
         width, height = win_size
     else:
-        width, height = (mod_const.WIN_WIDTH, mod_const.WIN_HEIGHT)
+        width, height = mod_const.PARAM_WIN_SIZE
 
     param_values = {}
 
@@ -544,8 +546,8 @@ def parameter_window(definitions, win_size: tuple = None):
     # Layout elements
 
     # Window Title
-    title = 'Select import parameters'
-    title_layout = [[sg.Text(title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
+    win_title = 'Parameter Selection' if title is None else title
+    title_layout = [[sg.Text(win_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
     # Parameters layout
     params_layout = []
@@ -585,9 +587,8 @@ def parameter_window(definitions, win_size: tuple = None):
 
     # Control elements
     load_key = '-LOAD-'
-    bttn_layout = [[sg.Button('', key=load_key, pad=((pad_el, 0), 0), image_data=mod_const.IMPORT_ICON,
-                              image_size=mod_const.BTTN_SIZE, disabled=False,
-                              tooltip='Load records ({})'.format(load_shortcut))]]
+    bttn_layout = [[sg.Button('', key=load_key, image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
+                              disabled=False, tooltip='Confirm settings ({})'.format(load_shortcut))]]
 
     # Window layout
     height_key = '-HEIGHT-'
@@ -600,8 +601,9 @@ def parameter_window(definitions, win_size: tuple = None):
                    [sg.Col(params_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, scrollable=True,
                            vertical_scroll_only=True, expand_x=True, expand_y=True, vertical_alignment='t')],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.DISABLED_BG_COLOR)],
-                   [sg.Col(bttn_layout, pad=(pad_frame, pad_frame), element_justification='c', expand_x=True)]
-               ], key='-FRAME-', pad=(0, 0), expand_y=True, expand_x=True)]]
+                   [sg.Col(bttn_layout, pad=(0, pad_v), element_justification='c', vertical_alignment='c',
+                           expand_x=True)]
+               ], key='-FRAME-', expand_y=True, expand_x=True)]]
 
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
@@ -614,16 +616,18 @@ def parameter_window(definitions, win_size: tuple = None):
             parameter.bind_keys(window)
 
     # Resize window
-    screen_w, screen_h = window.get_screen_dimensions()
-    wh_ratio = 0.75  # window width to height ratio
-    win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
-    win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
+    #screen_w, screen_h = window.get_screen_dimensions()
+    #wh_ratio = 0.75  # window width to height ratio
+    #win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
+    #win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
 
-    window[height_key].set_size(size=(None, int(win_h)))
-    window[width_key].set_size(size=(int(win_w), None))
+    #window[height_key].set_size(size=(None, int(win_h)))
+    #window[width_key].set_size(size=(int(win_w), None))
+    w_offset = mod_const.SCROLL_WIDTH + pad_v * 2
     for pgroup in params:
         for param in params[pgroup]:
-            param.resize(window, size=(int(win_w - 40), None))
+            #param.resize(window, size=(int(win_w - 40), None))
+            param.resize(window, size=(int(width - w_offset), None))
 
     window = align_window(window)
     current_w, current_h = [int(i) for i in window.size]
@@ -650,7 +654,7 @@ def parameter_window(definitions, win_size: tuple = None):
 
             for pgroup in params:
                 for param in params[pgroup]:
-                    param.resize(window, size=(int(win_w - 40), None))
+                    param.resize(window, size=(int(win_w - w_offset), None))
 
             current_w, current_h = (win_w, win_h)
 
@@ -2138,9 +2142,6 @@ def edit_settings(win_size: tuple = None):
 
     window = align_window(window)
 
-    #element_keys = {'-LANGUAGE-': 'language', '-LOCALE-': 'locale', '-TEMPLATE-': 'template',
-    #                '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname',
-    #                '-DISPLAY_DATE-': 'display_date'}
     element_keys = {'-LOCALE-': 'locale', '-TEMPLATE-': 'template',
                     '-CSS-': 'css', '-PORT-': 'port', '-SERVER-': 'host', '-DATABASE-': 'dbname',
                     '-DISPLAY_DATE-': 'display_date'}
@@ -2182,7 +2183,11 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
 
     # Element settings
     pad_el = mod_const.ELEM_PAD
+    pad_v = mod_const.VERT_PAD
+    pad_h = mod_const.HORZ_PAD
+
     bold_font = mod_const.BOLD_LARGE_FONT
+
     bg_col = mod_const.DEFAULT_BG_COLOR
 
     # Component parameters
@@ -2197,26 +2202,40 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
 
     # Window and element sizes
     bttn_h = pad_el * 3 + mod_const.BTTN_SIZE[1]  # button height + top/bottom padding and button border
-    sep_w = 1 * 9 + pad_el * 2  # field separator character and spacing
+    sep_w = 1 * 10 + pad_el * 2  # field separator character and spacing
 
-    default_w = mod_const.FIELD_SIZE[0] * 2 + sep_w
-    default_h = mod_const.FIELD_SIZE[1] + bttn_h + 10
-
-    print('default size is: ({}, {})'.format(default_w, default_h))
-    print('provided size is: {}'.format(size))
-
+    default_w = mod_const.FIELD_SIZE[0] * 2 + sep_w + pad_h
+    default_w2 = mod_const.FIELD_SIZE[0] + sep_w + pad_h
+    default_h = mod_const.FIELD_SIZE[1] + bttn_h + pad_v
     if isinstance(size, tuple) and len(size) == 2:
         width, height = size
-        win_w = width if (isinstance(width, int) and width >= default_w) else default_w
+        if isinstance(width, int):
+            win_w = width if width > default_w2 else default_w2
+            if win_w < default_w:
+                nrow = 2
+                default_h = mod_const.FIELD_SIZE[1] * 2 + bttn_h + pad_v
+            else:
+                nrow = 1
+        else:
+            win_w = default_w
+            nrow = 1
         win_h = height if (isinstance(height, int) and height >= default_h) else default_h
     else:
         win_w = default_w
         win_h = default_h
+        nrow = 1
 
     # Layout
-    elem_layout = param1.layout() + [sg.Text('-', pad=(pad_el, 0), font=bold_font)] + param2.layout()
+    if nrow == 1:
+        row1 = param1.layout() + [sg.Text('-', pad=(pad_el, 0), font=bold_font)] + param2.layout()
+        elem_layout = [sg.Col([row1], pad=(int(pad_h / 2), 0), background_color=bg_col)]
+    else:
+        row1 = param1.layout() + [sg.Text('-', pad=(pad_el, 0), font=bold_font)]
+        row2 = param2.layout()
+        elem_layout = [sg.Col([row1, row2], pad=(int(pad_h / 2), 0), background_color=bg_col)]
+
     bttn_layout = sg.Button('', key='-SAVE-', image_data=mod_const.CONFIRM_ICON, image_size=mod_const.BTTN_SIZE,
-                            bind_return_key=True, pad=(0, pad_el))
+                            bind_return_key=True, pad=(0, int(pad_v / 2)))
 
     layout = [[sg.Frame('', [elem_layout, [bttn_layout]], size=(win_w, win_h), background_color=bg_col,
                         title_color=mod_const.BORDER_COLOR, element_justification='c', vertical_alignment='t')]]
@@ -2299,9 +2318,6 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     default_w = oper_w + mod_const.FIELD_SIZE[0]
     default_h = mod_const.FIELD_SIZE[1] + bttn_h + 10
 
-    print('default size is: ({}, {})'.format(default_w, default_h))
-    print('provided size is: {}'.format(size))
-
     if isinstance(size, tuple) and len(size) == 2:
         width, height = size
         win_w = width if (isinstance(width, int) and width >= default_w) else default_w
@@ -2335,14 +2351,10 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     param.bind_keys(window)
 
     window.refresh()
-    print('size of parameter is {}'.format(window[param.key_lookup('Frame')].get_size()))
-    print('size of combo is {}'.format(window['-OPERATOR-'].get_size()))
-    print('size of button is {}'.format(window['-SAVE-'].get_size()))
 
     # Start event loop
     while True:
         event, values = window.read()
-        print('event is {}'.format(event))
 
         if event in (sg.WIN_CLOSED, '-HK_ESCAPE-', None):  # selected close-window or Cancel
             break
