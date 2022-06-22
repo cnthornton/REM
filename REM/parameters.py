@@ -225,6 +225,14 @@ class InputParameter:
             window[elem_key].bind('<FocusIn>', '+IN+')
             window[elem_key].bind('<FocusOut>', '+OUT+')
 
+    def set_focus(self, window):
+        """
+        Set the window focus on the parameter field.
+        """
+        elem_key = self.key_lookup('Element')
+        window[elem_key].set_focus()
+        self._set_state(window, state='focus')
+
     def reset(self, window):
         """
         Reset the parameter's values.

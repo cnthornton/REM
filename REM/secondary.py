@@ -2264,6 +2264,9 @@ def range_value_window(dtype, current: list = None, title: str = None, location:
     for parameter in (param1, param2):
         parameter.bind_keys(window)
 
+    # Set focus to the first parameter
+    param1.set_focus(window)
+
     # Start event loop
     while True:
         event, values = window.read()
@@ -2367,6 +2370,9 @@ def conditional_value_window(dtype, current: list = None, title: str = None, loc
     # Bind keys to events
     window = settings.set_shortcuts(window)
     param.bind_keys(window)
+
+    # Set focus to the parameter
+    param.set_focus(window)
 
     window.refresh()
 
