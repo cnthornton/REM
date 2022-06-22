@@ -550,20 +550,33 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
     title_layout = [[sg.Text(win_title, pad=(pad_frame, pad_frame), font=font_h, background_color=header_col)]]
 
     # Parameters layout
-    params_layout = []
     params = {}
-    bindings = {}
+    param_bindings = {}
+    section_bindings = {}
 
     # Associated account parameters
-    for section_title in definitions:  # iterate over parameter groups
+    sections_layout = []
+    for i, section_title in enumerate(definitions):  # iterate over parameter groups
         section_params = definitions[section_title]
 
-        pgroup_layout = [[sg.Col([[sg.Text(section_title, pad=(0, 0), font=bold_font, text_color=text_col,
-                                           background_color=frame_col)]],
-                                 expand_x=True, background_color=frame_col, justification='l')],
-                         [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, 0))]]
+        section_key = '-{}_BTTN-'.format(section_title)
+        section_bindings[section_key] = section_title
+
+        can_hide = True if i != 0 else False
+        header = [[sg.Text(section_title, pad=(pad_el, 0), text_color=text_col, background_color=frame_col,
+                           font=bold_font),
+                   sg.Push(background_color=frame_col),
+                   sg.Button('', image_data=mod_const.HIDE_ICON, key=section_key, disabled=False, visible=can_hide,
+                             pad=(pad_el, 0), button_color=(text_col, frame_col), border_width=0,
+                             metadata={'visible': can_hide, 'disabled': False})]]
+
+        #pgroup_layout = [[sg.Col([[sg.Text(section_title, pad=(0, 0), font=bold_font, text_color=text_col,
+        #                                   background_color=frame_col)]],
+        #                         expand_x=True, background_color=frame_col, justification='l')],
+        #                 [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, 0))]]
 
         # Create the import parameter objects and layouts for the associated account
+        param_layout = []
         for param_name in section_params:
             param_entry = section_params[param_name]
             try:
@@ -573,17 +586,22 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
 
                 continue
 
-            pgroup_layout.append(param.layout(padding=(0, pad_el), bg_color=bg_col, justification='left'))
+            param_layout.append(param.layout(padding=(0, pad_el), bg_color=bg_col, justification='left'))
             try:
                 params[section_title].append(param)
             except KeyError:
                 params[section_title] = [param]
 
             for element in param.bindings:
-                bindings[element] = section_title
+                param_bindings[element] = section_title
 
-        params_layout.append([sg.Col(pgroup_layout, key='-{}-'.format(section_title), pad=(pad_h, pad_v),
-                                     background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
+        pgroup_layout = [[sg.Col(header, expand_x=True, background_color=frame_col, vertical_alignment='c')],
+                         [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, 0))],
+                         [sg.pin(sg.Col(param_layout, key='-{}-'.format(section_title), background_color=bg_col,
+                                        pad=(pad_h, pad_v), visible=True, expand_x=True, metadata={'visible': True}))]]
+        #sections_layout.append([sg.Col(pgroup_layout, key='-{}-'.format(section_title), pad=(pad_h, pad_v),
+        #                               background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
+        sections_layout.append([sg.Col(pgroup_layout, background_color=bg_col, expand_x=True)])
 
     # Control elements
     load_key = '-LOAD-'
@@ -598,7 +616,7 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
                sg.Col([
                    [sg.Col(title_layout, background_color=header_col, expand_x=True)],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.DISABLED_BG_COLOR)],
-                   [sg.Col(params_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, scrollable=True,
+                   [sg.Col(sections_layout, key='-PARAMS-', pad=(0, 0), background_color=bg_col, scrollable=True,
                            vertical_scroll_only=True, expand_x=True, expand_y=True, vertical_alignment='t')],
                    [sg.HorizontalSeparator(pad=(0, 0), color=mod_const.DISABLED_BG_COLOR)],
                    [sg.Col(bttn_layout, pad=(0, pad_v), element_justification='c', vertical_alignment='c',
@@ -608,27 +626,16 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
     window = sg.Window(title, layout, modal=True, keep_on_top=False, return_keyboard_events=True, resizable=True)
     window.finalize()
 
-    # Bind keys to events
+    # Bind keys to events and resize parameters
     window = settings.set_shortcuts(window)
 
+    w_offset = mod_const.SCROLL_WIDTH + pad_v * 2
     for pgroup in params:
         for parameter in params[pgroup]:
             parameter.bind_keys(window)
+            parameter.resize(window, size=(int(width - w_offset), None))
 
     # Resize window
-    #screen_w, screen_h = window.get_screen_dimensions()
-    #wh_ratio = 0.75  # window width to height ratio
-    #win_h = int(screen_h * 0.8)  # open at 80% of the height of the screen
-    #win_w = int(win_h * wh_ratio) if (win_h * wh_ratio) <= screen_w else screen_w
-
-    #window[height_key].set_size(size=(None, int(win_h)))
-    #window[width_key].set_size(size=(int(win_w), None))
-    w_offset = mod_const.SCROLL_WIDTH + pad_v * 2
-    for pgroup in params:
-        for param in params[pgroup]:
-            #param.resize(window, size=(int(win_w - 40), None))
-            param.resize(window, size=(int(width - w_offset), None))
-
     window = align_window(window)
     current_w, current_h = [int(i) for i in window.size]
 
@@ -680,7 +687,7 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
                     acct_param.value = acct_param.format_value(values)
 
                     if not acct_param.has_value():  # no value set for parameter
-                        if acct_param.required:  # parameter is required, so notify user that value must be provided
+                        if acct_param.required and not acct_param.hidden:  # parameter is both required and visible
                             msg = 'missing value from required account {ACCT} parameter {PARAM}' \
                                 .format(ACCT=pgroup, PARAM=acct_param.name)
                             logger.warning(msg)
@@ -705,10 +712,34 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
             else:
                 continue
 
+        # Hide or reveal section parameters when a section hide/unhide button is pressed
+        if event in section_bindings:
+            pgroup = section_bindings[event]
+            pgroup_params = params[pgroup]
+            pgroup_element = window['-{}-'.format(pgroup)]
+            pgroup_bttn = window['-{}_BTTN-'.format(pgroup)]
+
+            pgroup_visible = pgroup_element.metadata['visible']
+            if pgroup_visible:  # section parameters are currently visible, should hide them
+                for parameter in pgroup_params:
+                    parameter.reset(window)
+                    parameter.hidden = True
+
+                pgroup_element.metadata['visible'] = False
+                pgroup_element.update(visible=False)
+                pgroup_bttn.update(image_data=mod_const.UNHIDE_ICON)
+            else:  # section parameters are currently hidden, should unhide them
+                for parameter in pgroup_params:
+                    parameter.hidden = False
+
+                pgroup_element.metadata['visible'] = True
+                pgroup_element.update(visible=True)
+                pgroup_bttn.update(image_data=mod_const.HIDE_ICON)
+
         # Associated account parameter events
-        if event in bindings:
+        if event in param_bindings:
             # Fetch the parameter corresponding to the window event element
-            event_pgroup = bindings[event]
+            event_pgroup = param_bindings[event]
             pgroup_params = params[event_pgroup]
             event_param = mod_param.fetch_parameter(pgroup_params, event, by_key=True)
 
