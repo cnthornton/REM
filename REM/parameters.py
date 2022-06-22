@@ -425,8 +425,6 @@ class InputParameter:
             return ''
 
         display_value = self.format_display_value(value)
-        logger.debug('InputParameter {NAME}: editable {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
 
         logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
@@ -517,7 +515,7 @@ class InputParameter:
 
         # Update element text
         display_value = self.format_display()
-        display_text = self.placeholder if display_value == '' else display_value
+        display_text = self.placeholder if (display_value == '' and self.placeholder) else display_value
         window[elem_key].update(value=display_text)
 
     def toggle(self, window, off: bool = False):
@@ -1296,9 +1294,6 @@ class InputParameterCombo(InputParameter):
             display_value = aliases[value]
         except KeyError:
             display_value = self.format_display_value(value)
-
-        logger.debug('InputParameter {NAME}: editable {EDIT}; hidden {VIS}'
-                     .format(NAME=self.name, EDIT=self.editable, VIS=self.hidden))
 
         logger.debug('InputParameter {NAME}: formatting parameter value {VAL} for display as {DISPLAY}'
                      .format(NAME=self.name, VAL=value, DISPLAY=display_value))
@@ -2353,6 +2348,9 @@ class ControlParameter:
 
         # Update the parameter window element
         self.update_display(window)
+
+    def resize(self, window):
+        pass
 
     def run_event(self, window, event, values):
         """
