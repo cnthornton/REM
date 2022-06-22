@@ -1825,7 +1825,6 @@ class DataTable(RecordElement):
         if ncol > 0 and self.modifiers['filter'] is True:
             # Resize the filter parameters
             for param in self.parameters + self.blanks:
-                print('resizing table {} filter parameter {}'.format(self.name, param.name))
                 param.resize(window, size=(column_w, None))
 
         window[self.key_lookup('Notes')].expand(expand_x=True)
@@ -4504,14 +4503,15 @@ class InputField(DataUnit):
 
         bg_col = mod_const.DEFAULT_BG_COLOR if background is None else background
         self.bg_col = background
+        border_color = self._border_color if self._border is True else bg_col
 
         annotation = self.annotate_display()
         if annotation:
             rule = self.annotation_rules[annotation]
-            border_color = rule['BackgroundColor']
+            annot_color = rule['BackgroundColor']
             tooltip = rule['Description']
         else:
-            border_color = self._border_color if self._border is True else bg_col
+            annot_color = border_color
 
         # Field label
         label_vis = not self.hide_label
@@ -4561,7 +4561,7 @@ class InputField(DataUnit):
 
         border_key = self.key_lookup('Border')
         element_layout = [icon_layout + [self._value_layout(size=(width, 1))]]
-        container_layout = [sg.Frame('', element_layout, key=border_key, background_color=border_color, border_width=0,
+        container_layout = [sg.Frame('', element_layout, key=border_key, background_color=annot_color, border_width=0,
                                      expand_x=True, vertical_alignment='c', relief='flat')]
 
         # Validation / help message
