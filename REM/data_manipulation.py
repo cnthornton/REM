@@ -254,6 +254,8 @@ def evaluate_condition(data, expression):
             exp_comps.append(exp_comp)
 
         expression = ' '.join(exp_comps)
+        print(expression)
+        print(df.index)
         try:
             df_match = df.eval(expression)
         except ValueError:
@@ -262,7 +264,7 @@ def evaluate_condition(data, expression):
             print(df.dtypes)
 
             raise
-    else:  # results are a single static value or the values of a column in the dataframe
+    else:  # component is a single static value or column values
         expression = ' '.join(components)
         if expression in header:
             values = df[expression]
@@ -272,6 +274,9 @@ def evaluate_condition(data, expression):
                 df_match = ~ values.isna()
         else:
             df_match = df.eval(expression)
+
+    if not isinstance(df_match, pd.Series):
+        df_match = pd.Series(df_match, df.index)
 
     return df_match
 

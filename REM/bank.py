@@ -58,11 +58,11 @@ class BankRule:
         self.id = randint(0, 1000000000)
         self.element_key = '-{NAME}_{ID}-'.format(NAME=name, ID=self.id)
         self.elements = {i: '-{NAME}_{ID}_{ELEM}-'.format(NAME=self.name, ID=self.id, ELEM=i) for i in
-                         ('Panel', 'Account', 'Association', 'Reconcile', 'Parameters', 'Cancel', 'Save',
+                         ('Panel', 'Account', 'Association', 'Reconcile', 'ParameterButton', 'Cancel', 'Save',
                           'Panel1', 'Panel2', 'MessageP1', 'MessageP2', 'Frame', 'Buttons', 'Title', 'Database')}
 
         self.bindings = {self.elements[i]: i for i in
-                         ('Cancel', 'Save', 'Account', 'Association', 'Parameters', 'Reconcile')}
+                         ('Cancel', 'Save', 'Account', 'Association', 'ParameterButton', 'Reconcile')}
 
         try:
             self.menu_title = entry['MenuTitle']
@@ -299,8 +299,6 @@ class BankRule:
             # event that may modify one side of a reference, which requires an update to the other side of the
             # reference.
             selected_reference_indices = triggers.get('ReferenceIndex')
-            print('selected reference indices are:')
-            print(selected_reference_indices)
             if selected_reference_indices and len(selected_reference_indices) > 0:
                 self.update_references()
                 self.update_display(window)
@@ -441,7 +439,7 @@ class BankRule:
         # An account was selected from the account entry dropdown. Selecting an account will display the associated
         # sub-panel.
         elif rule_event == 'Account':
-            param_key = self.key_lookup('Parameters')
+            param_key = self.key_lookup('ParameterButton')
 
             acct_title = values[event]
             if not acct_title:
@@ -501,10 +499,10 @@ class BankRule:
 
         # Set parameters button was pressed. Will open parameter settings window for user to input parameter values,
         # then load the relevant account record data
-        elif rule_event == 'Parameters' and acct is not None:
+        elif rule_event == 'ParameterButton' and acct is not None:
             acct_key = self.key_lookup('Account')
             assoc_key = self.key_lookup('Association')
-            param_key = self.key_lookup('Parameters')
+            param_key = self.key_lookup('ParameterButton')
             reconcile_key = self.key_lookup('Reconcile')
             save_key = self.key_lookup('Save')
 
@@ -525,7 +523,7 @@ class BankRule:
                 param_def[trans_acct.title] = trans_acct.parameters
                 acct_titles[trans_acct_name] = trans_acct.title
 
-            params = mod_win2.parameter_window(param_def)
+            params = mod_win2.parameter_window(param_def, title=self.menu_title)
 
             # Load the account records
             if params:  # parameters were saved (selection not cancelled)
@@ -643,6 +641,7 @@ class BankRule:
             else:
                 # Annotate reference entries
                 if len(assoc_pairs) > 0:
+                    print('annotating reference pairs: {}'.format(assoc_pairs))
                     self.annotate_references(assoc_pairs)
 
                 # Update the sub-panel displays
@@ -657,7 +656,7 @@ class BankRule:
         panel_key = self.element_key
         entry_key = self.key_lookup('Account')
         assoc_key = self.key_lookup('Association')
-        param_key = self.key_lookup('Parameters')
+        param_key = self.key_lookup('ParameterButton')
         warn1_key = self.key_lookup('MessageP1')
         warn2_key = self.key_lookup('MessageP2')
 
@@ -735,7 +734,7 @@ class BankRule:
 
         # Element parameters
         bttn_text_col = mod_const.WHITE_TEXT_COLOR
-        bttn_bg_col = mod_const.BUTTON_COLOR
+        bttn_bg_col = mod_const.BUTTON_BG_COLOR
         disabled_text_col = mod_const.DISABLED_TEXT_COLOR
         disabled_bg_col = mod_const.DISABLED_BUTTON_COLOR
         bg_col = mod_const.DEFAULT_BG_COLOR
@@ -750,18 +749,18 @@ class BankRule:
         pad_v = mod_const.VERT_PAD
         pad_frame = mod_const.FRAME_PAD
 
-        # Element sizes
+        # Panel component size
         title_w, title_h = (mod_const.TITLE_WIDTH, mod_const.TITLE_HEIGHT)
-        pad_h = 22  # horizontal bar with padding
-        bttn_h = mod_const.BTTN_HEIGHT
-        header_h = 52
-        warn_h = 50
+        hbar_h = 2 + pad_v * 2  # horizontal bar with top/bottom padding
+        bttn_h = mod_const.BTTN_HEIGHT  # height of the panel navigation buttons
+        header_h = 52  # height of the parameter bar
+        warn_h = 50  # height of the warning bar at the bottom of the subpanels
 
         frame_w = width - pad_frame * 2
         frame_h = height - title_h - warn_h - bttn_h  # height minus title bar, warning multiline, and buttons height
 
         panel_w = frame_w
-        panel_h = frame_h - header_h - pad_h  # minus panel title, padding, and button row
+        panel_h = frame_h - header_h - hbar_h  # minus panel title, padding, and button row
 
         # Layout elements
 
@@ -780,7 +779,7 @@ class BankRule:
         entries = [i.title for i in self.accts]
 
         entry_key = self.key_lookup('Account')
-        param_key = self.key_lookup('Parameters')
+        param_key = self.key_lookup('ParameterButton')
         db_key = self.key_lookup('Database')
         db_size = (max([len(i) for i in settings.alt_dbs]), 1)
         param_size = (max([len(i) for i in entries]), 1)
@@ -796,7 +795,7 @@ class BankRule:
                                              background_color=bg_col, disabled=False, tooltip='Record database'),
                                     sg.Button('', key=param_key, image_data=mod_const.SELECT_PARAM_ICON,
                                               image_size=(28, 28), button_color=(text_col, bg_col), disabled=True,
-                                              tooltip='Set parameters')
+                                              tooltip='Parameter selection')
                                     ]],
                                   element_justification='r', background_color=bg_col)
                            ]],
@@ -832,15 +831,16 @@ class BankRule:
         reconcile_key = self.key_lookup('Reconcile')
 
         # Rule parameter elements
-        if len(params) > 1:
-            param_pad = ((0, pad_el * 2), 0)
-        else:
-            param_pad = (0, 0)
+        #if len(params) > 1:
+        #    param_pad = ((0, pad_el * 2), 0)
+        #else:
+        #    param_pad = (0, 0)
+        param_pad = ((0, pad_el * 2), 0)
 
         assoc_key = self.key_lookup('Association')
         rec_elements = []
         for param in params:
-            element_layout = param.layout(padding=param_pad, auto_size_desc=True)
+            element_layout = param.layout(padding=param_pad)
             rec_elements.extend(element_layout)
 
         rec_elements.append(sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
@@ -935,6 +935,10 @@ class BankRule:
 
         window[self.key_lookup('MessageP1')].expand(expand_x=True)
         window[self.key_lookup('MessageP2')].expand(expand_x=True)
+
+        # Resize parameters
+        for parameter in self.parameters:
+            parameter.resize(window)
 
         # Resize account panels
         accts = self.accts
@@ -1205,7 +1209,6 @@ class BankRule:
             indices (list): list of tuples containing the record ID and reference ID pairs used to subset the merged
                 tables for annotation [Default: annotate all entries].
         """
-        print('annotating record associations')
         acct_name = self.current_account
         acct = self.fetch_account(acct_name)
 
@@ -1214,7 +1217,6 @@ class BankRule:
 
         # Merge and index the account table data
         merged_df = acct.merge_data()
-        print(merged_df)
         merged_df.set_index(['RecordID', ref_col], inplace=True)
         merged_df = merged_df.add_prefix(acct_prefix)
 
@@ -1226,25 +1228,31 @@ class BankRule:
         else:
             sub_inds = merged_df.index.tolist()
 
+        print('annotating record associations at indices {}'.format(sub_inds))
+
         merged_df = merged_df.loc[sub_inds]
 
         print('merged dataframe:')
         print(merged_df)
 
         # Merge reference account data with account data on reference IDs
-        transaction_rules = acct.transactions
-        for ref_acct_name in transaction_rules:
-            assoc_acct = self.fetch_account(ref_acct_name)
-            assoc_prefix = '{}.'.format(ref_acct_name)
+        for panel_key in self.panels:
+            assoc_acct = self.fetch_account(panel_key, by_key=True)
+            assoc_name = assoc_acct.name
+
+            if assoc_name == acct_name:
+                continue
+
+            print('preparing association account {} data for merging'.format(assoc_name))
+            assoc_prefix = '{}.'.format(assoc_name)
             assoc_ref_col = assoc_acct.ref_map['ReferenceID']
 
             assoc_df = assoc_acct.merge_data()
             assoc_df.rename(columns={'RecordID': ref_col, assoc_ref_col: 'RecordID'}, inplace=True)
             assoc_df.set_index(['RecordID', ref_col], inplace=True)
             assoc_df = assoc_df.add_prefix(assoc_prefix)
-            print(assoc_df)
-            print('shared entries for the given indices for account {}:'.format(ref_acct_name))
-            print(assoc_df[assoc_df.index.isin(sub_inds)])
+            print('number of shared entries for the given indices for account {}:'.format(assoc_name))
+            print(assoc_df[assoc_df.index.isin(sub_inds)].shape[0])
 
             merged_df = merged_df.merge(assoc_df, how='left', left_index=True, right_index=True)
 
@@ -1271,6 +1279,7 @@ class BankRule:
 
                     continue
 
+                print(results)
                 merged = merged[results]
 
             if merged.empty:
@@ -1300,6 +1309,7 @@ class BankRule:
         # Add annotations to the "ReferenceNotes" reference field
         reference_indices = acct.update_reference_field('ReferenceNotes', new_values, on=update_on)
         if len(reference_indices) > 0:
+            print('updating reference indices {} with annotations'.format(reference_indices))
             self.update_references()
 
         return reference_indices
@@ -1740,6 +1750,7 @@ class BankAccount:
         table = self.table
 
         # Reset the record table and the reference dataframe
+        print('resetting account {} table'.format(self.name))
         self.table.reset(window)
         self.assoc_table.reset(window)
         self.ref_df = None
@@ -2133,6 +2144,7 @@ class BankAccount:
                 the length of the value set.
         """
         ref_df = self.ref_df
+        print('reference table has fields {}'.format(ref_df.columns.tolist()))
 
         if field not in ref_df.columns:
             msg = 'BankAccount {NAME}: failed to update reference field "{COL}" - {COL} is not a valid reference ' \
@@ -2141,6 +2153,8 @@ class BankAccount:
 
         # Find update indices based on the condition set
         update_indices = self._subset(ref_df, on)
+        print('BankAccount {}: updating reference field {} on indices {}'.format(self.name, field, update_indices))
+        print(values)
 
         # Set values for reference column entries
         ref_df.loc[update_indices, [field]] = values
