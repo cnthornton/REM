@@ -479,15 +479,16 @@ class DataTable(RecordElement):
         except KeyError:
             sort_on = []
 
-        self._default_sort = []
+        default_sort = []
         for sort_col in sort_on:
             if sort_col in columns:
-                self._default_sort.append(sort_col)
+                default_sort.append(sort_col)
             else:
                 msg = self.format_log('sort column {COL} not found in table columns'.format(COL=sort_col))
                 logger.warning(msg)
 
-        self.sort_on = self._default_sort
+        self._default_sort = default_sort
+        self.sort_on = default_sort
 
         try:
             nrow = int(entry['Rows'])
@@ -733,11 +734,13 @@ class DataTable(RecordElement):
         self.collection.reset()
         self.index_map = {}
         self.edited = False
-        self.sort_on = self._default_sort
+        sort_on = self._default_sort
+        self.sort_on = sort_on
 
         # Reset table filter parameters
         if reset_filters:
             for param in self.parameters:
+                print('resetting table filter parameter {}'.format(param.name))
                 param.reset(window)
 
         # Collapse visible frames
@@ -871,7 +874,7 @@ class DataTable(RecordElement):
                 sort_on = self.sort_on
                 display_map = {j: i for i, j in self.display_columns.items()}
 
-                # Get sort column
+                # Get the sort column
                 display_col = values[sort_key]
                 try:
                     sort_col = display_map[display_col]
@@ -881,9 +884,11 @@ class DataTable(RecordElement):
                 else:
                     if sort_col in sort_on:
                         # Remove column from sortby list
+                        logger.debug(self.format_log('cancelling row sort on field {COL}'.format(COL=sort_col)))
                         self.sort_on.remove(sort_col)
                     else:
                         # Add column to sortby list
+                        logger.debug(self.format_log('sorting rows on field {COL}'.format(COL=sort_col)))
                         self.sort_on.append(sort_col)
 
                 # Update the display table to show the sorted values
@@ -1198,7 +1203,8 @@ class DataTable(RecordElement):
             sort_key = self.key_lookup('Sort')
 
             display_map = {j: i for i, j in self.display_columns.items()}
-            for menu_index, display_col in enumerate(display_map):
+            display_header = self._display_header()
+            for menu_index, display_col in enumerate(display_header):
                 display_val = display_map[display_col]
                 if display_val in self.sort_on:
                     # Get order of sort column
@@ -1625,7 +1631,7 @@ class DataTable(RecordElement):
                      sg.Image(data=mod_const.FILTER_ICON, pad=((0, pad_h), 0), background_color=border_col),
                      sg.Text('Filter', pad=((0, pad_h), 0), text_color=select_text_col,
                              background_color=border_col),
-                     sg.Button('', image_data=mod_const.UNHIDE_ICON, key=self.key_lookup('CollapseBttn'),
+                     sg.Button('', image_data=mod_const.EXPAND_ICON, key=self.key_lookup('CollapseBttn'),
                                button_color=(text_col, border_col), border_width=0,
                                tooltip='Collapse filter panel')]],
                    key=self.key_lookup('FilterBar'), element_justification='c', background_color=border_col,
@@ -1903,14 +1909,14 @@ class DataTable(RecordElement):
 
         if frame_meta['visible']:  # already visible, so want to collapse the frame
             logger.debug(self.format_log('collapsing the filter frame'))
-            bttn.update(image_data=mod_const.UNHIDE_ICON)
+            bttn.update(image_data=mod_const.EXPAND_ICON)
             frame.update(visible=False)
 
             frame.metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
             if not frame_meta['disabled']:
                 logger.debug(self.format_log('expanding the filter frame'))
-                bttn.update(image_data=mod_const.HIDE_ICON)
+                bttn.update(image_data=mod_const.COLLAPSE_ICON)
                 frame.update(visible=True)
 
                 frame.metadata['visible'] = True
