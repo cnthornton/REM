@@ -570,11 +570,6 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
                              pad=(pad_el, 0), button_color=(text_col, frame_col), border_width=0,
                              metadata={'visible': can_hide, 'disabled': False})]]
 
-        #pgroup_layout = [[sg.Col([[sg.Text(section_title, pad=(0, 0), font=bold_font, text_color=text_col,
-        #                                   background_color=frame_col)]],
-        #                         expand_x=True, background_color=frame_col, justification='l')],
-        #                 [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, 0))]]
-
         # Create the import parameter objects and layouts for the associated account
         param_layout = []
         for param_name in section_params:
@@ -599,8 +594,6 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
                          [sg.HorizontalSeparator(color=mod_const.FRAME_COLOR, pad=(0, 0))],
                          [sg.pin(sg.Col(param_layout, key='-{}-'.format(section_title), background_color=bg_col,
                                         pad=(pad_h, pad_v), visible=True, expand_x=True, metadata={'visible': True}))]]
-        #sections_layout.append([sg.Col(pgroup_layout, key='-{}-'.format(section_title), pad=(pad_h, pad_v),
-        #                               background_color=bg_col, visible=True, expand_x=True, metadata={'visible': True})])
         sections_layout.append([sg.Col(pgroup_layout, background_color=bg_col, expand_x=True)])
 
     # Control elements
@@ -735,6 +728,9 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
                 pgroup_element.metadata['visible'] = True
                 pgroup_element.update(visible=True)
                 pgroup_bttn.update(image_data=mod_const.HIDE_ICON)
+
+            window.refresh()
+            window['-PARAMS-'].contents_changed()
 
         # Associated account parameter events
         if event in param_bindings:
