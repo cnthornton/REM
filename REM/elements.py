@@ -2179,7 +2179,12 @@ class DataTable(RecordElement):
 
             indices (list): optional list of real row indices to modify [Default: update all rows].
         """
-        edited = self.collection.update_field(column, values, indices=indices)
+        indices = self.collection.update_field(column, values, indices=indices)
+
+        if len(indices) > 0:
+            edited = True
+        else:
+            edited = False
 
         return edited
 

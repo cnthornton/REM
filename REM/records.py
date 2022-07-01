@@ -1767,7 +1767,6 @@ class DatabaseRecord:
 
                         if element_name == '' and column_num < 3:
                             blank_name = 'Blank{SEC}.{ROW}.{COL}'.format(SEC=i, ROW=row_num, COL=column_num)
-                            print('adding blank element {} to row {}, column {} of section {}'.format(blank_name, row_num, column_num, section))
                             blank_element = mod_elem.BlankField(blank_name, parent=self.name)
 
                             self.blanks.append(blank_element)
@@ -1800,20 +1799,15 @@ class DatabaseRecord:
 
                                 remaining_elements.append(element_name)
                             else:
-                                print('adding element {} to row {}, column {} of section {}'.format(element_name, row_num, column_num, section))
                                 row_elements.append(element_name)
                                 column_num += 1
 
                         used_section_elements.append(element_name)
 
-                    print('adding section {} elements to row {}: {}'.format(section, row_num, row_elements))
                     section_layout[row_num] = row_elements
                     row_num += 1  # next row
-                    print('next row is {}'.format(row_num))
 
                     for element_name in remaining_elements:
-                        print('adding section {} remainder elements to next row {}: {}'.format(section, row_num, row_elements))
-
                         section_layout[row_num] = [element_name]
                         row_num += 1
 
@@ -1896,7 +1890,6 @@ class DatabaseRecord:
             msg = 'component {COMP} not found in list of record {NAME} components' \
                 .format(COMP=component, NAME=self.name)
             logger.warning(msg)
-            print(key_map)
 
             raise KeyError(msg)
 
@@ -2166,8 +2159,6 @@ class DatabaseRecord:
             logger.debug('RecordType {NAME}: searching record elements by name {KEY}'
                          .format(NAME=self.name, KEY=identifier))
             element_names = [i.name for i in elements]
-
-        print(element_names)
 
         element = [elements[i] for i, j in enumerate(element_names) if j == identifier]
         if len(element) == 0:
@@ -2866,8 +2857,6 @@ class DatabaseRecord:
             except (KeyError, ValueError):
                 section_template['level'] = 0
 
-            print('adding section {} to the body at heading level {}'.format(section, section_template['level']))
-
             try:
                 section_elements = section_entry['Elements']
             except KeyError:
@@ -2877,7 +2866,6 @@ class DatabaseRecord:
 
             elements = {}
             for report_element in section_elements:
-                print('adding report element {} to section {}'.format(report_element, section))
                 try:
                     element_entry = element_settings[report_element]
                 except KeyError:
@@ -2900,10 +2888,7 @@ class DatabaseRecord:
                 except KeyError:
                     elem_title = element.description
 
-                print('report element {} has title {}'.format(report_element, elem_title))
-
                 if element.is_type('table'):  # record element is a table
-                    print('report element {} is a table element'.format(report_element))
                     # Subset table rows based on configured subset rules
                     try:
                         sub_rule = element_entry['Subset']
@@ -3007,7 +2992,6 @@ class DatabaseRecord:
                     elem_value = html_out
                     element_template = {'type': 'table', 'title': elem_title, 'value': elem_value}
                 else:
-                    print('report element {} is a variable element'.format(report_element))
                     elem_value = element.format_display()
                     if not elem_value or elem_value == "":
                         elem_value = 'N/A'
@@ -3155,7 +3139,7 @@ class DatabaseRecord:
                 header_left = [
                     sg.Text(section_title, text_color=headings_text_col, background_color=headings_bg_col,
                             font=bold_font)]
-                header_right = [sg.Button('', image_data=mod_const.HIDE_ICON, key=section_bttn_key, disabled=False,
+                header_right = [sg.Button('', image_data=mod_const.COLLAPSE_ICON, key=section_bttn_key, disabled=False,
                                           button_color=(headings_text_col, headings_bg_col), border_width=0,
                                           visible=True, metadata={'visible': True, 'disabled': False})]
 
@@ -3187,17 +3171,13 @@ class DatabaseRecord:
                 # Section body layout
                 section_layout = []
                 section_elements = section_entry['Layout']
-                print(section_elements)
                 for section_row in section_elements:
                     row_elements = section_elements[section_row]
                     n_elem = len(row_elements)
-                    print(row_elements)
 
                     row = []
                     for i, element_name in enumerate(row_elements):
-                        print('fetching element {}'.format(element_name))
                         element = self.fetch_element(element_name)
-                        print(element)
                         element_layout = element.layout(editable=editable, overwrite=is_new, level=level)
 
                         row.append(element_layout)
@@ -3289,7 +3269,6 @@ class DatabaseRecord:
             elem_h = None
             column_div = divmod(width - section_w_pad - spacer_w * 2, 3)
             column_w = column_div[0] + column_div[1]
-            print('each columns has width {}'.format(column_w))
 
             section_layout = section_entry['Layout']
             for row in section_layout:
@@ -3315,7 +3294,6 @@ class DatabaseRecord:
                         elem_w = column_w
 
                     elem_size = (elem_w, elem_h)
-                    print('resizing record {} element {} to: {}'.format(self.name, record_element.name, elem_size))
                     record_element.resize(window, size=elem_size)
 
         self._dimensions = (width, height)
@@ -3330,14 +3308,14 @@ class DatabaseRecord:
         if window[frame_key].metadata['visible'] is True:  # already visible, so want to collapse the frame
             logger.debug('RecordType {NAME}, Record {ID}: collapsing section {FRAME}'
                          .format(NAME=self.name, ID=self.record_id(), FRAME=section))
-            window[hide_key].update(image_data=mod_const.UNHIDE_ICON)
+            window[hide_key].update(image_data=mod_const.EXPAND_ICON)
             window[frame_key].update(visible=False)
 
             window[frame_key].metadata['visible'] = False
         else:  # not visible yet, so want to expand the frame
             logger.debug('RecordType {NAME}, Record {ID}: expanding section {FRAME}'
                          .format(NAME=self.name, ID=self.record_id(), FRAME=section))
-            window[hide_key].update(image_data=mod_const.HIDE_ICON)
+            window[hide_key].update(image_data=mod_const.COLLAPSE_ICON)
             window[frame_key].update(visible=True)
 
             window[frame_key].metadata['visible'] = True
