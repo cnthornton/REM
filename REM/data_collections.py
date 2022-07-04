@@ -510,12 +510,15 @@ class DataCollection:
         else:  # dataframe of row values
             values = values.set_index(pd.Index(index))
 
-        new_values = self.enforce_conformity(values)[header]
+        new_values = self.enforce_conformity(values)
 
         edited_rows = set()
         edited_cols = []
         for row_ind, row in new_values.iterrows():
             for column, row_value in row.iteritems():
+                if column not in header:
+                    continue
+
                 orig_value = df.loc[row_ind, column]
                 if row_value != orig_value:
                     df.at[index, column] = row_value
@@ -1102,6 +1105,34 @@ class DataCollection:
 
         return edited_indices
 
+    def update(self, update_df, inplace: bool = True):
+        """
+        Update a collection using another dataframe. Indices of the external dataframe should match the indices of the
+        desired update entries.
+        """
+        df = self.df.copy()
+
+        if update_df.empty:  # no data to add
+            return df
+
+        # Convert add_df to dataframe
+        if isinstance(update_df, pd.Series):
+            update_df = update_df.to_frame().T
+        elif isinstance(update_df, dict):
+            update_df = pd.DataFrame(update_df)
+
+        # Edit the edited state field to show that the entries were modified from their original values
+        update_df[self._edited_column] = True
+
+        # Only update on common indices
+        df.loc[update_df.index, update_df.columns] = update_df
+        df = self._set_dtypes(df)  # the replace method does not preserve dtypes
+
+        if inplace:
+            self.df = df
+
+        return df
+
     def transform(self, field, operator, value=None, inplace: bool = True):
         """
         Transform a field's values.
@@ -1266,13 +1297,13 @@ class ReferenceCollection(DataCollection):
         """
         super(ReferenceCollection, self).__init__(name, entry)
         self._state_fields = {'deleted': self._deleted_column, 'edited': self._edited_column,
-                              'added': self._added_column, 'approved': 'IsApproved', 'child': 'IsChild',
-                              'link': 'IsHardLink'}
+                              'added': self._added_column}
 
         self.dtypes = {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
                        'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool',
                        'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool', 'ReferenceWarnings': 'varchar',
-                       'ReferenceNotes': 'varchar'}
+                       'ReferenceNotes': 'varchar', self._deleted_column: 'bool', self._edited_column: 'bool',
+                       self._added_column: 'bool'}
 
         self.df = self._set_dtypes(df=pd.DataFrame(columns=list(self.dtypes)))
 
@@ -1309,39 +1340,6 @@ class ReferenceCollection(DataCollection):
 
         return indices
 
-    def row_ids(self, indices: list = None, deleted: bool = False, ref: bool = False):
-        """
-        Return a list of the current record IDs stored in the collection.
-
-        Arguments:
-            indices (list): optional list of indices to subset collection on [Default: get all record IDs in the
-                table].
-
-            deleted (bool): include deleted rows [Default: False].
-
-            ref (bool): record IDs are reference IDs [Default: False].
-        """
-        id_field = 'RecordID' if not ref else 'ReferenceID'
-        if isinstance(indices, int):
-            indices = [indices]
-
-        if deleted or (indices is not None and len(indices) > 0):
-            df = self.data(current=False)  # all rows, not just current
-        else:
-            df = self.data()
-
-        if indices is None:
-            indices = df.index
-
-        try:
-            row_ids = df.loc[indices, id_field].tolist()
-        except KeyError as e:
-            logger.exception('DataCollection {NAME}: unable to return a list of row IDs - {ERR}'
-                             .format(NAME=self.name, COL=id_field, ERR=e))
-            row_ids = []
-
-        return row_ids
-
     def append(self, add_df, inplace: bool = True, new: bool = False, reindex: bool = True):
         """
         Add data to the collection.
@@ -1367,64 +1365,80 @@ class ReferenceCollection(DataCollection):
         elif isinstance(add_df, dict):
             add_df = pd.DataFrame(add_df)
 
-        # Add the "state" columns to the new data
-        add_df.loc[:, [self._added_column, self._edited_column, self._deleted_column]] = [new, False, False]
-
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
-
-        # Add new data to the table
 
         # Find shared entries between the collection and the new data to add
         if not df.empty:
             df.set_index(['RecordID', 'ReferenceID'], inplace=True)
             add_df.set_index(['RecordID', 'ReferenceID'], inplace=True)
 
-            common_inds = add_df.index.intersection(df.index)
+            common_inds = add_df.index.intersection(df.index).tolist()
+
             print('collection and new data have indices in common: {}'.format(common_inds))
             mod_df = add_df.loc[common_inds]
+            mod_df.loc[:, [self._edited_column, self._deleted_column]] = [True, False]
             logger.debug('DataCollection {NAME}: modifying {NROW} entries in the collection'
                          .format(NAME=self.name, NROW=mod_df.shape[0]))
-            df.update(mod_df)
+            print('updated shared data is:')
+            print(mod_df)
+
+            real_inds = self.get_index(mod_df.index.tolist(), combined=True)
+            print('shared data has real collection indices: {}'.format(real_inds))
+            mod_df = mod_df.reset_index().set_index(pd.Index(real_inds))
+            df.reset_index(inplace=True)
+
+            print('updating dataframe with:')
+            print(mod_df.to_dict())
+            print('current collection values at update indices:')
+            print(df.loc[real_inds])
+
+            df.loc[mod_df.index, mod_df.columns] = mod_df
+            df = self._set_dtypes(df)  # the replace method does not preserve dtypes
+            print('new collection values at the update indices:')
+            print(df.loc[real_inds])
 
             # Find new entries to be appended to the collection
             new_df = add_df.loc[~add_df.index.isin(common_inds)]
-
             new_df.reset_index(inplace=True)
-            df.reset_index(inplace=True)
+
         else:  # no shared entries, all is new
             new_df = add_df
 
+        # Add "state" columns to the new data
+        new_df.loc[:, [self._added_column, self._edited_column, self._deleted_column]] = [new, False, False]
+
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
                      .format(NAME=self.name, NROW=new_df.shape[0]))
-        print(new_df)
 
+        # Add new data to the collection
         df = df.append(new_df, ignore_index=reindex)
+
+        print('collection data has dtypes after appending:')
+        print(df.dtypes)
 
         if inplace:
             self.df = df
 
         return df
 
-    def data(self, current: bool = True, indices: list = None, on=None, edited_only: bool = False,
-             deleted_only: bool = False, added_only: bool = False, drop_na: bool = False, fields: list = None,
-             reference: bool = False):
+    def data(self, indices: list = None, on=None, edited: bool = None, added: bool = None, deleted: bool = False,
+             drop_na: bool = False, fields: list = None, reference: bool = False):
         """
         Return the collection data.
 
         Arguments:
-            current (bool): return only the current entries, excluding the deleted entries [Default: True].
-
             indices (list): return entries at the given indices [Default: None].
 
             on: conditions specifying how to select the proper indices based on collection field values. on and indices
                 are mutually exclusive.
 
-            edited_only (bool): return only the entries that have been edited [Default: False].
+            edited (bool): return entries that have been edited [Default: None - don't filter on edited].
 
-            deleted_only (bool): return only the entries that have been deleted from the collection [Default: False].
+            deleted (bool): return entries that have been deleted from the collection [Default: False - don't return
+                entries that have been set as "deleted"].
 
-            added_only (bool): return only the entries that have been added to the collection [Default: False].
+            added (bool): return entries that have been added to the collection [Default: None - don't filter on added].
 
             drop_na (bool): drop columns with all NA/NULL values [Default: False].
 
@@ -1437,18 +1451,16 @@ class ReferenceCollection(DataCollection):
         """
         df = self.df.copy()
         dtypes = self.dtypes
-        state_fields = [self._added_column, self._edited_column, self._deleted_column]
+
+        add_field = self._added_column
+        edit_field = self._edited_column
+        del_field = self._deleted_column
+        state_fields = {edit_field: edited, add_field: added, del_field: deleted}
+
         if not (isinstance(fields, list) or isinstance(fields, tuple)):
             fields = list(dtypes)
 
         select_fields = [i for i in fields if i not in state_fields]
-
-        if current and (indices is not None or deleted_only is True):
-            current = False
-
-        if current:
-            deleted_indices = self._deleted_rows()
-            df.drop(deleted_indices, inplace=True)
 
         if isinstance(indices, int):
             sub_inds = [indices]
@@ -1456,26 +1468,37 @@ class ReferenceCollection(DataCollection):
             sub_inds = indices
         elif on is not None:
             sub_inds = self._subset(on)
-        else:
+        else:  # no subsetting specified, return all entries
             sub_inds = df.index.tolist()
 
         df = df.loc[sub_inds]
 
-        # Filter on edited rows, if desired
-        if edited_only:  # all edited, current edited, or edited and deleted
-            df = df[(df[self._added_column]) | (df[self._edited_column])]
-        elif added_only:  # all added, current added, or added and then deleted
-            df = df[df[self._added_column]]
-        elif deleted_only:
-            df = df[df[self._deleted_column]]
+        # Filter by row state information
+        include = []
+        exclude = []
+        for field in state_fields:
+            field_state = state_fields[field]
+            if field_state is True:
+                include.append(field)
+            elif field_state is False:
+                exclude.append(field)
 
-        # Remove the state fields from the data
-        try:
-            df = df[select_fields]
-        except KeyError:
-            print(df)
-            print(select_fields)
-            raise
+        n_include = len(include)
+        n_exclude = len(exclude)
+        if n_include > 0 and n_exclude > 0:
+            state_filter = '({IN}) & ~({EX})'.format(IN='|'.join(include), EX='|'.join(exclude))
+        elif n_include > 0 and n_exclude == 0:
+            state_filter = '{IN}'.format(IN='|'.join(include))
+        elif n_include == 0 and n_exclude > 0:
+            state_filter = '~({EX})'.format(EX='|'.join(exclude))
+        else:
+            state_filter = None
+
+        if state_filter is not None:
+            df = df.query(state_filter)
+
+        # Filter by selected fields, excluding state fields
+        df = df[select_fields]
 
         # Remove columns with all null values
         if drop_na:

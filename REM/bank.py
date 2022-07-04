@@ -10,6 +10,7 @@ import PySimpleGUI as sg
 import re
 
 import REM.constants as mod_const
+import REM.data_collections as mod_col
 import REM.data_manipulation as mod_dm
 import REM.elements as mod_elem
 import REM.layouts as mod_lo
@@ -300,7 +301,8 @@ class BankRule:
             # reference.
             selected_reference_indices = triggers.get('ReferenceIndex')
             if selected_reference_indices and len(selected_reference_indices) > 0:
-                self.update_references()
+                print('updating shared reference entries at indices: {}'.format(selected_reference_indices))
+                self.update_references(indices=selected_reference_indices)
                 self.update_display(window)
 
             # Update warning element with the reference notes of the selected record, if any.
@@ -317,7 +319,8 @@ class BankRule:
                     # Set the reference warning, if any
                     sub_on = {'RecordID': [first_selected_record_id]}
                     record_warning = acct.reference_field_values('ReferenceWarnings', on=sub_on)
-                    #record_warning = acct.reference_field_values('ReferenceWarnings', first_selected_record_id)
+                    print(record_warning)
+                    # record_warning = acct.reference_field_values('ReferenceWarnings', first_selected_record_id)
                     if len(record_warning) > 0:
                         panel_message = record_warning[0]
                     else:
@@ -548,7 +551,8 @@ class BankRule:
                     return self.reset_rule(window, current=True)
 
                 # Get a list of records referenced by the main account records
-                ref_df = acct.ref_df.copy()
+                # ref_df = acct.ref_df.copy()
+                ref_df = acct.references.data()
                 ref_df = ref_df[~ref_df['ReferenceID'].isna()]
 
                 # Enable table action buttons for the main account
@@ -831,9 +835,9 @@ class BankRule:
         reconcile_key = self.key_lookup('Reconcile')
 
         # Rule parameter elements
-        #if len(params) > 1:
+        # if len(params) > 1:
         #    param_pad = ((0, pad_el * 2), 0)
-        #else:
+        # else:
         #    param_pad = (0, 0)
         param_pad = ((0, pad_el * 2), 0)
 
@@ -1046,7 +1050,8 @@ class BankRule:
         acct_type = acct.record_type
 
         # Drop reference columns from the dataframe and then re-merge the reference dataframe and the records dataframe
-        ref_df = acct.ref_df.copy()
+        # ref_df = acct.ref_df.copy()
+        ref_df = acct.references.data()
         ref_df = ref_df[~ref_df['IsDeleted']]
         df = pd.merge(table.data().drop(columns=list(acct.ref_map.values())), ref_df, how='left', on='RecordID')
         header = df.columns.tolist()
@@ -1078,7 +1083,8 @@ class BankRule:
                 continue
 
             # Merge the associated records and references tables
-            assoc_ref_df = assoc_acct.ref_df.copy()
+            # assoc_ref_df = assoc_acct.ref_df.copy()
+            assoc_ref_df = assoc_acct.references.data()
             assoc_ref_df = assoc_ref_df[~assoc_ref_df['IsDeleted']]
             assoc_df = pd.merge(assoc_df.drop(columns=list(assoc_acct.ref_map.values())), assoc_ref_df, how='left',
                                 on='RecordID')
@@ -1307,14 +1313,15 @@ class BankRule:
         update_on = pd.DataFrame(new_rows, columns=['RecordID', 'ReferenceID'])
 
         # Add annotations to the "ReferenceNotes" reference field
-        reference_indices = acct.update_reference_field('ReferenceNotes', new_values, on=update_on)
+        #reference_indices = acct.update_reference_field('ReferenceNotes', new_values, on=update_on)
+        reference_indices = acct.references.update_field('ReferenceNotes', new_values, on=update_on).tolist()
         if len(reference_indices) > 0:
             print('updating reference indices {} with annotations'.format(reference_indices))
             self.update_references()
 
         return reference_indices
 
-    def update_references(self):
+    def update_references(self, indices: list = None):
         """
         Update reference data to be consistent across all transaction accounts.
         """
@@ -1323,20 +1330,23 @@ class BankRule:
 
         logger.debug('BankRule {NAME}: some account {ACCT} reference entries were modified - updating transaction '
                      'account reference entries for consistency'.format(NAME=self.name, ACCT=acct.name))
-        ref_df = acct.ref_df.copy()
-        ref_df = ref_df.merge(acct.get_table().data()['RecordID'], on='RecordID', how='outer')
-
-        # Flip the record and reference values for the external reference dataframe
-        ref_df.rename(columns={'RecordID': 'ReferenceID', 'ReferenceID': 'RecordID',
-                               'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
+        # ref_df = acct.ref_df.copy()
+        mod_df = acct.references.data(indices=indices, edited=True, added=True, reference=True)  # only edited or added
+        del_df = acct.references.data(indices=indices, deleted=True, reference=True)  # only deleted
 
         # Update account reference dataframes for currently active panels
         for panel in self.panels:
             ref_acct = self.fetch_account(panel, by_key=True)
 
-            logger.debug('BankRule {NAME}: updating transaction account {ACCT} reference entries'
-                         .format(NAME=self.name, ACCT=ref_acct.name))
-            ref_acct.update_references(ref_df)
+            if not mod_df.empty:
+                logger.debug('BankRule {NAME}: updating transaction account {ACCT} modified reference entries'
+                             .format(NAME=self.name, ACCT=ref_acct.name))
+                ref_acct.update_references(mod_df)
+
+            if not del_df.empty:
+                logger.debug('BankRule {NAME}: updating transaction account {ACCT} deleted reference entries'
+                             .format(NAME=self.name, ACCT=ref_acct.name))
+                ref_acct.update_references(del_df, delete=True)
 
     def save(self):
         """
@@ -1347,8 +1357,8 @@ class BankRule:
 
         # Prepare to save the account references and records
 
-        # Save changes to records from all of the active accounts
-        for panel_key in self.panels:
+        # Save record data changes
+        for panel_key in self.panels:  # iterate only over the active accounts
             acct = self.fetch_account(panel_key, by_key=True)
 
             record_type = acct.record_type
@@ -1368,11 +1378,10 @@ class BankRule:
                 return False
 
         # Save record references
-
-        # Prepare reference entries from the primary account
         logger.debug('BankRule {NAME}: preparing to save account {ACCT} reference statements'
                      .format(NAME=self.name, ACCT=self.current_account))
         acct = self.fetch_account(self.current_account)
+        references = acct.references
 
         record_type = acct.record_type
         record_entry = settings.records.fetch_rule(record_type)
@@ -1380,37 +1389,13 @@ class BankRule:
         assoc_type = acct.association_type
         assoc_rule = record_entry.association_rules[assoc_type]
 
-        ref_df = acct.ref_df.copy()
-        try:
-            existing_df = acct.load_references(acct.get_table().row_ids(deleted=True))
-        except Exception as e:
-            mod_win2.popup_error('{MSG} -  see log for details'.format(MSG=e))
-
-            return False
-
-        # Prepare the export reference entries by dropping existing entries that were not changed during the
-        # reconciliation
-        ref_df.set_index(['RecordID', 'ReferenceID'], inplace=True)
-        existing_df.set_index(['RecordID', 'ReferenceID'], inplace=True)
-        ref_index = ref_df.index.union(existing_df.index)
-
-        deleted_inds = existing_df.index.difference(ref_df.index)
-        print('existing entries that were deleted during the reconciliation:')
-        print(deleted_inds)
-
-        ref_df = ref_df.reindex(index=ref_index)
-        existing_df = existing_df.reindex(index=ref_index)
-        export_df = ref_df.loc[ref_df.compare(existing_df).index]
-        print('preparing the export reference dataframe:')
-        print(export_df)
-
-        # Prepare the modified reference entries that were deleted
-        deleted_df = export_df.loc[deleted_inds].reset_index()
+        # Prepare reference entries that were deleted
+        deleted_df = references.data(deleted=True, added=False)  # deleted, but not added entries
         print('deleted entries are:')
         print(deleted_df)
 
-        # Prepare the modified reference entries that were not deleted
-        save_df = export_df.loc[~export_df.index.isin(deleted_inds)].reset_index()
+        # Prepare reference entries that were modified but not deleted
+        save_df = references.data(edited=True, added=True)  # edited or added
         print('modified entries are:')
         print(save_df)
 
@@ -1444,7 +1429,6 @@ class BankRule:
         # Iterate over unique reference types to determine if any referenced records of the given type should also have
         # saved entries due to their status as the primary record type in the reference table
         ref_types = save_df['ReferenceType'].append(deleted_df['ReferenceType']).dropna().unique().tolist()
-        print('iterating over reference types: {}'.format(ref_types))
         for ref_type in ref_types:
             ref_entry = settings.records.fetch_rule(ref_type)
             try:
@@ -1454,35 +1438,43 @@ class BankRule:
 
             is_primary = assoc_rule['Primary']
             if is_primary:
+                print('reference {} is also primary in the association - will reverse the reference entry and save'
+                      .format(ref_type))
+
                 # Subset modified reference entries by the primary reference type and save changes
-                sub_df = save_df[save_df['ReferenceType'] == ref_type].copy()
-                sub_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
-                                       'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
+                rev_save_df = save_df[save_df['ReferenceType'] == ref_type].copy()
+                rev_save_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
+                                            'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
 
                 # Don't save reference entries twice
-                sub_df = sub_df[~sub_df['RecordID'].isin(saved_primary_ids)]
+                rev_save_df = rev_save_df[~rev_save_df['RecordID'].isin(saved_primary_ids)]
 
-                print('associated reference entries will also be saved:')
-                print(sub_df)
-                try:
-                    statements = ref_entry.save_database_references(sub_df, assoc_type, statements=statements)
-                except Exception as e:
-                    msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
-                        .format(ACCT=acct.name, ERR=e)
-                    logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+                if not rev_save_df.empty:
+                    print('associated reference entries will also be saved:')
+                    print(rev_save_df)
+                    try:
+                        statements = ref_entry.save_database_references(rev_save_df, assoc_type, statements=statements)
+                    except Exception as e:
+                        msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
+                            .format(ACCT=acct.name, ERR=e)
+                        logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-                    return False
+                        return False
 
                 # Find reference entries where the original reference was of the given reference type but was deleted
                 # during the reconciliation
-                sub_df = deleted_df[deleted_df['ReferenceType'] == ref_type].copy()
-                if sub_df.empty:
+                rev_del_df = deleted_df[deleted_df['ReferenceType'] == ref_type].copy()
+                rev_del_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
+                                           'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
+
+                if rev_del_df.empty:
                     continue
 
-                sub_df.rename(columns={'ReferenceID': 'RecordID', 'RecordID': 'ReferenceID',
-                                       'RecordType': 'ReferenceType', 'ReferenceType': 'RecordType'}, inplace=True)
+                print('associated reference entries will also deleted:')
+                print(rev_del_df)
+
                 try:
-                    statements = ref_entry.delete_database_references(sub_df, assoc_type, statements=statements)
+                    statements = ref_entry.delete_database_references(rev_del_df, assoc_type, statements=statements)
                 except Exception as e:
                     msg = 'failed to prepare the export statement for the account {ACCT} references - {ERR}' \
                         .format(ACCT=acct.name, ERR=e)
@@ -1499,9 +1491,9 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
+        #success = user.write_db(sstrings, psets)
         print(statements)
-        # success = True
+        success = True
 
         return success
 
@@ -1518,7 +1510,7 @@ class BankRule:
                 acct = self.fetch_account(acct_panel, by_key=True)
 
                 sheet_name = acct.title
-                table = acct.table
+                table = acct.get_table()
 
                 # Write table to the output file
                 export_df = table.export_table(display=False)
@@ -1562,7 +1554,7 @@ class BankAccount:
 
         table (RecordTable): table storing account record data.
 
-        ref_df (DataFrame): table for storing record references.
+        references (DataFrame): table for storing record references.
 
         _col_map (dict): required account parameters with corresponding record names.
 
@@ -1693,11 +1685,17 @@ class BankAccount:
                 params[assoc_column] = param_entry
                 self.transactions[transaction_acct] = params
 
-        self.void_transactions = entry.get('VoidTransactions', entry.get('FailedTransactions', {}))
+        #self.void_transactions = entry.get('VoidTransactions', entry.get('FailedTransactions', {}))
 
         self.import_rules = entry.get('ImportRules', record_entry.import_rules)
 
-        self.ref_df = None
+        ref_entry = {'Columns': {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
+                                 'RecordType': 'varchar', 'ReferenceType': 'varchar', 'IsApproved': 'bool',
+                                 'IsHardLink': 'bool', 'IsChild': 'bool', 'IsDeleted': 'bool',
+                                 'ReferenceWarnings': 'varchar', 'ReferenceNotes': 'varchar'}}
+
+        self.references = mod_col.ReferenceCollection(self.name, ref_entry)
+        # self.ref_df = None
         self.primary = False
 
     def key_lookup(self, component, rev: bool = False):
@@ -1753,7 +1751,8 @@ class BankAccount:
         print('resetting account {} table'.format(self.name))
         self.table.reset(window)
         self.assoc_table.reset(window)
-        self.ref_df = None
+        # self.ref_df = None
+        self.references.reset()
         self.primary = False
 
         # Disable table element events
@@ -1766,12 +1765,14 @@ class BankAccount:
         pd.set_option('display.max_columns', None)
 
         table = self.get_table()
+        references = self.references
         table_keys = table.bindings
 
         # Return values
-        record_indices = None
-        reference_indices = None
-        link_event = False
+        #record_indices = None
+        #reference_indices = None
+        #link_event = False
+        return_vals = {'ReferenceIndex': None, 'Link': False, 'RecordIndex': None}
 
         # Run a record table event.
         if event in table_keys:
@@ -1797,22 +1798,19 @@ class BankAccount:
                 else:
                     # Get the real index of the selected row
                     index = table.get_index(select_row_index)
-                    record_indices = [index]
+                    #record_indices = [index]
+                    return_vals['RecordIndex'] = [index]
 
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
                                  .format(NAME=table.name, IND=index))
                     if can_open:
-                        ref_df = self.ref_df
+                        ref_df = references.data()
                         level = 1
 
                         record = table.load_record(index, level=level, savable=False,
                                                    references={assoc_type: ref_df})
-                        if record is None:
-                            msg = 'unable to update references for record at index {IND} - no record was returned' \
-                                .format(IND=index)
-                            logger.warning('DataTable {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-                            return {}
+                        if record is None:  # user cancelled record edit
+                            return return_vals
 
                         # Update reference entry values
                         if can_edit:  # only update reference entries if the table is editable
@@ -1824,12 +1822,19 @@ class BankAccount:
                                 logger.exception(
                                     'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                             else:
+                                print('updating record table at index {}'.format(index))
+                                print('with values:')
+                                print(record_values)
                                 table.update_row(index, record_values)
 
                                 # Update the reference entry dataframe to reflect changes made to an entry through the
                                 # record window
                                 ref_values = record.export_associations(association_rule=assoc_type)
-                                reference_indices = self.update_references(ref_values)
+                                #reference_indices = self.update_references(ref_values)
+                                return_vals['ReferenceIndex'] = self.update_references(ref_values)
+                                print('updating reference table at index {}'.format(return_vals['ReferenceIndex']))
+                                print('with values:')
+                                print(ref_values)
 
                                 self.update_display(window)
 
@@ -1844,19 +1849,13 @@ class BankAccount:
                 record_ids = pd.Series(table.row_ids(indices=indices), name='RecordID')
 
                 try:
-                    reference_indices = self.update_reference_field('IsApproved', True, on=record_ids)
+                    #reference_indices = self.update_reference_field('IsApproved', True, on=record_ids)
+                    reference_indices = references.update_field('IsApproved', True, on=record_ids).tolist()
                 except Exception as e:
                     msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
                     logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                #else:
-                #    if len(reference_indices) > 0:
-                #        reference_event = True
-
-                # Update the status in the records table. This will also update the "is edited" column of the table to
-                # indicate that the records at the given indices were edited wherever the new values do not match the
-                # old values.
-                #if 'Approved' in colmap:
-                #    table.update_column(colmap['Approved'], True, indices=indices)
+                else:
+                    return_vals['ReferenceIndex'] = reference_indices
 
                 # Deselect selected rows
                 table.deselect(window)
@@ -1877,24 +1876,29 @@ class BankAccount:
                 except Exception as e:
                     msg = 'failed to reset record references at table indices {INDS}'.format(INDS=indices)
                     logger.error('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                else:
+                    return_vals['ReferenceIndex'] = reference_indices
 
                 # Deselect selected rows
                 table.deselect(window)
 
             elif tbl_event == 'Link' and table.enabled('Link'):
-                link_event = True
+                #link_event = True
+                return_vals['Link'] = True
 
             # Single-clicked table row(s)
             elif tbl_event == 'Element':
                 table.run_event(window, event, values)
 
                 # Get index of the selected rows
-                record_indices = table.selected(real=True)
+                #record_indices = table.selected(real=True)
+                return_vals['RecordIndex'] = table.selected(real=True)
 
             else:
                 table.run_event(window, event, values)
 
-        return {'ReferenceIndex': reference_indices, 'Link': link_event, 'RecordIndex': record_indices}
+        #return {'ReferenceIndex': reference_indices, 'Link': link_event, 'RecordIndex': record_indices}
+        return return_vals
 
     def layout(self, size, primary: bool = True):
         """
@@ -1936,39 +1940,6 @@ class BankAccount:
         self.table.resize(window, size=(tbl_width, tbl_height))
         self.assoc_table.resize(window, size=(tbl_width, tbl_height))
 
-    def _subset(self, ref_df: pd.DataFrame = None, on: pd.DataFrame = None):
-        """
-        Get the indices of a subsetted reference table.
-
-        Arguments:
-            ref_df (DataFrame): subset a custom reference dataframe.
-
-            on (DataFrame): conditions specifying which entries should be updated. The number of entries should match
-                the length of the value set [Default: do not subset the reference table].
-        """
-        ref_df = self.ref_df if not isinstance(ref_df, pd.DataFrame) else ref_df
-
-        # Find update indices based on the condition set
-        if isinstance(on, pd.Series):
-            if on.name in ref_df.columns:
-                on = on.to_frame()
-                print(on)
-                keys = on.columns.tolist()
-                update_indices = get_row_intersection(ref_df, on, keys)
-            else:
-                update_indices = on
-        elif isinstance(on, dict):
-            on = pd.DataFrame(on)
-            keys = on.columns.tolist()
-            update_indices = get_row_intersection(ref_df, on, keys)
-        elif isinstance(on, pd.DataFrame):
-            keys = on.columns.tolist()
-            update_indices = get_row_intersection(ref_df, on, keys)
-        else:
-            update_indices = ref_df.index
-
-        return update_indices
-
     def _aggregate(self):
         """
         Prepare the reference entry dataframe for merging with the records.
@@ -1980,7 +1951,8 @@ class BankAccount:
         is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         is_string_dtype = pd.api.types.is_string_dtype
 
-        ref_df = self.ref_df.copy()
+        # ref_df = self.ref_df.copy()
+        ref_df = self.references.data()  # current references
         ref_col_map = self.ref_map
 
         ref_df.set_index('RecordID', inplace=True)
@@ -2016,7 +1988,8 @@ class BankAccount:
             df = table.data()
 
         ref_col_map = self.ref_map
-        ref_df = self.ref_df.copy()
+        # ref_df = self.ref_df.copy()
+        ref_df = self.references.data()
 
         mapper = {i: j for i, j in ref_col_map.items()}
         mapper['RecordID'] = 'RecordID'
@@ -2058,16 +2031,19 @@ class BankAccount:
 
             table.update_column(column, new_values)
 
-    def update_references(self, ext_df):
+    def update_references(self, ext_df, delete: bool = False):
         """
-        Update the reference dataframe using an external reference dataframe with overlapping entries.
+        Update the reference dataframe using a source reference dataframe with overlapping entries.
 
         Arguments:
             ext_df (DataFrame): external reference entry dataframe that will be used to update the entries of the
                 account reference dataframe.
+
+            delete (bool): delete shared references.
         """
         pd.set_option('display.max_columns', None)
-        df = self.ref_df.copy()
+        references = self.references
+        df = references.data(deleted=None)  # have to override the default for deleted to get all references
 
         # Drop external reference entries when not also found in the reference entry
         ref_ids = df['ReferenceID'].dropna()
@@ -2078,18 +2054,7 @@ class BankAccount:
                          'are not shared between the reference dataframes'.format(NAME=self.name))
             return []
 
-        # Delete reference entries that were deleted in the external reference dataframe
-        deleted_references = ref_df.loc[ref_df['RecordID'].isna(), 'ReferenceID']
-        if not deleted_references.empty:
-            modified_ids = df.loc[df['ReferenceID'].isin(deleted_references.tolist()), 'RecordID'].tolist()
-
-            self.reset_references(modified_ids, index=False)
-
-            ref_df.drop(deleted_references.index, inplace=True)
-        else:
-            modified_ids = []
-
-        # Subset the reference dataframe on the remaining external reference entries
+        # Subset the reference dataframe on the external reference entries
         ref_df.set_index(['RecordID', 'ReferenceID'], inplace=True)
         df.set_index(['RecordID', 'ReferenceID'], inplace=True)
 
@@ -2098,68 +2063,35 @@ class BankAccount:
         ref_df.sort_index(axis=1, inplace=True)
         df.sort_index(axis=1, inplace=True)
 
-        # Compare the reference dataframes and extract the discrepant entries
-        diff_df = ref_df.loc[ref_df.compare(df).index]
+        # Compare the reference dataframes and update entries
+        if delete:  # overlapping entries should be deleted instead of modified
+            common_inds = ref_df.index.intersection(df.index).tolist()
+            indices = references.get_index(common_inds, combined=True)
 
-        # Update the values of the reference entries that were modified in the external reference dataframe
-        for index, row in diff_df.iterrows():
-            record_id, ref_id = index
-            ref_indices = (self.ref_df['RecordID'] == record_id) & (self.ref_df['ReferenceID'] == ref_id)
-            self.ref_df.loc[ref_indices, row.index] = row.values
+            # Set reference entries as "deleted"
+            self.reset_references(indices, index=True)
+        else:  # overlapping entries in the reference dataframe should be updated to match source entries
+            diff_df = ref_df.loc[ref_df.compare(df).index]
 
-            modified_ids.append(record_id)
+            # Update reference entries to match the source entries
+            indices = references.get_index(diff_df.index.tolist(), combined=True)
+            diff_df = diff_df.reset_index().set_index(pd.Index(indices))
+            references.update(diff_df)
 
-        ref_indices = self.ref_df.index[self.ref_df['RecordID'].isin(modified_ids)]
-
-        return ref_indices
+        return indices
 
     def reference_field_values(self, column, on: pd.DataFrame = None):
         """
         Fetch the values of a given reference field.
         """
-        ref_df = self.ref_df
-
-        indices = self._subset(ref_df=ref_df, on=on)
-
-        try:
-            values = ref_df.loc[indices, column].tolist()
-        except KeyError:
-            msg = 'column "{PARAM}" is not a reference entry column'.format(PARAM=column)
-            logger.error('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
+        references = self.references
+        ref_df = references.data(on=on)
+        if not ref_df.empty:
+            values = ref_df[column].tolist()
+        else:
             values = []
 
         return values
-
-    def update_reference_field(self, field, values, on: pd.DataFrame = None):
-        """
-        Manually update a reference field's values.
-
-        arguments:
-            field (str): reference field to update values.
-
-            values (list): new values of the reference field.
-
-            on (dataframe): conditions specifying which entries should be updated. the number of entries should match
-                the length of the value set.
-        """
-        ref_df = self.ref_df
-        print('reference table has fields {}'.format(ref_df.columns.tolist()))
-
-        if field not in ref_df.columns:
-            msg = 'BankAccount {NAME}: failed to update reference field "{COL}" - {COL} is not a valid reference ' \
-                  'field'.format(NAME=self.name, COL=field)
-            raise IndexError(msg)
-
-        # Find update indices based on the condition set
-        update_indices = self._subset(ref_df, on)
-        print('BankAccount {}: updating reference field {} on indices {}'.format(self.name, field, update_indices))
-        print(values)
-
-        # Set values for reference column entries
-        ref_df.loc[update_indices, [field]] = values
-
-        return update_indices.tolist()
 
     def reset_references(self, identifiers, index: bool = False):
         """
@@ -2173,17 +2105,20 @@ class BankAccount:
         Returns:
             indices (list): list of affected references indices.
         """
-        ref_df = self.ref_df
+        references = self.references
 
         if index is True:
             indices = identifiers
         else:
-            indices = ref_df.index[ref_df['RecordID'].isin(identifiers)].tolist()
+            indices = references.get_index(identifiers)
 
-        # Clear the reference entries corresponding to the selected record
-        logger.info('DataTable {TBL}: removing references for records {IDS}'
-                    .format(TBL=self.name, IDS=identifiers))
-        ref_df.drop(indices, inplace=True)
+        # Reset the supporting fields warnings and notes
+        update_df = pd.DataFrame({'ReferenceWarnings': None, 'ReferenceNotes': None, 'IsApproved': False},
+                                 index=indices)
+        references.update(update_df)
+
+        # Update the state the entries to deleted
+        references.delete(indices)
 
         return indices
 
@@ -2198,7 +2133,7 @@ class BankAccount:
 
         ref_values = pd.Series([record_id, reference_id, refdate, self.record_type, reftype, note,
                                 warning, approved, False, False, False], index=ref_cols)
-        self.ref_df = self.ref_df.append(ref_values, ignore_index=True)
+        self.references.append(ref_values, new=True)
 
     def has_reference(self, record_ids):
         """
@@ -2207,7 +2142,7 @@ class BankAccount:
         Arguments:
             record_ids (list): list of record IDs to check for references.
         """
-        ref_df = self.ref_df
+        ref_df = self.references.data()
         if isinstance(record_ids, str):
             record_ids = [record_ids]
 
@@ -2288,7 +2223,8 @@ class BankAccount:
 
             raise ImportError(msg)
 
-        self.ref_df = df
+        # self.ref_df = df
+        self.references.append(df)
 
         return df.copy()
 
@@ -2726,17 +2662,3 @@ def compare_record_values(value, ref_values, match_pattern: bool = False, ignore
         col_match = ref_values.eq(value)
 
     return col_match
-
-
-def get_row_intersection(df1, df2, keys: list = None):
-    """
-    Find the row indices from the first dataframe where dataframe column values intersect.
-    """
-    if not keys:
-        keys = list(set(df1.columns.tolist()).intersection(df2.columns.tolist()))
-
-    i1 = df1.set_index(keys).index
-    i2 = df2.set_index(keys).index
-    indices = df1[i1.isin(i2)].index
-
-    return indices

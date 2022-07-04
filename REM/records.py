@@ -2450,6 +2450,7 @@ class DatabaseRecord:
         record_elements = self.components
         for record_element in record_elements:
             elem_values = record_element.export_values(edited_only=edited_only)
+            print('record element {} has values: {}'.format(record_element.name, elem_values))
             values = {**values, **elem_values}
 
         return pd.Series(values)
