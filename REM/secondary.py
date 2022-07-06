@@ -553,6 +553,8 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
     params = {}
     param_bindings = {}
     section_bindings = {}
+    button_menu_vis = ['BLANK', ['reset', 'hide']]
+    button_menu_invis = ['BLANK', ['reset', 'unhide']]
 
     # Associated account parameters
     sections_layout = []
@@ -563,12 +565,18 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
         section_bindings[section_key] = section_title
 
         can_hide = True if i != 0 else False
+        #header = [[sg.Text(section_title, pad=(pad_el, 0), text_color=text_col, background_color=frame_col,
+        #                   font=bold_font),
+        #           sg.Push(background_color=frame_col),
+        #           sg.Button('', image_data=mod_const.HIDE_ICON, key=section_key, disabled=False, visible=can_hide,
+        #                     pad=(pad_el, 0), button_color=(text_col, frame_col), border_width=0,
+        #                     metadata={'visible': can_hide, 'disabled': False})]]
         header = [[sg.Text(section_title, pad=(pad_el, 0), text_color=text_col, background_color=frame_col,
                            font=bold_font),
                    sg.Push(background_color=frame_col),
-                   sg.Button('', image_data=mod_const.HIDE_ICON, key=section_key, disabled=False, visible=can_hide,
-                             pad=(pad_el, 0), button_color=(text_col, frame_col), border_width=0,
-                             metadata={'visible': can_hide, 'disabled': False})]]
+                   sg.ButtonMenu('', button_menu_vis, image_data=mod_const.OPTIONS_ICON, key=section_key, disabled=False,
+                                 visible=can_hide, pad=(pad_el, 0), button_color=(text_col, frame_col), border_width=0,
+                                 metadata={'visible': can_hide, 'disabled': False})]]
 
         # Create the import parameter objects and layouts for the associated account
         param_layout = []
@@ -705,46 +713,86 @@ def parameter_window(definitions, title: str = None, win_size: tuple = None):
             else:
                 continue
 
-        # Hide or reveal section parameters when a section hide/unhide button is pressed
+        # Section options menu button pressed
         if event in section_bindings:
             pgroup = section_bindings[event]
             pgroup_params = params[pgroup]
             pgroup_element = window['-{}-'.format(pgroup)]
-            pgroup_bttn = window['-{}_BTTN-'.format(pgroup)]
 
-            pgroup_visible = pgroup_element.metadata['visible']
-            if pgroup_visible:  # section parameters are currently visible, should hide them
+            bttn_key = '-{}_BTTN-'.format(pgroup)
+            pgroup_bttn = window[bttn_key]
+
+            bttn_selection = values[bttn_key]
+            if bttn_selection == 'reset':
+                print('running reset for parameter group {}'.format(pgroup))
+                for parameter in pgroup_params:
+                    print('resetting parameter {} of pgroup {}'.format(parameter.name, pgroup))
+                    parameter.reset(window)
+
+            elif bttn_selection == 'hide':  # section parameters are currently visible, should hide them
+                print('running hide for parameter group {}'.format(pgroup))
+                # Reset the section parameter values
                 for parameter in pgroup_params:
                     parameter.reset(window)
                     parameter.hidden = True
 
-                pgroup_element.metadata['visible'] = False
+                # Hide the section container
                 pgroup_element.update(visible=False)
-                pgroup_bttn.update(image_data=mod_const.UNHIDE_ICON)
-            else:  # section parameters are currently hidden, should unhide them
+
+                window.refresh()
+                window['-PARAMS-'].contents_changed()
+
+                # Update the button menu
+                pgroup_bttn.update(menu_definition=button_menu_invis)
+
+            elif bttn_selection == 'unhide':  # section parameters are currently hidden, should reveal them
+                print('running unhide for parameter group {}'.format(pgroup))
                 for parameter in pgroup_params:
                     parameter.hidden = False
 
-                pgroup_element.metadata['visible'] = True
+                # Reveal the section container
                 pgroup_element.update(visible=True)
-                pgroup_bttn.update(image_data=mod_const.HIDE_ICON)
 
-            window.refresh()
-            window['-PARAMS-'].contents_changed()
+                window.refresh()
+                window['-PARAMS-'].contents_changed()
+
+                # Update the button menu
+                pgroup_bttn.update(menu_definition=button_menu_vis)
+
+            #pgroup_visible = pgroup_element.metadata['visible']
+            #if pgroup_visible:  # section parameters are currently visible, should hide them
+            #    for parameter in pgroup_params:
+            #        parameter.reset(window)
+            #        parameter.hidden = True
+
+            #    pgroup_element.metadata['visible'] = False
+            #    pgroup_element.update(visible=False)
+            #    pgroup_bttn.update(image_data=mod_const.UNHIDE_ICON)
+            #else:  # section parameters are currently hidden, should unhide them
+            #    for parameter in pgroup_params:
+            #        parameter.hidden = False
+
+            #    pgroup_element.metadata['visible'] = True
+            #    pgroup_element.update(visible=True)
+            #    pgroup_bttn.update(image_data=mod_const.HIDE_ICON)
+
+            #window.refresh()
+            #window['-PARAMS-'].contents_changed()
 
         # Associated account parameter events
         if event in param_bindings:
             # Fetch the parameter corresponding to the window event element
             event_pgroup = param_bindings[event]
+            print('Running pgroup {} parameter event {}'.format(event_pgroup, event))
             pgroup_params = params[event_pgroup]
             event_param = mod_param.fetch_parameter(pgroup_params, event, by_key=True)
 
             # Run the parameter event associated with the window element key
-            event_param.run_event(window, event, values)
+            update_event = event_param.run_event(window, event, values)
 
             # Propagate parameter value to other pgroup parameters that are related by name and element type and that do
             # not currently have values
-            if event_param.has_value():
+            if update_event is True and event_param.has_value():
                 for pgroup in params:
                     if pgroup == event_pgroup:
                         continue

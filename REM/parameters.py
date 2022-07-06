@@ -146,10 +146,26 @@ class InputParameter:
         except KeyError:
             self.help = None
 
+        try:
+            self.default = entry['DefaultValue']
+        except KeyError:
+            self.default = None
+
         self.disabled = not self.editable
 
-        self.default = None
-        self.value = None
+        try:
+            self.value = self._format_value(self.default)
+        except Exception as e:
+            msg = "failed to set the parameter's default value - {ERR}".format(ERR=e)
+            logger.debug('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            self.value = None
+            self.default = None
+
+        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
+                     '{DEF}, and formatted value {VAL}'
+                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+
         self.dimensions = None
 
     def _field_size(self, window):
@@ -195,6 +211,25 @@ class InputParameter:
         element.Widget.config(highlightbackground=color)
         element.Widget.config(highlightcolor=color)
 
+    def _format_value(self, value):
+        """
+        Format the provided value according to the parameter's data type.
+
+        Arguments:
+            value (str): value to be formatted.
+
+        Returns:
+            new_value: value formatted according to the parameter's data type.
+        """
+        dtype = self.dtype
+
+        if value == '' or pd.isna(value):
+            return None
+
+        new_value = settings.format_value(value, dtype)
+
+        return new_value
+
     def key_lookup(self, component, rev: bool = False):
         """
         Lookup a parameter element's component GUI key using the name of the component element.
@@ -238,11 +273,17 @@ class InputParameter:
         Reset the parameter's values.
         """
         default_value = self.default
-        self.value = default_value
+        print('resetting {} to default value {}'.format(self.name, default_value))
+        try:
+            self.value = self._format_value(default_value)
+        except Exception:
+            self.value = None
+        print('{} has default value {}'.format(self.name, self.default))
 
         # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
+        self.update_display(window)
+        #if self.hidden is False:
+        #    self.update_display(window)
 
     def layout(self, size: tuple = None, padding: tuple = (0, 0), bg_color: str = None, justification: str = None,
                hidden: bool = None):
@@ -392,9 +433,9 @@ class InputParameter:
         Arguments:
             values: GUI element values or a single input value.
         """
-        dtype = self.dtype
+        current_value = self.value
 
-        if isinstance(values, dict):
+        if isinstance(values, dict):  # dictionary of GUI element values
             elem_key = self.key_lookup('Element')
             try:
                 input_value = values[elem_key]
@@ -402,24 +443,19 @@ class InputParameter:
                 logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
                                .format(NAME=self.name))
 
-                return self.value
+                return current_value
         else:
             input_value = values
 
-        if input_value == '' or pd.isna(input_value):
-            self.value = None
-
-            return None
-
         try:
-            value_fmt = settings.format_value(input_value, dtype)
-        except ValueError:
-            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
-                           .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
+            value_fmt = self._format_value(input_value)
+        except Exception as e:
+            msg = "failed to set the parameter's value = {ERR}".format(ERR=e)
+            logger.error('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-            return self.value
-
-        self.value = value_fmt
+            value_fmt = current_value
+        else:
+            self.value = value_fmt
 
         return value_fmt
 
@@ -547,9 +583,11 @@ class InputParameter:
         """
         value = self.value
         if pd.isna(value) or value == '':
-            return False
+            has_value = False
         else:
-            return True
+            has_value = True
+
+        return has_value
 
 
 # Single value data parameters
@@ -568,38 +606,31 @@ class InputParameterStandard(InputParameter):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
-        format_value = settings.format_value
 
-        # Dynamic attributes
-        try:
-            default_value = entry['DefaultValue']
-        except (KeyError, ValueError):
-            self._default = ''
-            self.default = None
-            self.value = None
+        if self.default is not None:
+            raw_default = str(self.default)  # raw default value
+            self._default = raw_default
+            self._value = raw_default
         else:
-            self._default = str(default_value)  # raw default value
-            value_fmt = format_value(default_value, self.dtype)
-            self.default = value_fmt
-            self.value = value_fmt
-
-        self._value = ''  # raw value
-
-        logger.debug('InputParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
-                     'value {DEF}, and formatted value {VAL}'
-                     .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+            self._default = ''
+            self._value = ''
 
     def reset(self, window):
         """
         Reset the parameter's values.
         """
         default_value = self.default
-        self.value = default_value
+        try:
+            self.value = self._format_value(default_value)
+        except Exception:
+            self.value = None
+
         self._enforce_formatting(self._default)
 
         # Update the parameter window element
-        if self.hidden is False:
-            self.update_display(window)
+        self.update_display(window)
+        #if self.hidden is False:
+        #    self.update_display(window)
 
     def run_event(self, window, event, values):
         """
@@ -609,6 +640,8 @@ class InputParameterStandard(InputParameter):
             param_event = self.bindings[event]
         except KeyError:
             param_event = None
+
+        update_event = False
 
         elem_key = self.key_lookup('Element')
         if param_event == 'In' and not self.disabled:
@@ -625,6 +658,10 @@ class InputParameterStandard(InputParameter):
             input_value = values[elem_key]
             display_value = self._enforce_formatting(input_value)
             window[elem_key].update(value=display_value, text_color=mod_const.DEFAULT_TEXT_COLOR)
+
+            update_event = True
+
+        return update_event
 
 
 class InputParameterText(InputParameterStandard):
@@ -839,17 +876,17 @@ class InputParameterText(InputParameterStandard):
         """
         Generate the filter clause for SQL querying.
         """
-        pattern = self.pattern_matching
+        if self.has_value():
+            match_pattern = self.pattern_matching
+            query_value = self.value
 
-        query_value = self.value
-        if pd.isna(query_value):
-            statement = None
-        else:
-            if pattern is True:
+            if match_pattern is True:
                 query_value = '%{VAL}%'.format(VAL=query_value)
                 statement = ('{COL} LIKE ?'.format(COL=column), (query_value,))
             else:
                 statement = ('{COL} = ?'.format(COL=column), (query_value,))
+        else:
+            statement = None
 
         return statement
 
@@ -857,16 +894,16 @@ class InputParameterText(InputParameterStandard):
         """
         Use the parameter value to filter a dataframe.
         """
-        param_value = self.value
-        match_pattern = self.pattern_matching
-        dtype = self.dtype
-        column = self.name
-
-        if pd.isna(param_value) or param_value == '':  # don't filter on NA values
+        if not self.has_value():  # don't filter when value not set
             return df
 
         if df.empty:
             return df
+
+        param_value = self.value
+        match_pattern = self.pattern_matching
+        dtype = self.dtype
+        column = self.name
 
         try:
             if dtype in settings.supported_int_dtypes:
@@ -927,6 +964,29 @@ class InputParameterDate(InputParameterStandard):
             self.localize = False
 
         self._format = '%Y/%m/%d'
+
+    def _format_value(self, value):
+        """
+        Format the provided value according to the parameter's data type.
+
+        Arguments:
+            value (str): value to be formatted.
+
+        Returns:
+            new_value: value formatted according to the parameter's data type.
+        """
+        if value == '' or pd.isna(value):
+            return None
+
+        try:
+            new_value = pd.to_datetime(value, format=self._format, utc=False).to_pydatetime()
+        except ValueError:
+            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as a datetime object'
+                           .format(NAME=self.name, VAL=value))
+
+            new_value = None
+
+        return new_value
 
     def _enforce_formatting(self, value):
         """
@@ -1042,42 +1102,6 @@ class InputParameterDate(InputParameterStandard):
 
         return layout
 
-    def format_value(self, values):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-            values: GUI element values or a single input value.
-        """
-        if isinstance(values, dict):
-            elem_key = self.key_lookup('Element')
-            try:
-                input_value = values[elem_key]
-            except KeyError:
-                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
-                               .format(NAME=self.name))
-
-                return self.value
-        else:
-            input_value = values
-
-        if input_value == '' or pd.isna(input_value):
-            self.value = None
-
-            return None
-
-        try:
-            value_fmt = pd.to_datetime(input_value, format=self._format, utc=False).to_pydatetime()
-        except ValueError:
-            logger.warning('InputParameter {NAME}: failed to format input value {VAL} as a datetime object'
-                           .format(NAME=self.name, VAL=input_value))
-
-            return self.value
-
-        self.value = value_fmt
-
-        return value_fmt
-
     def format_display(self):
         """
         Format the parameter's value for displaying.
@@ -1105,14 +1129,14 @@ class InputParameterDate(InputParameterStandard):
         """
         Use the parameter value to filter a dataframe.
         """
-        dtype = self.dtype
-        column = self.name
-
         if not self.has_value():
             return df
 
         if df.empty:
             return df
+
+        dtype = self.dtype
+        column = self.name
 
         try:
             col_values = pd.to_datetime(df[column], errors='coerce', format=settings.date_format)
@@ -1138,9 +1162,11 @@ class InputParameterDate(InputParameterStandard):
 
         value = self.value
         if is_datetime_dtype(value) or isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
-            return True
+            has_value = True
         else:
-            return False
+            has_value = False
+
+        return has_value
 
 
 class InputParameterCombo(InputParameter):
@@ -1201,19 +1227,29 @@ class InputParameterCombo(InputParameter):
                 if value_fmt not in self.aliases:
                     self.aliases[value_fmt] = combo_value
 
-        # Dynamic attributes
-        try:
-            value_fmt = format_value(entry['DefaultValue'], self.dtype)
-        except (KeyError, ValueError):
-            self.default = None
-            self.value = None
-        else:
-            self.default = value_fmt
-            self.value = value_fmt
+    def _format_value(self, value):
+        """
+        Format the provided value according to the parameter's data type.
 
-        logger.debug('InputParameter {PARAM}: initializing {ETYPE} parameter of data type {DTYPE} with default '
-                     'value {DEF}, and formatted value {VAL}'
-                     .format(PARAM=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        Arguments:
+            value (str): value to be formatted.
+
+        Returns:
+            new_value: value formatted according to the parameter's data type.
+        """
+        if value == '' or pd.isna(value):
+            return None
+
+        dtype = self.dtype
+        aliases = self.aliases
+
+        aliases_rev = {j: i for i, j in aliases.items()}
+        try:
+            new_value = aliases_rev[value]
+        except KeyError:
+            new_value = settings.format_value(value, dtype)
+
+        return new_value
 
     def _field_size(self, window):
         """
@@ -1240,53 +1276,15 @@ class InputParameterCombo(InputParameter):
         except KeyError:
             param_event = None
 
+        update_event = False
         if param_event == 'In' and not self.disabled:
             self._set_state(window, state='focus')
         elif param_event == 'Out' and not self.disabled:
             self._set_state(window, state='inactive')
+        elif param_event == 'Element':
+            update_event = True
 
-    def format_value(self, values):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-            values: GUI element values or a single input value.
-        """
-        dtype = self.dtype
-        aliases = self.aliases
-
-        if isinstance(values, dict):
-            elem_key = self.key_lookup('Element')
-            try:
-                input_value = values[elem_key]
-            except KeyError:
-                logger.warning('InputParameter {NAME}: unable to find window values for parameter to update'
-                               .format(NAME=self.name))
-
-                return self.value
-        else:
-            input_value = values
-
-        if input_value == '' or pd.isna(input_value):
-            self.value = None
-
-            return None
-
-        aliases_rev = {j: i for i, j in aliases.items()}
-        try:
-            value_fmt = aliases_rev[input_value]
-        except KeyError:
-            try:
-                value_fmt = settings.format_value(input_value, dtype)
-            except ValueError:
-                logger.warning('InputParameter {NAME}: failed to format input value {VAL} as {DTYPE}'
-                               .format(NAME=self.name, VAL=input_value, DTYPE=dtype))
-
-                return self.value
-
-        self.value = value_fmt
-
-        return value_fmt
+        return update_event
 
     def format_display(self):
         """
@@ -1352,18 +1350,18 @@ class InputParameterCombo(InputParameter):
         dtype = self.dtype
         value = self.value
 
-        if dtype in settings.supported_bool_dtypes:
-            try:
-                query_value = int(value)
-            except TypeError:
-                query_value = None
-        else:
-            query_value = value
+        if self.has_value():
+            if dtype in settings.supported_bool_dtypes:
+                try:
+                    query_value = int(value)
+                except TypeError:
+                    query_value = None
+            else:
+                query_value = value
 
-        if pd.isna(query_value):
-            statement = None
-        else:
             statement = ('{COL} = ?'.format(COL=column), (query_value,))
+        else:
+            statement = None
 
         return statement
 
@@ -1371,15 +1369,15 @@ class InputParameterCombo(InputParameter):
         """
         Use the parameter value to filter a dataframe.
         """
-        param_value = self.value
-        dtype = self.dtype
-        column = self.name
-
-        if pd.isna(param_value):  # don't filter on NA values
+        if not self.has_value():  # don't filter when value not set
             return df
 
         if df.empty:
             return df
+
+        param_value = self.value
+        dtype = self.dtype
+        column = self.name
 
         try:
             if dtype in settings.supported_int_dtypes:
@@ -1430,13 +1428,6 @@ class InputParameterComp(InputParameter):
 
         self._function = None
 
-        try:
-            default_values = entry['DefaultValue']
-        except KeyError:
-            default_values = (None, None)
-
-        self.default = self.value = default_values
-
     def update_display(self, window):
         """
         Update the parameter display.
@@ -1483,6 +1474,8 @@ class InputParameterComp(InputParameter):
         except KeyError:
             param_event = None
 
+        update_event = False
+
         if param_event == 'In' and not self.disabled:
             self._set_state(window, state='focus')
         elif param_event == 'Out' and not self.disabled:
@@ -1494,11 +1487,16 @@ class InputParameterComp(InputParameter):
             size = window[self.key_lookup('Container')].get_size()
             location = (element.Widget.winfo_rootx(), element.Widget.winfo_rooty() + size[1])
 
-            self.value = self._function(self.dtype, current=self.value, title=self.description, location=location,
-                                        size=size)
+            new_value = self._function(self.dtype, current=self.value, title=self.description, location=location,
+                                       size=size)
+            self.value = self._format_value(new_value)
 
             display_value = self.format_display()
             element.update(text=display_value)
+
+            update_event = True
+
+        return update_event
 
 
 class InputParameterRange(InputParameterComp):
@@ -1516,55 +1514,28 @@ class InputParameterRange(InputParameterComp):
 
     def __init__(self, name, entry):
         super().__init__(name, entry)
-        format_value = settings.format_value
-
-        try:
-            default1, default2 = entry['DefaultValue']
-        except KeyError:
-            default1 = default2 = None
-        except ValueError:
-            default1 = default2 = entry['DefaultValue']
-
         self._function = mod_win2.range_value_window
 
-        # Dynamic attributes
-        try:
-            self.default = self.value = [format_value(default1, self.dtype), format_value(default2, self.dtype)]
-        except ValueError:
-            self.default = self.value = (None, None)
-
-        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-                     '{DEF}, and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-    def format_value(self, values):
+    def _format_value(self, value):
         """
-        Set the value of the data element from user input.
+        Format the provided value according to the parameter's data type.
 
         Arguments:
-            values: GUI element values or a single input value.
+            value (str): value to be formatted.
+
+        Returns:
+            new_value: value formatted according to the parameter's data type.
         """
         format_value = settings.format_value
-
-        if isinstance(values, dict):
-            try:
-                input_values = values[self.key_lookup('Element')]
-            except KeyError:
-                msg = 'InputParameter {NAME}: unable to find window values for parameter to update'.format(
-                    NAME=self.name)
-                logger.warning(msg)
-
-                return self.value
-        else:
-            input_values = values
+        dtype = self.dtype
 
         try:
-            in1, in2 = input_values
+            in1, in2 = value
         except ValueError:
-            in1 = in2 = input_values
+            in1 = in2 = value
 
         try:
-            in1_fmt = format_value(in1, self.dtype)
+            in1_fmt = format_value(in1, dtype)
         except ValueError as e:
             msg = 'InputParameter {NAME}: unable set datatype for the first value - {ERR}'.format(NAME=self.name, ERR=e)
             logger.warning(msg)
@@ -1572,7 +1543,7 @@ class InputParameterRange(InputParameterComp):
             in1_fmt = None
 
         try:
-            in2_fmt = format_value(in2, self.dtype)
+            in2_fmt = format_value(in2, dtype)
         except ValueError as e:
             msg = 'InputParameter {NAME}: unable set datatype for the second value - {ERR}'.format(NAME=self.name,
                                                                                                    ERR=e)
@@ -1580,19 +1551,18 @@ class InputParameterRange(InputParameterComp):
 
             in2_fmt = None
 
-        value_fmt = [in1_fmt, in2_fmt]
-        self.value = value_fmt
+        new_value = (in1_fmt, in2_fmt)
 
-        return value_fmt
+        return new_value
 
     def format_display(self):
         """
         Format the parameter's value for displaying.
         """
-        values = self.value
-
-        if all([pd.isna(i) for i in values]):  # no parameter values set for either range element
+        if not self.has_value():
             return ''
+
+        values = self.value
 
         formatted_values = []
         for value in values:
@@ -1608,11 +1578,10 @@ class InputParameterRange(InputParameterComp):
         Generate the filter clause for SQL querying.
         """
         values = self.value
-        try:
+
+        if self.has_value():
             from_val, to_val = values
-        except ValueError:
-            statement = None
-        else:
+
             if from_val and to_val:
                 statement = ('{COL} BETWEEN ? AND ?'.format(COL=column), values)
             elif from_val and not to_val:
@@ -1621,6 +1590,8 @@ class InputParameterRange(InputParameterComp):
                 statement = ('{COL} = ?'.format(COL=column), (to_val,))
             else:
                 statement = None
+        else:
+            statement = None
 
         return statement
 
@@ -1699,16 +1670,24 @@ class InputParameterRange(InputParameterComp):
         """
         Return True if element has a valid value else False
         """
-        values = self.value
+        current_value = self.value
 
-        values_set = []
-        for value in values:
-            if not pd.isna(value) and not value == '':
-                values_set.append(True)
+        if isinstance(current_value, tuple) and len(current_value) == 2:
+            values_set = []
+            for value in current_value:
+                if not pd.isna(value) and not value == '':
+                    values_set.append(True)
+                else:
+                    values_set.append(False)
+
+            if any(values_set):
+                has_value = True
             else:
-                values_set.append(False)
+                has_value = False
+        else:
+            has_value = False
 
-        return any(values_set)
+        return has_value
 
 
 class InputParameterCondition(InputParameterComp):
@@ -1727,77 +1706,46 @@ class InputParameterCondition(InputParameterComp):
     def __init__(self, name, entry):
         super().__init__(name, entry)
         self._operators = ['>', '<', '>=', '<=', '=']
-
-        try:
-            oper, default = entry['DefaultValue']
-        except (KeyError, ValueError):
-            oper = default = None
-
-        if oper not in self._operators:
-            oper = None
-
         self._function = mod_win2.conditional_value_window
 
-        # Dynamic attributes
-        try:
-            self.default = self.value = [oper, settings.format_value(default, self.dtype)]
-        except ValueError:
-            self.default = self.value = (oper, None)
-
-        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-                     '{DEF}, and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
-
-    def format_value(self, values):
+    def _format_value(self, value):
         """
-        Set the value of the data element from user input.
+        Format the provided value according to the parameter's data type.
 
         Arguments:
-            values: GUI element values or a single input value.
+            value (str): value to be formatted.
+
+        Returns:
+            new_value: value formatted according to the parameter's data type.
         """
         operators = self._operators
-
-        if isinstance(values, dict):
-            try:
-                input_values = values[self.key_lookup('Element')]
-            except KeyError:
-                msg = 'InputParameter {NAME}: unable to find window values for parameter to update'.format(
-                    NAME=self.name)
-                logger.warning(msg)
-
-                return self.value
-        else:
-            input_values = values
+        dtype = self.dtype
 
         try:
-            oper, value = input_values
+            oper, value = value
         except ValueError:
-            msg = 'InputParameter {NAME}: input value should be a list or tuple of exactly two components' \
-                .format(NAME=self.name)
-            logger.warning(msg)
+            msg = 'input value should be a list or tuple of containing two components'
+            logger.warning('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-            return self.value
+            raise ValueError(msg)
 
         if oper not in operators:
-            msg = 'InputParameter {NAME}: unknown operator "{OPER}" provided as the first component of the value set' \
-                .format(NAME=self.name, OPER=oper)
-            logger.warning(msg)
+            msg = 'unknown operator "{OPER}" provided as the first component of the value set'.format(OPER=oper)
+            logger.warning('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-            return self.value
+            return TypeError(msg)
 
         try:
-            value_fmt = settings.format_value(value, self.dtype)
+            value_fmt = settings.format_value(value, dtype)
         except ValueError as e:
-            msg = 'InputParameter {NAME}: unable set datatype for the conditional value - {ERR}' \
-                .format(NAME=self.name, ERR=e)
-            logger.warning(msg)
+            msg = 'unable set datatype for the conditional value - {ERR}'.format(ERR=e)
+            logger.warning('InputParameter {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
-            value_fmt = None
+            raise ValueError(msg)
 
-        value_fmt = [oper, value_fmt]
-        self.value = value_fmt
+        new_value = (oper, value_fmt)
 
-        return value_fmt
+        return new_value
 
     def format_display(self):
         """
@@ -1875,14 +1823,20 @@ class InputParameterCondition(InputParameterComp):
         """
         Return True if element has a valid value else False
         """
-        operators = ['>', '<', '>=', '<=', '=']
+        operators = self._operators
+        current_value = self.value
 
-        operator, value = self.value
+        if isinstance(current_value, tuple) and len(current_value) == 2:
+            oper, value = current_value
 
-        if not pd.isna(value) and not value == '' and operator in operators:
-            return True
+            if value != '' and oper in operators:
+                has_value = True
+            else:
+                has_value = False
         else:
-            return False
+            has_value = False
+
+        return has_value
 
 
 # Special data parameters
@@ -1944,17 +1898,40 @@ class InputParamterMultiple(InputParameter):
             else:
                 self.menu_values.append(value_fmt)
 
-        # Parameter default selections
-        try:
-            default_values = entry['DefaultValue']
-        except KeyError:
-            default_values = []
+    def _format_value(self, value):
+        """
+        Format the provided value according to the parameter's data type.
 
-        self.default = self.value = [format_value(i, self.dtype) for i in default_values if i in menu_values]
+        Arguments:
+            value (str): value to be formatted.
 
-        logger.debug('InputParameter {NAME}: initializing {ETYPE} parameter of data type {DTYPE} with default value '
-                     '{DEF}, and formatted value {VAL}'
-                     .format(NAME=self.name, ETYPE=self.etype, DTYPE=self.dtype, DEF=self.default, VAL=self.value))
+        Returns:
+            new_value: value formatted according to the parameter's data type.
+        """
+        format_value = settings.format_value
+
+        if value == '' or pd.isna(value):
+            return []
+
+        dtype = self.dtype
+        aliases = self.aliases
+        aliases_rev = {j: i for i, j in aliases.items()}
+
+        if isinstance(value, list) or isinstance(value, tuple):
+            selected_values = value
+        else:
+            selected_values = [value]
+
+        new_value = []
+        for select_value in selected_values:
+            try:
+                value_fmt = aliases_rev[select_value]
+            except KeyError:
+                value_fmt = format_value(select_value, dtype)
+
+            new_value.append(value_fmt)
+
+        return new_value
 
     def run_event(self, window, event, values):
         """
@@ -1964,6 +1941,8 @@ class InputParamterMultiple(InputParameter):
             param_event = self.bindings[event]
         except KeyError:
             param_event = None
+
+        update_event = False
 
         if param_event == 'In' and not self.disabled:
             self._set_state(window, state='focus')
@@ -1983,6 +1962,10 @@ class InputParamterMultiple(InputParameter):
 
             self.format_value({elem_key: selected})
             self.update_display(window)
+
+            update_event = True
+
+        return update_event
 
     def element_layout(self):
         """
@@ -2014,49 +1997,6 @@ class InputParamterMultiple(InputParameter):
 
         return layout
 
-    def format_value(self, values):
-        """
-        Set the value of the data element from user input.
-
-        Arguments:
-            values: GUI element values or a single input value.
-        """
-        format_value = settings.format_value
-        aliases = self.aliases
-        dtype = self.dtype
-        current_values = self.value
-
-        if isinstance(values, dict):
-            try:
-                selected_values = values[self.key_lookup('Element')]
-            except KeyError:
-                msg = 'InputParameter {NAME}: unable to find window values for parameter to update'.format(
-                    NAME=self.name)
-                logger.warning(msg)
-
-                return current_values
-        elif isinstance(values, list) or isinstance(values, tuple):
-            selected_values = values
-        elif values == '' or pd.isna(values):
-            return current_values
-        else:
-            selected_values = [values]
-
-        aliases_rev = {j: i for i, j in aliases.items()}
-        try:
-            formatted_values = [aliases_rev[i] for i in selected_values]
-        except KeyError:
-            try:
-                formatted_values = [format_value(i, dtype) for i in selected_values]
-            except ValueError:
-                logger.warning('InputParameter {NAME}: failed to format selected value {VAL} as {DTYPE}'
-                               .format(NAME=self.name, VAL=selected_values, DTYPE=dtype))
-                return current_values
-
-        self.value = formatted_values
-
-        return formatted_values
-
     def format_display_components(self, values):
         """
         Format the components of the value for displaying.
@@ -2084,6 +2024,9 @@ class InputParamterMultiple(InputParameter):
         """
         Format the parameter's value for displaying.
         """
+        if not self.has_value():
+            return ''
+
         display_values = self.format_display_components(self.value)
 
         return '; '.join(display_values)
@@ -2096,7 +2039,7 @@ class InputParamterMultiple(InputParameter):
 
         # Update element text
         display_value = self.format_display()
-        nselect = len(self.value)
+        nselect = len(self.value) if self.has_value() else 0
         bttn_text = '- Select -' if nselect < 1 else '{} Selected'.format(nselect)
 
         element.update(text=bttn_text)
@@ -2106,8 +2049,9 @@ class InputParamterMultiple(InputParameter):
         """
         Generate the filter clause for SQL querying.
         """
-        values = self.value
-        if len(values) > 0:
+        if self.has_value():
+            values = self.value
+
             param_list = ','.join(['?' for _ in values])
             statement = ('{COL} IN ({VALS})'.format(COL=column, VALS=param_list), values)
         else:
@@ -2123,7 +2067,7 @@ class InputParamterMultiple(InputParameter):
         dtype = self.dtype
         column = self.name
 
-        if not values:  # don't filter when no values have been selected
+        if not self.has_value():  # don't filter when no values have been selected
             return df
 
         if df.empty:
@@ -2155,83 +2099,12 @@ class InputParamterMultiple(InputParameter):
         """
         Return True if element has a valid value else False
         """
-        values = self.value
+        value = self.value
 
-        if len(values) > 0:
+        if isinstance(value, list) and len(value) > 0:
             return True
         else:
             return False
-
-
-# Independent functions
-def format_display_date(value, sep: str = '-'):
-    """
-    Format a date string for display.
-
-    Arguments:
-        value (list): value to be formatted as an ISO date string.
-
-        sep (str): character used to divide the date components (year, month, day) [Default: "-"].
-    """
-    if isinstance(value, str):
-        logger.warning('input {IN} is a string value'.format(IN=value))
-        value = list(value)
-
-    buff = []
-    for index, char in enumerate(value):
-        if index == 3:
-            if len(value) != 4:
-                buff.append('{CHAR}{SEP}'.format(CHAR=char, SEP=sep))
-            else:
-                buff.append(char)
-        elif index == 5:
-            if len(value) != 6:
-                buff.append('{CHAR}{SEP}'.format(CHAR=char, SEP=sep))
-            else:
-                buff.append(char)
-        else:
-            buff.append(char)
-
-    formatted_date = ''.join(buff)
-
-    return formatted_date
-
-
-def fetch_parameter(parameters, identifier, by_key: bool = False, by_type: bool = False):
-    """
-    Fetch a parameter from a list of parameters by name, event key, or parameter type.
-    """
-    if by_key:
-        # element_type = identifier[1:-1].split('_')[-1]
-        # identifiers = [i.key_lookup(element_type) for i in parameters]
-        match = re.match(r'-(.*?)-', identifier)
-        if not match:
-            raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
-        identifier = match.group(0)  # identifier returned if match
-        element_key = match.group(1)  # element key part of the identifier after removing any binding
-
-        element_type = element_key.split('_')[-1]
-        identifiers = []
-        for parameter in parameters:
-            try:
-                element_name = parameter.key_lookup(element_type)
-            except KeyError:
-                element_name = None
-
-            identifiers.append(element_name)
-    elif by_type:
-        identifiers = [i.etype for i in parameters]
-    else:
-        identifiers = [i.name for i in parameters]
-
-    parameter = [parameters[i] for i, j in enumerate(identifiers) if j == identifier]
-
-    if len(parameter) == 0:
-        return None
-    elif len(parameter) == 1 and by_type is False:  # single parameter expected
-        return parameter[0]
-    else:  # list of parameters matching the criteria expected
-        return parameter
 
 
 # Control parameters
@@ -2723,7 +2596,40 @@ class ControlParameterCheckbox(ControlParameter):
         return df
 
 
-# Functions
+# Independent functions
+def format_display_date(value, sep: str = '-'):
+    """
+    Format a date string for display.
+
+    Arguments:
+        value (list): value to be formatted as an ISO date string.
+
+        sep (str): character used to divide the date components (year, month, day) [Default: "-"].
+    """
+    if isinstance(value, str):
+        logger.warning('input {IN} is a string value'.format(IN=value))
+        value = list(value)
+
+    buff = []
+    for index, char in enumerate(value):
+        if index == 3:
+            if len(value) != 4:
+                buff.append('{CHAR}{SEP}'.format(CHAR=char, SEP=sep))
+            else:
+                buff.append(char)
+        elif index == 5:
+            if len(value) != 6:
+                buff.append('{CHAR}{SEP}'.format(CHAR=char, SEP=sep))
+            else:
+                buff.append(char)
+        else:
+            buff.append(char)
+
+    formatted_date = ''.join(buff)
+
+    return formatted_date
+
+
 def initialize_parameter(name, entry):
     """
     Set the parameter class based on the parameter entry element type.
@@ -2741,7 +2647,7 @@ def initialize_parameter(name, entry):
         param_class = InputParameterCondition
     elif etype in ('checkbox', 'check', 'bool', 'tf'):
         param_class = ControlParameterCheckbox
-    elif etype in ('selection', 'multiple', 'mc'):
+    elif etype in ('selection', 'multiple', 'multiselect', 'multi', 'mc'):
         param_class = InputParamterMultiple
     else:
         msg = 'unknown element type {TYPE} provided to parameter entry {NAME}'.format(TYPE=etype, NAME=name)
@@ -2756,3 +2662,40 @@ def initialize_parameter(name, entry):
         raise AttributeError(msg)
 
     return parameter
+
+
+def fetch_parameter(parameters, identifier, by_key: bool = False, by_type: bool = False):
+    """
+    Fetch a parameter from a list of parameters by name, event key, or parameter type.
+    """
+    if by_key:
+        # element_type = identifier[1:-1].split('_')[-1]
+        # identifiers = [i.key_lookup(element_type) for i in parameters]
+        match = re.match(r'-(.*?)-', identifier)
+        if not match:
+            raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
+        identifier = match.group(0)  # identifier returned if match
+        element_key = match.group(1)  # element key part of the identifier after removing any binding
+
+        element_type = element_key.split('_')[-1]
+        identifiers = []
+        for parameter in parameters:
+            try:
+                element_name = parameter.key_lookup(element_type)
+            except KeyError:
+                element_name = None
+
+            identifiers.append(element_name)
+    elif by_type:
+        identifiers = [i.etype for i in parameters]
+    else:
+        identifiers = [i.name for i in parameters]
+
+    parameter = [parameters[i] for i, j in enumerate(identifiers) if j == identifier]
+
+    if len(parameter) == 0:
+        return None
+    elif len(parameter) == 1 and by_type is False:  # single parameter expected
+        return parameter[0]
+    else:  # list of parameters matching the criteria expected
+        return parameter
