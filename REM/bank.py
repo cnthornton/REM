@@ -14,7 +14,6 @@ import REM.data_collections as mod_col
 import REM.data_manipulation as mod_dm
 import REM.elements as mod_elem
 import REM.layouts as mod_lo
-import REM.parameters as mod_param
 import REM.secondary as mod_win2
 from REM.client import logger, settings, user, thread_operation
 
@@ -40,8 +39,6 @@ class BankRule:
         menu_flags (dict): submenu flags that change the initial behavior of the rule.
 
         permissions (str): permissions required to view the accounting method. Default: user.
-
-        parameters (list): list of rule parameters.
 
         accts (list): list of account entry objects composing the rule.
     """
@@ -84,27 +81,6 @@ class BankRule:
                                 'create': permissions.get('Create', None),
                                 'edit': permissions.get('Edit', None),
                                 }
-
-        self.parameters = []
-        try:
-            params = entry['RuleParameters']
-        except KeyError:
-            msg = 'missing required parameter "RuleParameters"'
-            logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-
-            raise AttributeError(msg)
-
-        for param_name in params:
-            param_entry = params[param_name]
-            try:
-                param = mod_param.initialize_parameter(param_name, param_entry)
-            except Exception as e:
-                logger.error('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=e))
-
-                raise AttributeError(e)
-
-            self.parameters.append(param)
-            self.bindings.update(param.bindings)
 
         try:
             accts = entry['Entries']
@@ -167,10 +143,6 @@ class BankRule:
         # Bind events to element keys
         logger.debug('BankRule {NAME}: binding panel element hotkeys'.format(NAME=self.name))
 
-        # Bind parameter hotkeys
-        for parameter in self.parameters:
-            parameter.bind_keys(window)
-
         # Bind account table hotkeys
         for acct in self.accts:
             acct.bind_keys(window)
@@ -205,54 +177,14 @@ class BankRule:
 
         return account
 
-    def fetch_parameter(self, identifier, by_key: bool = False):
-        """
-        Fetch a GUI parameter element by name or event key.
-        """
-        parameters = self.parameters
-
-        if by_key is True:
-            match = re.match(r'-(.*?)-', identifier)
-            if not match:
-                raise KeyError('unknown format provided for element identifier {ELEM}'.format(ELEM=identifier))
-            identifier = match.group(0)  # identifier returned if match
-            element_key = match.group(1)  # element key part of the identifier after removing any binding
-
-            element_type = element_key.split('_')[-1]
-            element_names = []
-            for parameter in self.parameters:
-                try:
-                    element_name = parameter.key_lookup(element_type)
-                except KeyError:
-                    element_name = None
-
-                element_names.append(element_name)
-        else:
-            element_names = [i.name for i in parameters]
-
-        if identifier in element_names:
-            index = element_names.index(identifier)
-            parameter = parameters[index]
-        else:
-            raise KeyError('element {ELEM} not found in list of {NAME} data elements'
-                           .format(ELEM=identifier, NAME=self.name))
-
-        return parameter
-
-    def reset_parameters(self, window):
-        """
-        Reset audit rule parameter values to default.
-        """
-        for param in self.parameters:
-            param.reset(window)
-
-    def toggle_parameters(self, window, value='enable'):
+    def toggle_parameter(self, window, value='enable'):
         """
         Enable / Disable audit rule parameter elements.
         """
-        disabled = False if value == 'enable' else True
-        for param in self.parameters:
-            param.toggle(window, off=disabled)
+        reconcile_key = self.key_lookup('Reconcile')
+
+        menu = ['BLANK', ['default', 'expanded']] if value == 'enable' else ['BLANK', ['!default', '!expanded']]
+        window[reconcile_key].update(menu_definition=menu)
 
     def run_event(self, window, event, values):
         """
@@ -506,7 +438,6 @@ class BankRule:
             acct_key = self.key_lookup('Account')
             assoc_key = self.key_lookup('Association')
             param_key = self.key_lookup('ParameterButton')
-            reconcile_key = self.key_lookup('Reconcile')
             save_key = self.key_lookup('Save')
 
             # Get the parameter settings
@@ -623,9 +554,7 @@ class BankRule:
                     window[save_key].metadata['disabled'] = False
 
                 if len(self.panels) > 1:
-                    window[reconcile_key].update(disabled=False)
-
-                self.toggle_parameters(window, 'enable')
+                    self.toggle_parameter(window, 'enable')
 
                 # Mark that a reconciliation is currently in progress
                 self.in_progress = True
@@ -633,8 +562,9 @@ class BankRule:
         # Reconcile button was pressed. Will run the reconcile method to find associations with the current primary
         # account and any associated accounts with data.
         elif rule_event == 'Reconcile':
-            expand_param = self.fetch_parameter('ExpandSearch')
-            run_expanded_search = values[expand_param.key_lookup('Element')]
+            reconcile_key = self.key_lookup('Reconcile')
+            search_type = values[reconcile_key]
+            run_expanded_search = True if search_type == 'expanded' else False
 
             try:
                 assoc_pairs = self.reconcile_statement(search_expanded=run_expanded_search)
@@ -671,20 +601,17 @@ class BankRule:
         window[panel_key].update(visible=False)
         window['-HOME-'].update(visible=True)
 
-        # Disable the reconciliation button
-        reconcile_key = self.key_lookup('Reconcile')
+        # Disable the control buttons
         save_key = self.key_lookup('Save')
-        window[reconcile_key].update(disabled=True)
         window[save_key].update(disabled=True)
         window[save_key].metadata['disabled'] = True
+
+        self.toggle_parameter(window, 'disable')
 
         # Enable the account entry selection dropdown
         window[entry_key].update(disabled=False)
         window[assoc_key].update(disabled=True)
         window[assoc_key].update(value='')
-
-        self.reset_parameters(window)
-        self.toggle_parameters(window, 'disable')
 
         # Clear the warning element
         window[warn1_key].update(value='')
@@ -734,13 +661,10 @@ class BankRule:
         """
         width, height = size
 
-        params = self.parameters
-
         # Element parameters
         bttn_text_col = mod_const.WHITE_TEXT_COLOR
         bttn_bg_col = mod_const.BUTTON_BG_COLOR
         disabled_text_col = mod_const.DISABLED_TEXT_COLOR
-        disabled_bg_col = mod_const.DISABLED_BUTTON_COLOR
         bg_col = mod_const.DEFAULT_BG_COLOR
         header_col = mod_const.HEADER_COLOR
         text_col = mod_const.DEFAULT_TEXT_COLOR
@@ -833,31 +757,21 @@ class BankRule:
 
         # Column 2 header
         reconcile_key = self.key_lookup('Reconcile')
+        assoc_key = self.key_lookup('Association')
 
         # Rule parameter elements
-        # if len(params) > 1:
-        #    param_pad = ((0, pad_el * 2), 0)
-        # else:
-        #    param_pad = (0, 0)
-        param_pad = ((0, pad_el * 2), 0)
-
-        assoc_key = self.key_lookup('Association')
-        rec_elements = []
-        for param in params:
-            element_layout = param.layout(padding=param_pad)
-            rec_elements.extend(element_layout)
-
-        rec_elements.append(sg.Button('Reconcile', key=reconcile_key, pad=((0, pad_el), 0), disabled=True,
-                                      button_color=(bttn_text_col, bttn_bg_col),
-                                      disabled_button_color=(disabled_text_col, disabled_bg_col),
-                                      tooltip='Run reconciliation'))
+        bttn_menu = ['BLANK', ['!default', '!expanded']]
+        rec_elements = sg.ButtonMenu('Reconcile', bttn_menu, key=reconcile_key, pad=((0, pad_el), 0),
+                                     button_color=(bttn_text_col, bttn_bg_col),
+                                     text_color=text_col, disabled_text_color=disabled_text_col,
+                                     disabled=False, tooltip='Run reconciliation')
 
         param_elements = [sg.Canvas(size=(0, header_h), background_color=bg_col),
                           sg.Col([[sg.Combo(entries, default_value='', key=assoc_key, size=param_size, font=param_font,
                                             text_color=text_col, background_color=bg_col, disabled=False,
                                             enable_events=True, tooltip='Select association account')]],
                                  expand_x=True, justification='l', background_color=bg_col),
-                          sg.Col([rec_elements], element_justification='r', background_color=bg_col)]
+                          sg.Col([[rec_elements]], element_justification='r', background_color=bg_col)]
 
         header2 = sg.Col([param_elements], expand_x=True, justification='l', element_justification='l',
                          vertical_alignment='b', background_color=bg_col)
@@ -941,8 +855,8 @@ class BankRule:
         window[self.key_lookup('MessageP2')].expand(expand_x=True)
 
         # Resize parameters
-        for parameter in self.parameters:
-            parameter.resize(window)
+        #for parameter in self.parameters:
+        #    parameter.resize(window)
 
         # Resize account panels
         accts = self.accts
@@ -1491,9 +1405,9 @@ class BankRule:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
+        success = user.write_db(sstrings, psets)
         print(statements)
-        success = True
+        #success = True
 
         return success
 
