@@ -1,7 +1,7 @@
 numpy>=1.19.1
 pandas>=1.1.1
 pyodbc>=4.0.30
-PySimpleGUI~=4.41.0
+PySimpleGUI>=4.57.0
 
 python-dateutil~=2.8.1
 REM~=0.2.4
