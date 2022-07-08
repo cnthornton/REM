@@ -1375,34 +1375,26 @@ class ReferenceCollection(DataCollection):
 
             common_inds = add_df.index.intersection(df.index).tolist()
 
-            print('collection and new data have indices in common: {}'.format(common_inds))
-            mod_df = add_df.loc[common_inds]
-            mod_df.loc[:, [self._edited_column, self._deleted_column]] = [True, False]
-            logger.debug('DataCollection {NAME}: modifying {NROW} entries in the collection'
-                         .format(NAME=self.name, NROW=mod_df.shape[0]))
-            print('updated shared data is:')
-            print(mod_df)
+            if len(common_inds) > 0:
+                mod_df = add_df.loc[common_inds]
+                mod_df.loc[:, [self._edited_column, self._deleted_column]] = [True, False]
+                logger.debug('DataCollection {NAME}: modifying {NROW} entries in the collection'
+                             .format(NAME=self.name, NROW=mod_df.shape[0]))
 
-            real_inds = self.get_index(mod_df.index.tolist(), combined=True)
-            print('shared data has real collection indices: {}'.format(real_inds))
-            mod_df = mod_df.reset_index().set_index(pd.Index(real_inds))
-            df.reset_index(inplace=True)
+                real_inds = self.get_index(mod_df.index.tolist(), combined=True)
+                mod_df = mod_df.reset_index().set_index(pd.Index(real_inds))
+                df.reset_index(inplace=True)
 
-            print('updating dataframe with:')
-            print(mod_df.to_dict())
-            print('current collection values at update indices:')
-            print(df.loc[real_inds])
-
-            df.loc[mod_df.index, mod_df.columns] = mod_df
-            df = self._set_dtypes(df)  # the replace method does not preserve dtypes
-            print('new collection values at the update indices:')
-            print(df.loc[real_inds])
+                df.loc[mod_df.index, mod_df.columns] = mod_df
+                df = self._set_dtypes(df)  # the replace method does not preserve dtypes
+            else:
+                df.reset_index(inplace=True)
 
             # Find new entries to be appended to the collection
             new_df = add_df.loc[~add_df.index.isin(common_inds)]
             new_df.reset_index(inplace=True)
 
-        else:  # no shared entries, all is new
+        else:  # collection is empty, so all data must be new
             new_df = add_df
 
         # Add "state" columns to the new data
@@ -1413,9 +1405,6 @@ class ReferenceCollection(DataCollection):
 
         # Add new data to the collection
         df = df.append(new_df, ignore_index=reindex)
-
-        print('collection data has dtypes after appending:')
-        print(df.dtypes)
 
         if inplace:
             self.df = df
