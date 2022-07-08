@@ -7,7 +7,6 @@ from random import randint
 
 import pandas as pd
 import PySimpleGUI as sg
-import re
 
 import REM.constants as mod_const
 import REM.data_collections as mod_col
@@ -233,7 +232,6 @@ class BankRule:
             # reference.
             selected_reference_indices = triggers.get('ReferenceIndex')
             if selected_reference_indices and len(selected_reference_indices) > 0:
-                print('updating shared reference entries at indices: {}'.format(selected_reference_indices))
                 self.update_references(indices=selected_reference_indices)
                 self.update_display(window)
 
@@ -251,7 +249,6 @@ class BankRule:
                     # Set the reference warning, if any
                     sub_on = {'RecordID': [first_selected_record_id]}
                     record_warning = acct.reference_field_values('ReferenceWarnings', on=sub_on)
-                    print(record_warning)
                     # record_warning = acct.reference_field_values('ReferenceWarnings', first_selected_record_id)
                     if len(record_warning) > 0:
                         panel_message = record_warning[0]
@@ -482,7 +479,6 @@ class BankRule:
                     return self.reset_rule(window, current=True)
 
                 # Get a list of records referenced by the main account records
-                # ref_df = acct.ref_df.copy()
                 ref_df = acct.references.data()
                 ref_df = ref_df[~ref_df['ReferenceID'].isna()]
 
@@ -575,7 +571,6 @@ class BankRule:
             else:
                 # Annotate reference entries
                 if len(assoc_pairs) > 0:
-                    print('annotating reference pairs: {}'.format(assoc_pairs))
                     self.annotate_references(assoc_pairs)
 
                 # Update the sub-panel displays
@@ -919,9 +914,15 @@ class BankRule:
                   'the primary account'.format(ACCT=acct_name, ASSOC=assoc_name)
             raise AssertionError(msg)
 
-        if acct.has_reference(record_ids) or assoc_acct.has_reference(reference_ids):
-            msg = 'one or more of the selected records already have references'
-            raise AssertionError(msg)
+        referenced_accts = acct.has_reference(record_ids)
+        referenced_assocs = assoc_acct.has_reference(reference_ids)
+        if (len(referenced_accts) > 0) or (len(referenced_assocs) > 0):
+            msg = 'one or more of the selected records already have references - are you sure you would like to ' \
+                  'continue?'
+
+            user_input = mod_win2.popup_confirm(msg)
+            if user_input != 'OK':  # user selected to not continue linking the already referenced records
+                return True
 
         # Allow user to set a note
         user_note = mod_win2.add_note_window()
@@ -1148,12 +1149,7 @@ class BankRule:
         else:
             sub_inds = merged_df.index.tolist()
 
-        print('annotating record associations at indices {}'.format(sub_inds))
-
         merged_df = merged_df.loc[sub_inds]
-
-        print('merged dataframe:')
-        print(merged_df)
 
         # Merge reference account data with account data on reference IDs
         for panel_key in self.panels:
@@ -1163,7 +1159,6 @@ class BankRule:
             if assoc_name == acct_name:
                 continue
 
-            print('preparing association account {} data for merging'.format(assoc_name))
             assoc_prefix = '{}.'.format(assoc_name)
             assoc_ref_col = assoc_acct.ref_map['ReferenceID']
 
@@ -1171,13 +1166,8 @@ class BankRule:
             assoc_df.rename(columns={'RecordID': ref_col, assoc_ref_col: 'RecordID'}, inplace=True)
             assoc_df.set_index(['RecordID', ref_col], inplace=True)
             assoc_df = assoc_df.add_prefix(assoc_prefix)
-            print('number of shared entries for the given indices for account {}:'.format(assoc_name))
-            print(assoc_df[assoc_df.index.isin(sub_inds)].shape[0])
 
             merged_df = merged_df.merge(assoc_df, how='left', left_index=True, right_index=True)
-
-        print('final merged dataframe:')
-        print(merged_df)
 
         # Check if any associations meets the conditions of configured annotation rules
         new_rows = []
@@ -1185,7 +1175,6 @@ class BankRule:
 
         annot_rules = acct.annotations
         for rule_name in annot_rules:
-            print('annotating associations on rule {}'.format(rule_name))
             rule = annot_rules[rule_name]
             merged = merged_df.copy()
 
@@ -1199,11 +1188,9 @@ class BankRule:
 
                     continue
 
-                print(results)
                 merged = merged[results]
 
             if merged.empty:
-                print('no data remaining after subset')
                 continue
 
             condition = rule.get('Condition', None)
@@ -1227,10 +1214,8 @@ class BankRule:
         update_on = pd.DataFrame(new_rows, columns=['RecordID', 'ReferenceID'])
 
         # Add annotations to the "ReferenceNotes" reference field
-        #reference_indices = acct.update_reference_field('ReferenceNotes', new_values, on=update_on)
         reference_indices = acct.references.update_field('ReferenceNotes', new_values, on=update_on).tolist()
         if len(reference_indices) > 0:
-            print('updating reference indices {} with annotations'.format(reference_indices))
             self.update_references()
 
         return reference_indices
@@ -1305,13 +1290,9 @@ class BankRule:
 
         # Prepare reference entries that were deleted
         deleted_df = references.data(deleted=True, added=False)  # deleted, but not added entries
-        print('deleted entries are:')
-        print(deleted_df)
 
         # Prepare reference entries that were modified but not deleted
         save_df = references.data(edited=True, added=True)  # edited or added
-        print('modified entries are:')
-        print(save_df)
 
         # Save references for the account if the account records are the primary records in the reference table
         is_primary = assoc_rule['Primary']
@@ -1326,6 +1307,8 @@ class BankRule:
                 logger.exception('BankRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
                 return False
+            else:
+                deleted_primary_ids = deleted_df['RecordID'].tolist()
 
             try:
                 statements = record_entry.save_database_references(save_df, assoc_type, statements=statements)
@@ -1339,6 +1322,7 @@ class BankRule:
                 saved_primary_ids = save_df['RecordID'].tolist()
         else:
             saved_primary_ids = []
+            deleted_primary_ids = []
 
         # Iterate over unique reference types to determine if any referenced records of the given type should also have
         # saved entries due to their status as the primary record type in the reference table
@@ -1364,8 +1348,6 @@ class BankRule:
                 rev_save_df = rev_save_df[~rev_save_df['RecordID'].isin(saved_primary_ids)]
 
                 if not rev_save_df.empty:
-                    print('associated reference entries will also be saved:')
-                    print(rev_save_df)
                     try:
                         statements = ref_entry.save_database_references(rev_save_df, assoc_type, statements=statements)
                     except Exception as e:
@@ -1384,8 +1366,8 @@ class BankRule:
                 if rev_del_df.empty:
                     continue
 
-                print('associated reference entries will also deleted:')
-                print(rev_del_df)
+                # Don't attempt to delete reference entries twice
+                rev_del_df = rev_del_df[~rev_del_df['RecordID'].isin(deleted_primary_ids)]
 
                 try:
                     statements = ref_entry.delete_database_references(rev_del_df, assoc_type, statements=statements)
@@ -1599,8 +1581,6 @@ class BankAccount:
                 params[assoc_column] = param_entry
                 self.transactions[transaction_acct] = params
 
-        #self.void_transactions = entry.get('VoidTransactions', entry.get('FailedTransactions', {}))
-
         self.import_rules = entry.get('ImportRules', record_entry.import_rules)
 
         ref_entry = {'Columns': {'RecordID': 'varchar', 'ReferenceID': 'varchar', 'ReferenceDate': 'date',
@@ -1609,7 +1589,6 @@ class BankAccount:
                                  'ReferenceWarnings': 'varchar', 'ReferenceNotes': 'varchar'}}
 
         self.references = mod_col.ReferenceCollection(self.name, ref_entry)
-        # self.ref_df = None
         self.primary = False
 
     def key_lookup(self, component, rev: bool = False):
@@ -1627,7 +1606,6 @@ class BankAccount:
         except KeyError:
             msg = 'component {COMP} not found in list of bank account elements'.format(COMP=component)
             logger.warning('BankAccount {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-            print(key_map)
             key = None
 
         return key
@@ -1662,11 +1640,11 @@ class BankAccount:
         table = self.table
 
         # Reset the record table and the reference dataframe
-        print('resetting account {} table'.format(self.name))
         self.table.reset(window)
         self.assoc_table.reset(window)
-        # self.ref_df = None
+
         self.references.reset()
+
         self.primary = False
 
         # Disable table element events
@@ -1683,9 +1661,6 @@ class BankAccount:
         table_keys = table.bindings
 
         # Return values
-        #record_indices = None
-        #reference_indices = None
-        #link_event = False
         return_vals = {'ReferenceIndex': None, 'Link': False, 'RecordIndex': None}
 
         # Run a record table event.
@@ -1712,7 +1687,6 @@ class BankAccount:
                 else:
                     # Get the real index of the selected row
                     index = table.get_index(select_row_index)
-                    #record_indices = [index]
                     return_vals['RecordIndex'] = [index]
 
                     logger.debug('DataTable {NAME}: opening record at real index {IND}'
@@ -1736,19 +1710,12 @@ class BankAccount:
                                 logger.exception(
                                     'DataTable {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
                             else:
-                                print('updating record table at index {}'.format(index))
-                                print('with values:')
-                                print(record_values)
                                 table.update_row(index, record_values)
 
                                 # Update the reference entry dataframe to reflect changes made to an entry through the
                                 # record window
                                 ref_values = record.export_associations(association_rule=assoc_type)
-                                #reference_indices = self.update_references(ref_values)
                                 return_vals['ReferenceIndex'] = self.update_references(ref_values)
-                                print('updating reference table at index {}'.format(return_vals['ReferenceIndex']))
-                                print('with values:')
-                                print(ref_values)
 
                                 self.update_display(window)
 
@@ -1760,19 +1727,38 @@ class BankAccount:
                 indices = table.get_index(select_row_indices)
 
                 # Get record IDs for the selected rows
-                record_ids = pd.Series(table.row_ids(indices=indices), name='RecordID')
+                #record_ids = pd.Series(table.row_ids(indices=indices), name='RecordID')
+                record_ids = table.row_ids(indices=indices)
+                print('approving record: {}'.format(record_ids))
 
-                try:
-                    #reference_indices = self.update_reference_field('IsApproved', True, on=record_ids)
-                    reference_indices = references.update_field('IsApproved', True, on=record_ids).tolist()
-                except Exception as e:
-                    msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
-                    logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
-                else:
-                    return_vals['ReferenceIndex'] = reference_indices
+                # Approve record associations for records with current associations
+                records_w_refs = self.has_reference(record_ids)
+                print('approved records with current assocations:')
+                print(records_w_refs)
+                if len(records_w_refs) > 0:
+                    try:
+                        reference_indices = references.update_field('IsApproved', True, on=records_w_refs).tolist()
+                    except Exception as e:
+                        msg = 'failed to approve records at table indices {INDS}'.format(INDS=indices)
+                        logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+                    else:
+                        return_vals['ReferenceIndex'] = reference_indices
+
+                        print('approved records have reference indices: {}'.format(reference_indices))
+
+                # Add self references to the records without a current association
+                records_wo_refs = [i for i in record_ids if i not in records_w_refs]
+                print('approved records without current associations:')
+                print(records_wo_refs)
+                for record_id in records_wo_refs:
+                    print('adding self reference for record {}'.format(record_id))
+                    self.add_reference(record_id, record_id, self.record_type, approved=True)
 
                 # Deselect selected rows
                 table.deselect(window)
+
+                if len(records_wo_refs) > 0 and len(records_w_refs) == 0:
+                    self.update_display(window)
 
             elif tbl_event == 'Reset' and table.enabled('Reset'):
                 # Find rows selected by user for deletion
@@ -1797,7 +1783,6 @@ class BankAccount:
                 table.deselect(window)
 
             elif tbl_event == 'Link' and table.enabled('Link'):
-                #link_event = True
                 return_vals['Link'] = True
 
             # Single-clicked table row(s)
@@ -1805,13 +1790,11 @@ class BankAccount:
                 table.run_event(window, event, values)
 
                 # Get index of the selected rows
-                #record_indices = table.selected(real=True)
                 return_vals['RecordIndex'] = table.selected(real=True)
 
             else:
                 table.run_event(window, event, values)
 
-        #return {'ReferenceIndex': reference_indices, 'Link': link_event, 'RecordIndex': record_indices}
         return return_vals
 
     def layout(self, size, primary: bool = True):
@@ -1851,6 +1834,7 @@ class BankAccount:
         # Reset table size
         tbl_width = width
         tbl_height = height
+
         self.table.resize(window, size=(tbl_width, tbl_height))
         self.assoc_table.resize(window, size=(tbl_width, tbl_height))
 
@@ -2047,6 +2031,8 @@ class BankAccount:
 
         ref_values = pd.Series([record_id, reference_id, refdate, self.record_type, reftype, note,
                                 warning, approved, False, False, False], index=ref_cols)
+        print('appending new reference:')
+        print(ref_values)
         self.references.append(ref_values, new=True)
 
     def has_reference(self, record_ids):
@@ -2056,18 +2042,22 @@ class BankAccount:
         Arguments:
             record_ids (list): list of record IDs to check for references.
         """
-        ref_df = self.references.data()
+        ref_df = self.references.data()  # don't include deleted references
         if isinstance(record_ids, str):
             record_ids = [record_ids]
+        elif isinstance(record_ids, pd.Series):
+            record_ids = record_ids.tolist()
 
-        references = ref_df.loc[ref_df['RecordID'].isin(record_ids)]
+        has_df = ref_df.loc[ref_df['RecordID'].isin(record_ids), ['RecordID', 'ReferenceID']].dropna()
+        #references = ref_df.loc[ref_df['RecordID'].isin(record_ids)]
+        #if references.empty:
+        #    return False
+        #elif references['ReferenceID'].isna().any():
+        #    return False
+        #else:
+        #    return True
 
-        if references.empty:
-            return False
-        elif references['ReferenceID'].isna().any():
-            return False
-        else:
-            return True
+        return has_df['RecordID']
 
     def update_display(self, window):
         """
@@ -2137,7 +2127,6 @@ class BankAccount:
 
             raise ImportError(msg)
 
-        # self.ref_df = df
         self.references.append(df)
 
         return df.copy()
