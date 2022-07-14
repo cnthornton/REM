@@ -3078,8 +3078,6 @@ class DataList(RecordElement):
         if size:
             width, height = size
             new_h = None if height is None else height - pad_h
-            # new_h = None if height is None else height - border_w * 2 - pad_h
-            # new_w = current_w if width is None else width - border_w * 2 - pad_w
             new_w = current_w if width is None else width - pad_w
         else:
             new_h = None  # base height on number of configured "rows"
@@ -3107,7 +3105,7 @@ class DataList(RecordElement):
             window[notes_key].expand(expand_x=True)
 
         if (nrow < 2) and (len(indices) > 1):  # make it obvious that there are is than one entry in the list
-            list_h += int(box_h / 5)
+            list_h += int(box_h / 5)  # adds an additional fifth of a box height to the container
 
         desc_key = self.key_lookup('Description')
         new_h = window[desc_key].get_size()[1] + pad_el * 4 + border_w + list_h if not new_h else new_h
@@ -3123,53 +3121,6 @@ class DataList(RecordElement):
         elem_key = self.key_lookup('Element')
         list_w = new_w - pad_el * 2
         mod_lo.set_size(window, elem_key, (list_w, list_h))
-
-        return window[frame_key].get_size()
-
-    def resize_old(self, window, size: tuple = None):
-        """
-        Resize the record element.
-        """
-        current_w, current_h = self.dimensions()
-        border_w = 1
-        pad_el = mod_const.ELEM_PAD
-        pad_w, pad_h = self.pad_offset()
-
-        if size:
-            width, height = size
-            new_h = current_h if height is None else height - border_w * 2 - pad_h
-            new_w = current_w if width is None else width - border_w * 2 - pad_w
-        else:
-            new_w, new_h = (current_w, current_h)
-
-        listbox_h = mod_const.LISTBOX_HEIGHT
-        listbox_w = new_w - pad_el * 2
-
-        desc_key = self.key_lookup('Description')
-        new_h = window[desc_key].get_size()[1] + pad_el * 5 + border_w
-        for index in self.indices:
-            try:
-                entry_key = self.key_lookup('Entry:{}'.format(index))
-            except KeyError as e:
-                msg = self.format_log('failed to find the entry frame for index {IND} - {ERR}'.format(IND=index, ERR=e))
-                logger.warning(msg)
-                continue
-
-            mod_lo.set_size(window, entry_key, (listbox_w, listbox_h))
-
-            if window[entry_key].metadata['visible']:
-                new_h += listbox_h + pad_el * 2 + border_w * 2
-            else:
-                new_h += 1
-
-            notes_key = self.key_lookup('Notes:{}'.format(index))
-            window[notes_key].expand(expand_x=True)
-
-        frame_key = self.key_lookup('Frame')
-        new_size = (new_w, new_h)
-        mod_lo.set_size(window, frame_key, new_size)
-
-        self._dimensions = new_size
 
         return window[frame_key].get_size()
 
@@ -3280,7 +3231,6 @@ class DataList(RecordElement):
         # List entry layout
         if self._notes_field:
             notes = display_row[self._notes_field]
-            #can_edit = True if not is_disabled else False
             can_edit = True if (editable and level < 2) else False
         else:
             notes = None
@@ -3375,7 +3325,7 @@ class DataList(RecordElement):
         row3 = [sg.Text(note_text, key=notes_key, size=(20, 1), font=font, text_color=disabled_text_color,
                         background_color=bg_color, tooltip=note_text, metadata={'value': note_text})]
 
-        column3 = sg.Col([row1, row2, row3], pad=(pad_h, pad_h), background_color=bg_color, expand_x=True)
+        column3 = sg.Col([row1, row2, row3], pad=(pad_h, 0), background_color=bg_color, expand_x=True)
 
         # Listbox actions
         delete_key = entry_elements['Delete']

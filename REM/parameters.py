@@ -1766,15 +1766,15 @@ class InputParameterCondition(InputParameterComp):
         """
         Use the parameter value to filter a dataframe.
         """
-        operator, value = self.value
-        dtype = self.dtype
-        column = self.name
-
         if not self.has_value():  # don't filter on NA values
             return df
 
         if df.empty:
             return df
+
+        operator, value = self.value
+        dtype = self.dtype
+        column = self.name
 
         try:
             if dtype in settings.supported_int_dtypes:
