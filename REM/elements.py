@@ -541,6 +541,62 @@ class DataTable(RecordElement):
         self.index_map = {}
         self._colors = []
 
+    def _data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False,
+              deleted_rows: bool = False, added_rows: bool = False, indices=None):
+        """
+        Return the collection data.
+
+        Arguments:
+            all_rows (bool): return all table rows, including the deleted rows [Default: False].
+
+            display_rows (bool): return only the display rows [Default: False].
+
+            edited_rows (bool): return only rows that have been edited in the table [Default: False].
+
+            deleted_rows (bool): return only rows that have been deleted from the table [Default: False].
+
+            added_rows (bool): return only rows that have been added to the table [Default: False].
+
+            indices: list or series of table indices.
+
+        Returns:
+            df (DataFrame): table data matching the selection requirements.
+        """
+        collection = self.collection
+
+        if display_rows:
+            df = collection.data()
+
+            # Filter the table rows, if applicable
+            search = self.search_field
+            try:
+                search_col, search_value = search
+            except (TypeError, ValueError):
+                search_col = search_value = None
+
+            if not search_value:  # no search value provided in the search field, try the filter parameters
+                logger.debug(self.format_log('filtering the display table based on user-supplied parameter values'))
+
+                parameters = self.parameters
+                for param in parameters:
+                    df = param.filter_table(df)
+            else:
+                logger.debug(self.format_log('filtering the display table based on search value {VAL}'
+                                             .format(VAL=search_value)))
+
+                try:
+                    df = df[df[search_col].str.contains(search_value, case=False, regex=True)]
+                except KeyError:
+                    msg = self.format_log('search field {COL} not found in list of table columns'
+                                          .format(NAME=self.name, COL=search_col))
+                    logger.warning(msg)
+        else:
+            current = (not all_rows) if indices is None or deleted_rows is False else False
+            df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
+                                 added_only=added_rows, indices=indices)
+
+        return df
+
     def _display_header(self):
         """
         Return the visible header of the display table.
@@ -649,6 +705,41 @@ class DataTable(RecordElement):
 
         return lengths
 
+    def _reset(self, window, reset_filters: bool = True, collapse: bool = True):
+        """
+        Reset the data table to default.
+
+        Arguments:
+            window (Window): GUI window.
+
+            reset_filters (bool): also reset filter parameter values [Default: True].
+
+            collapse (bool): collapse supplementary table frames [Default: True].
+        """
+        # Reset dynamic attributes
+        self.index_map = {}
+        self.edited = False
+        sort_on = self._default_sort
+        self.sort_on = sort_on
+
+        # Reset table filter parameters
+        if reset_filters:
+            for param in self.parameters:
+                print('resetting table filter parameter {}'.format(param.name))
+                param.reset(window)
+
+        # Collapse visible frames
+        if collapse:
+            frame_key = self.key_lookup('FilterFrame')
+            if not window[frame_key].metadata['disabled'] and window[frame_key].metadata['visible']:
+                self.collapse_expand(window)
+
+        # Reset table dimensions
+        self.set_table_dimensions(window)
+
+        # Update the table display
+        self.update_display(window)
+
     def enabled(self, bttn_name):
         """
         Determine if a table action button is disabled or not.
@@ -730,30 +821,11 @@ class DataTable(RecordElement):
 
             collapse (bool): collapse supplementary table frames [Default: True].
         """
-        # Reset dynamic attributes
+        # Reset the data collection
         self.collection.reset()
-        self.index_map = {}
-        self.edited = False
-        sort_on = self._default_sort
-        self.sort_on = sort_on
 
-        # Reset table filter parameters
-        if reset_filters:
-            for param in self.parameters:
-                print('resetting table filter parameter {}'.format(param.name))
-                param.reset(window)
-
-        # Collapse visible frames
-        if collapse:
-            frame_key = self.key_lookup('FilterFrame')
-            if not window[frame_key].metadata['disabled'] and window[frame_key].metadata['visible']:
-                self.collapse_expand(window)
-
-        # Reset table dimensions
-        self.set_table_dimensions(window)
-
-        # Update the table display
-        self.update_display(window)
+        # Reset the display and other dynamic attributes
+        self._reset(window, reset_filters=reset_filters, collapse=collapse)
 
     def run_event(self, window, event, values):
         """
@@ -1140,38 +1212,8 @@ class DataTable(RecordElement):
         Returns:
             df (DataFrame): table data matching the selection requirements.
         """
-        collection = self.collection
-
-        if display_rows:
-            df = collection.data()
-
-            # Filter the table rows, if applicable
-            search = self.search_field
-            try:
-                search_col, search_value = search
-            except (TypeError, ValueError):
-                search_col = search_value = None
-
-            if not search_value:  # no search value provided in the search field, try the filter parameters
-                logger.debug(self.format_log('filtering the display table based on user-supplied parameter values'))
-
-                parameters = self.parameters
-                for param in parameters:
-                    df = param.filter_table(df)
-            else:
-                logger.debug(self.format_log('filtering the display table based on search value {VAL}'
-                                             .format(VAL=search_value)))
-
-                try:
-                    df = df[df[search_col].str.contains(search_value, case=False, regex=True)]
-                except KeyError:
-                    msg = self.format_log('search field {COL} not found in list of table columns'
-                                          .format(NAME=self.name, COL=search_col))
-                    logger.warning(msg)
-        else:
-            current = (not all_rows) if indices is None or deleted_rows is False else False
-            df = collection.data(current=current, edited_only=edited_rows, deleted_only=deleted_rows,
-                                 added_only=added_rows, indices=indices)
+        df = self._data(all_rows=all_rows, display_rows=display_rows, edited_rows=edited_rows,
+                        deleted_rows=deleted_rows, added_rows=added_rows, indices=indices)
 
         return df
 
@@ -2664,6 +2706,250 @@ class ComponentTable(RecordTable):
         ref_df.loc[:, 'ReferenceNotes'] = ref_df.index.map(annotation_map)
 
         return ref_df
+
+
+class ReferenceTable(RecordTable):
+    """
+    Subclass of the records table, but for records with associated reference.
+
+    Attributes:
+        name (str): table element configuration name.
+
+        elements (list): list of table element keys.
+    """
+
+    def __init__(self, name, entry, parent=None):
+        """
+        Initialize component table attributes.
+
+        Arguments:
+            name (str): name of the configured table element.
+
+            entry (dict): configuration entry for the table element.
+
+            parent (str): name of the parent element.
+        """
+        super().__init__(name, entry, parent)
+        self.etype = 'reference_table'
+
+        # Control flags that modify the table's behaviour
+        try:
+            modifiers = entry['Modifiers']
+        except KeyError:
+            self.modifiers = {'open': False, 'edit': False, 'search': False, 'summary': False, 'filter': False,
+                              'export': False, 'fill': False, 'sort': False, 'unassociated': False}
+        else:
+            self.modifiers = {'open': modifiers.get('open', 0), 'edit': modifiers.get('edit', 0),
+                              'search': modifiers.get('search', 0), 'summary': modifiers.get('summary', 0),
+                              'filter': modifiers.get('filter', 0), 'export': modifiers.get('export', 0),
+                              'fill': modifiers.get('fill', 0), 'sort': modifiers.get('sort', 0),
+                              'unassociated': modifiers.get('unassociated', 0)}
+            for modifier in self.modifiers:
+                try:
+                    flag = bool(int(self.modifiers[modifier]))
+                except ValueError:
+                    logger.warning(self.format_log('modifier {MOD} must be either 0 (False) or 1 (True)'
+                                                   .format(MOD=modifier)))
+                    flag = False
+
+                self.modifiers[modifier] = flag
+
+        try:
+            self.association_type = entry['AssociationType']
+        except KeyError:
+            msg = 'missing required parameter "AssociationType"'
+            logger.error(self.format_log(msg))
+
+            raise AttributeError(msg)
+
+        self.references = mod_col.ReferenceCollection(self.name, entry)
+
+    def _aggregate(self, record_ids: list = None):
+        """
+        Prepare the reference entry dataframe for merging with the records.
+        """
+        pd.set_option('display.max_columns', None)
+        references = self.references
+
+        is_numeric_dtype = pd.api.types.is_numeric_dtype
+        is_bool_dtype = pd.api.types.is_bool_dtype
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
+        is_string_dtype = pd.api.types.is_string_dtype
+
+        if isinstance(record_ids, list):
+            ref_indices = references.get_index(record_ids)
+            ref_df = references.data(indices=ref_indices)
+        else:
+            ref_df = references.data()  # current references
+
+        ref_df.set_index('RecordID', inplace=True)
+
+        # Subset reference table columns by the reference map
+        aggby = {}
+        for colname, dtype in ref_df.dtypes.iteritems():
+            if is_bool_dtype(dtype) or is_datetime_dtype(dtype):
+                aggfunc = 'first'
+            elif is_numeric_dtype(dtype):
+                aggfunc = 'sum'
+            elif is_string_dtype(dtype):
+                aggfunc = '; '.join
+                ref_df[colname].fillna('', inplace=True)
+            else:
+                aggfunc = 'sum'
+
+            aggby[colname] = aggfunc
+
+        # Group reference entries with the same record ID
+        ref_df = ref_df.groupby(ref_df.index).aggregate(aggby)
+
+        return ref_df
+
+    def data(self, all_rows: bool = False, display_rows: bool = False, edited_rows: bool = False,
+             deleted_rows: bool = False, added_rows: bool = False, indices=None):
+        """
+        Return the collection data.
+
+        Arguments:
+            all_rows (bool): return all table rows, including the deleted rows [Default: False].
+
+            display_rows (bool): return only the display rows [Default: False].
+
+            edited_rows (bool): return only rows that have been edited in the table [Default: False].
+
+            deleted_rows (bool): return only rows that have been deleted from the table [Default: False].
+
+            added_rows (bool): return only rows that have been added to the table [Default: False].
+
+            indices: list or series of table indices.
+
+        Returns:
+            df (DataFrame): table data matching the selection requirements.
+        """
+        id_col = self.id_column
+
+        df = self._data(all_rows=all_rows, display_rows=display_rows, edited_rows=edited_rows,
+                        deleted_rows=deleted_rows, added_rows=added_rows, indices=indices)
+
+        ref_df = self._aggregate(record_ids=df[id_col])
+
+        merged_df = df.merge(ref_df, on=id_col)
+
+        return merged_df
+
+    def reset(self, window, reset_filters: bool = True, collapse: bool = True):
+        """
+        Reset the data table to default.
+
+        Arguments:
+            window (Window): GUI window.
+
+            reset_filters (bool): also reset filter parameter values [Default: True].
+
+            collapse (bool): collapse supplementary table frames [Default: True].
+        """
+        # Reset the data collections
+        self.collection.reset()
+        self.references.reset()
+
+        # Reset the display and other dynamic attributes
+        self._reset(window, reset_filters=reset_filters, collapse=collapse)
+
+    def add_reference(self, record_id, reference_id, reftype, approved: bool = False, warning: str = None,
+                      note: str = None, refdate: datetime.datetime = None):
+        """
+        Add a record reference to the references dataframe.
+        """
+        ref_cols = ['RecordID', 'ReferenceID', 'ReferenceDate', 'RecordType', 'ReferenceType', 'ReferenceNotes',
+                    'ReferenceWarnings', 'IsApproved', 'IsHardLink', 'IsChild', 'IsDeleted']
+        refdate = refdate if refdate is not None else datetime.datetime.now()
+
+        ref_values = pd.Series([record_id, reference_id, refdate, self.record_type, reftype, note,
+                                warning, approved, False, False, False], index=ref_cols)
+        print('appending new reference:')
+        print(ref_values)
+        self.references.append(ref_values, new=True)
+
+        return ref_values
+
+    def reset_references(self, identifiers, index: bool = False):
+        """
+        Reset record references for the selected records.
+
+        Arguments:
+            identifiers (list): list of record identifiers corresponding to the records to modify.
+
+            index (bool): record identifiers are table indices [Default: False - identifiers are record IDs].
+
+        Returns:
+            indices (list): list of affected references indices.
+        """
+        references = self.references
+
+        if index is True:
+            indices = identifiers
+        else:
+            indices = references.get_index(identifiers)
+
+        # Reset the supporting fields warnings and notes
+        update_df = pd.DataFrame({'ReferenceWarnings': None, 'ReferenceNotes': None, 'IsApproved': False},
+                                 index=indices)
+        references.update(update_df)
+
+        # Update the state of the entries to deleted
+        references.delete(indices)
+
+        return indices
+
+    def import_references(self):
+        """
+        Load record references from the database.
+        """
+        assoc_type = self.association_type
+        record_type = self.record_type
+        record_entry = settings.records.fetch_rule(record_type)
+
+        record_ids = self.collection.row_ids()
+
+        # Import reference entries from the database
+        try:
+            df = record_entry.import_references(record_ids, rule=assoc_type)
+        except Exception as e:
+            msg = 'failed to import association {RULE} reference entries'.format(RULE=assoc_type)
+            logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
+
+            raise ImportError(msg)
+
+        self.references.append(df)
+
+    def get_references(self, record_ids):
+        """
+        Return references for the provided record IDs, if they exist in the reference collection.
+        """
+        ref_df = self.references.data()  # don't include deleted references
+        if isinstance(record_ids, str):
+            record_ids = [record_ids]
+        elif isinstance(record_ids, pd.Series):
+            record_ids = record_ids.tolist()
+
+        ref_df.set_index('RecordID', inplace=True)
+
+        ref_ids = ref_df.loc[ref_df.index.isin(record_ids), 'ReferenceID'].dropna()
+
+        return ref_ids
+
+    def has_reference(self, record_ids):
+        """
+        Confirm whether a reference entry exists in the collection.
+
+        Arguments:
+            record_ids (list): list of record IDs to check for references.
+
+        Returns:
+            record_ids (list): list of record IDs from the provided list that has a current reference.
+        """
+        ref_ids = self.get_references(record_ids)
+
+        return ref_ids.index.unique().tolist()
 
 
 class DataList(RecordElement):

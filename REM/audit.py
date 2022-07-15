@@ -193,10 +193,6 @@ class AuditRule:
         # Bind events to element keys
         logger.debug('AuditRule {NAME}: binding panel element hotkeys'.format(NAME=self.name))
 
-        # Bind parameter hotkeys
-        # for parameter in self.parameters:
-        #    parameter.bind_keys(window)
-
         # Bind transaction table hotkeys
         for transaction_tab in self.transactions:
             transaction_tab.table.bind_keys(window)
@@ -362,11 +358,12 @@ class AuditRule:
 
                 # Verify that the audit has not already been performed with these parameters
                 audit_exists = self.load_record(params)
-                if audit_exists is True:
-                    msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
-                          'audit records through the records menu'
-                    logger.warning('AuditRule {NAME}: audit initialization failed - an audit has already been '
-                                   'performed with the provided parameters'.format(NAME=self.name))
+                if audit_exists is True and not user.check_permission(self.permissions['edit']):
+                    #msg = 'An audit has already been performed using these parameters. Please edit or delete the ' \
+                    #      'audit records through the records menu'
+                    msg = 'User does not have permissions to edit an existing audit.'
+                    logger.warning('AuditRule {NAME}: audit initialization failed - {MSG}'
+                                   .format(NAME=self.name, MSG=msg))
                     mod_win2.popup_error(msg)
                     current_rule = self.reset_rule(window, current=True)
 
@@ -552,12 +549,8 @@ class AuditRule:
         # Panel tab layouts
         transaction_tabs = []
         for i, tab in enumerate(self.transactions):
-            if i == 0:
-                visiblity = True
-            else:
-                visiblity = False
-
-            transaction_tabs.append(tab.layout((tab_w, tab_h), visible=visiblity))
+            visibility = True if i == 0 else False
+            transaction_tabs.append(tab.layout((tab_w, tab_h), visible=visibility))
 
         tg_key = self.key_lookup('TG')
         tg_layout = [sg.TabGroup([transaction_tabs], key=tg_key, pad=(0, 0), enable_events=True,
@@ -622,10 +615,6 @@ class AuditRule:
 
         panels_key = self.key_lookup('Panels')
         mod_lo.set_size(window, panels_key, (tab_w, tab_h))
-
-        # Resize parameters
-        # for parameter in self.parameters:
-        #    parameter.resize(window)
 
         # Resize transaction tabs
         transactions = self.transactions
@@ -716,6 +705,9 @@ class AuditRule:
                     .format(NAME=record_type)
                 logger.info(msg)
 
+                audit_record = import_df.iloc[0]
+                self.record_data = audit_record.to_dict()
+
                 exists = True
             else:  # audit has not been performed yet
                 logger.info('AuditRecord {NAME}: no existing audit record for the supplied parameters ... '
@@ -789,6 +781,8 @@ class AuditRule:
         logger.debug('AuditRule {NAME}: creating component records from the transaction records'
                      .format(NAME=self.name))
 
+        audit_id = self.record_data['RecordID']
+
         # Map transaction data to transaction records
         record_mapping = self.record_mapping
         for destination in record_mapping:
@@ -822,6 +816,8 @@ class AuditRule:
                                    .format(NAME=self.name, TBL=transaction, COMP=destination))
                     continue
 
+                table = tab.table
+
                 # Add transaction records to the audit record destination element
                 for subset_rule in subsets:
                     rule_entry = subsets[subset_rule]
@@ -839,15 +835,39 @@ class AuditRule:
                     try:
                         subset_rule = rule_entry['Subset']
                     except KeyError:
-                        add_df = tab.table.data()
+                        add_df = table.data()
                     else:
-                        add_df = tab.table.subset(subset_rule)
+                        add_df = table.subset(subset_rule)
 
                     if add_df.empty:
                         logger.debug('AuditRule {NAME}: no records remaining from transaction table {REF} to add '
                                      'to audit record element {DEST} based on rule {RULE}'
                                      .format(NAME=self.name, REF=transaction, DEST=destination, RULE=subset_rule))
                         continue
+
+                    # Create references for the records
+
+                    # Find any records that are already referenced
+                    record_ids = add_df[table.id_column].tolist()
+                    records_w_refs = table.has_reference(record_ids)
+
+                    # Remove records that are already referenced from the add dataframe
+                    if len(records_w_refs) > 0:
+                        msg = '{NUM} {TYPE} records were found to already be associated with an audit - these ' \
+                              'records will not be included in this current audit ({RECORDS})'\
+                            .format(NUM=len(records_w_refs), TYPE=tab.name, RECORDS=records_w_refs)
+                        mod_win2.popup_notice(msg)
+                        logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        add_df = add_df[~add_df[table.id_column].isin(records_w_refs)]
+
+                    # Add references for the remaining records to the references data
+                    records_wo_refs = [i for i in record_ids if i not in records_w_refs]
+                    print('approved records without current associations:')
+                    print(records_wo_refs)
+                    for record_id in records_wo_refs:
+                        print('adding self reference for record {}'.format(record_id))
+                        table.add_reference(record_id, audit_id, self.record_type, approved=True)
 
                     # Prepare the transaction records
                     add_df = add_df[dest_cols].rename(columns=column_map)
@@ -939,7 +959,8 @@ class AuditTransaction:
             raise AttributeError(msg)
 
         try:
-            self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
+            #self.table = mod_elem.RecordTable(name, entry['DisplayTable'])
+            self.table = mod_elem.ReferenceTable(name, entry['DisplayTable'])
         except Exception as e:
             msg = 'failed to initialize the transaction table - {ERR}'.format(ERR=e)
             logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
@@ -966,6 +987,14 @@ class AuditTransaction:
             self.id_format = re.findall(r'{(.*?)}', entry['IDFormat'])
         except KeyError:
             msg = 'missing required field "IDFormat".'
+            logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+            raise AttributeError(msg)
+
+        try:
+            self.association_type = entry['AssociationType']
+        except KeyError:
+            msg = 'missing required parameter "AssociationType"'
             logger.error('AuditTransaction {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
 
             raise AttributeError(msg)
@@ -1168,7 +1197,7 @@ class AuditTransaction:
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
-        # Prepare the database query statement
+        # Load the transaction records
         logger.info('AuditTransaction {NAME}: attempting to load transaction records from the database based on '
                     'the supplied parameters'.format(NAME=self.name))
         try:
@@ -1182,6 +1211,9 @@ class AuditTransaction:
         logger.info('AuditTransaction {NAME}: successfully loaded the transaction records from the database'
                     .format(NAME=self.name))
         self.table.append(df)
+
+        # Load any previous record references
+        self.table.import_references()
 
         # Update parameter attributes
         self.parameters = parameters
