@@ -1996,7 +1996,7 @@ def import_window(table, params: list = None):
     if len(param_layout) > 0:
         param_layout.append(mod_lo.B2('Find', key='-FIND-', pad=(0, 0), bind_return_key=True, use_ttk_buttons=True,
                                       button_color=(bttn_text_col, bttn_bg_col), disabled=(not enable_search)))
-        top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col)],
+        top_layout = [[sg.Col([param_layout], pad=(pad_frame, 0), background_color=bg_col, vertical_alignment='b')],
                       [sg.HorizontalSeparator(pad=(pad_frame, pad_v), color=mod_const.HEADER_COLOR)]]
     else:
         top_layout = [[]]

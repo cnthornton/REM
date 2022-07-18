@@ -670,6 +670,10 @@ class DataCollection:
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
 
+        # Drop columns that are not in the header
+        extra_cols = [i for i in add_df.columns if i not in df.columns]
+        add_df.drop(extra_cols, axis=1, inplace=True)
+
         # Add new data to the table
         logger.debug('DataCollection {NAME}: adding {NROW} entries to the collection'
                      .format(NAME=self.name, NROW=add_df.shape[0]))
@@ -1368,6 +1372,10 @@ class ReferenceCollection(DataCollection):
 
         # Enforce conformity of the new data
         add_df = self.enforce_conformity(add_df)
+
+        # Drop columns that are not in the header
+        extra_cols = [i for i in add_df.columns if i not in df.columns]
+        add_df.drop(extra_cols, axis=1, inplace=True)
 
         # Find shared entries between the collection and the new data to add
         if not df.empty:

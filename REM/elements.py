@@ -2070,7 +2070,7 @@ class DataTable(RecordElement):
 
             return df
 
-        # Display the modify row window
+        # Display the modify-row window
         display_map = self.display_columns
         mod_row = mod_win2.edit_row_window(row, edit_columns=edit_columns, header_map=display_map)
 
@@ -2784,19 +2784,116 @@ class ReferenceTable(RecordTable):
         ref_df = ref_df.reindex(index=df[id_col].tolist())
         ref_df = ref_df.set_index(df.index)
 
-        print('indices of records data before merging:')
-        print(df.index)
+        #print('indices of records data before merging:')
+        #print(df.index)
 
-        print('indices of reference data before merging:')
-        print(ref_df.index)
+        #print('indices of reference data before merging:')
+        #print(ref_df.index)
 
-        print('merging the records and the reference tables:')
+        #print('merging the records and the reference tables:')
         merged_df = df.join(ref_df, how='left')
 
-        print('indices of records data after merging:')
-        print(merged_df.index)
+        #print('indices of records data after merging:')
+        #print(merged_df.index)
 
         return merged_df
+
+    def import_rows(self, import_df: pd.DataFrame = None):
+        """
+        Import one or more records through the record import window.
+        """
+        # pd.set_option('display.max_columns', None)
+        modifiers = self.modifiers
+        record_type = self.record_type
+        assoc_type = self.association_type
+
+        collection = self.collection
+        id_col = collection.id_column
+        columns = collection.dtypes
+
+        if import_df is None:
+            import_df = collection.data(current=False, deleted_only=True)
+        current_ids = collection.row_ids()
+
+        logger.debug(self.format_log('importing rows'))
+
+        table_layout = {'Columns': columns, 'DisplayColumns': self.display_columns, 'Aliases': self.aliases,
+                        'RowColor': self.row_color, 'Widths': self.widths, 'IDColumn': id_col,
+                        'RecordType': record_type, 'AssociationType': assoc_type, 'Description': self.description,
+                        'SortBy': self.sort_on, 'FilterParameters': self.filter_entry,
+                        'Modifiers': {'search': 1, 'filter': 1, 'export': 1, 'sort': 1},
+                        'HiddenColumns': self.hidden_columns, 'ImportRules': self.import_rules,
+                        'DependantColumns': collection.dependant_columns, 'Defaults': collection.default
+                        }
+
+        import_table = ReferenceTable(self.name, table_layout)
+        import_table.append(import_df)
+        import_table.import_references()
+
+        # Search for records without an existing reference to the provided reference type
+        if modifiers['unassociated']:
+            record_entry = settings.records.fetch_rule(record_type)
+
+            logger.debug(self.format_log('importing unreferenced records on rule "{RULE}"'.format(RULE=assoc_type)))
+
+            # Import the entries from the reference table with record references unset
+            try:
+                df = record_entry.load_unreferenced_records(assoc_type)
+            except Exception as e:
+                msg = 'failed to import unreferenced records from association rule {RULE}'.format(RULE=assoc_type)
+                logger.exception(self.format_log(msg, err=e))
+            else:
+                if not df.empty:
+                    # Subset on table columns
+                    df = df[[i for i in df.columns.values if i in import_df.columns]]
+
+                    # Drop records that are already in the import dataframe
+                    import_ids = import_df[id_col].tolist()
+                    df.drop(df[df[id_col].isin(import_ids)].index, inplace=True)
+
+                    # Drop records that are already in the component dataframe
+                    df.drop(df[df[id_col].isin(current_ids)].index, inplace=True)
+
+                    # Add import dataframe to data table object
+                    import_table.append(df)
+
+        # Add relevant search parameters
+        search_field = self.search_field
+        if isinstance(search_field, tuple):
+            search_col, search_val = search_field
+            try:
+                search_description = self.display_columns[search_col]
+            except KeyError:
+                search_description = search_col
+
+            search_dtype = columns[search_col]
+            search_entry = {'Description': search_description, 'ElementType': 'input', 'PatternMatching': True,
+                            'DataType': search_dtype, 'DefaultValue': search_val}
+            search_params = [mod_param.InputParameterText(search_col, search_entry)]
+        else:
+            search_params = None
+
+        # Get table of user selected import records
+        print('preparing to open the import window')
+        select_df = mod_win2.import_window(import_table, params=search_params)
+
+        # Verify that selected records are not already in table
+        select_ids = select_df[id_col]
+        existing_indices = collection.record_index(select_ids)
+        existing_ids = collection.row_ids(existing_indices, deleted=True)
+
+        logger.debug(self.format_log('removing selected records {IDS} already stored in the table at rows {ROWS}'
+                                     .format(IDS=existing_ids, ROWS=existing_indices)))
+        select_df.drop(select_df.loc[select_df[id_col].isin(existing_ids)].index, inplace=True, axis=0, errors='ignore')
+
+        # Change deleted column of existing selected records to False
+        logger.debug(self.format_log('changing delete status of selected records already stored in the table to False'))
+        collection.set_state('deleted', False, indices=existing_indices)
+
+        # Import references for the selected records
+        self.import_references(select_ids)
+
+        return select_df
 
     def reset(self, window, reset_filters: bool = True, collapse: bool = True):
         """
