@@ -340,8 +340,7 @@ def record_window(record, view_only: bool = False, modify_database: bool = True)
     window = settings.set_shortcuts(window, hk_groups=['Record', 'Navigation'])
 
     logger.debug('binding record element hotkeys')
-    for element in record.record_elements():
-        element.bind_keys(window)
+    record.bind_keys(window)
 
     # Resize window and update the record display
     screen_w, screen_h = window.get_screen_dimensions()

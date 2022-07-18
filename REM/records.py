@@ -1819,19 +1819,20 @@ class DatabaseRecord:
             if element_name not in used_section_elements:
                 msg = 'no section provided for record element {ELEM}'.format(ELEM=element_name)
                 logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                try:
-                    self.sections['_Default']['Elements'].append(element_name)
-                except KeyError:
-                    self.sections['_Default'] = {'Title': 'Record Information', 'Elements': [element_name]}
+                #try:
+                #    self.sections['_Default']['Elements'].append(element_name)
+                #except KeyError:
+                #    self.sections['_Default'] = {'Title': 'Record Information', 'Elements': [element_name]}
 
         for section in self.sections:
             if section not in used_sections:
                 msg = 'no tab provided for section {SEC}'.format(SEC=section)
                 logger.warning('RecordEntry {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
-                try:
-                    self.tabs['_Default']['Sections'].append(section)
-                except KeyError:
-                    self.tabs['_Default'] = {'Title': 'Details', 'Sections': [section]}
+                #try:
+                #    self.tabs['_Default']['Sections'].append(section)
+                #except KeyError:
+                #    self.tabs['_Default'] = {'Title': 'Details', 'Sections': [section]}
+                continue
 
             section_bttn = '{}Bttn'.format(section)
             section_frame = '{}Frame'.format(section)
@@ -1873,6 +1874,7 @@ class DatabaseRecord:
         self._minimum_height = 0
         self._padding = (0, 0)
         self._dimensions = (0, 0)
+        self._display_elements = []
 
     def key_lookup(self, component, rev: bool = False):
         """
@@ -1894,6 +1896,13 @@ class DatabaseRecord:
             raise KeyError(msg)
 
         return key
+
+    def bind_keys(self, window):
+        """
+        Add hotkey bindings to the record element.
+        """
+        for element in self.display_elements():
+            element.bind_keys(window)
 
     def record_id(self, display: bool = False):
         """
@@ -2304,7 +2313,7 @@ class DatabaseRecord:
 
         # Update the record elements
         logger.debug('Record {ID}: updating record element displays'.format(ID=record_id))
-        for record_element in self.components:
+        for record_element in self.display_elements():
             record_element.update_display(window)
 
         self.resize(window, size=size)
@@ -2334,6 +2343,18 @@ class DatabaseRecord:
         elements.extend(self.components)
 
         return elements
+
+    def display_elements(self):
+        """
+        Return a list of all display elements.
+        """
+        display_elements = []
+        for element_name in self._display_elements:
+            element = self.fetch_element(element_name)
+
+            display_elements.append(element)
+
+        return display_elements
 
     def check_required_parameters(self):
         """
@@ -3115,6 +3136,7 @@ class DatabaseRecord:
         sections = self.sections
 
         tab_group = []
+        display_elements = []
         for tab_name in tabs:
             tab_entry = tabs[tab_name]
 
@@ -3154,6 +3176,8 @@ class DatabaseRecord:
                         heading_element_layout = heading_element.layout(padding=((0, pad_el * 2), 0), level=level,
                                                                         bg_color=headings_bg_col, editable=False)
                         header_right.insert(0, heading_element_layout)
+
+                        display_elements.append(heading_element_name)
                     else:
                         logger.warning('RecordType {NAME}: record element {ELEM} with unsupported element type '
                                        '{TYPE} is attempting to be used as a header element'
@@ -3171,7 +3195,14 @@ class DatabaseRecord:
 
                 # Section body layout
                 section_layout = []
-                section_elements = section_entry['Layout']
+                try:
+                    section_elements = section_entry['Layout']
+                except KeyError:
+                    msg = 'section {} does not have a layout for its elements'.format(section_name)
+                    logger.warning('RecordType {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                    continue
+
                 for section_row in section_elements:
                     row_elements = section_elements[section_row]
                     n_elem = len(row_elements)
@@ -3184,6 +3215,9 @@ class DatabaseRecord:
                         row.append(element_layout)
                         if i != (n_elem - 1):  # don't add alignment element after the last element in the row
                             row.append(sg.Push(background_color=bg_col))
+
+                        if not element.is_type('blank'):
+                            display_elements.append(element_name)
 
                     section_layout.append(row)
 
@@ -3213,6 +3247,7 @@ class DatabaseRecord:
                           background_color=bg_col, expand_x=True, expand_y=True)]]
 
         self._dimensions = size
+        self._display_elements = display_elements
 
         return layout
 
