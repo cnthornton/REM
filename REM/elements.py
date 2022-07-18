@@ -1023,9 +1023,13 @@ class DataTable(RecordElement):
 
                 # Find rows selected by user for deletion
                 select_row_indices = values[elem_key]
+                print('deleting rows at display indices:')
+                print(select_row_indices)
 
                 # Get the real indices of the selected rows
                 indices = self.get_index(select_row_indices)
+                print('deleting rows at real indices:')
+                print(indices)
                 if len(indices) > 0:
                     collection.delete(indices)
                     update_event = True
@@ -1400,40 +1404,6 @@ class DataTable(RecordElement):
             raise KeyError(msg)
 
         return display_col
-
-    def format_display_column_old(self, df, column):
-        """
-        Format the values of a table column for display.
-        """
-        is_float_dtype = pd.api.types.is_float_dtype
-        is_integer_dtype = pd.api.types.is_integer_dtype
-        is_bool_dtype = pd.api.types.is_bool_dtype
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
-        is_string_dtype = pd.api.types.is_string_dtype
-
-        aliases = self.aliases
-
-        try:
-            display_col = df[column]
-        except KeyError:
-            msg = 'column {COL} not found in the table dataframe'.format(COL=column)
-            logger.error(self.format_log(msg))
-
-            raise KeyError(msg)
-
-        dtype = display_col.dtype
-        if is_float_dtype(dtype) and self.collection.dtypes[column] == 'money':
-            display_col = display_col.apply(settings.format_display_money)
-        elif is_datetime_dtype(dtype):
-            display_col = display_col.apply(settings.format_display_date)
-        elif is_bool_dtype(dtype):
-            display_col = display_col.apply(lambda x: '✓' if x is True else '')
-        elif is_integer_dtype(dtype) or is_string_dtype(dtype):
-            if column in aliases:
-                alias_map = aliases[column]
-                display_col = display_col.apply(lambda x: alias_map[x] if x in alias_map else x)
-
-        return display_col.astype('object').fillna('')
 
     def summarize_column(self, column, indices: list = None):
         """
@@ -2045,28 +2015,6 @@ class DataTable(RecordElement):
         Subset the table based on a set of rules.
         """
         subset_df = self.collection.subset(subset_rule)
-
-        return subset_df
-
-    def subset_old(self, subset_rule):
-        """
-        Subset the table based on a set of rules.
-        """
-        df = self.data()
-        if df.empty:
-            return df
-
-        logger.debug(self.format_log('sub-setting table on rule {RULE}'.format(RULE=subset_rule)))
-        try:
-            # results = mod_dm.evaluate_condition_set(df, {'custom': subset_rule})
-            results = mod_dm.evaluate_condition(df, subset_rule)
-        except Exception as e:
-            msg = 'failed to subset table on rule {RULE}'.format(RULE=subset_rule)
-            logger.error(self.format_log(msg, err=e))
-
-            raise ValueError(msg)
-
-        subset_df = df[results]
 
         return subset_df
 
@@ -2832,7 +2780,21 @@ class ReferenceTable(RecordTable):
 
         ref_df = self._aggregate(record_ids=df[id_col])
 
-        merged_df = df.merge(ref_df, on=id_col)
+        # Reorder the references dataframe to match the order of the records in the records table
+        ref_df = ref_df.reindex(index=df[id_col].tolist())
+        ref_df = ref_df.set_index(df.index)
+
+        print('indices of records data before merging:')
+        print(df.index)
+
+        print('indices of reference data before merging:')
+        print(ref_df.index)
+
+        print('merging the records and the reference tables:')
+        merged_df = df.join(ref_df, how='left')
+
+        print('indices of records data after merging:')
+        print(merged_df.index)
 
         return merged_df
 
@@ -2900,7 +2862,7 @@ class ReferenceTable(RecordTable):
 
         return indices
 
-    def import_references(self):
+    def import_references(self, record_ids: list = None):
         """
         Load record references from the database.
         """
@@ -2908,11 +2870,11 @@ class ReferenceTable(RecordTable):
         record_type = self.record_type
         record_entry = settings.records.fetch_rule(record_type)
 
-        record_ids = self.collection.row_ids()
+        to_import = self.collection.row_ids() if not isinstance(record_ids, list) else record_ids
 
         # Import reference entries from the database
         try:
-            df = record_entry.import_references(record_ids, rule=assoc_type)
+            df = record_entry.import_references(to_import, rule=assoc_type)
         except Exception as e:
             msg = 'failed to import association {RULE} reference entries'.format(RULE=assoc_type)
             logger.exception('BankAccount {NAME}: {MSG} - {ERR}'.format(NAME=self.name, MSG=msg, ERR=e))
@@ -5823,6 +5785,12 @@ class BlankField:
             raise KeyError(msg)
 
         return key
+
+    def bind_keys(self, window):
+        """
+        Bind element hotkeys.
+        """
+        pass
 
     def dimensions(self):
         """
