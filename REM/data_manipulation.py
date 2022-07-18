@@ -102,20 +102,16 @@ def format_values(values, dtype, formatters: dict = None, extended: bool = True)
         values = pd.Series(values)
 
     if dtype in ('date', 'datetime', 'timestamp', 'time'):
-        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype
         date_formatters = formatters.get('date', {})
         date_format = date_formatters.get('format', settings.date_format)
 
-        if not is_datetime_dtype(values.dtype):
-            try:
-                values = pd.to_datetime(values.fillna(pd.NaT), errors='coerce', format=date_format, utc=False)
-            except Exception as e:
-                msg = 'failed to set column values to datatype {DTYPE} - {ERR}'.format(DTYPE=dtype, ERR=e)
+        try:
+            values = pd.to_datetime(values.fillna(pd.NaT), errors='coerce', format=date_format).dt.tz_localize(None)
+        except Exception as e:
+            msg = 'failed to set column values to datatype {DTYPE} - {ERR}'.format(DTYPE=dtype, ERR=e)
 
-                raise ValueError(msg)
-        else:  # is datetime dtype
-            values = values.dt.tz_localize(None)
-            # values = column_values.apply(lambda x: x.replace(tzinfo=None))
+            raise ValueError(msg)
+
     elif dtype in ('int', 'integer', 'bigint'):
         if extended:
             try:
