@@ -167,7 +167,6 @@ class RecordElement:
         except KeyError:
             msg = self.format_log('component "{COMP}" not found in list of element components'.format(COMP=component))
             logger.warning(msg)
-            print(key_map)
 
             raise KeyError(msg)
 
@@ -725,7 +724,6 @@ class DataTable(RecordElement):
         # Reset table filter parameters
         if reset_filters:
             for param in self.parameters:
-                print('resetting table filter parameter {}'.format(param.name))
                 param.reset(window)
 
         # Collapse visible frames
@@ -1023,13 +1021,9 @@ class DataTable(RecordElement):
 
                 # Find rows selected by user for deletion
                 select_row_indices = values[elem_key]
-                print('deleting rows at display indices:')
-                print(select_row_indices)
 
                 # Get the real indices of the selected rows
                 indices = self.get_index(select_row_indices)
-                print('deleting rows at real indices:')
-                print(indices)
                 if len(indices) > 0:
                     collection.delete(indices)
                     update_event = True
@@ -2798,6 +2792,26 @@ class ReferenceTable(RecordTable):
 
         return merged_df
 
+    def delete_rows(self, indices, inplace: bool = True):
+        """
+        Remove rows from the table collection.
+
+        Arguments:
+            indices (list): real indices of the desired data to remove from the collection.
+
+            inplace (bool): delete data in place [Default: True].
+        """
+        records_data = self.collection
+        ref_data = self.references
+
+        df = records_data.delete(indices, inplace=inplace)
+
+        deleted_ids = records_data.row_ids(indices=indices)
+        deleted_ref_inds = ref_data.get_index(deleted_ids)
+        ref_data.delete(deleted_ref_inds, inplace=True)
+
+        return df
+
     def import_rows(self, import_df: pd.DataFrame = None):
         """
         Import one or more records through the record import window.
@@ -2874,7 +2888,6 @@ class ReferenceTable(RecordTable):
             search_params = None
 
         # Get table of user selected import records
-        print('preparing to open the import window')
         select_df = mod_win2.import_window(import_table, params=search_params)
 
         # Verify that selected records are not already in table
@@ -2924,8 +2937,6 @@ class ReferenceTable(RecordTable):
 
         ref_values = pd.Series([record_id, reference_id, refdate, self.record_type, reftype, note,
                                 warning, approved, False, False, False], index=ref_cols)
-        print('appending new reference:')
-        print(ref_values)
         self.references.append(ref_values, new=True)
 
         return ref_values
@@ -4026,7 +4037,7 @@ class ReferenceList(DataList):
                 record = self.load_record(index)
             except Exception as e:
                 msg = 'failed to open record at index {INDEX} - {ERR}'.format(INDEX=index, ERR=e)
-                logger.error(self.format_log(msg))
+                logger.exception(self.format_log(msg))
             else:
                 # Display the record window
                 mod_win2.record_window(record, view_only=True)
@@ -4178,7 +4189,7 @@ class ReferenceList(DataList):
         logger.info(self.format_log('loading reference record {ID} of type {TYPE} at level {LEVEL}'
                                     .format(ID=ref_id, TYPE=ref_type, LEVEL=level)))
 
-        imports = record_entry.load_records(ref_id, filters=self.import_filters)
+        imports = record_entry.load_records(ref_id, filters=self.import_filters, import_rules=False)
         nrow = imports.shape[0]
 
         if nrow < 1:
@@ -4356,13 +4367,13 @@ class DataUnit(RecordElement):
         window[elem_key].expand(expand_x=True)
 
         window.refresh()
-        print('resizing record element {}'.format(self.name, new_w))
-        print('desired width of record element {}: {}'.format(self.name, new_w))
-        print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
-        print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
-        print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
-        print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
-        print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
+        #print('resizing record element {}'.format(self.name, new_w))
+        #print('desired width of record element {}: {}'.format(self.name, new_w))
+        #print('desired width of record element {} description: {}'.format(self.name, desc_w_px))
+        #print('size of record element {} description: {}'.format(self.name, window[desc_key].get_size()))
+        #print('desired width of record element {} value: {}'.format(self.name, elem_w_px))
+        #print('size of record element {} value: {}'.format(self.name, window[elem_key].get_size()))
+        #print('final size of record element {}: {}'.format(self.name, window[self.key_lookup('Frame')].get_size()))
 
         self._dimensions = (new_w, new_h)
 

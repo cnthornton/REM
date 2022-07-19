@@ -437,7 +437,8 @@ class RecordEntry:
             record_ids = id_list
 
         record_ids = sorted(list(set(record_ids)))  # prevents duplicate IDs
-        logger.debug('loading records {IDS} of type "{TYPE}" from the database'.format(IDS=record_ids, TYPE=self.name))
+        logger.debug('loading records {IDS} of type "{TYPE}" from the database {DB}'
+                     .format(IDS=record_ids, TYPE=self.name, DB=db))
 
         custom_filters = self._format_filter_set(filters) if filters else []
 
@@ -1922,7 +1923,7 @@ class DatabaseRecord:
         else:
             return self._record_date.data()
 
-    def initialize(self, data, new: bool = False, as_new: bool = False, references: dict = None):
+    def initialize(self, data, new: bool = False, references: dict = None):
         """
         Initialize record attributes.
 
@@ -1932,10 +1933,9 @@ class DatabaseRecord:
             new (bool): record is newly created [default: False]. New records allow editing of all data
                 element fields, even those normally disabled.
 
-            as_new (bool): set record metadata as if the record is newly created [Default: False].
-
-            references (dict): optional reference imports by association rule. If provided, will not attempt to import
-                references for the given association rule but will use the reference entries provided instead.
+            references (dict): optional dictionary of reference entry dataframes for association types configured for
+                the record entry. If provided, will not attempt to import references for the given association type
+                but will use the reference entries provided instead.
         """
         # pd.set_option('display.max_columns', None)
         record_elements = self.components
@@ -1973,7 +1973,7 @@ class DatabaseRecord:
         except KeyError:
             raise ImportError('input record data is missing required column "{}"'.format(self.date_field))
 
-        if new or as_new:
+        if new:
             record_data[settings.creator_code] = user.uid
             record_data[settings.creation_date] = datetime.datetime.now()
 
@@ -2004,24 +2004,30 @@ class DatabaseRecord:
                 logger.debug('RecordType {NAME}: initializing component table "{PARAM}" with association "{TYPE}"'
                              .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
 
-                # Load the reference entries defined by the given association rule
-                if assoc_rule in references:  # use provided reference entries instead of importing from reference table
-                    assoc_refs = references[assoc_rule]
-                    ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
-                else:
-                    ref_data = record_entry.import_references(record_id, rule=assoc_rule)
+                if element_name in record_data:
+                    elem_data = record_data[element_name]
+                    if record_element.id_column not in elem_data.columns:  # IDs not yet created for the components
+                        elem_data = self.create_components(record_element, record_data=elem_data)
+                else:  # attempt to find data for the element by loading from the database
+                    # Load the reference entries defined by the given association rule
+                    if assoc_rule in references:  # use provided reference entries instead of importing from database
+                        assoc_refs = references[assoc_rule]
+                        ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
+                    else:
+                        ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
-                if ref_data.empty:
-                    logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
-                                 .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
-                    continue
+                    if ref_data.empty:
+                        logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
+                                     .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
+                        continue
 
-                import_ids = ref_data['ReferenceID']
+                    import_ids = ref_data['ReferenceID']
 
-                # Load the component records
-                import_df = ref_entry.load_records(import_ids, filters=record_element.import_filters)
-                import_df = import_df[[i for i in import_df.columns if i in record_element.columns]]
-                record_element.append(import_df)
+                    # Load the component records
+                    elem_data = ref_entry.load_records(import_ids, filters=record_element.import_filters)
+                    elem_data = elem_data[[i for i in elem_data.columns if i in record_element.columns]]
+
+                record_element.append(elem_data, new=new)
 
             elif record_element.is_type('reference'):  # reference list
                 assoc_rule = record_element.association_rule
@@ -2031,9 +2037,11 @@ class DatabaseRecord:
 
                 # Load the reference entries defined by the given association rule
                 if assoc_rule in references:  # use provided reference entries instead of importing from reference table
+                    print('using provided set of references instead of importing from the database')
                     assoc_refs = references[assoc_rule]
                     ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
                 else:
+                    print('importing references from the database')
                     ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
                 if ref_data.empty:
@@ -2041,7 +2049,7 @@ class DatabaseRecord:
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
 
-                record_element.append(ref_data, new=False)
+                record_element.append(ref_data, new=new)
 
             else:  # record variable element (dependent or record variables)
                 try:
@@ -2209,7 +2217,7 @@ class DatabaseRecord:
         for record_element in record_elements:
             try:
                 edit_mode = record_element.edit_mode
-            except AttributeError:
+            except AttributeError:  # record element is not an input field
                 continue
             else:
                 if not edit_mode:  # element is not currently being edited
@@ -2785,8 +2793,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        success = user.write_db(sstrings, psets)
-        # success = True
+        #success = user.write_db(sstrings, psets)
+        success = True
         print('final save statements:')
         print(statements)
 

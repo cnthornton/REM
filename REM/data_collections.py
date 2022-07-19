@@ -1268,7 +1268,7 @@ class RecordCollection(DataCollection):
         if isinstance(indices, int):
             indices = [indices]
 
-        if deleted or (indices is not None and len(indices) > 0):
+        if deleted or (indices is not None and len(indices) > 0):  # must include deleted rows if indices provided
             df = self.data(current=False)  # all rows, not just current
         else:
             df = self.data()
