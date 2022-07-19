@@ -409,14 +409,29 @@ class AuditRule:
             db_record = settings.records.fetch_rule(self.record_type)
             record = mod_records.DatabaseRecord(self.record_type, db_record.record_layout, level=0)
 
-            # Map transaction summaries to audit record variables
-            self.map_summary()
+            # Prepare the record data for audit record initialization
+            mapping = {}
+            for field in self.record_data:
+                mapping[field] = self.record_data[field]
 
-            # Initialize the audit record elements
-            record.initialize(self.record_data, new=False, as_new=True)
+            # Map transaction table summaries to audit record variables
+            mapping = self.map_summary(mapping=mapping)
 
             # Map transaction records to audit record components
-            record = self.map_transactions(record)
+            mapping = self.map_transactions(mapping=mapping)
+
+            # Combine the reference entries of all the transaction tables to pass to the audit record
+            refs = {}
+            for transaction_tab in self.transactions:
+                assoc_type = transaction_tab.association_type
+                ref_df = transaction_tab.table.references.data(reference=True)
+                if assoc_type in refs:
+                    refs[assoc_type] = refs[assoc_type].append(ref_df, ignore_index=True)
+                else:
+                    refs[assoc_type] = ref_df
+
+            # Initialize the audit record elements
+            record.initialize(mapping, new=False, references=refs)
 
             # Open the audit record in the record window
             record = mod_win2.record_window(record, modify_database=False)
@@ -469,6 +484,13 @@ class AuditRule:
 
                 # Reset rule elements
                 current_rule = self.reset_rule(window, current=True)
+
+            else:  # user canceled audit creation
+                # Reset references for the transaction records
+                for transaction_tab in self.transactions:
+                    trans_table = transaction_tab.table
+                    trans_table.references.reset()
+                    trans_table.import_references()
 
         return current_rule
 
@@ -734,15 +756,20 @@ class AuditRule:
                 for param in params:
                     self.record_data[param.name] = param.value
 
+                self.record_data[settings.creator_code] = user.uid
+                self.record_data[settings.creation_date] = datetime.datetime.now()
+
                 self.parameters = params
 
         return exists
 
-    def map_summary(self):
+    def map_summary(self, mapping: dict = None):
         """
         Populate the audit record elements with transaction summary values.
         """
         # Store transaction table summaries for mapping
+        mapping = {} if mapping is None else mapping
+
         summary_map = {}
         for tab in self.transactions:
             tab_name = tab.name
@@ -768,9 +795,131 @@ class AuditRule:
             logger.debug('AuditRule {NAME}: adding {SUMM} to column {COL}'
                          .format(NAME=self.name, SUMM=summary_total, COL=column))
 
-            self.record_data[column] = summary_total
+            mapping[column] = summary_total
 
-    def map_transactions(self, record):
+        return mapping
+
+    def map_transactions(self, mapping: dict = None):
+        """
+        Map transaction records from the audit to the audit accounting records.
+
+        Returns:
+            results (dict): dictionary containing component dataframes of mapped transactions.
+        """
+        pd.set_option('display.max_columns', None)
+        logger.debug('AuditRule {NAME}: creating component records from the transaction records'
+                     .format(NAME=self.name))
+
+        audit_id = self.record_data['RecordID']
+
+        # Map transaction data to transaction records
+        record_mapping = self.record_mapping
+        mapping = {} if mapping is None else mapping
+        for component_name in record_mapping:
+            dest_entry = record_mapping[component_name]
+
+            comp_df = pd.DataFrame()
+
+            transactions = dest_entry['Transactions']
+            for transaction in transactions:
+                subsets = transactions[transaction]
+
+                try:
+                    tab = self.fetch_tab(transaction, by_key=False)
+                except KeyError:
+                    logger.warning('AuditRule {NAME}: failed to map transactions from transaction table {TBL} to '
+                                   'audit record element {COMP} - unknown transaction table {TBL}'
+                                   .format(NAME=self.name, TBL=transaction, COMP=component_name))
+                    continue
+
+                table = tab.table
+
+                # Add transaction records to the audit record destination element
+                for subset_rule in subsets:
+                    rule_entry = subsets[subset_rule]
+
+                    try:
+                        column_map = rule_entry['ColumnMapping']
+                    except KeyError:
+                        logger.warning('AuditRule {NAME}: failed to map transactions from transaction table {TBL} to '
+                                       'audit record element {DEST} - no data fields were selected for mapping'
+                                       .format(NAME=self.name, TBL=transaction, DEST=component_name))
+                        continue
+
+                    dest_cols = [i for i in column_map]
+
+                    try:
+                        subset_rule = rule_entry['Subset']
+                    except KeyError:
+                        add_df = table.data()
+                    else:
+                        add_df = table.subset(subset_rule)
+
+                    if add_df.empty:
+                        logger.debug('AuditRule {NAME}: no records remaining from transaction table {REF} to add '
+                                     'to audit record element {DEST} based on rule {RULE}'
+                                     .format(NAME=self.name, REF=transaction, DEST=component_name, RULE=subset_rule))
+                        continue
+
+                    # Create references for the records
+
+                    # Find any records that are already referenced
+                    record_ids = add_df[table.id_column].tolist()
+                    records_w_refs = table.has_reference(record_ids)
+
+                    # Remove records that are already referenced from the add dataframe
+                    if len(records_w_refs) > 0:
+                        msg = '{NUM} {TYPE} records were found to already be associated with an audit - these ' \
+                              'records will not be included in this current audit ({RECORDS})' \
+                            .format(NUM=len(records_w_refs), TYPE=tab.name, RECORDS=records_w_refs)
+                        mod_win2.popup_notice(msg)
+                        logger.warning('AuditRule {NAME}: {MSG}'.format(NAME=self.name, MSG=msg))
+
+                        add_df = add_df[~add_df[table.id_column].isin(records_w_refs)]
+
+                    # Add references for the remaining records to the references data
+                    records_wo_refs = [i for i in record_ids if i not in records_w_refs]
+                    print('approved records without current associations:')
+                    print(records_wo_refs)
+                    for record_id in records_wo_refs:
+                        print('adding self reference for record {}'.format(record_id))
+                        table.add_reference(record_id, audit_id, self.record_type, approved=True)
+
+                    # Prepare the transaction records
+                    add_df = add_df[dest_cols].rename(columns=column_map)
+
+                    # Set defaults, if applicable
+                    if 'Defaults' in rule_entry:
+                        default_rules = rule_entry['Defaults']
+
+                        for default_col in default_rules:
+                            default_value = default_rules[default_col]
+
+                            add_df[default_col] = default_value
+
+                    # Add record to the components table
+                    comp_df = comp_df.append(add_df, ignore_index=True)
+
+            # Remove NA columns - required when merging
+            comp_df = comp_df[comp_df.columns[~comp_df.isna().all()]]
+
+            # Merge records, if applicable
+            if 'Merge' in dest_entry:
+                merge_on = [i for i in comp_df.columns if i not in dest_entry['Merge']]
+                logger.debug('AuditRule {NAME}: merging new audit record element {DEST} components on columns {COLS}'
+                             .format(NAME=self.name, DEST=component_name, COLS=merge_on))
+                comp_df = comp_df.groupby(merge_on).sum().reset_index()
+
+            # Add transaction records to the set of transaction records that will get mapped to the audit component
+            # records
+            logger.debug('AuditRule {NAME}: creating audit record element {DEST} components from transaction records'
+                         .format(NAME=self.name, DEST=component_name))
+            if not comp_df.empty:
+                mapping[component_name] = comp_df
+
+        return mapping
+
+    def map_transactions_old(self, record):
         """
         Map transaction records from the audit to the audit accounting records.
 
@@ -785,6 +934,7 @@ class AuditRule:
 
         # Map transaction data to transaction records
         record_mapping = self.record_mapping
+        results = {}
         for destination in record_mapping:
             dest_entry = record_mapping[destination]
 
@@ -900,7 +1050,8 @@ class AuditRule:
                          .format(NAME=self.name, DEST=destination))
             if not comp_df.empty:
                 final_df = record.create_components(dest_element, record_data=comp_df)
-                dest_element.append(final_df)
+                #dest_element.append(final_df)
+                dest_element.append(final_df, new=True)
 
         return record
 
