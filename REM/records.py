@@ -2004,30 +2004,36 @@ class DatabaseRecord:
                 logger.debug('RecordType {NAME}: initializing component table "{PARAM}" with association "{TYPE}"'
                              .format(NAME=self.name, PARAM=element_name, TYPE=assoc_rule))
 
-                if element_name in record_data:
+                # Attempt to find new components provided in the record data
+                if element_name in record_data:  # new components provided
                     elem_data = record_data[element_name]
-                    if record_element.id_column not in elem_data.columns:  # IDs not yet created for the components
-                        elem_data = self.create_components(record_element, record_data=elem_data)
-                else:  # attempt to find data for the element by loading from the database
-                    # Load the reference entries defined by the given association rule
-                    if assoc_rule in references:  # use provided reference entries instead of importing from database
-                        assoc_refs = references[assoc_rule]
-                        ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
-                    else:
-                        ref_data = record_entry.import_references(record_id, rule=assoc_rule)
+                    if isinstance(elem_data, pd.DataFrame):
+                        if record_element.id_column not in elem_data.columns:  # IDs not yet created for the components
+                            elem_data = self.create_components(record_element, record_data=elem_data)
 
-                    if ref_data.empty:
-                        logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
-                                     .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
-                        continue
+                        record_element.append(elem_data, new=True)
 
-                    import_ids = ref_data['ReferenceID']
+                # Attempt to find existing components in the database
 
-                    # Load the component records
-                    elem_data = ref_entry.load_records(import_ids, filters=record_element.import_filters)
-                    elem_data = elem_data[[i for i in elem_data.columns if i in record_element.columns]]
+                # Load the reference entries defined by the given association rule
+                if assoc_rule in references:  # use provided reference entries instead of importing from database
+                    assoc_refs = references[assoc_rule]
+                    ref_data = assoc_refs[(assoc_refs['RecordID'] == record_id) & (~assoc_refs['IsDeleted'])]
+                else:
+                    ref_data = record_entry.import_references(record_id, rule=assoc_rule)
 
-                record_element.append(elem_data, new=new)
+                if ref_data.empty:
+                    logger.debug('RecordType {NAME}: record {ID} has no current "{TYPE}" associations'
+                                 .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
+                    continue
+
+                import_ids = ref_data['ReferenceID']
+
+                # Load the component records
+                elem_data = ref_entry.load_records(import_ids, filters=record_element.import_filters)
+                elem_data = elem_data[[i for i in elem_data.columns if i in record_element.columns]]
+
+                record_element.append(elem_data, new=False)
 
             elif record_element.is_type('reference'):  # reference list
                 assoc_rule = record_element.association_rule
@@ -2049,7 +2055,7 @@ class DatabaseRecord:
                                  .format(NAME=self.name, ID=record_id, TYPE=assoc_rule))
                     continue
 
-                record_element.append(ref_data, new=new)
+                record_element.append(ref_data, new=False)
 
             else:  # record variable element (dependent or record variables)
                 try:
@@ -2793,8 +2799,8 @@ class DatabaseRecord:
             sstrings.append(i)
             psets.append(j)
 
-        #success = user.write_db(sstrings, psets)
-        success = True
+        success = user.write_db(sstrings, psets)
+        #success = True
         print('final save statements:')
         print(statements)
 
